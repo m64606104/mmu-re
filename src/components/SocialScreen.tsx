@@ -24,7 +24,7 @@ export default function SocialScreen({ conversations, onNavigate }: SocialScreen
     } catch (e) {
       console.error('Failed to parse user profile:', e);
     }
-    return { username: 'aa', avatar: null, status: '在线' };
+    return { username: '123', avatar: null, status: '在线' };
   });
 
   // 更新用户状态（流畅更新，不刷新页面）
@@ -98,7 +98,7 @@ export default function SocialScreen({ conversations, onNavigate }: SocialScreen
               )}
             </div>
             <div>
-              <h1 className={`text-lg font-semibold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>{userProfile.username || 'aa'}</h1>
+              <h1 className={`text-lg font-semibold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>{userProfile.username || '123'}</h1>
               <button 
                 onClick={() => setShowStatusSelector(true)}
                 className="flex items-center gap-1 text-xs text-gray-500 hover:text-gray-700 transition-colors"

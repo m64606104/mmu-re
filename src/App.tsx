@@ -27,7 +27,7 @@ function App() {
   });
   const [userProfile, setUserProfile] = useState<UserProfile>(() => {
     const saved = localStorage.getItem('userProfile');
-    return saved ? JSON.parse(saved) : { username: 'aa', bio: '分享生活，记录美好', status: '在线' };
+    return saved ? JSON.parse(saved) : { username: '123', bio: '分享生活，记录美好', status: '在线' };
   });
   const [moments, setMoments] = useState<MomentPost[]>(() => {
     const saved = localStorage.getItem('moments');
@@ -426,9 +426,9 @@ function App() {
 
   return (
     <>
-      <div className="w-full h-full flex items-center justify-center">
-        {/* 手机容器 */}
-        <div className="w-full h-full max-w-[393px] max-h-[852px] bg-white rounded-[40px] shadow-2xl overflow-hidden relative">
+      <div className="w-full h-screen flex items-center justify-center bg-slate-100">
+        {/* 手机容器 - iPhone 16 尺寸 (393x852) */}
+        <div className="w-[393px] h-[852px] bg-white rounded-[40px] shadow-2xl overflow-hidden relative">
           {renderScreen()}
         </div>
       </div>
