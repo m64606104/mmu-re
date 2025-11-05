@@ -1,5 +1,5 @@
 import { useState, useRef } from 'react';
-import { ChevronLeft, Upload, Brain, Trash2 } from 'lucide-react';
+import { ChevronLeft, Upload, Brain, Trash2, Download, FileUp } from 'lucide-react';
 import { Conversation } from '../types';
 import MemoryManager from './MemoryManager';
 
@@ -35,6 +35,7 @@ export default function CharacterSettingsScreen({
   const [memoryEvents, setMemoryEvents] = useState(settings.memoryEvents);
   const [showMemoryManager, setShowMemoryManager] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const chatImportRef = useRef<HTMLInputElement>(null);
 
   const handleAvatarUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -45,6 +46,75 @@ export default function CharacterSettingsScreen({
       };
       reader.readAsDataURL(file);
     }
+  };
+
+  // 导出聊天记录
+  const handleExportChat = () => {
+    const chatData = {
+      conversationId: conversation.id,
+      conversationName: conversation.name,
+      characterSettings: conversation.characterSettings,
+      messages: conversation.messages,
+      exportDate: new Date().toISOString(),
+      appVersion: '1.0.0'
+    };
+
+    const dataStr = JSON.stringify(chatData, null, 2);
+    const dataBlob = new Blob([dataStr], { type: 'application/json' });
+    const url = URL.createObjectURL(dataBlob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `${conversation.name}_聊天记录_${new Date().toLocaleDateString()}.json`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+    alert('聊天记录已导出！');
+  };
+
+  // 导入聊天记录
+  const handleImportChat = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      try {
+        const importedData = JSON.parse(event.target?.result as string);
+        
+        // 验证数据格式
+        if (!importedData.messages || !Array.isArray(importedData.messages)) {
+          alert('导入文件格式不正确');
+          return;
+        }
+
+        // 合并消息（可选：询问用户是替换还是追加）
+        const shouldReplace = window.confirm(
+          `导入 ${importedData.messages.length} 条消息记录\n\n` +
+          '点击"确定"替换当前消息\n' +
+          '点击"取消"追加到现有消息后'
+        );
+
+        const newMessages = shouldReplace 
+          ? importedData.messages 
+          : [...conversation.messages, ...importedData.messages];
+
+        onUpdateConversation(conversation.id, {
+          messages: newMessages
+        });
+
+        alert(`成功导入 ${importedData.messages.length} 条消息！`);
+        
+        // 重置file input
+        if (chatImportRef.current) {
+          chatImportRef.current.value = '';
+        }
+      } catch (error) {
+        console.error('导入失败:', error);
+        alert('导入失败：文件格式错误或数据损坏');
+      }
+    };
+    reader.readAsText(file);
   };
 
   const handleSave = () => {
@@ -236,6 +306,37 @@ export default function CharacterSettingsScreen({
           </button>
           <p className="text-xs text-gray-500 mt-2 text-center">
             💡 AI会自动记住对话中的重要信息
+          </p>
+        </div>
+
+        {/* 聊天记录导入导出 */}
+        <div className="bg-white rounded-lg shadow-sm p-4">
+          <h3 className="text-sm font-medium text-gray-700 mb-3">聊天记录管理</h3>
+          <div className="grid grid-cols-2 gap-3">
+            <button
+              onClick={handleExportChat}
+              className="py-3 border-2 border-green-200 hover:border-green-400 hover:bg-green-50 rounded-lg transition-colors flex items-center justify-center gap-2 text-green-700"
+            >
+              <Download className="w-5 h-5" />
+              <span className="font-medium">导出记录</span>
+            </button>
+            <button
+              onClick={() => chatImportRef.current?.click()}
+              className="py-3 border-2 border-blue-200 hover:border-blue-400 hover:bg-blue-50 rounded-lg transition-colors flex items-center justify-center gap-2 text-blue-700"
+            >
+              <FileUp className="w-5 h-5" />
+              <span className="font-medium">导入记录</span>
+            </button>
+          </div>
+          <input
+            ref={chatImportRef}
+            type="file"
+            accept=".json"
+            onChange={handleImportChat}
+            className="hidden"
+          />
+          <p className="text-xs text-gray-500 mt-2 text-center">
+            💾 导出后可在其他设备导入，保留所有聊天记录
           </p>
         </div>
 

@@ -89,6 +89,7 @@ function App() {
               languageExample: '哈哈哈太好笑了吧！今天又在小红书上刷到好多有趣的东西～',
               memoryEvents: '',
             },
+            enabledFeatures: ['memory-system'], // 默认启用记忆系统
             lastMessageTime: Date.now(),
             unreadCount: 0,
           };
@@ -156,7 +157,6 @@ function App() {
   // 更新用户资料
   const updateUserProfile = useCallback((profile: UserProfile) => {
     setUserProfile(profile);
-    localStorage.setItem('userProfile', JSON.stringify(profile));
   }, []);
 
   // 更新主题
@@ -427,9 +427,9 @@ function App() {
 
   return (
     <>
-      <div className="w-full h-full flex items-center justify-center">
-        {/* 手机容器 */}
-        <div className="w-full h-full max-w-[393px] max-h-[852px] bg-white rounded-[40px] shadow-2xl overflow-hidden relative">
+      <div className="w-full h-screen flex items-center justify-center bg-slate-100">
+        {/* 手机容器 - 优化尺寸 (393x820) */}
+        <div className="w-[393px] h-[820px] bg-white rounded-[40px] shadow-2xl overflow-hidden relative">
           {renderScreen()}
         </div>
       </div>
