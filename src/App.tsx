@@ -417,21 +417,6 @@ function App() {
             onBack={() => navigateTo('social')}
           />
         );
-      case 'add-friend':
-        return (
-          <AddFriendScreen
-            onAddFriend={addFriend}
-            onBack={() => navigateTo('new-conversation')}
-          />
-        );
-      case 'create-group':
-        return (
-          <CreateGroupScreen
-            conversations={conversations}
-            onCreateGroup={createGroup}
-            onBack={() => navigateTo('new-conversation')}
-          />
-        );
       case 'theme':
         return (
           <ThemeScreen
