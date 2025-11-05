@@ -427,9 +427,9 @@ function App() {
 
   return (
     <>
-      <div className="w-full h-screen flex items-center justify-center bg-slate-100">
-        {/* 手机容器 - 优化尺寸 (393x820) */}
-        <div className="w-[393px] h-[820px] bg-white rounded-[40px] shadow-2xl overflow-hidden relative">
+      <div className="w-full h-screen flex items-center justify-center bg-slate-100 md:bg-slate-100 bg-transparent">
+        {/* 手机容器 - 移动端全屏，PC端固定尺寸 */}
+        <div className="w-full h-full md:w-[393px] md:h-[820px] bg-white md:rounded-[40px] shadow-none md:shadow-2xl overflow-hidden relative">
           {renderScreen()}
         </div>
       </div>
