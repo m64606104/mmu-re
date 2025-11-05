@@ -25,6 +25,9 @@ export default function HomeScreen({ onNavigate, theme }: HomeScreenProps) {
   const [landscapeImage, setLandscapeImage] = useState<string>('');
   const [showMusicModal, setShowMusicModal] = useState(false);
   const [showCountdownModal, setShowCountdownModal] = useState(false);
+  const [showMusicSearchModal, setShowMusicSearchModal] = useState(false);
+  const [tempCountdownName, setTempCountdownName] = useState('');
+  const [tempCountdownDate, setTempCountdownDate] = useState('');
   const [currentPage, setCurrentPage] = useState(0);
   const [touchStartX, setTouchStartX] = useState<number | null>(null);
   const [touchCurrentX, setTouchCurrentX] = useState<number | null>(null);
@@ -581,7 +584,11 @@ export default function HomeScreen({ onNavigate, theme }: HomeScreenProps) {
           <div className="grid grid-cols-2 gap-3">
             {/* 倒计时卡片 */}
             <button
-              onClick={() => setShowCountdownModal(true)}
+              onClick={() => {
+                setTempCountdownName(countdownEvent.name);
+                setTempCountdownDate(countdownEvent.date);
+                setShowCountdownModal(true);
+              }}
               className="bg-white/20 backdrop-blur-xl rounded-3xl p-5 shadow-lg border border-white/30 relative overflow-hidden text-left hover:bg-white/25 transition-colors"
             >
               <div className="absolute -right-4 -top-4 text-6xl opacity-20">🌸</div>
@@ -623,7 +630,10 @@ export default function HomeScreen({ onNavigate, theme }: HomeScreenProps) {
           </div>
 
           {/* 音乐播放器 */}
-          <div className="bg-white/20 backdrop-blur-xl rounded-3xl p-4 shadow-lg border border-white/30">
+          <div 
+            onClick={() => setShowMusicSearchModal(true)}
+            className="bg-white/20 backdrop-blur-xl rounded-3xl p-4 shadow-lg border border-white/30 cursor-pointer hover:bg-white/25 transition-colors"
+          >
             <div className="flex items-center gap-4">
               <div className="w-16 h-16 rounded-2xl overflow-hidden shadow-lg">
                 {currentTrack.cover ? (
@@ -636,7 +646,10 @@ export default function HomeScreen({ onNavigate, theme }: HomeScreenProps) {
               </div>
               
               <button
-                onClick={() => setShowMusicModal(true)}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setShowMusicModal(true);
+                }}
                 className="flex-1 text-left hover:opacity-80 transition-opacity"
               >
                 <div className="text-white font-medium text-sm truncate">{currentTrack.title}</div>
@@ -644,11 +657,17 @@ export default function HomeScreen({ onNavigate, theme }: HomeScreenProps) {
               </button>
 
               <div className="flex items-center gap-2">
-                <button className="p-1.5 hover:bg-white/10 rounded-full transition-colors">
+                <button 
+                  onClick={(e) => e.stopPropagation()}
+                  className="p-1.5 hover:bg-white/10 rounded-full transition-colors"
+                >
                   <SkipBack className="w-4 h-4 text-white" strokeWidth={2} />
                 </button>
                 <button 
-                  onClick={togglePlay}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    togglePlay();
+                  }}
                   className="p-2 bg-white/30 hover:bg-white/40 rounded-full transition-colors"
                 >
                   {isPlaying ? (
@@ -657,7 +676,10 @@ export default function HomeScreen({ onNavigate, theme }: HomeScreenProps) {
                     <Play className="w-5 h-5 text-white" strokeWidth={2} fill="currentColor" />
                   )}
                 </button>
-                <button className="p-1.5 hover:bg-white/10 rounded-full transition-colors">
+                <button 
+                  onClick={(e) => e.stopPropagation()}
+                  className="p-1.5 hover:bg-white/10 rounded-full transition-colors"
+                >
                   <SkipForward className="w-4 h-4 text-white" strokeWidth={2} />
                 </button>
               </div>
@@ -877,6 +899,90 @@ export default function HomeScreen({ onNavigate, theme }: HomeScreenProps) {
         </div>
       )}
 
+      {/* 音乐搜索Modal */}
+      {showMusicSearchModal && (
+        <div 
+          className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50"
+          onClick={() => setShowMusicSearchModal(false)}
+        >
+          <div 
+            className="bg-white rounded-3xl p-6 m-4 max-w-md w-full max-h-[80vh] overflow-y-auto"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 className="text-lg font-bold mb-4">搜索歌曲</h3>
+            
+            {/* 搜索框 */}
+            <div className="mb-4">
+              <input
+                type="text"
+                placeholder="搜索歌曲名或歌手..."
+                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              />
+            </div>
+
+            {/* 功能说明 */}
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
+              <p className="text-sm text-blue-800">
+                💡 <strong>在线搜索功能开发中...</strong>
+              </p>
+              <p className="text-xs text-blue-600 mt-2">
+                未来版本将支持：
+              </p>
+              <ul className="text-xs text-blue-600 mt-1 ml-4 list-disc">
+                <li>在线搜索歌曲</li>
+                <li>添加到播放列表</li>
+                <li>创建自定义歌单</li>
+                <li>歌词显示</li>
+              </ul>
+            </div>
+
+            {/* 当前播放 */}
+            <div className="mb-4">
+              <h4 className="text-sm font-semibold text-gray-700 mb-2">当前播放</h4>
+              <div className="bg-gray-50 rounded-lg p-3 flex items-center gap-3">
+                <div className="w-12 h-12 rounded-lg bg-gradient-to-br from-purple-400 to-pink-400 flex items-center justify-center">
+                  <Music className="w-6 h-6 text-white" />
+                </div>
+                <div className="flex-1">
+                  <div className="font-medium text-sm">{currentTrack.title}</div>
+                  <div className="text-xs text-gray-500">{currentTrack.artist}</div>
+                </div>
+              </div>
+            </div>
+
+            {/* 上传本地音乐 */}
+            <div className="mb-4">
+              <h4 className="text-sm font-semibold text-gray-700 mb-2">上传本地音乐</h4>
+              <label className="block">
+                <div className="border-2 border-dashed border-gray-300 rounded-lg p-4 text-center hover:border-blue-400 hover:bg-blue-50 transition-colors cursor-pointer">
+                  <Upload className="w-8 h-8 mx-auto text-gray-400 mb-2" />
+                  <p className="text-sm text-gray-600">点击上传音乐文件</p>
+                  <p className="text-xs text-gray-400 mt-1">支持 MP3, WAV, M4A 格式</p>
+                </div>
+                <input
+                  type="file"
+                  accept="audio/*"
+                  className="hidden"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (file) {
+                      alert('音乐上传功能开发中，敬请期待！');
+                    }
+                  }}
+                />
+              </label>
+            </div>
+
+            <button
+              onClick={() => setShowMusicSearchModal(false)}
+              className="w-full bg-blue-500 text-white py-2 rounded-lg hover:bg-blue-600 transition-colors font-medium"
+            >
+              关闭
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* 纪念日Modal - 可编辑 */}
       {showCountdownModal && (
         <div 
@@ -912,12 +1018,8 @@ export default function HomeScreen({ onNavigate, theme }: HomeScreenProps) {
                 </label>
                 <input
                   type="text"
-                  value={countdownEvent.name}
-                  onChange={(e) => {
-                    const newEvent = { ...countdownEvent, name: e.target.value };
-                    localStorage.setItem('countdownEvent', JSON.stringify(newEvent));
-                    window.location.reload(); // 刷新以更新状态
-                  }}
+                  value={tempCountdownName}
+                  onChange={(e) => setTempCountdownName(e.target.value)}
                   placeholder="例如：我的生日"
                   className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 />
@@ -929,23 +1031,31 @@ export default function HomeScreen({ onNavigate, theme }: HomeScreenProps) {
                 </label>
                 <input
                   type="date"
-                  value={countdownEvent.date}
-                  onChange={(e) => {
-                    const newEvent = { ...countdownEvent, date: e.target.value };
-                    localStorage.setItem('countdownEvent', JSON.stringify(newEvent));
-                    window.location.reload(); // 刷新以更新状态
-                  }}
+                  value={tempCountdownDate}
+                  onChange={(e) => setTempCountdownDate(e.target.value)}
                   className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 />
               </div>
             </div>
 
-            <button
-              onClick={() => setShowCountdownModal(false)}
-              className="mt-6 w-full bg-blue-500 text-white py-2 rounded-lg hover:bg-blue-600 transition-colors font-medium"
-            >
-              完成
-            </button>
+            <div className="flex gap-3 mt-6">
+              <button
+                onClick={() => setShowCountdownModal(false)}
+                className="flex-1 bg-gray-200 text-gray-700 py-2 rounded-lg hover:bg-gray-300 transition-colors font-medium"
+              >
+                取消
+              </button>
+              <button
+                onClick={() => {
+                  const newEvent = { name: tempCountdownName, date: tempCountdownDate };
+                  localStorage.setItem('countdownEvent', JSON.stringify(newEvent));
+                  window.location.reload();
+                }}
+                className="flex-1 bg-blue-500 text-white py-2 rounded-lg hover:bg-blue-600 transition-colors font-medium"
+              >
+                保存
+              </button>
+            </div>
           </div>
         </div>
       )}
