@@ -849,8 +849,8 @@ export default function HomeScreen({ onNavigate, theme }: HomeScreenProps) {
 
       {/* 音乐播放器模态框 */}
       {showMusicModal && (
-        <div className="absolute inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-6">
-          <div className="bg-white rounded-3xl p-6 w-full max-w-sm shadow-2xl">
+        <div className="absolute inset-0 bg-black/40 backdrop-blur-md flex items-center justify-center z-50 p-6">
+          <div className="bg-white/90 backdrop-blur-xl rounded-3xl p-6 w-full max-w-sm shadow-2xl border border-white/40">
             <div className="flex justify-between items-center mb-4">
               <h3 className="text-xl font-bold text-slate-800">音乐播放器</h3>
               <button
@@ -910,8 +910,8 @@ export default function HomeScreen({ onNavigate, theme }: HomeScreenProps) {
 
       {/* 音乐上传器 */}
       {showMusicUploader && (
-        <div className="absolute inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-6">
-          <div className="bg-white rounded-3xl p-6 w-full max-w-sm shadow-2xl">
+        <div className="absolute inset-0 bg-black/40 backdrop-blur-md flex items-center justify-center z-50 p-6">
+          <div className="bg-white/90 backdrop-blur-xl rounded-3xl p-6 w-full max-w-sm shadow-2xl border border-white/40">
             <div className="flex justify-between items-center mb-4">
               <h3 className="text-xl font-bold text-slate-800">上传音乐</h3>
               <button
@@ -923,70 +923,76 @@ export default function HomeScreen({ onNavigate, theme }: HomeScreenProps) {
             </div>
             
             <div className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-2">歌曲名称</label>
-                <input
-                  type="text"
-                  id="songTitle"
-                  placeholder="输入歌曲名"
-                  className="w-full px-4 py-3 border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
+              <div className="text-center py-4">
+                <div className="text-6xl mb-4">🎵</div>
+                <p className="text-slate-600 text-sm">
+                  选择音频文件，自动解析歌曲信息
+                </p>
               </div>
               
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-2">艺术家</label>
-                <input
-                  type="text"
-                  id="songArtist"
-                  placeholder="输入艺术家名"
-                  className="w-full px-4 py-3 border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-              </div>
-              
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-2">音频文件</label>
+              <label className="block cursor-pointer">
+                <div className="border-2 border-dashed border-slate-300 rounded-2xl p-8 hover:border-blue-400 hover:bg-blue-50/50 transition-all text-center">
+                  <Music className="w-12 h-12 mx-auto mb-3 text-slate-400" />
+                  <p className="text-slate-600 font-medium mb-1">点击选择音频文件</p>
+                  <p className="text-slate-400 text-xs">支持 MP3, WAV, OGG 等格式</p>
+                </div>
                 <input
                   type="file"
                   accept="audio/*"
-                  id="audioFile"
-                  className="w-full px-4 py-3 border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
-                />
-              </div>
-              
-              <div className="flex gap-3">
-                <button
-                  onClick={() => setShowMusicUploader(false)}
-                  className="flex-1 bg-slate-200 hover:bg-slate-300 text-slate-700 py-3 rounded-xl font-medium transition-colors"
-                >
-                  取消
-                </button>
-                <button
-                  onClick={() => {
-                    const title = (document.getElementById('songTitle') as HTMLInputElement)?.value;
-                    const artist = (document.getElementById('songArtist') as HTMLInputElement)?.value;
-                    const fileInput = document.getElementById('audioFile') as HTMLInputElement;
-                    const file = fileInput?.files?.[0];
+                  className="hidden"
+                  onChange={async (e) => {
+                    const file = e.target.files?.[0];
+                    if (!file) return;
                     
-                    if (title && artist && file) {
+                    try {
+                      // 读取音频文件
                       const reader = new FileReader();
-                      reader.onload = (e) => {
-                        const audioData = e.target?.result as string;
-                        const newTrack = { title, artist, cover: '', audio: audioData };
+                      reader.onload = async (event) => {
+                        const audioData = event.target?.result as string;
+                        
+                        // 从文件名提取信息
+                        const fileName = file.name.replace(/\.[^/.]+$/, ''); // 移除扩展名
+                        let title = fileName;
+                        let artist = '未知艺术家';
+                        
+                        // 尝试从文件名解析（格式：艺术家 - 歌名）
+                        if (fileName.includes(' - ')) {
+                          const parts = fileName.split(' - ');
+                          artist = parts[0].trim();
+                          title = parts.slice(1).join(' - ').trim();
+                        } else if (fileName.includes('-')) {
+                          const parts = fileName.split('-');
+                          artist = parts[0].trim();
+                          title = parts.slice(1).join('-').trim();
+                        }
+                        
+                        const newTrack = { 
+                          title, 
+                          artist, 
+                          cover: '', 
+                          audio: audioData 
+                        };
+                        
                         setCurrentTrack(newTrack);
                         localStorage.setItem('currentTrack', JSON.stringify(newTrack));
                         setShowMusicUploader(false);
-                        alert('音乐上传成功！');
+                        alert(`已上传：${title} - ${artist}`);
                       };
                       reader.readAsDataURL(file);
-                    } else {
-                      alert('请填写完整信息并选择音频文件');
+                    } catch (error) {
+                      console.error('音频文件处理失败:', error);
+                      alert('音频文件处理失败，请重试');
                     }
                   }}
-                  className="flex-1 bg-blue-500 hover:bg-blue-600 text-white py-3 rounded-xl font-medium transition-colors"
-                >
-                  上传
-                </button>
-              </div>
+                />
+              </label>
+              
+              <button
+                onClick={() => setShowMusicUploader(false)}
+                className="w-full bg-slate-200 hover:bg-slate-300 text-slate-700 py-3 rounded-xl font-medium transition-colors"
+              >
+                取消
+              </button>
             </div>
           </div>
         </div>
@@ -994,8 +1000,8 @@ export default function HomeScreen({ onNavigate, theme }: HomeScreenProps) {
 
       {/* 倒计时模态框 */}
       {showCountdownModal && !showCountdownEditor && (
-        <div className="absolute inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-6">
-          <div className="bg-white rounded-3xl p-6 w-full max-w-sm shadow-2xl">
+        <div className="absolute inset-0 bg-black/40 backdrop-blur-md flex items-center justify-center z-50 p-6">
+          <div className="bg-white/90 backdrop-blur-xl rounded-3xl p-6 w-full max-w-sm shadow-2xl border border-white/40">
             <div className="flex justify-between items-center mb-4">
               <h3 className="text-xl font-bold text-slate-800">倒计时</h3>
               <button
@@ -1055,8 +1061,8 @@ export default function HomeScreen({ onNavigate, theme }: HomeScreenProps) {
 
       {/* 倒计时编辑器 */}
       {showCountdownEditor && (
-        <div className="absolute inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-6">
-          <div className="bg-white rounded-3xl p-6 w-full max-w-sm shadow-2xl">
+        <div className="absolute inset-0 bg-black/40 backdrop-blur-md flex items-center justify-center z-50 p-6">
+          <div className="bg-white/90 backdrop-blur-xl rounded-3xl p-6 w-full max-w-sm shadow-2xl border border-white/40">
             <div className="flex justify-between items-center mb-4">
               <h3 className="text-xl font-bold text-slate-800">编辑倒计时</h3>
               <button
