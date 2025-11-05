@@ -590,7 +590,7 @@ export default function HomeScreen({ onNavigate, theme }: HomeScreenProps) {
               <div className="relative flex flex-col justify-between h-full">
                 {/* 顶部：状态文字 */}
                 <div className="text-xs text-white/70 font-medium">
-                  {calculateDaysInfo().isPast ? '已经过去' : '距离还有'}
+                  {calculateDaysInfo().isPast ? '已经' : '还有'}
                 </div>
                 
                 {/* 中间：主要数字 */}
@@ -877,7 +877,7 @@ export default function HomeScreen({ onNavigate, theme }: HomeScreenProps) {
         </div>
       )}
 
-      {/* 纪念日Modal */}
+      {/* 纪念日Modal - 可编辑 */}
       {showCountdownModal && (
         <div 
           className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50"
@@ -887,23 +887,64 @@ export default function HomeScreen({ onNavigate, theme }: HomeScreenProps) {
             className="bg-white rounded-3xl p-6 m-4 max-w-sm w-full"
             onClick={(e) => e.stopPropagation()}
           >
-            <h3 className="text-lg font-bold mb-4">纪念日</h3>
-            <div className="text-center py-4">
-              <div className="text-5xl font-bold text-blue-500 mb-2">
+            <h3 className="text-lg font-bold mb-4">设置纪念日</h3>
+            
+            {/* 当前倒计时显示 */}
+            <div className="text-center py-4 bg-gray-50 rounded-2xl mb-4">
+              <div className="text-4xl font-bold text-blue-500 mb-2">
                 {calculateDaysInfo().days}
               </div>
-              <div className="text-gray-600">
-                {calculateDaysInfo().isPast ? '已过去' : '距离'} {countdownEvent.name}
+              <div className="text-gray-600 text-sm">
+                {calculateDaysInfo().isPast ? '已经' : '还有'} <span className="font-semibold">{calculateDaysInfo().days}</span> 天
               </div>
-              <div className="text-gray-400 text-sm mt-2">
-                {countdownEvent.date}
+              {countdownEvent.name && (
+                <div className="text-gray-500 text-xs mt-1">
+                  {countdownEvent.name}
+                </div>
+              )}
+            </div>
+
+            {/* 编辑表单 */}
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  事件名称
+                </label>
+                <input
+                  type="text"
+                  value={countdownEvent.name}
+                  onChange={(e) => {
+                    const newEvent = { ...countdownEvent, name: e.target.value };
+                    localStorage.setItem('countdownEvent', JSON.stringify(newEvent));
+                    window.location.reload(); // 刷新以更新状态
+                  }}
+                  placeholder="例如：我的生日"
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                />
+              </div>
+              
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  日期
+                </label>
+                <input
+                  type="date"
+                  value={countdownEvent.date}
+                  onChange={(e) => {
+                    const newEvent = { ...countdownEvent, date: e.target.value };
+                    localStorage.setItem('countdownEvent', JSON.stringify(newEvent));
+                    window.location.reload(); // 刷新以更新状态
+                  }}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                />
               </div>
             </div>
+
             <button
               onClick={() => setShowCountdownModal(false)}
-              className="mt-4 w-full bg-blue-500 text-white py-2 rounded-lg hover:bg-blue-600 transition-colors"
+              className="mt-6 w-full bg-blue-500 text-white py-2 rounded-lg hover:bg-blue-600 transition-colors font-medium"
             >
-              关闭
+              完成
             </button>
           </div>
         </div>

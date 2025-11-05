@@ -437,7 +437,7 @@ function App() {
     <>
       <div className="w-full h-full flex items-center justify-center">
         {/* 手机容器 */}
-        <div className="w-full h-full max-w-[393px] max-h-[852px] bg-white rounded-[40px] shadow-2xl overflow-hidden relative">
+        <div className="w-full h-full max-w-[393px] max-h-[962px] bg-white rounded-[40px] shadow-2xl overflow-hidden relative">
           {renderScreen()}
         </div>
       </div>
