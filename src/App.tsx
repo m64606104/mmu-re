@@ -19,7 +19,32 @@ import { smartLoad, smartSave, migrateToIndexedDB } from './utils/storage';
 function App() {
   const [currentScreen, setCurrentScreen] = useState<Screen>('home');
   const [previousScreen, setPreviousScreen] = useState<Screen>('social'); // 记录来源页面
-  const [conversations, setConversations] = useState<Conversation[]>([]);
+  const [conversations, setConversations] = useState<Conversation[]>(() => {
+    const saved = localStorage.getItem('conversations');
+    if (saved) {
+      return JSON.parse(saved);
+    }
+    // 创建预设AI对话
+    return [{
+      id: 'preset-ai-1',
+      type: 'private',
+      name: 'aa',
+      avatar: '',
+      messages: [],
+      characterSettings: {
+        avatar: '',
+        nickname: 'aa',
+        username: 'aa不是研究生',
+        systemPrompt: '你是一个友好、聪明的AI助手',
+        personality: '友好、热情、乐于助人',
+        languageStyle: '自然、轻松、口语化',
+        languageExample: '嗯嗯，好的！让我来帮你～',
+        memoryEvents: ''
+      },
+      lastMessageTime: Date.now(),
+      unreadCount: 0
+    }];
+  });
   const [currentConversationId, setCurrentConversationId] = useState<string | null>(null);
   const [apiConfig, setApiConfig] = useState<ApiConfig>(() => {
     const saved = localStorage.getItem('apiConfig');
@@ -27,7 +52,7 @@ function App() {
   });
   const [userProfile, setUserProfile] = useState<UserProfile>(() => {
     const saved = localStorage.getItem('userProfile');
-    return saved ? JSON.parse(saved) : { username: 'aa不是研究生', bio: '分享生活，记录美好', status: '在线' };
+    return saved ? JSON.parse(saved) : { username: '我', bio: '分享生活，记录美好', status: '在线' };
   });
   const [moments, setMoments] = useState<MomentPost[]>(() => {
     const saved = localStorage.getItem('moments');

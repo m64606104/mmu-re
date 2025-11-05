@@ -23,8 +23,8 @@ export default function HomeScreen({ onNavigate, theme }: HomeScreenProps) {
   const [currentTime, setCurrentTime] = useState(new Date());
   const [isPlaying, setIsPlaying] = useState(false);
   const [landscapeImage, setLandscapeImage] = useState<string>('');
-  const [, setShowMusicModal] = useState(false);
-  const [, setShowCountdownModal] = useState(false);
+  const [showMusicModal, setShowMusicModal] = useState(false);
+  const [showCountdownModal, setShowCountdownModal] = useState(false);
   const [currentPage, setCurrentPage] = useState(0);
   const [touchStartX, setTouchStartX] = useState<number | null>(null);
   const [touchCurrentX, setTouchCurrentX] = useState<number | null>(null);
@@ -841,6 +841,65 @@ export default function HomeScreen({ onNavigate, theme }: HomeScreenProps) {
           <div className={`h-1 rounded-full transition-all duration-300 ${currentPage === 1 ? 'w-8 bg-white' : 'w-1 bg-white/40'}`}></div>
         </div>
       </div>
+
+      {/* 音乐播放器Modal */}
+      {showMusicModal && (
+        <div 
+          className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50"
+          onClick={() => setShowMusicModal(false)}
+        >
+          <div 
+            className="bg-white rounded-3xl p-6 m-4 max-w-sm w-full"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 className="text-lg font-bold mb-4">音乐播放器</h3>
+            <p className="text-gray-600 text-sm">
+              正在播放：{currentTrack.title} - {currentTrack.artist}
+            </p>
+            <p className="text-gray-500 text-xs mt-2">
+              完整音乐播放功能开发中...
+            </p>
+            <button
+              onClick={() => setShowMusicModal(false)}
+              className="mt-4 w-full bg-blue-500 text-white py-2 rounded-lg hover:bg-blue-600 transition-colors"
+            >
+              关闭
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* 纪念日Modal */}
+      {showCountdownModal && (
+        <div 
+          className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50"
+          onClick={() => setShowCountdownModal(false)}
+        >
+          <div 
+            className="bg-white rounded-3xl p-6 m-4 max-w-sm w-full"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 className="text-lg font-bold mb-4">纪念日</h3>
+            <div className="text-center py-4">
+              <div className="text-5xl font-bold text-blue-500 mb-2">
+                {calculateDaysInfo().days}
+              </div>
+              <div className="text-gray-600">
+                {calculateDaysInfo().isPast ? '已过去' : '距离'} {countdownEvent.name}
+              </div>
+              <div className="text-gray-400 text-sm mt-2">
+                {countdownEvent.date}
+              </div>
+            </div>
+            <button
+              onClick={() => setShowCountdownModal(false)}
+              className="mt-4 w-full bg-blue-500 text-white py-2 rounded-lg hover:bg-blue-600 transition-colors"
+            >
+              关闭
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
