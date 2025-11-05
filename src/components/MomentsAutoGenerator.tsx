@@ -14,7 +14,7 @@ interface MomentsAutoGeneratorProps {
 }
 
 export function MomentsAutoGenerator({ conversations, apiConfig, onMomentGenerated }: MomentsAutoGeneratorProps) {
-  const timerRef = useRef<number | null>(null);
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const isGeneratingRef = useRef(false);
 
   // 检查并生成朋友圈
