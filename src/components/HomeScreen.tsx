@@ -133,9 +133,17 @@ export default function HomeScreen({ onNavigate, theme }: HomeScreenProps) {
   };
 
   const togglePlay = () => {
-    if (currentTrack.audio) {
+    if (audioRef.current) {
+      if (isPlaying) {
+        audioRef.current.pause();
+      } else {
+        audioRef.current.play().catch((err) => {
+          console.error('播放失败:', err);
+          alert('音乐播放失败，请检查音频文件');
+        });
+      }
       setIsPlaying(!isPlaying);
-    } else {
+    } else if (!currentTrack.audio) {
       alert('请先上传音乐文件');
     }
   };
@@ -451,7 +459,7 @@ export default function HomeScreen({ onNavigate, theme }: HomeScreenProps) {
       )}
 
       {/* 隐藏的音频元素 */}
-      <audio ref={audioRef} />
+      <audio ref={audioRef} src={currentTrack.audio || ''} />
 
       {/* 编辑模式按钮组 */}
       {isEditMode && (
