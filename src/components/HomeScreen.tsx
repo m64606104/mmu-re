@@ -23,8 +23,9 @@ export default function HomeScreen({ onNavigate, theme }: HomeScreenProps) {
   const [currentTime, setCurrentTime] = useState(new Date());
   const [isPlaying, setIsPlaying] = useState(false);
   const [landscapeImage, setLandscapeImage] = useState<string>('');
-  const [showMusicModal, setShowMusicModal] = useState(false);
-  const [showCountdownModal, setShowCountdownModal] = useState(false);
+  const [_showSettingsModal, _setShowSettingsModal] = useState(false);
+  const [_showMusicModal, setShowMusicModal] = useState(false);
+  const [_showCountdownModal, setShowCountdownModal] = useState(false);
   const [currentPage, setCurrentPage] = useState(0);
   const [touchStartX, setTouchStartX] = useState<number | null>(null);
   const [touchCurrentX, setTouchCurrentX] = useState<number | null>(null);
@@ -56,7 +57,7 @@ export default function HomeScreen({ onNavigate, theme }: HomeScreenProps) {
     const saved = localStorage.getItem('dockLayout');
     return saved ? JSON.parse(saved) : ['phone', 'social', 'music', 'settings'];
   });
-  const [currentTrack, setCurrentTrack] = useState<MusicTrack>(() => {
+  const [currentTrack, _setCurrentTrack] = useState<MusicTrack>(() => {
     const saved = localStorage.getItem('currentTrack');
     return saved ? JSON.parse(saved) : {
       title: 'Moonlight S...',
@@ -65,7 +66,7 @@ export default function HomeScreen({ onNavigate, theme }: HomeScreenProps) {
       audio: ''
     };
   });
-  const [countdownEvent, setCountdownEvent] = useState<CountdownEvent>(() => {
+  const [countdownEvent, _setCountdownEvent] = useState<CountdownEvent>(() => {
     const saved = localStorage.getItem('countdownEvent');
     return saved ? JSON.parse(saved) : {
       date: '2024-12-25',

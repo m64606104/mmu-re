@@ -1,4 +1,4 @@
-import { Conversation, ApiConfig, Message } from '../types';
+import { Conversation, ApiConfig } from '../types';
 
 // 检测是否在自然对话中提及朋友圈
 export const detectMomentMention = (message: string): {
@@ -6,8 +6,6 @@ export const detectMomentMention = (message: string): {
   shouldSelectPhotos: boolean;
   context: string;
 } => {
-  const lowerMsg = message.toLowerCase();
-  
   // 检测提及朋友圈但没发
   const mentionPatterns = [
     '没有发朋友圈',
@@ -51,7 +49,7 @@ export const detectMomentMention = (message: string): {
 export const generatePhotoSelectionPrompt = (
   conversation: Conversation,
   userMessage: string,
-  apiConfig: ApiConfig
+  _apiConfig: ApiConfig
 ): string => {
   const settings = conversation.characterSettings;
   
@@ -148,8 +146,8 @@ export const generateImageDescriptions = async (
 // 生成确认发布的回复
 export const generateConfirmPostPrompt = (
   conversation: Conversation,
-  selectedPhotos: string[],
-  apiConfig: ApiConfig
+  _selectedPhotos: string[],
+  _apiConfig: ApiConfig
 ): string => {
   const settings = conversation.characterSettings;
   
@@ -179,8 +177,6 @@ export const detectPhotoSelection = (message: string): {
   isSelecting: boolean;
   selectedIndices: number[];
 } => {
-  const lowerMsg = message.toLowerCase();
-  
   // 检测选择模式
   const selectionPatterns = [
     '第', '张', '这', '那', '要', '选', '不要', '去掉', '换',
