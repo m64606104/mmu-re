@@ -1,0 +1,245 @@
+import { useState, useRef } from 'react';
+import { ChevronLeft, ChevronRight, Upload } from 'lucide-react';
+import { UserProfile, Screen } from '../types';
+
+interface ProfileScreenProps {
+  userProfile: UserProfile;
+  onUpdateProfile: (profile: UserProfile) => void;
+  onNavigate: (screen: Screen) => void;
+  onBack: () => void;
+  momentsCount: number;
+  contactsCount: number;
+}
+
+export default function ProfileScreen({
+  userProfile,
+  onUpdateProfile,
+  onNavigate,
+  onBack,
+  momentsCount,
+  contactsCount,
+}: ProfileScreenProps) {
+  const [isEditing, setIsEditing] = useState(false);
+  const [username, setUsername] = useState(userProfile.username);
+  const [bio, setBio] = useState(userProfile.bio);
+  const [avatar, setAvatar] = useState(userProfile.avatar || '');
+  const [coverImage, setCoverImage] = useState(userProfile.coverImage || '');
+  const avatarInputRef = useRef<HTMLInputElement>(null);
+  const coverInputRef = useRef<HTMLInputElement>(null);
+
+  const handleAvatarUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setAvatar(reader.result as string);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const handleCoverUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setCoverImage(reader.result as string);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const handleSave = () => {
+    onUpdateProfile({
+      username,
+      bio,
+      avatar,
+      coverImage,
+    });
+    setIsEditing(false);
+  };
+
+  const handleCancel = () => {
+    setUsername(userProfile.username);
+    setBio(userProfile.bio);
+    setAvatar(userProfile.avatar || '');
+    setCoverImage(userProfile.coverImage || '');
+    setIsEditing(false);
+  };
+
+  return (
+    <div className="h-full bg-[#EDEDED] flex flex-col">
+      {/* Header */}
+      <div className="bg-white px-4 py-3 flex items-center justify-between border-b border-gray-200">
+        <button onClick={onBack} className="p-2 -ml-2">
+          <ChevronLeft className="w-6 h-6 text-gray-700" />
+        </button>
+        <h1 className="text-lg font-semibold text-gray-900">我的资料</h1>
+        <div className="w-10"></div>
+      </div>
+
+      <div className="flex-1 overflow-y-auto">
+        {/* Cover Image */}
+        <div className="relative h-48 bg-gradient-to-br from-purple-400 via-pink-400 to-blue-400">
+          {coverImage && (
+            <img src={coverImage} alt="Cover" className="w-full h-full object-cover" />
+          )}
+          {isEditing && (
+            <button
+              onClick={() => coverInputRef.current?.click()}
+              className="absolute top-4 right-4 bg-black/50 text-white px-3 py-1.5 rounded-lg text-sm flex items-center gap-1"
+            >
+              <Upload className="w-4 h-4" />
+              更换封面
+            </button>
+          )}
+          <input
+            ref={coverInputRef}
+            type="file"
+            accept="image/*"
+            onChange={handleCoverUpload}
+            className="hidden"
+          />
+        </div>
+
+        {/* Avatar and Info */}
+        <div className="bg-white px-6 pb-6">
+          <div className="relative -mt-16 mb-4">
+            <div className="w-28 h-28 rounded-full bg-white p-1 shadow-lg">
+              <div className="w-full h-full rounded-full bg-gradient-to-br from-blue-400 to-purple-500 flex items-center justify-center overflow-hidden">
+                {avatar ? (
+                  <img src={avatar} alt="Avatar" className="w-full h-full object-cover" />
+                ) : (
+                  <span className="text-white font-semibold text-3xl">
+                    {username.charAt(0)}
+                  </span>
+                )}
+              </div>
+            </div>
+            {isEditing && (
+              <button
+                onClick={() => avatarInputRef.current?.click()}
+                className="absolute bottom-0 right-0 bg-blue-500 text-white p-2 rounded-full shadow-lg"
+              >
+                <Upload className="w-4 h-4" />
+              </button>
+            )}
+            <input
+              ref={avatarInputRef}
+              type="file"
+              accept="image/*"
+              onChange={handleAvatarUpload}
+              className="hidden"
+            />
+          </div>
+
+          {isEditing ? (
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  用户名
+                </label>
+                <input
+                  type="text"
+                  value={username}
+                  onChange={(e) => setUsername(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  placeholder="输入用户名"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  个性签名
+                </label>
+                <textarea
+                  value={bio}
+                  onChange={(e) => setBio(e.target.value)}
+                  rows={2}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+                  placeholder="分享生活，记录美好"
+                />
+              </div>
+            </div>
+          ) : (
+            <div>
+              <h2 className="text-2xl font-bold text-gray-900 mb-2">{username}</h2>
+              <p className="text-gray-500 text-sm">{bio}</p>
+            </div>
+          )}
+        </div>
+
+        {/* Edit Button */}
+        <div className="px-6 py-4">
+          {isEditing ? (
+            <div className="flex gap-3">
+              <button
+                onClick={handleCancel}
+                className="flex-1 py-3 rounded-lg border border-gray-300 text-gray-700 font-medium"
+              >
+                取消
+              </button>
+              <button
+                onClick={handleSave}
+                className="flex-1 py-3 rounded-lg bg-black text-white font-medium"
+              >
+                保存
+              </button>
+            </div>
+          ) : (
+            <button
+              onClick={() => setIsEditing(true)}
+              className="w-full py-3 rounded-lg bg-black text-white font-medium"
+            >
+              编辑资料
+            </button>
+          )}
+        </div>
+
+        {/* Stats */}
+        <div className="bg-white mx-4 rounded-xl p-6 mb-4">
+          <div className="flex justify-around">
+            <button 
+              onClick={() => onNavigate('contacts')}
+              className="text-center hover:bg-gray-50 rounded-lg p-2 transition-colors"
+            >
+              <div className="text-2xl font-bold text-gray-900">{contactsCount}</div>
+              <div className="text-sm text-gray-500 mt-1">好友</div>
+            </button>
+            <button 
+              onClick={() => onNavigate('moments')}
+              className="text-center hover:bg-gray-50 rounded-lg p-2 transition-colors"
+            >
+              <div className="text-2xl font-bold text-gray-900">{momentsCount}</div>
+              <div className="text-sm text-gray-500 mt-1">动态</div>
+            </button>
+            <div className="text-center p-2">
+              <div className="text-2xl font-bold text-gray-900">0</div>
+              <div className="text-sm text-gray-500 mt-1">获赞</div>
+            </div>
+          </div>
+        </div>
+
+        {/* Menu Items */}
+        <div className="bg-white mx-4 rounded-xl overflow-hidden mb-4">
+          <button
+            onClick={() => onNavigate('moments')}
+            className="w-full px-6 py-4 flex items-center justify-between hover:bg-gray-50 active:bg-gray-100 transition-colors"
+          >
+            <span className="text-gray-900 font-medium">朋友圈</span>
+            <ChevronRight className="w-5 h-5 text-gray-400" />
+          </button>
+          <div className="h-px bg-gray-100 mx-6"></div>
+          <button className="w-full px-6 py-4 flex items-center justify-between hover:bg-gray-50 active:bg-gray-100 transition-colors">
+            <span className="text-gray-900 font-medium">收藏</span>
+            <ChevronRight className="w-5 h-5 text-gray-400" />
+          </button>
+          <div className="h-px bg-gray-100 mx-6"></div>
+          <button className="w-full px-6 py-4 flex items-center justify-between hover:bg-gray-50 active:bg-gray-100 transition-colors">
+            <span className="text-gray-900 font-medium">相册</span>
+            <ChevronRight className="w-5 h-5 text-gray-400" />
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
