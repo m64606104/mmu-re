@@ -23,9 +23,9 @@ export default function HomeScreen({ onNavigate, theme }: HomeScreenProps) {
   const [currentTime, setCurrentTime] = useState(new Date());
   const [isPlaying, setIsPlaying] = useState(false);
   const [landscapeImage, setLandscapeImage] = useState<string>('');
-  const [_showSettingsModal, _setShowSettingsModal] = useState(false);
-  const [_showMusicModal, setShowMusicModal] = useState(false);
-  const [_showCountdownModal, setShowCountdownModal] = useState(false);
+  // const [showSettingsModal, setShowSettingsModal] = useState(false); // 保留供将来使用
+  const [showMusicModal, setShowMusicModal] = useState(false);
+  const [showCountdownModal, setShowCountdownModal] = useState(false);
   const [currentPage, setCurrentPage] = useState(0);
   const [touchStartX, setTouchStartX] = useState<number | null>(null);
   const [touchCurrentX, setTouchCurrentX] = useState<number | null>(null);
@@ -842,6 +842,114 @@ export default function HomeScreen({ onNavigate, theme }: HomeScreenProps) {
           <div className={`h-1 rounded-full transition-all duration-300 ${currentPage === 1 ? 'w-8 bg-white' : 'w-1 bg-white/40'}`}></div>
         </div>
       </div>
+
+      {/* 音乐播放器模态框 */}
+      {showMusicModal && (
+        <div className="absolute inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-6">
+          <div className="bg-white rounded-3xl p-6 w-full max-w-sm shadow-2xl">
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-xl font-bold text-slate-800">音乐播放器</h3>
+              <button
+                onClick={() => setShowMusicModal(false)}
+                className="p-2 hover:bg-slate-100 rounded-lg transition-colors"
+              >
+                <X className="w-5 h-5 text-slate-600" />
+              </button>
+            </div>
+            
+            <div className="space-y-4">
+              <div className="aspect-square rounded-2xl overflow-hidden bg-gradient-to-br from-purple-400 to-pink-400 flex items-center justify-center">
+                {currentTrack.cover ? (
+                  <img src={currentTrack.cover} alt="专辑封面" className="w-full h-full object-cover" />
+                ) : (
+                  <Music className="w-24 h-24 text-white/80" />
+                )}
+              </div>
+              
+              <div className="text-center">
+                <h4 className="font-bold text-slate-800 text-lg mb-1">{currentTrack.title}</h4>
+                <p className="text-slate-500">{currentTrack.artist}</p>
+              </div>
+              
+              <div className="flex items-center justify-center gap-4 py-4">
+                <button className="p-3 hover:bg-slate-100 rounded-full transition-colors">
+                  <span className="text-2xl">⏮️</span>
+                </button>
+                <button
+                  onClick={togglePlay}
+                  className="p-4 bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 rounded-full transition-colors shadow-lg"
+                >
+                  <span className="text-3xl">{isPlaying ? '⏸️' : '▶️'}</span>
+                </button>
+                <button className="p-3 hover:bg-slate-100 rounded-full transition-colors">
+                  <span className="text-2xl">⏭️</span>
+                </button>
+              </div>
+              
+              <p className="text-sm text-slate-500 text-center">
+                提示：完整的音乐功能正在开发中
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 倒计时模态框 */}
+      {showCountdownModal && (
+        <div className="absolute inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-6">
+          <div className="bg-white rounded-3xl p-6 w-full max-w-sm shadow-2xl">
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-xl font-bold text-slate-800">倒计时</h3>
+              <button
+                onClick={() => setShowCountdownModal(false)}
+                className="p-2 hover:bg-slate-100 rounded-lg transition-colors"
+              >
+                <X className="w-5 h-5 text-slate-600" />
+              </button>
+            </div>
+            
+            <div className="space-y-4">
+              <div className="text-center py-8">
+                <div className="text-6xl mb-4">🌸</div>
+                <h4 className="font-bold text-slate-800 text-2xl mb-2">{countdownEvent.name}</h4>
+                <p className="text-slate-500 mb-6">{countdownEvent.date}</p>
+                
+                {(() => {
+                  const today = new Date();
+                  const targetDate = new Date(countdownEvent.date);
+                  const diffTime = targetDate.getTime() - today.getTime();
+                  const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+                  
+                  if (diffDays > 0) {
+                    return (
+                      <div className="bg-gradient-to-r from-purple-500 to-pink-500 text-white rounded-2xl p-6">
+                        <div className="text-5xl font-bold mb-2">{diffDays}</div>
+                        <div className="text-lg">天后</div>
+                      </div>
+                    );
+                  } else if (diffDays === 0) {
+                    return (
+                      <div className="bg-gradient-to-r from-green-500 to-emerald-500 text-white rounded-2xl p-6">
+                        <div className="text-3xl font-bold">🎉 就是今天！</div>
+                      </div>
+                    );
+                  } else {
+                    return (
+                      <div className="bg-gradient-to-r from-slate-400 to-slate-500 text-white rounded-2xl p-6">
+                        <div className="text-3xl">已经过去 {Math.abs(diffDays)} 天</div>
+                      </div>
+                    );
+                  }
+                })()}
+              </div>
+              
+              <p className="text-sm text-slate-500 text-center">
+                提示：倒计时编辑功能正在开发中
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
