@@ -28,6 +28,9 @@ export default function HomeScreen({ onNavigate, theme }: HomeScreenProps) {
   const [showMusicSearchModal, setShowMusicSearchModal] = useState(false);
   const [tempCountdownName, setTempCountdownName] = useState('');
   const [tempCountdownDate, setTempCountdownDate] = useState('');
+  const [musicSearchQuery, setMusicSearchQuery] = useState('');
+  const [musicSearchResults, setMusicSearchResults] = useState<any[]>([]);
+  const [isSearching, setIsSearching] = useState(false);
   const [currentPage, setCurrentPage] = useState(0);
   const [touchStartX, setTouchStartX] = useState<number | null>(null);
   const [touchCurrentX, setTouchCurrentX] = useState<number | null>(null);
@@ -148,6 +151,47 @@ export default function HomeScreen({ onNavigate, theme }: HomeScreenProps) {
       setIsPlaying(!isPlaying);
     } else if (!currentTrack.audio) {
       alert('请先上传音乐文件');
+    }
+  };
+
+  // 音乐搜索函数
+  const handleMusicSearch = async () => {
+    if (!musicSearchQuery.trim()) return;
+    
+    setIsSearching(true);
+    setMusicSearchResults([]);
+    
+    try {
+      // 使用QQ音乐搜索API (免费，无需密钥)
+      const response = await fetch(
+        `https://api.qq.jsososo.com/search?key=${encodeURIComponent(musicSearchQuery)}&pageSize=20`
+      );
+      
+      if (!response.ok) {
+        throw new Error('搜索失败');
+      }
+      
+      const data = await response.json();
+      
+      if (data.result === 100 && data.data?.list) {
+        // 格式化搜索结果
+        const results = data.data.list.map((item: any) => ({
+          name: item.songname,
+          artist: item.singer?.map((s: any) => s.name).join(' / ') || '未知歌手',
+          songmid: item.songmid,
+          albummid: item.albummid,
+        }));
+        
+        setMusicSearchResults(results);
+      } else {
+        setMusicSearchResults([]);
+      }
+    } catch (error) {
+      console.error('音乐搜索失败:', error);
+      alert('搜索失败，请稍后重试');
+      setMusicSearchResults([]);
+    } finally {
+      setIsSearching(false);
     }
   };
   
@@ -913,28 +957,76 @@ export default function HomeScreen({ onNavigate, theme }: HomeScreenProps) {
             
             {/* 搜索框 */}
             <div className="mb-4">
-              <input
-                type="text"
-                placeholder="搜索歌曲名或歌手..."
-                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              />
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  value={musicSearchQuery}
+                  onChange={(e) => setMusicSearchQuery(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && musicSearchQuery.trim()) {
+                      handleMusicSearch();
+                    }
+                  }}
+                  placeholder="搜索歌曲名或歌手..."
+                  className="flex-1 px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                />
+                <button
+                  onClick={handleMusicSearch}
+                  disabled={!musicSearchQuery.trim() || isSearching}
+                  className="px-6 py-3 bg-blue-500 text-white rounded-lg hover:bg-blue-600 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors font-medium"
+                >
+                  {isSearching ? '搜索中...' : '搜索'}
+                </button>
+              </div>
             </div>
 
-            {/* 功能说明 */}
-            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
-              <p className="text-sm text-blue-800">
-                💡 <strong>在线搜索功能开发中...</strong>
-              </p>
-              <p className="text-xs text-blue-600 mt-2">
-                未来版本将支持：
-              </p>
-              <ul className="text-xs text-blue-600 mt-1 ml-4 list-disc">
-                <li>在线搜索歌曲</li>
-                <li>添加到播放列表</li>
-                <li>创建自定义歌单</li>
-                <li>歌词显示</li>
-              </ul>
-            </div>
+            {/* 搜索结果 */}
+            {isSearching && (
+              <div className="text-center py-8">
+                <div className="inline-block animate-spin rounded-full h-8 w-8 border-4 border-blue-500 border-t-transparent"></div>
+                <p className="text-sm text-gray-600 mt-2">搜索中...</p>
+              </div>
+            )}
+
+            {!isSearching && musicSearchResults.length > 0 && (
+              <div className="mb-4">
+                <h4 className="text-sm font-semibold text-gray-700 mb-2">搜索结果</h4>
+                <div className="space-y-2 max-h-60 overflow-y-auto">
+                  {musicSearchResults.map((song, index) => (
+                    <div
+                      key={index}
+                      className="bg-gray-50 rounded-lg p-3 flex items-center gap-3 hover:bg-gray-100 transition-colors"
+                    >
+                      <div className="w-12 h-12 rounded-lg bg-gradient-to-br from-purple-400 to-pink-400 flex items-center justify-center flex-shrink-0">
+                        <Music className="w-6 h-6 text-white" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="font-medium text-sm truncate">{song.name}</div>
+                        <div className="text-xs text-gray-500 truncate">{song.artist}</div>
+                      </div>
+                      <button
+                        onClick={() => alert('此功能演示版本，实际播放需要音频源授权')}
+                        className="px-3 py-1 text-xs bg-blue-500 text-white rounded-full hover:bg-blue-600 transition-colors flex-shrink-0"
+                      >
+                        播放
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* 搜索提示 */}
+            {!isSearching && !musicSearchQuery && (
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
+                <p className="text-sm text-blue-800">
+                  🎵 <strong>开始搜索音乐</strong>
+                </p>
+                <p className="text-xs text-blue-600 mt-2">
+                  输入歌曲名或歌手名进行搜索
+                </p>
+              </div>
+            )}
 
             {/* 当前播放 */}
             <div className="mb-4">
