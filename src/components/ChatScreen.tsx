@@ -266,11 +266,18 @@ ${conversation.characterSettings.memoryEvents ? `记忆事件：${conversation.c
       });
 
       if (!response.ok) {
-        throw new Error('API 请求失败');
+        const errorText = await response.text();
+        console.error('API请求失败:', response.status, errorText);
+        throw new Error(`API 请求失败: ${response.status}`);
       }
 
       const data = await response.json();
-      const assistantMessage = data.choices[0]?.message?.content || '抱歉，我没有回复。';
+      console.log('API响应数据:', data);
+      const assistantMessage = data.choices?.[0]?.message?.content || '抱歉，我没有回复。';
+      
+      if (!data.choices || data.choices.length === 0) {
+        console.error('API返回数据异常:', data);
+      }
 
       // 智能切分消息
       const splitMsgs = splitMessages(assistantMessage);

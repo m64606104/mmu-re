@@ -156,6 +156,7 @@ function App() {
   // 更新用户资料
   const updateUserProfile = useCallback((profile: UserProfile) => {
     setUserProfile(profile);
+    localStorage.setItem('userProfile', JSON.stringify(profile));
   }, []);
 
   // 更新主题
@@ -426,9 +427,9 @@ function App() {
 
   return (
     <>
-      <div className="w-full h-full flex items-center justify-center bg-slate-100 md:h-screen">
-        {/* 手机容器 - 移动端全屏，PC端固定尺寸 */}
-        <div className="w-full h-full md:w-[393px] md:h-[800px] bg-black md:rounded-[40px] shadow-2xl overflow-hidden relative">
+      <div className="w-full h-full flex items-center justify-center">
+        {/* 手机容器 */}
+        <div className="w-full h-full max-w-[393px] max-h-[852px] bg-white rounded-[40px] shadow-2xl overflow-hidden relative">
           {renderScreen()}
         </div>
       </div>
