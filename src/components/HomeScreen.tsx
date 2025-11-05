@@ -36,6 +36,10 @@ export default function HomeScreen({ onNavigate, theme }: HomeScreenProps) {
   const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState<{type: 'app' | 'quick' | 'dock', index: number} | null>(null);
   const [showQuickSelector, setShowQuickSelector] = useState(false);
+  const [showCountdownEditor, setShowCountdownEditor] = useState(false);
+  const [showMusicUploader, setShowMusicUploader] = useState(false);
+  const [tempCountdownDate, setTempCountdownDate] = useState('');
+  const [tempCountdownName, setTempCountdownName] = useState('');
   
   // 历史记录用于undo
   const [layoutHistory, setLayoutHistory] = useState<{
@@ -57,7 +61,7 @@ export default function HomeScreen({ onNavigate, theme }: HomeScreenProps) {
     const saved = localStorage.getItem('dockLayout');
     return saved ? JSON.parse(saved) : ['phone', 'social', 'music', 'settings'];
   });
-  const [currentTrack, _setCurrentTrack] = useState<MusicTrack>(() => {
+  const [currentTrack, setCurrentTrack] = useState<MusicTrack>(() => {
     const saved = localStorage.getItem('currentTrack');
     return saved ? JSON.parse(saved) : {
       title: 'Moonlight S...',
@@ -66,7 +70,7 @@ export default function HomeScreen({ onNavigate, theme }: HomeScreenProps) {
       audio: ''
     };
   });
-  const [countdownEvent, _setCountdownEvent] = useState<CountdownEvent>(() => {
+  const [countdownEvent, setCountdownEvent] = useState<CountdownEvent>(() => {
     const saved = localStorage.getItem('countdownEvent');
     return saved ? JSON.parse(saved) : {
       date: '2024-12-25',
@@ -886,16 +890,110 @@ export default function HomeScreen({ onNavigate, theme }: HomeScreenProps) {
                 </button>
               </div>
               
+              <button
+                onClick={() => {
+                  setShowMusicModal(false);
+                  setShowMusicUploader(true);
+                }}
+                className="w-full bg-blue-500 hover:bg-blue-600 text-white py-3 rounded-xl font-medium transition-colors"
+              >
+                上传音乐
+              </button>
+              
               <p className="text-sm text-slate-500 text-center">
-                提示：完整的音乐功能正在开发中
+                点击上传本地音乐文件
               </p>
             </div>
           </div>
         </div>
       )}
 
+      {/* 音乐上传器 */}
+      {showMusicUploader && (
+        <div className="absolute inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-6">
+          <div className="bg-white rounded-3xl p-6 w-full max-w-sm shadow-2xl">
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-xl font-bold text-slate-800">上传音乐</h3>
+              <button
+                onClick={() => setShowMusicUploader(false)}
+                className="p-2 hover:bg-slate-100 rounded-lg transition-colors"
+              >
+                <X className="w-5 h-5 text-slate-600" />
+              </button>
+            </div>
+            
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-2">歌曲名称</label>
+                <input
+                  type="text"
+                  id="songTitle"
+                  placeholder="输入歌曲名"
+                  className="w-full px-4 py-3 border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+              
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-2">艺术家</label>
+                <input
+                  type="text"
+                  id="songArtist"
+                  placeholder="输入艺术家名"
+                  className="w-full px-4 py-3 border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+              
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-2">音频文件</label>
+                <input
+                  type="file"
+                  accept="audio/*"
+                  id="audioFile"
+                  className="w-full px-4 py-3 border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
+                />
+              </div>
+              
+              <div className="flex gap-3">
+                <button
+                  onClick={() => setShowMusicUploader(false)}
+                  className="flex-1 bg-slate-200 hover:bg-slate-300 text-slate-700 py-3 rounded-xl font-medium transition-colors"
+                >
+                  取消
+                </button>
+                <button
+                  onClick={() => {
+                    const title = (document.getElementById('songTitle') as HTMLInputElement)?.value;
+                    const artist = (document.getElementById('songArtist') as HTMLInputElement)?.value;
+                    const fileInput = document.getElementById('audioFile') as HTMLInputElement;
+                    const file = fileInput?.files?.[0];
+                    
+                    if (title && artist && file) {
+                      const reader = new FileReader();
+                      reader.onload = (e) => {
+                        const audioData = e.target?.result as string;
+                        const newTrack = { title, artist, cover: '', audio: audioData };
+                        setCurrentTrack(newTrack);
+                        localStorage.setItem('currentTrack', JSON.stringify(newTrack));
+                        setShowMusicUploader(false);
+                        alert('音乐上传成功！');
+                      };
+                      reader.readAsDataURL(file);
+                    } else {
+                      alert('请填写完整信息并选择音频文件');
+                    }
+                  }}
+                  className="flex-1 bg-blue-500 hover:bg-blue-600 text-white py-3 rounded-xl font-medium transition-colors"
+                >
+                  上传
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* 倒计时模态框 */}
-      {showCountdownModal && (
+      {showCountdownModal && !showCountdownEditor && (
         <div className="absolute inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-6">
           <div className="bg-white rounded-3xl p-6 w-full max-w-sm shadow-2xl">
             <div className="flex justify-between items-center mb-4">
@@ -915,19 +1013,16 @@ export default function HomeScreen({ onNavigate, theme }: HomeScreenProps) {
                 <p className="text-slate-500 mb-6">{countdownEvent.date}</p>
                 
                 {(() => {
-                  const today = new Date();
-                  const targetDate = new Date(countdownEvent.date);
-                  const diffTime = targetDate.getTime() - today.getTime();
-                  const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+                  const info = calculateDaysInfo();
                   
-                  if (diffDays > 0) {
+                  if (!info.isPast) {
                     return (
                       <div className="bg-gradient-to-r from-purple-500 to-pink-500 text-white rounded-2xl p-6">
-                        <div className="text-5xl font-bold mb-2">{diffDays}</div>
-                        <div className="text-lg">天后</div>
+                        <div className="text-5xl font-bold mb-2">{info.days}</div>
+                        <div className="text-lg">还有 {info.days} 天</div>
                       </div>
                     );
-                  } else if (diffDays === 0) {
+                  } else if (info.days === 0) {
                     return (
                       <div className="bg-gradient-to-r from-green-500 to-emerald-500 text-white rounded-2xl p-6">
                         <div className="text-3xl font-bold">🎉 就是今天！</div>
@@ -936,16 +1031,88 @@ export default function HomeScreen({ onNavigate, theme }: HomeScreenProps) {
                   } else {
                     return (
                       <div className="bg-gradient-to-r from-slate-400 to-slate-500 text-white rounded-2xl p-6">
-                        <div className="text-3xl">已经过去 {Math.abs(diffDays)} 天</div>
+                        <div className="text-3xl">已经 {info.days} 天</div>
                       </div>
                     );
                   }
                 })()}
               </div>
               
-              <p className="text-sm text-slate-500 text-center">
-                提示：倒计时编辑功能正在开发中
-              </p>
+              <button
+                onClick={() => {
+                  setTempCountdownDate(countdownEvent.date);
+                  setTempCountdownName(countdownEvent.name);
+                  setShowCountdownEditor(true);
+                }}
+                className="w-full bg-blue-500 hover:bg-blue-600 text-white py-3 rounded-xl font-medium transition-colors"
+              >
+                编辑倒计时
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 倒计时编辑器 */}
+      {showCountdownEditor && (
+        <div className="absolute inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-6">
+          <div className="bg-white rounded-3xl p-6 w-full max-w-sm shadow-2xl">
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-xl font-bold text-slate-800">编辑倒计时</h3>
+              <button
+                onClick={() => setShowCountdownEditor(false)}
+                className="p-2 hover:bg-slate-100 rounded-lg transition-colors"
+              >
+                <X className="w-5 h-5 text-slate-600" />
+              </button>
+            </div>
+            
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-2">事件名称</label>
+                <input
+                  type="text"
+                  value={tempCountdownName}
+                  onChange={(e) => setTempCountdownName(e.target.value)}
+                  placeholder="我的生日"
+                  className="w-full px-4 py-3 border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+              
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-2">目标日期</label>
+                <input
+                  type="date"
+                  value={tempCountdownDate}
+                  onChange={(e) => setTempCountdownDate(e.target.value)}
+                  className="w-full px-4 py-3 border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+              
+              <div className="flex gap-3">
+                <button
+                  onClick={() => setShowCountdownEditor(false)}
+                  className="flex-1 bg-slate-200 hover:bg-slate-300 text-slate-700 py-3 rounded-xl font-medium transition-colors"
+                >
+                  取消
+                </button>
+                <button
+                  onClick={() => {
+                    if (tempCountdownName && tempCountdownDate) {
+                      const newEvent = { date: tempCountdownDate, name: tempCountdownName };
+                      setCountdownEvent(newEvent);
+                      localStorage.setItem('countdownEvent', JSON.stringify(newEvent));
+                      setShowCountdownEditor(false);
+                      setShowCountdownModal(false);
+                    } else {
+                      alert('请填写完整信息');
+                    }
+                  }}
+                  className="flex-1 bg-blue-500 hover:bg-blue-600 text-white py-3 rounded-xl font-medium transition-colors"
+                >
+                  保存
+                </button>
+              </div>
             </div>
           </div>
         </div>
