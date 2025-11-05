@@ -83,10 +83,10 @@ export function MomentsAutoGenerator({ conversations, apiConfig, onMomentGenerat
     }, 3000);
 
     // 之后每30分钟检查一次
-    timerRef.current = setInterval(() => {
+    timerRef.current = window.setInterval(() => {
       console.log('⏰ 朋友圈定时检查触发');
       checkAndGenerate();
-    }, 30 * 60 * 1000); // 30分钟
+    }, 30 * 60 * 1000) as unknown as number; // 30分钟
 
     return () => {
       clearTimeout(initialTimer);
