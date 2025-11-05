@@ -19,32 +19,7 @@ import { smartLoad, smartSave, migrateToIndexedDB } from './utils/storage';
 function App() {
   const [currentScreen, setCurrentScreen] = useState<Screen>('home');
   const [previousScreen, setPreviousScreen] = useState<Screen>('social'); // 记录来源页面
-  const [conversations, setConversations] = useState<Conversation[]>(() => {
-    const saved = localStorage.getItem('conversations');
-    if (saved) {
-      return JSON.parse(saved);
-    }
-    // 创建预设AI对话
-    return [{
-      id: 'preset-ai-1',
-      type: 'private',
-      name: 'aa',
-      avatar: '',
-      messages: [],
-      characterSettings: {
-        avatar: '',
-        nickname: 'aa',
-        username: 'aa不是研究生',
-        systemPrompt: '你是一个友好、聪明的AI助手',
-        personality: '友好、热情、乐于助人',
-        languageStyle: '自然、轻松、口语化',
-        languageExample: '嗯嗯，好的！让我来帮你～',
-        memoryEvents: ''
-      },
-      lastMessageTime: Date.now(),
-      unreadCount: 0
-    }];
-  });
+  const [conversations, setConversations] = useState<Conversation[]>([]);
   const [currentConversationId, setCurrentConversationId] = useState<string | null>(null);
   const [apiConfig, setApiConfig] = useState<ApiConfig>(() => {
     const saved = localStorage.getItem('apiConfig');
@@ -52,7 +27,7 @@ function App() {
   });
   const [userProfile, setUserProfile] = useState<UserProfile>(() => {
     const saved = localStorage.getItem('userProfile');
-    return saved ? JSON.parse(saved) : { username: '我', bio: '分享生活，记录美好', status: '在线' };
+    return saved ? JSON.parse(saved) : { username: 'aa', bio: '分享生活，记录美好', status: '在线' };
   });
   const [moments, setMoments] = useState<MomentPost[]>(() => {
     const saved = localStorage.getItem('moments');
@@ -106,7 +81,8 @@ function App() {
             messages: [],
             characterSettings: {
               avatar: '👩',
-              nickname: 'aa不是研究生',
+              nickname: 'aa',
+              username: 'aa不是研究生',
               systemPrompt: '你叫aa，女生，是我的网友，和我关系很好，在上海读研。',
               personality: '喜欢网上冲浪、刷小红书、分享生活',
               languageStyle: '偶尔会使用网络用语，语气轻松活泼',
@@ -417,6 +393,21 @@ function App() {
             onBack={() => navigateTo('social')}
           />
         );
+      case 'add-friend':
+        return (
+          <AddFriendScreen
+            onAddFriend={addFriend}
+            onBack={() => navigateTo('new-conversation')}
+          />
+        );
+      case 'create-group':
+        return (
+          <CreateGroupScreen
+            conversations={conversations}
+            onCreateGroup={createGroup}
+            onBack={() => navigateTo('new-conversation')}
+          />
+        );
       case 'theme':
         return (
           <ThemeScreen
@@ -437,7 +428,7 @@ function App() {
     <>
       <div className="w-full h-full flex items-center justify-center">
         {/* 手机容器 */}
-        <div className="w-full h-full max-w-[393px] max-h-[962px] bg-white rounded-[40px] shadow-2xl overflow-hidden relative">
+        <div className="w-full h-full max-w-[393px] max-h-[852px] bg-white rounded-[40px] shadow-2xl overflow-hidden relative">
           {renderScreen()}
         </div>
       </div>

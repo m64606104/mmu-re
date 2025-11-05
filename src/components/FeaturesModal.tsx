@@ -1,6 +1,6 @@
 import { X } from 'lucide-react';
 import { useState } from 'react';
-import { ALL_FEATURES } from '../types/features';
+import { ALL_FEATURES, Feature } from '../types/features';
 
 interface FeaturesModalProps {
   isOpen: boolean;

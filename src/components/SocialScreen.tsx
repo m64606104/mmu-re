@@ -24,7 +24,7 @@ export default function SocialScreen({ conversations, onNavigate }: SocialScreen
     } catch (e) {
       console.error('Failed to parse user profile:', e);
     }
-    return { username: '我', avatar: null, status: '在线' };
+    return { username: 'aa', avatar: null, status: '在线' };
   });
 
   // 更新用户状态（流畅更新，不刷新页面）
