@@ -48,6 +48,17 @@ export default function ChatScreen({
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   
+  // 语音相关state
+  const [isRecording, setIsRecording] = useState(false);
+  const [recordingTime, setRecordingTime] = useState(0);
+  const [audioBlob, setAudioBlob] = useState<Blob | null>(null);
+  const [showVoiceConfirmModal, setShowVoiceConfirmModal] = useState(false);
+  const [voiceTranscript, setVoiceTranscript] = useState('');
+  const [isTranscribing, setIsTranscribing] = useState(false);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const recordingTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const recognitionRef = useRef<any>(null);
+  
   // 获取用户资料
   const getUserProfile = () => {
     try {
@@ -315,6 +326,176 @@ export default function ChatScreen({
     }
   };
 
+  // 语音录音功能
+  const handleVoiceClick = async () => {
+    try {
+      // 检查浏览器是否支持语音识别
+      const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+      
+      if (SpeechRecognition) {
+        // 支持语音识别，使用实时转文字
+        startVoiceRecognition();
+      } else {
+        // 不支持，使用录音+手动输入
+        alert('您的浏览器不支持自动语音识别，将使用录音+手动输入模式');
+        startRecording();
+      }
+    } catch (error) {
+      console.error('启动语音功能失败:', error);
+      alert('启动语音功能失败');
+    }
+  };
+
+  // Web Speech API 实时语音识别
+  const startVoiceRecognition = () => {
+    try {
+      const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+      const recognition = new SpeechRecognition();
+      
+      recognition.lang = 'zh-CN';
+      recognition.continuous = false;
+      recognition.interimResults = false;
+      
+      recognitionRef.current = recognition;
+      setIsRecording(true);
+      setIsTranscribing(true);
+      
+      // 同时开始录音（保存音频文件）
+      startRecording(true);
+      
+      recognition.onresult = (event: any) => {
+        const transcript = event.results[0][0].transcript;
+        const confidence = event.results[0][0].confidence;
+        
+        console.log('识别结果:', transcript, '置信度:', confidence);
+        
+        setVoiceTranscript(transcript);
+        setIsTranscribing(false);
+        setIsRecording(false);
+        
+        // 停止录音
+        stopRecording();
+        
+        // 显示确认弹窗
+        setShowVoiceConfirmModal(true);
+      };
+      
+      recognition.onerror = (event: any) => {
+        console.error('语音识别错误:', event.error);
+        setIsTranscribing(false);
+        setIsRecording(false);
+        stopRecording();
+        
+        // 如果识别失败，让用户手动输入
+        const manualInput = prompt('语音识别失败，请手动输入您想说的内容：');
+        if (manualInput && audioBlob) {
+          setVoiceTranscript(manualInput);
+          setShowVoiceConfirmModal(true);
+        }
+      };
+      
+      recognition.start();
+      
+    } catch (error) {
+      console.error('启动语音识别失败:', error);
+      alert('启动语音识别失败');
+      setIsRecording(false);
+      setIsTranscribing(false);
+    }
+  };
+
+  // 开始录音
+  const startRecording = async (withRecognition = false) => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const mediaRecorder = new MediaRecorder(stream);
+      const audioChunks: BlobPart[] = [];
+      
+      mediaRecorder.ondataavailable = (event) => {
+        audioChunks.push(event.data);
+      };
+      
+      mediaRecorder.onstop = () => {
+        const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
+        setAudioBlob(audioBlob);
+        
+        // 停止所有音轨
+        stream.getTracks().forEach(track => track.stop());
+      };
+      
+      mediaRecorder.start();
+      mediaRecorderRef.current = mediaRecorder;
+      
+      if (!withRecognition) {
+        setIsRecording(true);
+      }
+      
+      // 开始计时
+      setRecordingTime(0);
+      recordingTimerRef.current = setInterval(() => {
+        setRecordingTime(prev => prev + 1);
+      }, 1000);
+      
+    } catch (error) {
+      console.error('启动录音失败:', error);
+      alert('无法访问麦克风，请检查权限设置');
+    }
+  };
+
+  // 停止录音
+  const stopRecording = () => {
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+      mediaRecorderRef.current.stop();
+    }
+    
+    if (recordingTimerRef.current) {
+      clearInterval(recordingTimerRef.current);
+      recordingTimerRef.current = null;
+    }
+    
+    setIsRecording(false);
+  };
+
+  // 发送语音消息
+  const handleSendVoice = () => {
+    if (!voiceTranscript.trim() || !audioBlob) {
+      alert('请先完成语音录制');
+      return;
+    }
+    
+    try {
+      // 转换音频为URL
+      const audioUrl = URL.createObjectURL(audioBlob);
+      
+      // 创建语音消息
+      const voiceMessage: Message = {
+        id: `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+        role: 'user',
+        content: `[语音] ${voiceTranscript}`,
+        timestamp: Date.now(),
+        mediaType: 'voice',
+        mediaUrl: audioUrl,
+        mediaDescription: voiceTranscript
+      };
+      
+      // 保存到聊天记录
+      onUpdateConversation(conversation.id, {
+        messages: [...conversation.messages, voiceMessage],
+        lastMessageTime: Date.now()
+      });
+      
+      // 重置状态
+      setShowVoiceConfirmModal(false);
+      setVoiceTranscript('');
+      setAudioBlob(null);
+      setRecordingTime(0);
+      
+    } catch (error) {
+      console.error('发送语音失败:', error);
+      alert('发送语音失败');
+    }
+  };
+
   const handleGenerate = async () => {
     if (!apiConfig.baseUrl || !apiConfig.apiKey || !apiConfig.modelName) {
       alert('请先在设置中配置 API');
@@ -336,9 +517,10 @@ export default function ChatScreen({
       const lastUserTimestamp = lastUserMsgForTime?.timestamp;
       const lastUserContent = lastUserMsgForTime?.content;
       
-      // 检查最后一条消息是否包含图片或视频
+      // 检查最后一条消息是否包含图片、视频或语音
       const hasImage = lastUserMsgForTime?.mediaType === 'image' && lastUserMsgForTime?.mediaUrl;
       const hasVideo = lastUserMsgForTime?.mediaType === 'video' && lastUserMsgForTime?.mediaDescription;
+      const hasVoice = lastUserMsgForTime?.mediaType === 'voice' && lastUserMsgForTime?.mediaDescription;
       
       // 生成时间感知提示词
       const timeAwarePrompt = buildTimeAwarePrompt(lastUserTimestamp, lastUserContent);
@@ -424,6 +606,29 @@ ${conversation.characterSettings.memoryEvents ? `记忆事件：${conversation.c
           {
             role: 'user',
             content: `（分享了视频：${lastUserMsgForTime.mediaDescription}）`
+          }
+        ];
+
+        requestBody = {
+          model: apiConfig.modelName,
+          messages,
+          max_tokens: 500,
+          temperature: 0.7
+        };
+      } else if (hasVoice) {
+        // 如果最后一条消息包含语音，基于语音转文字内容回复
+        const recentMessages = conversation.messages.slice(-10);
+        const historyMessages = recentMessages.slice(0, -1).map(m => ({
+          role: m.role,
+          content: m.content
+        }));
+
+        messages = [
+          { role: 'system', content: systemPrompt + '\n\n【语音消息理解规则】：\n- 用户发送了语音消息，根据语音转文字的内容自然回复\n- 像朋友间日常聊天一样对语音内容做出反应\n- 不要说"我听不到语音"、"无法播放"等话\n- 基于转录的文字内容自然回复即可' },
+          ...historyMessages,
+          {
+            role: 'user',
+            content: lastUserMsgForTime.mediaDescription || ''
           }
         ];
 
@@ -754,6 +959,17 @@ ${conversation.characterSettings.memoryEvents ? `记忆事件：${conversation.c
                         className="w-full max-w-[200px] rounded-2xl"
                       />
                     )}
+                    {message.mediaType === 'voice' && message.mediaUrl && (
+                      <div className="flex items-center gap-2 px-3 py-2 bg-gray-50 rounded-xl">
+                        <Mic className="w-4 h-4 text-gray-600 flex-shrink-0" />
+                        <audio 
+                          src={message.mediaUrl} 
+                          controls 
+                          className="flex-1 h-8"
+                          style={{ maxWidth: '200px' }}
+                        />
+                      </div>
+                    )}
                     {/* 文字内容 */}
                     {!message.mediaType && (
                       <p className="text-[15px] leading-relaxed whitespace-pre-wrap break-words">{message.content}</p>
@@ -888,7 +1104,10 @@ ${conversation.characterSettings.memoryEvents ? `记忆事件：${conversation.c
                 className="hidden"
                 onChange={handleVideoUpload}
               />
-              <button className="flex-shrink-0">
+              <button 
+                className="flex-shrink-0"
+                onClick={handleVoiceClick}
+              >
                 <div className="w-9 h-9 rounded-full bg-white border border-gray-300 flex items-center justify-center hover:border-gray-400 transition-colors">
                   <Mic className="w-4 h-4 text-gray-600" />
                 </div>
@@ -985,6 +1204,82 @@ ${conversation.characterSettings.memoryEvents ? `记忆事件：${conversation.c
             <button
               onClick={handleSendVideo}
               disabled={!videoDescInput.trim()}
+              className="flex-1 px-4 py-2.5 bg-blue-500 text-white rounded-xl hover:bg-blue-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed font-medium"
+            >
+              发送
+            </button>
+          </div>
+        </div>
+      </div>
+    )}
+
+    {/* 录音中弹窗 */}
+    {(isRecording || isTranscribing) && (
+      <div className="absolute inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+        <div className="bg-white rounded-2xl p-8 w-full max-w-sm shadow-2xl text-center">
+          <div className="mb-4">
+            <div className="w-16 h-16 mx-auto bg-red-100 rounded-full flex items-center justify-center">
+              <Mic className={`w-8 h-8 text-red-500 ${isRecording ? 'animate-pulse' : ''}`} />
+            </div>
+          </div>
+          <h3 className="text-lg font-semibold text-gray-900 mb-2">
+            {isTranscribing ? '正在识别...' : '正在录音...'}
+          </h3>
+          <p className="text-3xl font-bold text-gray-900 mb-4">
+            {Math.floor(recordingTime / 60).toString().padStart(2, '0')}:{(recordingTime % 60).toString().padStart(2, '0')}
+          </p>
+          <p className="text-sm text-gray-600 mb-4">
+            {isTranscribing ? '正在转换为文字，请稍候...' : '请说出您想发送的内容'}
+          </p>
+          {!isTranscribing && (
+            <button
+              onClick={() => {
+                if (recognitionRef.current) {
+                  recognitionRef.current.stop();
+                }
+                stopRecording();
+                setIsRecording(false);
+                setIsTranscribing(false);
+              }}
+              className="px-6 py-2.5 bg-red-500 text-white rounded-xl hover:bg-red-600 transition-colors font-medium"
+            >
+              停止录音
+            </button>
+          )}
+        </div>
+      </div>
+    )}
+
+    {/* 语音识别确认弹窗 */}
+    {showVoiceConfirmModal && (
+      <div className="absolute inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+        <div className="bg-white rounded-2xl p-6 w-full max-w-sm shadow-2xl">
+          <h3 className="text-lg font-semibold text-gray-900 mb-4">确认语音内容</h3>
+          <p className="text-sm text-gray-600 mb-4">
+            请确认或修改识别的文字内容
+          </p>
+          <textarea
+            value={voiceTranscript}
+            onChange={(e) => setVoiceTranscript(e.target.value)}
+            placeholder="识别的文字内容..."
+            rows={4}
+            className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none text-sm"
+            autoFocus
+          />
+          <div className="flex gap-3 mt-4">
+            <button
+              onClick={() => {
+                setShowVoiceConfirmModal(false);
+                setVoiceTranscript('');
+                setAudioBlob(null);
+              }}
+              className="flex-1 px-4 py-2.5 border border-gray-300 text-gray-700 rounded-xl hover:bg-gray-50 transition-colors font-medium"
+            >
+              取消
+            </button>
+            <button
+              onClick={handleSendVoice}
+              disabled={!voiceTranscript.trim()}
               className="flex-1 px-4 py-2.5 bg-blue-500 text-white rounded-xl hover:bg-blue-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed font-medium"
             >
               发送
