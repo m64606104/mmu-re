@@ -386,12 +386,12 @@ export default function ChatScreen({
         setIsRecording(false);
         stopRecording();
         
-        // 如果识别失败，让用户手动输入
-        const manualInput = prompt('语音识别失败，请手动输入您想说的内容：');
-        if (manualInput && audioBlob) {
-          setVoiceTranscript(manualInput);
+        // 如果识别失败，直接显示确认弹窗让用户手动输入
+        // 等待录音完成后再显示弹窗
+        setTimeout(() => {
+          setVoiceTranscript(''); // 空内容，用户需要手动输入
           setShowVoiceConfirmModal(true);
-        }
+        }, 500);
       };
       
       recognition.start();
@@ -1254,14 +1254,18 @@ ${conversation.characterSettings.memoryEvents ? `记忆事件：${conversation.c
     {showVoiceConfirmModal && (
       <div className="absolute inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
         <div className="bg-white rounded-2xl p-6 w-full max-w-sm shadow-2xl">
-          <h3 className="text-lg font-semibold text-gray-900 mb-4">确认语音内容</h3>
+          <h3 className="text-lg font-semibold text-gray-900 mb-4">
+            {voiceTranscript ? '确认语音内容' : '语音识别失败'}
+          </h3>
           <p className="text-sm text-gray-600 mb-4">
-            请确认或修改识别的文字内容
+            {voiceTranscript 
+              ? '请确认或修改识别的文字内容' 
+              : '自动识别失败，请手动输入您想说的内容（已保存录音）'}
           </p>
           <textarea
             value={voiceTranscript}
             onChange={(e) => setVoiceTranscript(e.target.value)}
-            placeholder="识别的文字内容..."
+            placeholder={voiceTranscript ? "识别的文字内容..." : "请输入语音内容..."}
             rows={4}
             className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none text-sm"
             autoFocus
@@ -1277,6 +1281,22 @@ ${conversation.characterSettings.memoryEvents ? `记忆事件：${conversation.c
             >
               取消
             </button>
+            {!voiceTranscript && (
+              <button
+                onClick={() => {
+                  setShowVoiceConfirmModal(false);
+                  setVoiceTranscript('');
+                  setAudioBlob(null);
+                  // 重新录音
+                  setTimeout(() => {
+                    handleVoiceClick();
+                  }, 300);
+                }}
+                className="flex-1 px-4 py-2.5 border border-blue-500 text-blue-500 rounded-xl hover:bg-blue-50 transition-colors font-medium"
+              >
+                重新录音
+              </button>
+            )}
             <button
               onClick={handleSendVoice}
               disabled={!voiceTranscript.trim()}
