@@ -446,14 +446,14 @@ ${conversation.characterSettings.memoryEvents ? `记忆事件：${conversation.c
         }));
 
         messages = [
-          { role: 'system', content: systemPrompt },
+          { role: 'system', content: systemPrompt + '\n\n【图片识别重要规则】：\n- 只能回复你在图片中实际看到的内容\n- 禁止编造、猜测、脑补任何图片中不存在的元素\n- 禁止基于图片进行二次创作或想象\n- 如果看不清楚某些细节，直接说看不清，不要猜测\n- 保持诚实，不确定的内容绝对不要说' },
           ...historyMessages,
           {
             role: 'user',
             content: [
               {
                 type: 'text',
-                text: '（用户发送了一张图片）请像真人朋友一样自然地对图片内容做出反应和回复，不要生硬地描述图片内容。'
+                text: '（用户发送了一张图片）\n\n请像真人朋友一样自然地对图片内容做出反应和回复。\n\n【关键要求】：\n1. 只说你在图片中实际看到的内容\n2. 绝对禁止编造、想象、脑补任何不存在的细节\n3. 不确定的内容不要说，看不清的地方直接说看不清\n4. 用自然口语回复，不要生硬地列举描述\n5. 如果图片内容简单，回复也应该简短自然'
               },
               {
                 type: 'image_url',
@@ -468,8 +468,8 @@ ${conversation.characterSettings.memoryEvents ? `记忆事件：${conversation.c
         requestBody = {
           model: apiConfig.modelName,
           messages,
-          max_tokens: 500,
-          temperature: 0.8
+          max_tokens: 300,
+          temperature: 0.3
         };
       } else {
         // 普通文本消息
