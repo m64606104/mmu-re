@@ -16,10 +16,12 @@ export interface Message {
   role: 'user' | 'assistant' | 'system';
   content: string;
   timestamp: number;
-  mediaType?: 'image' | 'video' | 'voice'; // 媒体类型
+  mediaType?: 'image' | 'video' | 'voice' | 'sticker'; // 媒体类型（新增sticker表情包）
   mediaDescription?: string; // AI的文字描述或用户的内容描述
   mediaUrl?: string; // 用户上传的真实媒体URL
   isMediaDescriptionOnly?: boolean; // 是否仅为文字描述（AI发送）
+  voiceDuration?: number; // 语音时长（秒）
+  isVoicePlayed?: boolean; // 语音是否已播放
 }
 
 export interface CharacterSettings {

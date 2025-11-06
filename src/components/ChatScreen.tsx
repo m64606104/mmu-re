@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
-import { ChevronLeft, Send, Sparkles, Image, Video, Mic, Phone, Plus, MapPin, FileText } from 'lucide-react';
+import { ChevronLeft, Send, Sparkles, Image, Video, Mic, Phone, Plus, MapPin, FileText, Smile } from 'lucide-react';
 import { Conversation, ApiConfig, Message } from '../types';
 import FeaturesModal from './FeaturesModal';
 import { 
@@ -14,7 +14,7 @@ import {
 } from '../utils/memorySystem';
 import { detectMemes } from '../utils/memeSystem';
 import { buildTimeAwarePrompt } from '../utils/timeAwareness';
-import { transcribeAudio, isValidSpeechConfig } from '../utils/speechToText';
+// import { transcribeAudio, isValidSpeechConfig } from '../utils/speechToText';
 
 interface ChatScreenProps {
   conversation: Conversation;
@@ -40,6 +40,9 @@ export default function ChatScreen({
   const [showVideoDescModal, setShowVideoDescModal] = useState(false);
   const [videoDescInput, setVideoDescInput] = useState('');
   const [pendingVideoFile, setPendingVideoFile] = useState<File | null>(null);
+  const [showStickerModal, setShowStickerModal] = useState(false);
+  const [stickerDescInput, setStickerDescInput] = useState('');
+  const [viewingVoice, setViewingVoice] = useState<string | null>(null);
   const imageInputRef = useRef<HTMLInputElement>(null);
   const videoInputRef = useRef<HTMLInputElement>(null);
   const [showSendingHint, setShowSendingHint] = useState(false);
@@ -143,11 +146,11 @@ export default function ChatScreen({
       const hasParenthesesEmoji = /[（(][^）)]*\.(jpg|png|gif|jpeg|webp)[）)]/gi.test(trimmed);
       const hasShortParentheses = /[（(][^）)]{1,15}[）)]/.test(trimmed); // 短括号内容也保护
       
-      // 检测是否包含引号内容，保护引号内的文本不被分割
-      const hasQuotes = /[""].*?[""]|".*?"/.test(trimmed);
+      // 检测是否包含完整的引号对（中英文引号）
+      const hasCompleteQuotes = /([""][^""]+[""])|("[^"]+")/.test(trimmed);
       
       // 如果包含特殊内容，整段作为一条消息
-      if (hasUrl || hasParenthesesEmoji || hasShortParentheses || hasQuotes) {
+      if (hasUrl || hasParenthesesEmoji || hasShortParentheses || hasCompleteQuotes) {
         messages.push(trimmed);
       } else if (trimmed.length < 50) {
         // 较短消息（50字以内）直接发送
@@ -282,6 +285,40 @@ export default function ChatScreen({
     if (e.target) e.target.value = '';
   };
 
+  // 打开表情包输入弹窗
+  const handleStickerClick = () => {
+    setShowStickerModal(true);
+    setShowToolbar(false);
+  };
+
+  // 发送表情包消息
+  const handleSendSticker = () => {
+    if (!stickerDescInput.trim()) {
+      alert('请输入表情包内容描述');
+      return;
+    }
+
+    // 创建表情包消息
+    const stickerMessage: Message = {
+      id: `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+      role: 'user',
+      content: '[表情包]',
+      timestamp: Date.now(),
+      mediaType: 'sticker',
+      mediaDescription: stickerDescInput.trim()
+    };
+
+    // 添加到对话
+    onUpdateConversation(conversation.id, {
+      messages: [...conversation.messages, stickerMessage],
+      lastMessageTime: Date.now()
+    });
+
+    // 关闭弹窗并清空输入
+    setShowStickerModal(false);
+    setStickerDescInput('');
+  };
+
   // 发送视频消息
   const handleSendVideo = () => {
     if (!pendingVideoFile || !videoDescInput.trim()) {
@@ -349,34 +386,9 @@ export default function ChatScreen({
         // 停止所有音轨
         stream.getTracks().forEach(track => track.stop());
         
-        // 尝试自动识别语音
-        if (isValidSpeechConfig(apiConfig.speechToText)) {
-          setIsTranscribing(true);
-          try {
-            console.log('🎤 开始调用语音识别API...');
-            const transcript = await transcribeAudio(audioBlob, {
-              apiUrl: apiConfig.speechToText!.apiUrl!,
-              apiKey: apiConfig.speechToText!.apiKey!,
-              model: apiConfig.speechToText!.model!
-            });
-            setVoiceTranscript(transcript);
-            console.log('✅ 语音识别完成:', transcript);
-          } catch (error) {
-            console.error('❌ 语音识别失败:', error);
-            // 显示错误提示
-            const errorMessage = error instanceof Error ? error.message : '语音识别失败';
-            alert(`语音识别失败：${errorMessage}\n\n您可以手动输入语音内容。`);
-            setVoiceTranscript('');
-          } finally {
-            setIsTranscribing(false);
-            setShowVoiceConfirmModal(true);
-          }
-        } else {
-          // 未启用语音识别，直接显示手动输入弹窗
-          console.log('⚠️ 未启用语音识别功能');
-          setVoiceTranscript('');
-          setShowVoiceConfirmModal(true);
-        }
+        // 直接显示手动输入弹窗，不使用语音识别
+        setVoiceTranscript('');
+        setShowVoiceConfirmModal(true);
       };
       
       mediaRecorder.start();
@@ -412,7 +424,7 @@ export default function ChatScreen({
   // 发送语音消息
   const handleSendVoice = () => {
     if (!voiceTranscript.trim() || !audioBlob) {
-      alert('请先完成语音录制');
+      alert('请输入语音内容');
       return;
     }
     
@@ -424,11 +436,12 @@ export default function ChatScreen({
       const voiceMessage: Message = {
         id: `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
         role: 'user',
-        content: `[语音] ${voiceTranscript}`,
+        content: `[语音]`,
         timestamp: Date.now(),
         mediaType: 'voice',
         mediaUrl: audioUrl,
-        mediaDescription: voiceTranscript
+        mediaDescription: voiceTranscript,
+        voiceDuration: recordingTime // 使用录音时长
       };
       
       // 保存到聊天记录
@@ -468,15 +481,14 @@ export default function ChatScreen({
       const userMessagesForTime = conversation.messages.filter(m => m.role === 'user');
       const lastUserMsgForTime = userMessagesForTime[userMessagesForTime.length - 1];
       const lastUserTimestamp = lastUserMsgForTime?.timestamp;
-      const lastUserContent = lastUserMsgForTime?.content;
-      
-      // 检查最后一条消息是否包含图片、视频或语音
-      const hasImage = lastUserMsgForTime?.mediaType === 'image' && lastUserMsgForTime?.mediaUrl;
-      const hasVideo = lastUserMsgForTime?.mediaType === 'video' && lastUserMsgForTime?.mediaDescription;
-      const hasVoice = lastUserMsgForTime?.mediaType === 'voice' && lastUserMsgForTime?.mediaDescription;
+      const lastUserMsg = conversation.messages.filter(m => m.role === 'user').slice(-1)[0];
+      const hasImage = lastUserMsg?.mediaType === 'image' && lastUserMsg.mediaUrl;
+      const hasVideo = lastUserMsg?.mediaType === 'video' && lastUserMsg.mediaDescription;
+      const hasVoice = lastUserMsg?.mediaType === 'voice' && lastUserMsg.mediaDescription;
+      const hasSticker = lastUserMsg?.mediaType === 'sticker' && lastUserMsg.mediaDescription;
       
       // 生成时间感知提示词
-      const timeAwarePrompt = buildTimeAwarePrompt(lastUserTimestamp, lastUserContent);
+      const timeAwarePrompt = buildTimeAwarePrompt(lastUserTimestamp, lastUserMsgForTime?.content);
       
       let systemPrompt = conversation.characterSettings
         ? `你是${conversation.characterSettings.nickname}。
@@ -573,15 +585,15 @@ ${conversation.characterSettings.memoryEvents ? `记忆事件：${conversation.c
         const recentMessages = conversation.messages.slice(-10);
         const historyMessages = recentMessages.slice(0, -1).map(m => ({
           role: m.role,
-          content: m.content
+          content: m.mediaType === 'voice' && m.mediaDescription ? m.mediaDescription : m.content
         }));
 
         messages = [
-          { role: 'system', content: systemPrompt + '\n\n【语音消息理解规则】：\n- 用户发送了语音消息，根据语音转文字的内容自然回复\n- 像朋友间日常聊天一样对语音内容做出反应\n- 不要说"我听不到语音"、"无法播放"等话\n- 基于转录的文字内容自然回复即可' },
+          { role: 'system', content: systemPrompt + '\n\n【语音消息理解规则】：\n- 用户发送了语音消息，根据语音转文字的内容自然回复\n- 像朋友间日常聊天一样对语音内容做出反应\n- 不要说"我听不到语音"、"无法播放"等话\n- 基于转录的文字内容自然回复即可\n- 可以回复文字、也可以回复语音/图片/视频/表情包' },
           ...historyMessages,
           {
             role: 'user',
-            content: lastUserMsgForTime.mediaDescription || ''
+            content: lastUserMsgForTime.mediaDescription || lastUserMsgForTime.content
           }
         ];
 
@@ -591,10 +603,33 @@ ${conversation.characterSettings.memoryEvents ? `记忆事件：${conversation.c
           max_tokens: 500,
           temperature: 0.7
         };
+      } else if (hasSticker) {
+        // 如果最后一条消息是表情包，理解并自然回复
+        const recentMessages = conversation.messages.slice(-10);
+        const historyMessages = recentMessages.slice(0, -1).map(m => ({
+          role: m.role,
+          content: m.content
+        }));
+
+        messages = [
+          { role: 'system', content: systemPrompt + '\n\n【表情包理解规则】：\n- 用户发送了表情包，根据描述的内容理解用户的情绪和意图\n- 像朋友间日常聊天一样对表情包做出自然反应\n- 可以回复文字、也可以回复表情包（使用[表情包:描述内容]格式）\n- 根据表情包内容判断是否要发送图片/视频/语音/表情包回复\n\n【发送多媒体消息格式】：\n- 发送图片：[图片:详细的图片内容描述，10-50字，要生动具体]\n- 发送视频：[视频:详细的视频内容描述，10-50字]\n- 发送语音：[语音:语音内容的文字，时长X秒]\n- 发送表情包：[表情包:表情包的详细描述]\n\n示例：\n用户：[表情包:一只猫咪害羞捂脸]\nAI：哈哈哈好可爱！[表情包:小狗狗笑得很开心的样子]' },
+          ...historyMessages,
+          {
+            role: 'user',
+            content: `[表情包:${lastUserMsgForTime.mediaDescription}]`
+          }
+        ];
+
+        requestBody = {
+          model: apiConfig.modelName,
+          messages,
+          max_tokens: 500,
+          temperature: 0.8
+        };
       } else {
         // 普通文本消息
         messages = [
-          { role: 'system', content: systemPrompt },
+          { role: 'system', content: systemPrompt + '\n\n【发送多媒体消息规则】：\n你可以发送多种类型的消息，使用以下格式：\n- 发送图片：[图片:详细的图片内容描述，10-50字，要生动具体]\n- 发送视频：[视频:详细的视频内容描述，10-50字]\n- 发送语音：[语音:语音内容的文字，时长X秒]\n- 发送表情包：[表情包:表情包的详细描述]\n\n使用场景：\n- 想分享美景、照片时发图片\n- 想分享有趣的视频时发视频\n- 想发语音聊天时发语音（控制在3-10秒）\n- 想表达情绪、开玩笑时发表情包\n\n可以在文字消息中添加媒体，也可以单独发送媒体。根据对话情境自然决定是否使用多媒体。' },
           ...conversation.messages.map(m => ({
             role: m.role,
             content: m.content,
@@ -621,7 +656,28 @@ ${conversation.characterSettings.memoryEvents ? `记忆事件：${conversation.c
       }
 
       const data = await response.json();
-      const assistantMessage = data.choices[0]?.message?.content || '抱歉，我没有回复。';
+      const assistantMessage = data.choices[0]?.message?.content;
+      
+      // 检查空回复
+      if (!assistantMessage || assistantMessage.trim() === '') {
+        setShowSendingHint(false);
+        setShowTyping(false);
+        
+        // 显示详细的错误弹窗
+        const errorDetails = [];
+        if (!data.choices || data.choices.length === 0) {
+          errorDetails.push('- API未返回有效的回复内容');
+        }
+        if (data.error) {
+          errorDetails.push(`- API错误: ${data.error.message || '未知错误'}`);
+        }
+        if (response.status !== 200) {
+          errorDetails.push(`- HTTP状态码: ${response.status}`);
+        }
+        
+        alert(`AI回复失败\n\n可能的原因：\n${errorDetails.length > 0 ? errorDetails.join('\n') : '- API返回了空内容\n- 请检查网络连接\n- 请确认API配置正确\n- 尝试刷新页面重试'}`);
+        return;
+      }
 
       // 智能切分消息
       const splitMsgs = splitMessages(assistantMessage);
@@ -653,12 +709,73 @@ ${conversation.characterSettings.memoryEvents ? `记忆事件：${conversation.c
         // 隐藏输入动画，显示消息
         setShowTyping(false);
         
-        const newMessage: Message = {
-          id: Date.now().toString() + '_ai_' + i + Math.random(),
-          role: 'assistant' as const,
-          content: limitedMessages[i].trim(),
-          timestamp: Date.now(),
-        };
+        // 解析消息中的多媒体标记
+        const msgContent = limitedMessages[i].trim();
+        const imageMatch = msgContent.match(/\[图片[:：]([^\]]+)\]/);
+        const videoMatch = msgContent.match(/\[视频[:：]([^\]]+)\]/);
+        const voiceMatch = msgContent.match(/\[语音[:：]([^，,]+)[，,]?(\d+)秒?\]/);
+        const stickerMatch = msgContent.match(/\[表情包[:：]([^\]]+)\]/);
+        
+        let newMessage: Message;
+        
+        if (imageMatch) {
+          // AI发送图片
+          const cleanContent = msgContent.replace(/\[图片[:：][^\]]+\]/, '').trim();
+          newMessage = {
+            id: Date.now().toString() + '_ai_' + i + Math.random(),
+            role: 'assistant' as const,
+            content: cleanContent || '[图片]',
+            timestamp: Date.now(),
+            mediaType: 'image',
+            mediaDescription: imageMatch[1],
+            isMediaDescriptionOnly: true
+          };
+        } else if (videoMatch) {
+          // AI发送视频
+          const cleanContent = msgContent.replace(/\[视频[:：][^\]]+\]/, '').trim();
+          newMessage = {
+            id: Date.now().toString() + '_ai_' + i + Math.random(),
+            role: 'assistant' as const,
+            content: cleanContent || '[视频]',
+            timestamp: Date.now(),
+            mediaType: 'video',
+            mediaDescription: videoMatch[1],
+            isMediaDescriptionOnly: true
+          };
+        } else if (voiceMatch) {
+          // AI发送语音
+          const cleanContent = msgContent.replace(/\[语音[:：][^\]]+\]/, '').trim();
+          newMessage = {
+            id: Date.now().toString() + '_ai_' + i + Math.random(),
+            role: 'assistant' as const,
+            content: cleanContent || '[语音]',
+            timestamp: Date.now(),
+            mediaType: 'voice',
+            mediaDescription: voiceMatch[1],
+            voiceDuration: parseInt(voiceMatch[2]) || 3,
+            isMediaDescriptionOnly: true
+          };
+        } else if (stickerMatch) {
+          // AI发送表情包
+          const cleanContent = msgContent.replace(/\[表情包[:：][^\]]+\]/, '').trim();
+          newMessage = {
+            id: Date.now().toString() + '_ai_' + i + Math.random(),
+            role: 'assistant' as const,
+            content: cleanContent || '[表情包]',
+            timestamp: Date.now(),
+            mediaType: 'sticker',
+            mediaDescription: stickerMatch[1],
+            isMediaDescriptionOnly: true
+          };
+        } else {
+          // 普通文字消息
+          newMessage = {
+            id: Date.now().toString() + '_ai_' + i + Math.random(),
+            role: 'assistant' as const,
+            content: msgContent,
+            timestamp: Date.now(),
+          };
+        }
         
         currentMessages = [...currentMessages, newMessage];
         
@@ -897,37 +1014,135 @@ ${conversation.characterSettings.memoryEvents ? `记忆事件：${conversation.c
                         : 'bg-white text-gray-900 border border-gray-200'
                     } ${message.mediaType ? 'p-0 overflow-hidden' : 'px-4 py-2.5'}`}
                   >
-                    {/* 媒体内容 */}
-                    {message.mediaType === 'image' && message.mediaUrl && (
+                    {/* 用户真实媒体内容 */}
+                    {message.role === 'user' && message.mediaType === 'image' && message.mediaUrl && (
                       <img 
                         src={message.mediaUrl} 
                         alt="图片" 
                         className="w-full max-w-[200px] rounded-2xl"
                       />
                     )}
-                    {message.mediaType === 'video' && message.mediaUrl && (
+                    {message.role === 'user' && message.mediaType === 'video' && message.mediaUrl && (
                       <video 
                         src={message.mediaUrl} 
                         controls 
                         className="w-full max-w-[200px] rounded-2xl"
                       />
                     )}
-                    {message.mediaType === 'voice' && message.mediaUrl && (
-                      <div className="flex items-center gap-2 px-3 py-2 bg-gray-50 rounded-xl">
-                        <Mic className="w-4 h-4 text-gray-600 flex-shrink-0" />
+                    {message.role === 'user' && message.mediaType === 'voice' && message.mediaUrl && (
+                      <div 
+                        onClick={() => setViewingVoice(viewingVoice === message.id ? null : message.id)}
+                        className="cursor-pointer"
+                      >
+                        <div className="flex items-center gap-2 px-3 py-2 bg-gray-50 rounded-xl min-w-[120px] max-w-[200px]">
+                          <Mic className="w-4 h-4 text-gray-600 flex-shrink-0" />
+                          <div className="flex-1 flex items-center gap-0.5">
+                            <div className="flex gap-0.5">
+                              {[...Array(15)].map((_, i) => (
+                                <div 
+                                  key={i} 
+                                  className="w-0.5 bg-gray-400 rounded-full"
+                                  style={{ height: `${Math.random() * 12 + 4}px` }}
+                                />
+                              ))}
+                            </div>
+                          </div>
+                          <span className="text-xs text-gray-600 flex-shrink-0">{message.voiceDuration || 0}"</span>
+                        </div>
+                        {/* 语音内容文字 */}
+                        {viewingVoice === message.id && message.mediaDescription && (
+                          <div className="mt-2 px-4 py-2 bg-gray-50 rounded-xl border border-gray-200">
+                            <p className="text-[13px] text-gray-700">{message.mediaDescription}</p>
+                          </div>
+                        )}
+                        {/* 真实语音播放器（隐藏但可播放） */}
                         <audio 
                           src={message.mediaUrl} 
                           controls 
-                          className="flex-1 h-8"
-                          style={{ maxWidth: '200px' }}
+                          className="w-full mt-2"
+                          style={{ maxHeight: '40px' }}
                         />
                       </div>
                     )}
-                    {/* 文字内容 */}
+                    {/* 用户表情包（浅蓝色半透明小正方形） */}
+                    {message.role === 'user' && message.mediaType === 'sticker' && (
+                      <div className="relative w-[120px] h-[120px] rounded-2xl overflow-hidden bg-blue-100/40 backdrop-blur-sm border border-blue-200">
+                        <div className="absolute inset-0 bg-gradient-to-br from-blue-50/30 to-blue-100/30" />
+                        <div className="absolute inset-0 flex flex-col items-center justify-center p-3 text-center">
+                          <Smile className="w-8 h-8 text-blue-400 mb-2" strokeWidth={1.5} />
+                          <p className="text-xs text-gray-700 leading-tight">{message.mediaDescription}</p>
+                        </div>
+                      </div>
+                    )}
+                    
+                    {/* AI媒体消息（半透明占位符） */}
+                    {message.role === 'assistant' && message.mediaType === 'image' && message.isMediaDescriptionOnly && (
+                      <div 
+                        onClick={() => alert(message.mediaDescription)}
+                        className="relative w-[180px] h-[180px] rounded-2xl overflow-hidden bg-white/30 backdrop-blur-sm cursor-pointer hover:bg-white/40 transition-colors border border-gray-200"
+                      >
+                        <div className="absolute inset-0 bg-gradient-to-br from-white/10 to-gray-100/20" />
+                        <div className="absolute inset-0 flex flex-col items-center justify-center p-3 text-center">
+                          <Image className="w-12 h-12 text-gray-400 mb-2" strokeWidth={1.5} />
+                          <p className="text-xs text-gray-600 line-clamp-3">{message.mediaDescription}</p>
+                        </div>
+                      </div>
+                    )}
+                    {message.role === 'assistant' && message.mediaType === 'video' && message.isMediaDescriptionOnly && (
+                      <div 
+                        onClick={() => alert(message.mediaDescription)}
+                        className="relative w-[240px] h-[135px] rounded-2xl overflow-hidden bg-white/30 backdrop-blur-sm cursor-pointer hover:bg-white/40 transition-colors border border-gray-200"
+                      >
+                        <div className="absolute inset-0 bg-gradient-to-br from-white/10 to-gray-100/20" />
+                        <div className="absolute inset-0 flex flex-col items-center justify-center p-3 text-center">
+                          <Video className="w-12 h-12 text-gray-400 mb-2" strokeWidth={1.5} />
+                          <p className="text-xs text-gray-600 line-clamp-2">{message.mediaDescription}</p>
+                        </div>
+                      </div>
+                    )}
+                    {message.role === 'assistant' && message.mediaType === 'voice' && message.isMediaDescriptionOnly && (
+                      <div 
+                        onClick={() => setViewingVoice(viewingVoice === message.id ? null : message.id)}
+                        className="cursor-pointer"
+                      >
+                        <div className="flex items-center gap-2 px-3 py-2 bg-gray-50 rounded-xl min-w-[120px] max-w-[200px]">
+                          <Mic className="w-4 h-4 text-gray-600 flex-shrink-0" />
+                          <div className="flex-1 flex items-center gap-0.5">
+                            <div className="flex gap-0.5">
+                              {[...Array(15)].map((_, i) => (
+                                <div 
+                                  key={i} 
+                                  className="w-0.5 bg-gray-400 rounded-full"
+                                  style={{ height: `${Math.random() * 12 + 4}px` }}
+                                />
+                              ))}
+                            </div>
+                          </div>
+                          <span className="text-xs text-gray-600 flex-shrink-0">{message.voiceDuration || 3}"</span>
+                        </div>
+                        {viewingVoice === message.id && message.mediaDescription && (
+                          <div className="mt-2 px-4 py-2 bg-gray-50 rounded-xl border border-gray-200">
+                            <p className="text-[13px] text-gray-700">{message.mediaDescription}</p>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                    {message.role === 'assistant' && message.mediaType === 'sticker' && message.isMediaDescriptionOnly && (
+                      <div className="relative w-[120px] h-[120px] rounded-2xl overflow-hidden bg-blue-100/40 backdrop-blur-sm border border-blue-200">
+                        <div className="absolute inset-0 bg-gradient-to-br from-blue-50/30 to-blue-100/30" />
+                        <div className="absolute inset-0 flex flex-col items-center justify-center p-3 text-center">
+                          <Smile className="w-8 h-8 text-blue-400 mb-2" strokeWidth={1.5} />
+                          <p className="text-xs text-gray-700 leading-tight">{message.mediaDescription}</p>
+                        </div>
+                      </div>
+                    )}
+                    
+                    {/* 纯文字内容 */}
                     {!message.mediaType && (
                       <p className="text-[15px] leading-relaxed whitespace-pre-wrap break-words">{message.content}</p>
                     )}
-                    {message.mediaType && message.mediaDescription && (
+                    {/* 用户媒体的描述文字 */}
+                    {message.role === 'user' && message.mediaType && message.mediaType !== 'sticker' && message.mediaDescription && (
                       <p className="text-[13px] leading-relaxed px-3 py-2 text-gray-600">{message.mediaDescription}</p>
                     )}
                   </div>
@@ -1065,6 +1280,14 @@ ${conversation.characterSettings.memoryEvents ? `记忆事件：${conversation.c
                   <Mic className="w-4 h-4 text-gray-600" />
                 </div>
               </button>
+              <button 
+                className="flex-shrink-0"
+                onClick={handleStickerClick}
+              >
+                <div className="w-9 h-9 rounded-full bg-white border border-gray-300 flex items-center justify-center hover:border-gray-400 transition-colors">
+                  <Smile className="w-4 h-4 text-gray-600" />
+                </div>
+              </button>
               <button className="flex-shrink-0">
                 <div className="w-9 h-9 rounded-full bg-white border border-gray-300 flex items-center justify-center hover:border-gray-400 transition-colors">
                   <Phone className="w-4 h-4 text-gray-600" />
@@ -1126,6 +1349,47 @@ ${conversation.characterSettings.memoryEvents ? `记忆事件：${conversation.c
         </div>
       </div>
     </div>
+
+    {/* 表情包输入弹窗 */}
+    {showStickerModal && (
+      <div className="absolute inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+        <div className="bg-white rounded-2xl p-6 w-full max-w-sm shadow-2xl">
+          <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
+            <Smile className="w-5 h-5 text-blue-500" />
+            发送表情包
+          </h3>
+          <p className="text-sm text-gray-600 mb-4">
+            请用文字描述表情包的内容，AI会理解并做出相应回复。
+          </p>
+          <textarea
+            value={stickerDescInput}
+            onChange={(e) => setStickerDescInput(e.target.value)}
+            placeholder="例如：一只猫咪捂脸害羞的表情包"
+            rows={4}
+            className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none text-sm"
+            autoFocus
+          />
+          <div className="flex gap-3 mt-4">
+            <button
+              onClick={() => {
+                setShowStickerModal(false);
+                setStickerDescInput('');
+              }}
+              className="flex-1 px-4 py-2.5 border border-gray-300 text-gray-700 rounded-xl hover:bg-gray-50 transition-colors font-medium"
+            >
+              取消
+            </button>
+            <button
+              onClick={handleSendSticker}
+              disabled={!stickerDescInput.trim()}
+              className="flex-1 px-4 py-2.5 bg-blue-500 text-white rounded-xl hover:bg-blue-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed font-medium"
+            >
+              发送
+            </button>
+          </div>
+        </div>
+      </div>
+    )}
 
     {/* 视频描述弹窗 */}
     {showVideoDescModal && (
@@ -1205,14 +1469,10 @@ ${conversation.characterSettings.memoryEvents ? `记忆事件：${conversation.c
       <div className="absolute inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
         <div className="bg-white rounded-2xl p-6 w-full max-w-sm shadow-2xl">
           <h3 className="text-lg font-semibold text-gray-900 mb-4">
-            {voiceTranscript ? '✅ 语音识别成功' : '✍️ 输入语音内容'}
+            ✍️ 输入语音内容
           </h3>
           <p className="text-sm text-gray-600 mb-4">
-            {voiceTranscript 
-              ? '已自动识别，您可以确认或修改内容' 
-              : isValidSpeechConfig(apiConfig.speechToText)
-                ? '自动识别失败，请手动输入您想说的内容'
-                : '请输入您想说的内容（未启用语音识别功能）'}
+            请输入这条语音消息的文字内容（录音时长：{recordingTime}秒）
           </p>
           <textarea
             value={voiceTranscript}
