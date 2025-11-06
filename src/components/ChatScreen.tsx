@@ -36,6 +36,11 @@ export default function ChatScreen({
   const [isGenerating, setIsGenerating] = useState(false);
   const [showFeaturesModal, setShowFeaturesModal] = useState(false);
   const [showToolbar, setShowToolbar] = useState(false);
+  const [showVideoDescModal, setShowVideoDescModal] = useState(false);
+  const [videoDescInput, setVideoDescInput] = useState('');
+  const [pendingVideoFile, setPendingVideoFile] = useState<File | null>(null);
+  const imageInputRef = useRef<HTMLInputElement>(null);
+  const videoInputRef = useRef<HTMLInputElement>(null);
   const [showSendingHint, setShowSendingHint] = useState(false);
   const [showTyping, setShowTyping] = useState(false);
   const [pendingMessages, setPendingMessages] = useState<string[]>([]);
@@ -201,6 +206,267 @@ export default function ChatScreen({
       setIsGenerating(true);
       await sendRemainingMessages(pendingMessages);
       setIsGenerating(false);
+    }
+  };
+
+  // 处理图片上传
+  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    // 检查API配置
+    if (!apiConfig.baseUrl || !apiConfig.apiKey || !apiConfig.modelName) {
+      alert('请先在设置中配置 API');
+      return;
+    }
+
+    try {
+      // 读取图片为base64
+      const reader = new FileReader();
+      reader.onload = async () => {
+        const imageData = reader.result as string;
+        
+        // 创建用户消息（显示图片）
+        const userMessage: Message = {
+          id: `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+          role: 'user',
+          content: '[图片]',
+          timestamp: Date.now(),
+          mediaType: 'image',
+          mediaUrl: imageData
+        };
+
+        onUpdateConversation(conversation.id, {
+          messages: [...conversation.messages, userMessage],
+          lastMessageTime: Date.now()
+        });
+
+        // 关闭工具栏
+        setShowToolbar(false);
+        setIsGenerating(true);
+        setShowTyping(true);
+
+        // 调用视觉识别API
+        try {
+          const response = await fetch(`${apiConfig.baseUrl}/v1/chat/completions`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${apiConfig.apiKey}`,
+            },
+            body: JSON.stringify({
+              model: apiConfig.modelName,
+              messages: [
+                {
+                  role: 'user',
+                  content: [
+                    {
+                      type: 'text',
+                      text: '请描述这张图片的内容，并根据图片内容以及我们之前的对话自然地回复。'
+                    },
+                    {
+                      type: 'image_url',
+                      image_url: {
+                        url: imageData
+                      }
+                    }
+                  ]
+                }
+              ],
+              max_tokens: 500
+            })
+          });
+
+          if (!response.ok) {
+            throw new Error('图片识别失败');
+          }
+
+          const data = await response.json();
+          const aiResponse = data.choices?.[0]?.message?.content || '抱歉，我无法识别这张图片。';
+
+          setShowTyping(false);
+
+          // 分割AI回复
+          const messages = splitMessages(aiResponse);
+
+          // 发送第一条消息
+          if (messages.length > 0) {
+            const firstMessage: Message = {
+              id: `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+              role: 'assistant',
+              content: messages[0],
+              timestamp: Date.now()
+            };
+
+            onUpdateConversation(conversation.id, {
+              messages: [...conversation.messages, userMessage, firstMessage],
+              lastMessageTime: Date.now(),
+              unreadCount: 0
+            });
+
+            // 发送剩余消息
+            if (messages.length > 1) {
+              setPendingMessages(messages.slice(1));
+              await sendRemainingMessages(messages.slice(1));
+              setPendingMessages([]);
+            }
+          }
+
+        } catch (error) {
+          console.error('图片识别出错:', error);
+          setShowTyping(false);
+          
+          const errorMessage: Message = {
+            id: `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+            role: 'assistant',
+            content: '抱歉，图片识别失败了，请稍后再试。',
+            timestamp: Date.now()
+          };
+
+          onUpdateConversation(conversation.id, {
+            messages: [...conversation.messages, userMessage, errorMessage],
+            lastMessageTime: Date.now(),
+            unreadCount: 0
+          });
+        } finally {
+          setIsGenerating(false);
+        }
+      };
+
+      reader.readAsDataURL(file);
+
+    } catch (error) {
+      console.error('图片上传失败:', error);
+      alert('图片上传失败');
+    }
+
+    // 清空input
+    if (e.target) e.target.value = '';
+  };
+
+  // 处理视频上传
+  const handleVideoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    // 保存文件并显示描述弹窗
+    setPendingVideoFile(file);
+    setShowVideoDescModal(true);
+    setShowToolbar(false);
+
+    // 清空input
+    if (e.target) e.target.value = '';
+  };
+
+  // 发送视频消息
+  const handleSendVideo = async () => {
+    if (!pendingVideoFile || !videoDescInput.trim()) {
+      alert('请输入视频内容描述');
+      return;
+    }
+
+    try {
+      // 读取视频文件为URL
+      const reader = new FileReader();
+      reader.onload = async () => {
+        const videoUrl = reader.result as string;
+        
+        // 创建用户消息
+        const userMessage: Message = {
+          id: `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+          role: 'user',
+          content: `[视频] ${videoDescInput}`,
+          timestamp: Date.now(),
+          mediaType: 'video',
+          mediaUrl: videoUrl,
+          mediaDescription: videoDescInput
+        };
+
+        onUpdateConversation(conversation.id, {
+          messages: [...conversation.messages, userMessage],
+          lastMessageTime: Date.now()
+        });
+
+        // 关闭弹窗
+        setShowVideoDescModal(false);
+        setVideoDescInput('');
+        setPendingVideoFile(null);
+
+        // 让AI基于描述回复
+        setIsGenerating(true);
+        setShowTyping(true);
+
+        try {
+          const response = await fetch(`${apiConfig.baseUrl}/v1/chat/completions`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${apiConfig.apiKey}`,
+            },
+            body: JSON.stringify({
+              model: apiConfig.modelName,
+              messages: [
+                ...conversation.messages.map(m => ({
+                  role: m.role,
+                  content: m.content
+                })),
+                {
+                  role: 'user',
+                  content: `[视频内容：${videoDescInput}]`
+                }
+              ],
+              temperature: 0.8
+            })
+          });
+
+          if (!response.ok) {
+            throw new Error('AI回复失败');
+          }
+
+          const data = await response.json();
+          const aiResponse = data.choices?.[0]?.message?.content || '收到你的视频了！';
+
+          setShowTyping(false);
+
+          // 分割AI回复
+          const messages = splitMessages(aiResponse);
+
+          // 发送第一条消息
+          if (messages.length > 0) {
+            const firstMessage: Message = {
+              id: `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+              role: 'assistant',
+              content: messages[0],
+              timestamp: Date.now()
+            };
+
+            onUpdateConversation(conversation.id, {
+              messages: [...conversation.messages, userMessage, firstMessage],
+              lastMessageTime: Date.now(),
+              unreadCount: 0
+            });
+
+            // 发送剩余消息
+            if (messages.length > 1) {
+              setPendingMessages(messages.slice(1));
+              await sendRemainingMessages(messages.slice(1));
+              setPendingMessages([]);
+            }
+          }
+
+        } catch (error) {
+          console.error('AI回复失败:', error);
+          setShowTyping(false);
+        } finally {
+          setIsGenerating(false);
+        }
+      };
+
+      reader.readAsDataURL(pendingVideoFile);
+
+    } catch (error) {
+      console.error('视频发送失败:', error);
+      alert('视频发送失败');
     }
   };
 
@@ -456,6 +722,7 @@ ${conversation.characterSettings.memoryEvents ? `记忆事件：${conversation.c
   };
 
   return (
+    <>
     <div className="h-full bg-gradient-to-b from-gray-50 to-gray-100 flex flex-col" style={{ backgroundImage: 'url("data:image/svg+xml,%3Csvg width=\"20\" height=\"20\" xmlns=\"http://www.w3.org/2000/svg\"%3E%3Cpath d=\"M0 0h20v20H0z\" fill=\"%23fafafa\"/%3E%3Cpath d=\"M0 0h10v10H0z\" fill=\"%23f5f5f5\" fill-opacity=\".5\"/%3E%3C/svg%3E")' }}>
       {/* Header */}
       <div className="bg-white/95 backdrop-blur-sm border-b border-gray-200 px-4 py-3 flex items-center justify-between shadow-sm">
@@ -551,13 +818,34 @@ ${conversation.characterSettings.memoryEvents ? `记忆事件：${conversation.c
                 )}
                 <div className="relative max-w-[70%]">
                   <div
-                    className={`rounded-2xl px-4 py-2.5 shadow-sm ${
+                    className={`rounded-2xl shadow-sm ${
                       message.role === 'user'
                         ? 'bg-white text-gray-900 border border-gray-200'
                         : 'bg-white text-gray-900 border border-gray-200'
-                    }`}
+                    } ${message.mediaType ? 'p-0 overflow-hidden' : 'px-4 py-2.5'}`}
                   >
-                    <p className="text-[15px] leading-relaxed whitespace-pre-wrap break-words">{message.content}</p>
+                    {/* 媒体内容 */}
+                    {message.mediaType === 'image' && message.mediaUrl && (
+                      <img 
+                        src={message.mediaUrl} 
+                        alt="图片" 
+                        className="w-full max-w-[200px] rounded-2xl"
+                      />
+                    )}
+                    {message.mediaType === 'video' && message.mediaUrl && (
+                      <video 
+                        src={message.mediaUrl} 
+                        controls 
+                        className="w-full max-w-[200px] rounded-2xl"
+                      />
+                    )}
+                    {/* 文字内容 */}
+                    {!message.mediaType && (
+                      <p className="text-[15px] leading-relaxed whitespace-pre-wrap break-words">{message.content}</p>
+                    )}
+                    {message.mediaType && message.mediaDescription && (
+                      <p className="text-[13px] leading-relaxed px-3 py-2 text-gray-600">{message.mediaDescription}</p>
+                    )}
                   </div>
                   {/* Message tail */}
                   <div className={`absolute bottom-3 ${
@@ -661,16 +949,30 @@ ${conversation.characterSettings.memoryEvents ? `记忆事件：${conversation.c
         {showToolbar && (
           <div className="px-3 py-2 bg-white border-b border-gray-200">
             <div className="flex gap-2 items-center overflow-x-auto">
-              <button className="flex-shrink-0">
+              <button onClick={() => imageInputRef.current?.click()} className="flex-shrink-0">
                 <div className="w-9 h-9 rounded-full bg-white border border-gray-300 flex items-center justify-center hover:border-gray-400 transition-colors">
                   <Image className="w-4 h-4 text-gray-600" />
                 </div>
               </button>
-              <button className="flex-shrink-0">
+              <input
+                ref={imageInputRef}
+                type="file"
+                accept="image/*"
+                className="hidden"
+                onChange={handleImageUpload}
+              />
+              <button onClick={() => videoInputRef.current?.click()} className="flex-shrink-0">
                 <div className="w-9 h-9 rounded-full bg-white border border-gray-300 flex items-center justify-center hover:border-gray-400 transition-colors">
                   <Video className="w-4 h-4 text-gray-600" />
                 </div>
               </button>
+              <input
+                ref={videoInputRef}
+                type="file"
+                accept="video/*"
+                className="hidden"
+                onChange={handleVideoUpload}
+              />
               <button className="flex-shrink-0">
                 <div className="w-9 h-9 rounded-full bg-white border border-gray-300 flex items-center justify-center hover:border-gray-400 transition-colors">
                   <Mic className="w-4 h-4 text-gray-600" />
@@ -689,14 +991,6 @@ ${conversation.characterSettings.memoryEvents ? `记忆事件：${conversation.c
               <button className="flex-shrink-0">
                 <div className="w-9 h-9 rounded-full bg-white border border-gray-300 flex items-center justify-center hover:border-gray-400 transition-colors">
                   <FileText className="w-4 h-4 text-gray-600" />
-                </div>
-              </button>
-              <button 
-                onClick={onOpenCharacterSettings}
-                className="flex-shrink-0"
-              >
-                <div className="w-9 h-9 rounded-full bg-white border border-gray-300 flex items-center justify-center hover:border-gray-400 transition-colors">
-                  <Sparkles className="w-4 h-4 text-gray-600" />
                 </div>
               </button>
             </div>
@@ -745,5 +1039,45 @@ ${conversation.characterSettings.memoryEvents ? `记忆事件：${conversation.c
         </div>
       </div>
     </div>
+
+    {/* 视频描述弹窗 */}
+    {showVideoDescModal && (
+      <div className="absolute inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+        <div className="bg-white rounded-2xl p-6 w-full max-w-sm shadow-2xl">
+          <h3 className="text-lg font-semibold text-gray-900 mb-4">描述视频内容</h3>
+          <p className="text-sm text-gray-600 mb-4">
+            由于AI暂时无法直接识别视频，请简单描述一下视频的内容，帮助AI理解并回复。
+          </p>
+          <textarea
+            value={videoDescInput}
+            onChange={(e) => setVideoDescInput(e.target.value)}
+            placeholder="例如：我在公园散步的视频"
+            rows={4}
+            className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none text-sm"
+            autoFocus
+          />
+          <div className="flex gap-3 mt-4">
+            <button
+              onClick={() => {
+                setShowVideoDescModal(false);
+                setVideoDescInput('');
+                setPendingVideoFile(null);
+              }}
+              className="flex-1 px-4 py-2.5 border border-gray-300 text-gray-700 rounded-xl hover:bg-gray-50 transition-colors font-medium"
+            >
+              取消
+            </button>
+            <button
+              onClick={handleSendVideo}
+              disabled={!videoDescInput.trim()}
+              className="flex-1 px-4 py-2.5 bg-blue-500 text-white rounded-xl hover:bg-blue-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed font-medium"
+            >
+              发送
+            </button>
+          </div>
+        </div>
+      </div>
+    )}
+    </>
   );
 }
