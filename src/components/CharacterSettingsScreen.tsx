@@ -1,5 +1,5 @@
 import { useState, useRef } from 'react';
-import { ChevronLeft, Upload, Brain, Trash2, Download, FileUp } from 'lucide-react';
+import { ChevronLeft, Upload, Brain, Trash2, Download, FileUp, Zap } from 'lucide-react';
 import { Conversation } from '../types';
 import MemoryManager from './MemoryManager';
 
@@ -36,6 +36,13 @@ export default function CharacterSettingsScreen({
   const [showMemoryManager, setShowMemoryManager] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const chatImportRef = useRef<HTMLInputElement>(null);
+  
+  // AI主动发消息配置
+  const [proactiveEnabled, setProactiveEnabled] = useState(settings.proactiveMessaging?.enabled || false);
+  const [minInterval, setMinInterval] = useState(settings.proactiveMessaging?.minInterval || 30);
+  const [maxInterval, setMaxInterval] = useState(settings.proactiveMessaging?.maxInterval || 120);
+  const [activeHourStart, setActiveHourStart] = useState(settings.proactiveMessaging?.activeHourStart || 8);
+  const [activeHourEnd, setActiveHourEnd] = useState(settings.proactiveMessaging?.activeHourEnd || 23);
 
   const handleAvatarUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -129,6 +136,14 @@ export default function CharacterSettingsScreen({
         languageStyle,
         languageExample,
         memoryEvents,
+        proactiveMessaging: {
+          enabled: proactiveEnabled,
+          minInterval,
+          maxInterval,
+          activeHourStart,
+          activeHourEnd,
+          lastMessageTime: settings.proactiveMessaging?.lastMessageTime,
+        },
       },
     });
     alert('角色设置已保存');
@@ -306,6 +321,97 @@ export default function CharacterSettingsScreen({
           </button>
           <p className="text-xs text-gray-500 mt-2 text-center">
             💡 AI会自动记住对话中的重要信息
+          </p>
+        </div>
+
+        {/* AI主动发消息 */}
+        <div className="bg-white rounded-lg shadow-sm p-4">
+          <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center gap-2">
+              <Zap className="w-5 h-5 text-orange-500" />
+              <h3 className="text-sm font-medium text-gray-900">AI主动发消息</h3>
+            </div>
+            <label className="relative inline-flex items-center cursor-pointer">
+              <input
+                type="checkbox"
+                checked={proactiveEnabled}
+                onChange={(e) => setProactiveEnabled(e.target.checked)}
+                className="sr-only peer"
+              />
+              <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+            </label>
+          </div>
+
+          {proactiveEnabled && (
+            <div className="space-y-4 mt-4">
+              {/* 消息间隔 */}
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <label className="text-sm text-gray-600">消息间隔</label>
+                  <span className="text-xs text-gray-500">分钟</span>
+                </div>
+                <div className="flex items-center gap-3">
+                  <input
+                    type="number"
+                    value={minInterval}
+                    onChange={(e) => setMinInterval(Math.max(10, parseInt(e.target.value) || 10))}
+                    min="10"
+                    max="240"
+                    className="w-20 px-3 py-2 text-center border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                  <span className="text-gray-500">-</span>
+                  <input
+                    type="number"
+                    value={maxInterval}
+                    onChange={(e) => setMaxInterval(Math.max(minInterval, parseInt(e.target.value) || 120))}
+                    min={minInterval}
+                    max="480"
+                    className="w-20 px-3 py-2 text-center border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+              </div>
+
+              {/* 活跃时段 */}
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <label className="text-sm text-gray-600">活跃时段</label>
+                  <span className="text-xs text-gray-500">点</span>
+                </div>
+                <div className="flex items-center gap-3">
+                  <input
+                    type="number"
+                    value={activeHourStart}
+                    onChange={(e) => setActiveHourStart(Math.max(0, Math.min(23, parseInt(e.target.value) || 0)))}
+                    min="0"
+                    max="23"
+                    className="w-20 px-3 py-2 text-center border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                  <span className="text-gray-500">-</span>
+                  <input
+                    type="number"
+                    value={activeHourEnd}
+                    onChange={(e) => setActiveHourEnd(Math.max(activeHourStart, Math.min(23, parseInt(e.target.value) || 23)))}
+                    min={activeHourStart}
+                    max="23"
+                    className="w-20 px-3 py-2 text-center border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+              </div>
+
+              {/* 说明 */}
+              <div className="bg-blue-50 border border-blue-100 rounded-lg p-3">
+                <p className="text-xs text-blue-700 leading-relaxed">
+                  💡 AI会在设定的时间段内，根据情境主动发送消息与你聊天
+                </p>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* 提示信息 */}
+        <div className="bg-blue-50 border border-blue-100 rounded-lg p-4">
+          <p className="text-sm text-blue-700 leading-relaxed">
+            💡 这些设置将影响AI生成回复时的风格和内容，帮助创建更真实的对话体验
           </p>
         </div>
 

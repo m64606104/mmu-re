@@ -14,6 +14,7 @@ import CreateGroupScreen from './components/CreateGroupScreen';
 import ThemeScreen from './components/ThemeScreen';
 import UserGuide from './components/UserGuide';
 import { MomentsAutoGenerator } from './components/MomentsAutoGenerator';
+import ProactiveMessagingService from './components/ProactiveMessagingService';
 import { smartLoad, smartSave, migrateToIndexedDB } from './utils/storage';
 
 function App() {
@@ -153,6 +154,40 @@ function App() {
       navigateTo('social');
     }
   }, [currentConversationId, navigateTo]);
+
+  // 添加消息到指定对话（用于AI主动发消息）
+  const addMessageToConversation = useCallback((conversationId: string, message: Message) => {
+    setConversations(prev => prev.map(conv => {
+      if (conv.id === conversationId) {
+        return {
+          ...conv,
+          messages: [...conv.messages, message],
+          lastMessageTime: message.timestamp,
+          unreadCount: conv.unreadCount + 1
+        };
+      }
+      return conv;
+    }));
+  }, []);
+
+  // 更新主动消息的最后发送时间
+  const updateProactiveMessagingTime = useCallback((conversationId: string, lastMessageTime: number) => {
+    setConversations(prev => prev.map(conv => {
+      if (conv.id === conversationId && conv.characterSettings) {
+        return {
+          ...conv,
+          characterSettings: {
+            ...conv.characterSettings,
+            proactiveMessaging: {
+              ...conv.characterSettings.proactiveMessaging!,
+              lastMessageTime
+            }
+          }
+        };
+      }
+      return conv;
+    }));
+  }, []);
 
   // 更新用户资料
   const updateUserProfile = useCallback((profile: UserProfile) => {
@@ -438,6 +473,14 @@ function App() {
       <MomentsAutoGenerator 
         conversations={conversations}
         apiConfig={apiConfig}
+      />
+      
+      {/* AI主动发消息服务 - 后台运行 */}
+      <ProactiveMessagingService
+        conversations={conversations}
+        apiConfig={apiConfig}
+        onNewMessage={addMessageToConversation}
+        onUpdateSettings={updateProactiveMessagingTime}
       />
     </>
   );

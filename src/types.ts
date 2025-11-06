@@ -24,6 +24,15 @@ export interface CharacterSettings {
   languageStyle: string;
   languageExample: string;
   memoryEvents: string;
+  // AI主动发消息配置
+  proactiveMessaging?: {
+    enabled: boolean; // 是否启用
+    minInterval: number; // 最小间隔（分钟）
+    maxInterval: number; // 最大间隔（分钟）
+    activeHourStart: number; // 活跃时段开始（小时，0-23）
+    activeHourEnd: number; // 活跃时段结束（小时，0-23）
+    lastMessageTime?: number; // 上次主动发消息的时间戳
+  };
 }
 
 export interface Conversation {
