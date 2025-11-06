@@ -272,7 +272,7 @@ export default function ChatScreen({
   };
 
   // 发送视频消息
-  const handleSendVideo = async () => {
+  const handleSendVideo = () => {
     if (!pendingVideoFile || !videoDescInput.trim()) {
       alert('请输入视频内容描述');
       return;
@@ -281,7 +281,7 @@ export default function ChatScreen({
     try {
       // 读取视频文件为URL
       const reader = new FileReader();
-      reader.onload = async () => {
+      reader.onload = () => {
         const videoUrl = reader.result as string;
         
         // 创建用户消息
@@ -295,6 +295,7 @@ export default function ChatScreen({
           mediaDescription: videoDescInput
         };
 
+        // 保存用户消息到聊天记录
         onUpdateConversation(conversation.id, {
           messages: [...conversation.messages, userMessage],
           lastMessageTime: Date.now()
@@ -304,75 +305,6 @@ export default function ChatScreen({
         setShowVideoDescModal(false);
         setVideoDescInput('');
         setPendingVideoFile(null);
-
-        // 让AI基于描述回复
-        setIsGenerating(true);
-        setShowTyping(true);
-
-        try {
-          const response = await fetch(`${apiConfig.baseUrl}/v1/chat/completions`, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'Authorization': `Bearer ${apiConfig.apiKey}`,
-            },
-            body: JSON.stringify({
-              model: apiConfig.modelName,
-              messages: [
-                ...conversation.messages.map(m => ({
-                  role: m.role,
-                  content: m.content
-                })),
-                {
-                  role: 'user',
-                  content: `[视频内容：${videoDescInput}]`
-                }
-              ],
-              temperature: 0.8
-            })
-          });
-
-          if (!response.ok) {
-            throw new Error('AI回复失败');
-          }
-
-          const data = await response.json();
-          const aiResponse = data.choices?.[0]?.message?.content || '收到你的视频了！';
-
-          setShowTyping(false);
-
-          // 分割AI回复
-          const messages = splitMessages(aiResponse);
-
-          // 发送第一条消息
-          if (messages.length > 0) {
-            const firstMessage: Message = {
-              id: `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-              role: 'assistant',
-              content: messages[0],
-              timestamp: Date.now()
-            };
-
-            onUpdateConversation(conversation.id, {
-              messages: [...conversation.messages, userMessage, firstMessage],
-              lastMessageTime: Date.now(),
-              unreadCount: 0
-            });
-
-            // 发送剩余消息
-            if (messages.length > 1) {
-              setPendingMessages(messages.slice(1));
-              await sendRemainingMessages(messages.slice(1));
-              setPendingMessages([]);
-            }
-          }
-
-        } catch (error) {
-          console.error('AI回复失败:', error);
-          setShowTyping(false);
-        } finally {
-          setIsGenerating(false);
-        }
       };
 
       reader.readAsDataURL(pendingVideoFile);
@@ -404,8 +336,9 @@ export default function ChatScreen({
       const lastUserTimestamp = lastUserMsgForTime?.timestamp;
       const lastUserContent = lastUserMsgForTime?.content;
       
-      // 检查最后一条消息是否包含图片
+      // 检查最后一条消息是否包含图片或视频
       const hasImage = lastUserMsgForTime?.mediaType === 'image' && lastUserMsgForTime?.mediaUrl;
+      const hasVideo = lastUserMsgForTime?.mediaType === 'video' && lastUserMsgForTime?.mediaDescription;
       
       // 生成时间感知提示词
       const timeAwarePrompt = buildTimeAwarePrompt(lastUserTimestamp, lastUserContent);
@@ -476,6 +409,29 @@ ${conversation.characterSettings.memoryEvents ? `记忆事件：${conversation.c
           messages,
           max_tokens: 500,
           temperature: 0.4
+        };
+      } else if (hasVideo) {
+        // 如果最后一条消息包含视频，基于文字描述回复
+        const recentMessages = conversation.messages.slice(-10); // 只取最近10条
+        const historyMessages = recentMessages.slice(0, -1).map(m => ({
+          role: m.role,
+          content: m.content
+        }));
+
+        messages = [
+          { role: 'system', content: systemPrompt + '\n\n【视频内容理解规则】：\n- 用户分享了视频，根据提供的内容描述自然回复\n- 像朋友间日常聊天一样对视频内容做出反应\n- 不要说"我看不到视频"、"无法观看"等话\n- 基于描述内容自然地评论、提问或互动' },
+          ...historyMessages,
+          {
+            role: 'user',
+            content: `（分享了视频：${lastUserMsgForTime.mediaDescription}）`
+          }
+        ];
+
+        requestBody = {
+          model: apiConfig.modelName,
+          messages,
+          max_tokens: 500,
+          temperature: 0.7
         };
       } else {
         // 普通文本消息
@@ -1003,14 +959,14 @@ ${conversation.characterSettings.memoryEvents ? `记忆事件：${conversation.c
     {showVideoDescModal && (
       <div className="absolute inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
         <div className="bg-white rounded-2xl p-6 w-full max-w-sm shadow-2xl">
-          <h3 className="text-lg font-semibold text-gray-900 mb-4">描述视频内容</h3>
+          <h3 className="text-lg font-semibold text-gray-900 mb-4">视频内容描述</h3>
           <p className="text-sm text-gray-600 mb-4">
-            由于AI暂时无法直接识别视频，请简单描述一下视频的内容，帮助AI理解并回复。
+            请填写视频内容的文字描述，以便AI更好地理解视频内容并做出回复。
           </p>
           <textarea
             value={videoDescInput}
             onChange={(e) => setVideoDescInput(e.target.value)}
-            placeholder="例如：我在公园散步的视频"
+            placeholder="例如：在海边散步的风景视频"
             rows={4}
             className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none text-sm"
             autoFocus
