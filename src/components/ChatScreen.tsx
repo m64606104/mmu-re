@@ -132,8 +132,14 @@ export default function ChatScreen({
       const hasParenthesesEmoji = /[（(][^）)]*\.(jpg|png|gif|jpeg|webp)[）)]/gi.test(trimmed);
       const hasShortParentheses = /[（(][^）)]{1,15}[）)]/.test(trimmed); // 短括号内容也保护
       
-      // 如果整段较短（少于60字），直接作为一条消息，不分割
-      if (trimmed.length < 60 || hasUrl || hasParenthesesEmoji || hasShortParentheses) {
+      // 检测是否包含引号内容，保护引号内的文本不被分割
+      const hasQuotes = /[""].*?[""]|".*?"/.test(trimmed);
+      
+      // 如果包含特殊内容，整段作为一条消息
+      if (hasUrl || hasParenthesesEmoji || hasShortParentheses || hasQuotes) {
+        messages.push(trimmed);
+      } else if (trimmed.length < 50) {
+        // 较短消息（50字以内）直接发送
         messages.push(trimmed);
       } else {
         // 按句号、问号、感叹号等结束标点分割
@@ -143,8 +149,8 @@ export default function ChatScreen({
           const sentenceTrimmed = sentence.trim();
           if (!sentenceTrimmed) continue;
           
-          // 如果句子太长（超过40个字符），尝试按逗号、分号等分割
-          if (sentenceTrimmed.length > 40 && !hasShortParentheses) {
+          // 如果句子太长（超过50个字符），尝试按逗号、分号等分割
+          if (sentenceTrimmed.length > 50) {
             const parts = sentenceTrimmed.match(/[^，,；;]+[，,；;]+|[^，,；;]+$/g) || [sentenceTrimmed];
             messages.push(...parts.map(p => {
               const cleaned = p.trim();
