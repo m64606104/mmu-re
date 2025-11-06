@@ -347,8 +347,14 @@ export default function ChatScreen({
   };
 
   // Web Speech API 实时语音识别
-  const startVoiceRecognition = () => {
+  const startVoiceRecognition = async () => {
     try {
+      // 先请求麦克风权限
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      
+      // 权限获取成功，停止测试流
+      stream.getTracks().forEach(track => track.stop());
+      
       const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
       const recognition = new SpeechRecognition();
       
@@ -360,7 +366,7 @@ export default function ChatScreen({
       setIsRecording(true);
       setIsTranscribing(true);
       
-      // 同时开始录音（保存音频文件）
+      // 开始录音（保存音频文件）
       startRecording(true);
       
       recognition.onresult = (event: any) => {
@@ -381,7 +387,7 @@ export default function ChatScreen({
       };
       
       recognition.onerror = (event: any) => {
-        console.error('语音识别错误:', event.error);
+        console.error('语音识别错误:', event.error, '详细信息:', event);
         setIsTranscribing(false);
         setIsRecording(false);
         stopRecording();
@@ -394,11 +400,25 @@ export default function ChatScreen({
         }, 500);
       };
       
+      recognition.onend = () => {
+        console.log('语音识别结束');
+      };
+      
       recognition.start();
+      console.log('语音识别已启动');
       
     } catch (error) {
       console.error('启动语音识别失败:', error);
-      alert('启动语音识别失败');
+      
+      // 如果是权限被拒绝，显示友好提示
+      if (error instanceof DOMException && error.name === 'NotAllowedError') {
+        alert('需要麦克风权限才能使用语音功能。\n请在浏览器地址栏左侧点击🔒图标，允许麦克风权限后重试。');
+      } else {
+        // 直接降级到录音+手动输入模式
+        alert('您的浏览器不支持自动语音识别，将使用录音+手动输入模式');
+        startRecording();
+      }
+      
       setIsRecording(false);
       setIsTranscribing(false);
     }
