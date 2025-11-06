@@ -13,7 +13,7 @@ import {
   updateMemoryImportance,
   clearMemoryBank,
   updateMemorySettings
-} from '../utils/memory';
+} from '../utils/memorySystem';
 
 interface MemoryManagerProps {
   conversationId: string;

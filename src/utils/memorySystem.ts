@@ -5,6 +5,9 @@
 
 import { MemoryBank, MemoryEntry, Message } from '../types';
 
+// 重新导出类型以便其他组件使用
+export type { MemoryEntry };
+
 const MEMORY_STORAGE_KEY = 'chat_memory_banks';
 
 /**
@@ -138,6 +141,29 @@ export const updateMemoryImportance = (
     memory.importance = importance;
     saveMemoryBank(bank);
   }
+};
+
+/**
+ * 清空对话的所有记忆
+ */
+export const clearMemoryBank = (conversationId: string): void => {
+  const bank = getMemoryBank(conversationId);
+  bank.memories = [];
+  bank.lastSummaryMessageCount = 0;
+  bank.totalMessagesSinceLastSummary = 0;
+  saveMemoryBank(bank);
+};
+
+/**
+ * 更新记忆库设置
+ */
+export const updateMemorySettings = (
+  conversationId: string,
+  settings: Partial<MemoryBank['settings']>
+): void => {
+  const bank = getMemoryBank(conversationId);
+  bank.settings = { ...bank.settings, ...settings };
+  saveMemoryBank(bank);
 };
 
 /**

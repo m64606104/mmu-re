@@ -123,8 +123,12 @@ export default function ChatScreen({
       const urlPattern = /(https?:\/\/[^\s]+)/g;
       const hasUrl = urlPattern.test(trimmed);
       
-      if (hasUrl) {
-        // 如果包含URL，整段作为一条消息
+      // 检测是否包含括号表情或网络用语（如.jpg、.png等），保护不被分割
+      const hasParenthesesEmoji = /[（(][^）)]*\.(jpg|png|gif|jpeg|webp)[）)]/gi.test(trimmed);
+      const hasShortParentheses = /[（(][^）)]{1,15}[）)]/.test(trimmed); // 短括号内容也保护
+      
+      if (hasUrl || hasParenthesesEmoji || (hasShortParentheses && trimmed.length < 50)) {
+        // 如果包含URL、括号表情、或短括号内容，整段作为一条消息
         messages.push(trimmed);
       } else {
         // 按句号、问号、感叹号等结束标点分割
@@ -135,7 +139,7 @@ export default function ChatScreen({
           if (!sentenceTrimmed) continue;
           
           // 如果句子太长（超过30个字符），尝试按逗号、分号等分割
-          if (sentenceTrimmed.length > 30) {
+          if (sentenceTrimmed.length > 30 && !hasShortParentheses) {
             const parts = sentenceTrimmed.match(/[^，,；;]+[，,；;]+|[^，,；;]+$/g) || [sentenceTrimmed];
             messages.push(...parts.map(p => {
               const cleaned = p.trim();
@@ -230,10 +234,18 @@ ${conversation.characterSettings.systemPrompt ? `人物设定：${conversation.c
 ${conversation.characterSettings.personality ? `性格特征：${conversation.characterSettings.personality}` : ''}
 ${conversation.characterSettings.languageStyle ? `语言风格：${conversation.characterSettings.languageStyle}` : ''}
 ${conversation.characterSettings.languageExample ? `语言示例：${conversation.characterSettings.languageExample}` : ''}
-${conversation.characterSettings.memoryEvents ? `记忆事件：${conversation.characterSettings.memoryEvents}` : ''}`
+${conversation.characterSettings.memoryEvents ? `记忆事件：${conversation.characterSettings.memoryEvents}` : ''}
+
+【重要表达规范】：
+- 使用真人自然口语表达，不要使用斜杠（/）来表示"或"，例如：
+  ❌ 错误："地铁/公交"、"学习/工作"  
+  ✅ 正确："地铁或公交"、"地铁和公交"、"每天都要被公交地铁压榨"
+- 可以用顿号（、）、"和"、"或"、"还是"等自然连接词
+- 列举事物时优先用自然叙述而非并列符号
+- 保持日常对话的流畅感，像真人一样说话`
         : conversation.type === 'group'
-        ? '你是一个群聊助手，可以参与多人对话。'
-        : '你是一个AI助手。';
+        ? '你是一个群聊助手，可以参与多人对话。使用自然口语表达，不要使用斜杠（/）等书面符号。'
+        : '你是一个AI助手。使用自然口语表达，不要使用斜杠（/）等书面符号。';
 
       // 如果启用了记忆系统，添加记忆上下文
       if (conversation.enabledFeatures?.includes('memory-system')) {
