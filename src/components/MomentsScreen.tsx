@@ -1,10 +1,11 @@
 import { useState, useRef, useEffect } from 'react';
 import { ChevronLeft, Camera, Heart, MessageCircle, Send, Image as ImageIcon } from 'lucide-react';
-import { MomentPost, UserProfile } from '../types';
+import { MomentPost, UserProfile, Conversation } from '../types';
 import { getAllMomentPosts, likeMomentPost, commentMomentPost } from '../utils/aiMomentsGenerator';
 
 interface MomentsScreenProps {
   moments: MomentPost[];
+  conversations: Conversation[];
   userProfile: UserProfile;
   onAddMoment: (content: string, images: string[]) => void;
   onLikeMoment: (momentId: string) => void;
@@ -14,6 +15,7 @@ interface MomentsScreenProps {
 
 export default function MomentsScreen({
   moments,
+  conversations,
   userProfile,
   onAddMoment,
   onLikeMoment,
@@ -27,17 +29,25 @@ export default function MomentsScreen({
   const [commentContent, setCommentContent] = useState('');
   const [aiMoments, setAiMoments] = useState<MomentPost[]>([]);
   const imageInputRef = useRef<HTMLInputElement>(null);
+  const [viewingImageDesc, setViewingImageDesc] = useState<{ desc: string; index: number } | null>(null);
 
   // 加载AI朋友圈
   useEffect(() => {
     const loadAiMoments = async () => {
-      const posts = await getAllMomentPosts();
-      setAiMoments(posts);
+      try {
+        const posts = await getAllMomentPosts();
+        setAiMoments(posts);
+      } catch (error) {
+        console.error('加载AI朋友圈失败:', error);
+      }
     };
+    
+    // 首次加载
     loadAiMoments();
     
-    // 每30秒刷新一次
-    const interval = setInterval(loadAiMoments, 30000);
+    // 每5分钟刷新一次（从30秒改为5分钟，减少请求频率）
+    const interval = setInterval(loadAiMoments, 5 * 60 * 1000);
+    
     return () => clearInterval(interval);
   }, []);
 
@@ -109,6 +119,56 @@ export default function MomentsScreen({
     }
   };
 
+  // 获取最新的角色信息（用于动态更新头像和昵称）
+  const getLatestAuthorInfo = (moment: MomentPost) => {
+    const authorId = moment.authorId || moment.userId;
+    
+    // 如果是用户的朋友圈，直接返回用户信息
+    if (!authorId || authorId === 'user') {
+      return {
+        avatar: moment.authorAvatar || moment.userAvatar || userProfile.avatar,
+        name: moment.authorName || moment.username || userProfile.username
+      };
+    }
+    
+    // 查找对应的对话，获取最新的角色设置
+    const conversation = conversations.find(c => c.id === authorId);
+    if (conversation && conversation.characterSettings) {
+      return {
+        avatar: conversation.characterSettings.avatar || conversation.avatar || moment.authorAvatar || moment.userAvatar,
+        name: conversation.characterSettings.nickname || conversation.name || moment.authorName || moment.username
+      };
+    }
+    
+    // 如果找不到对话，使用原始信息
+    return {
+      avatar: moment.authorAvatar || moment.userAvatar,
+      name: moment.authorName || moment.username
+    };
+  };
+
+  // 获取微信风格的图片网格布局类名
+  const getImageGridClass = (count: number) => {
+    switch (count) {
+      case 1:
+        return 'grid-cols-1 max-w-[200px]';
+      case 2:
+        return 'grid-cols-2 gap-1';
+      case 4:
+        return 'grid-cols-2 gap-1';
+      default:
+        return 'grid-cols-3 gap-1';
+    }
+  };
+
+  // 获取单张图片的样式类
+  const getImageItemClass = (count: number) => {
+    if (count === 1) {
+      return 'aspect-[4/3]'; // 单图：4:3比例
+    }
+    return 'aspect-square'; // 其他情况：正方形
+  };
+
   const formatTime = (timestamp: number) => {
     const now = Date.now();
     const diff = now - timestamp;
@@ -178,8 +238,11 @@ export default function MomentsScreen({
         ) : (
           <div className="space-y-4 p-4">
             {allMoments.map((moment) => {
-              const username = moment.authorName || moment.username || '未知用户';
-              const userAvatar = moment.authorAvatar || moment.userAvatar;
+              // 动态获取最新的角色信息
+              const authorInfo = getLatestAuthorInfo(moment);
+              const username = authorInfo.name || '未知用户';
+              const userAvatar = authorInfo.avatar;
+              
               return (
               <div key={moment.id} className="bg-white rounded-xl p-4 shadow-sm">
                 {/* User Info */}
@@ -208,16 +271,44 @@ export default function MomentsScreen({
                   <p className="text-gray-800 mb-3 leading-relaxed">{moment.content}</p>
                 )}
 
-                {/* Images */}
+                {/* Images (真实图片) */}
                 {moment.images && moment.images.length > 0 && (
-                  <div className={`grid gap-2 mb-3 ${
-                    moment.images.length === 1 ? 'grid-cols-1' :
-                    moment.images.length === 2 ? 'grid-cols-2' :
-                    'grid-cols-3'
-                  }`}>
+                  <div className={`grid mb-3 ${getImageGridClass(moment.images.length)}`}>
                     {moment.images.map((image, index) => (
-                      <div key={index} className="aspect-square rounded-lg overflow-hidden bg-gray-100">
+                      <div 
+                        key={index} 
+                        className={`rounded-lg overflow-hidden bg-gray-100 ${getImageItemClass(moment.images!.length)}`}
+                      >
                         <img src={image} alt="" className="w-full h-full object-cover" />
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* Image Descriptions (AI生成的图片描述 - 半透明灰色占位符) */}
+                {moment.imageDescriptions && moment.imageDescriptions.length > 0 && (
+                  <div className={`grid mb-3 ${getImageGridClass(moment.imageDescriptions.length)}`}>
+                    {moment.imageDescriptions.map((desc, index) => (
+                      <div 
+                        key={index} 
+                        onClick={() => setViewingImageDesc({ desc, index })}
+                        className={`rounded-lg overflow-hidden bg-gray-400/30 backdrop-blur-sm cursor-pointer hover:bg-gray-400/40 transition-colors relative ${getImageItemClass(moment.imageDescriptions!.length)}`}
+                      >
+                        {/* 半透明遮罩效果 */}
+                        <div className="absolute inset-0 bg-gradient-to-br from-gray-300/20 to-gray-400/20" />
+                        
+                        {/* 中心的图片图标 */}
+                        <div className="absolute inset-0 flex items-center justify-center">
+                          <div className="text-center space-y-1">
+                            <ImageIcon className="w-10 h-10 text-white/80 mx-auto drop-shadow-md" strokeWidth={1.5} />
+                            <p className="text-xs text-white/70 font-medium drop-shadow px-2 line-clamp-2">
+                              {desc.length > 20 ? desc.substring(0, 20) + '...' : desc}
+                            </p>
+                          </div>
+                        </div>
+                        
+                        {/* 模拟图片质感的噪点纹理 */}
+                        <div className="absolute inset-0 bg-[url('data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIzMDAiIGhlaWdodD0iMzAwIj48ZmlsdGVyIGlkPSJhIiB4PSIwIiB5PSIwIj48ZmVUdXJidWxlbmNlIGJhc2VGcmVxdWVuY3k9Ii43NSIgc3RpdGNoVGlsZXM9InN0aXRjaCIgdHlwZT0iZnJhY3RhbE5vaXNlIi8+PGZlQ29sb3JNYXRyaXggdHlwZT0ic2F0dXJhdGUiIHZhbHVlcz0iMCIvPjwvZmlsdGVyPjxwYXRoIGQ9Ik0wIDBoMzAwdjMwMEgweiIgZmlsdGVyPSJ1cmwoI2EpIiBvcGFjaXR5PSIuMDUiLz48L3N2Zz4=')] opacity-40" />
                       </div>
                     ))}
                   </div>
@@ -351,6 +442,45 @@ export default function MomentsScreen({
               onChange={handleImageUpload}
               className="hidden"
             />
+          </div>
+        </div>
+      )}
+
+      {/* Image Description Viewer Modal */}
+      {viewingImageDesc && (
+        <div 
+          className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4"
+          onClick={() => setViewingImageDesc(null)}
+        >
+          <div 
+            className="bg-white rounded-2xl p-6 max-w-md w-full shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
+                <ImageIcon className="w-5 h-5 text-gray-600" />
+                图片描述
+              </h3>
+              <button
+                onClick={() => setViewingImageDesc(null)}
+                className="text-gray-400 hover:text-gray-600 transition-colors"
+              >
+                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+            <p className="text-gray-700 leading-relaxed whitespace-pre-wrap">
+              {viewingImageDesc.desc}
+            </p>
+            <div className="mt-4 flex justify-end">
+              <button
+                onClick={() => setViewingImageDesc(null)}
+                className="px-6 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors font-medium"
+              >
+                关闭
+              </button>
+            </div>
           </div>
         </div>
       )}

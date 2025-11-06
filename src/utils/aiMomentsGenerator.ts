@@ -209,6 +209,33 @@ ${chatContext}
 6. **长度适中**：1-3句话，不要太长
 7. **可以带情绪**：开心、吐槽、感慨、撒娇等都可以
 8. **不要格式化**：直接输出朋友圈文字内容，不要有"朋友圈："等前缀
+9. **可以配图片**：如果内容适合配图（如风景、美食、自拍、宠物等），可以在内容后添加图片描述
+
+【输出格式】
+方式1（纯文字）：直接输出朋友圈文字
+方式2（带图片）：
+文字内容
+[图片1:图片描述，简短但具体，如"星空下的圣诞树"]
+[图片2:图片描述]
+[图片3:图片描述]
+...
+
+【图片数量规范】
+- 1张图：适合单一主体的内容（风景、自拍、重点物品等）
+- 2张图：适合对比、前后对照等
+- 3张图：适合记录多个相关场景
+- 4张图：2x2网格，适合四宫格形式
+- 5-9张图：适合记录丰富的日常、旅行、活动等
+- 最多9张图（微信朋友圈的上限）
+
+【图片描述要求】
+- 每个描述控制在10-30字
+- 描述要具体、生动，能让人想象出画面
+- 可以包含：场景、物品、人物、氛围、色彩等
+- 示例：
+  * "夕阳西下的海边，天空渐变成橙红色"
+  * "咖啡店角落的落地窗，阳光洒在书上"
+  * "毛茸茸的橘猫蜷缩在沙发上睡觉"
 
 现在请生成一条朋友圈内容：`;
 
@@ -262,10 +289,24 @@ export const generateAIMoment = async (
       return null;
     }
     
-    // 清理内容
-    const cleanedContent = content
+    // 清理内容并解析图片描述
+    let cleanedContent = content
       .replace(/^["']|["']$/g, '')
       .replace(/^朋友圈[：:]\s*/g, '')
+      .trim();
+    
+    // 提取图片描述
+    const imageDescriptions: string[] = [];
+    const imagePattern = /\[图片\d*[:：]([^\]]+)\]/g;
+    let match;
+    
+    while ((match = imagePattern.exec(cleanedContent)) !== null) {
+      imageDescriptions.push(match[1].trim());
+    }
+    
+    // 移除图片标记，只保留文字内容
+    cleanedContent = cleanedContent
+      .replace(imagePattern, '')
       .trim();
     
     // 创建朋友圈帖子
@@ -275,6 +316,8 @@ export const generateAIMoment = async (
       authorName: conversation.characterSettings?.nickname || conversation.name,
       authorAvatar: conversation.characterSettings?.avatar || conversation.avatar,
       content: cleanedContent,
+      imageDescriptions: imageDescriptions.length > 0 ? imageDescriptions : undefined,
+      contentType: imageDescriptions.length > 0 ? 'images' : 'text',
       timestamp: Date.now(),
       likes: [],
       comments: [],

@@ -16,6 +16,16 @@ interface MomentsAutoGeneratorProps {
 export function MomentsAutoGenerator({ conversations, apiConfig, onMomentGenerated }: MomentsAutoGeneratorProps) {
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const isGeneratingRef = useRef(false);
+  const conversationsRef = useRef(conversations);
+  const apiConfigRef = useRef(apiConfig);
+  const onMomentGeneratedRef = useRef(onMomentGenerated);
+
+  // 更新refs以保持最新值
+  useEffect(() => {
+    conversationsRef.current = conversations;
+    apiConfigRef.current = apiConfig;
+    onMomentGeneratedRef.current = onMomentGenerated;
+  }, [conversations, apiConfig, onMomentGenerated]);
 
   // 检查并生成朋友圈
   const checkAndGenerate = async () => {
@@ -27,8 +37,11 @@ export function MomentsAutoGenerator({ conversations, apiConfig, onMomentGenerat
     isGeneratingRef.current = true;
 
     try {
+      const currentConversations = conversationsRef.current;
+      const currentApiConfig = apiConfigRef.current;
+      
       // 筛选出AI联系人（私聊且有角色设定）
-      const aiConversations = conversations.filter(c => 
+      const aiConversations = currentConversations.filter(c => 
         c.type === 'private' && 
         c.characterSettings?.nickname &&
         c.characterSettings?.systemPrompt
@@ -51,11 +64,11 @@ export function MomentsAutoGenerator({ conversations, apiConfig, onMomentGenerat
             console.log(`✨ ${conversation.name} 满足生成条件，开始生成朋友圈...`);
             
             // 生成朋友圈
-            const post = await generateAIMoment(conversation, apiConfig);
+            const post = await generateAIMoment(conversation, currentApiConfig);
             
             if (post) {
               console.log(`✅ ${conversation.name} 朋友圈生成成功`);
-              onMomentGenerated?.(conversation.id);
+              onMomentGeneratedRef.current?.(conversation.id);
             } else {
               console.log(`❌ ${conversation.name} 朋友圈生成失败`);
             }
@@ -94,7 +107,7 @@ export function MomentsAutoGenerator({ conversations, apiConfig, onMomentGenerat
         clearInterval(timerRef.current);
       }
     };
-  }, [conversations, apiConfig]);
+  }, []); // 移除所有依赖项，只在组件挂载时创建一次定时器
 
   // 这个组件不渲染任何UI
   return null;

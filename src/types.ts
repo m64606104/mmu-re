@@ -2,6 +2,13 @@ export interface ApiConfig {
   baseUrl: string;
   apiKey: string;
   modelName: string;
+  // 语音转文字配置
+  speechToText?: {
+    enabled: boolean; // 是否启用语音转文字
+    apiUrl?: string; // 语音识别API地址
+    apiKey?: string; // 语音识别API Key
+    model?: string; // 语音识别模型（如glm-4-flash）
+  };
 }
 
 export interface Message {
@@ -67,13 +74,31 @@ export interface MomentPost {
   authorAvatar?: string; // 发布者头像（兼容旧版userAvatar）
   userAvatar?: string; // 旧版兼容
   content: string;
-  images?: string[];
+  images?: string[]; // 图片URL数组
+  imageDescriptions?: string[]; // AI生成的图片描述数组（用于纯文字描述图片）
   location?: string; // 位置信息
   timestamp: number;
   likes: string[];
   comments: MomentComment[];
   isRead?: boolean; // 是否已读
   mentionedUsers?: string[]; // @提到的用户ID数组
+  // 扩展内容类型
+  contentType?: 'text' | 'images' | 'music' | 'video' | 'link'; // 内容类型
+  musicInfo?: { // 音乐分享信息
+    title: string;
+    artist: string;
+    coverUrl?: string; // 封面图
+  };
+  videoInfo?: { // 视频信息
+    coverUrl?: string; // 视频封面
+    duration?: number; // 视频时长（秒）
+  };
+  linkInfo?: { // 链接分享信息
+    title: string;
+    description?: string;
+    coverUrl?: string;
+    url?: string;
+  };
 }
 
 export interface MomentComment {

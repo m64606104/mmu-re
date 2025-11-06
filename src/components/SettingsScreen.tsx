@@ -19,6 +19,12 @@ export default function SettingsScreen({ apiConfig, onUpdateConfig, onBack }: Se
   const [testResult, setTestResult] = useState<'success' | 'error' | null>(null);
   const [selectedBadge, setSelectedBadge] = useState('🎵');
   const importInputRef = useRef<HTMLInputElement>(null);
+  
+  // 语音转文字配置
+  const [sttEnabled, setSttEnabled] = useState(apiConfig.speechToText?.enabled || false);
+  const [sttApiUrl, setSttApiUrl] = useState(apiConfig.speechToText?.apiUrl || '');
+  const [sttApiKey, setSttApiKey] = useState(apiConfig.speechToText?.apiKey || '');
+  const [sttModel, setSttModel] = useState(apiConfig.speechToText?.model || 'glm-4-flash');
 
   useEffect(() => {
     // 加载用户头像装饰配置
@@ -89,7 +95,25 @@ export default function SettingsScreen({ apiConfig, onUpdateConfig, onBack }: Se
       return;
     }
 
-    onUpdateConfig({ baseUrl, apiKey, modelName });
+    // 检查语音转文字配置
+    if (sttEnabled && (!sttApiUrl || !sttApiKey)) {
+      alert('请完成语音转文字API配置');
+      return;
+    }
+
+    onUpdateConfig({ 
+      baseUrl, 
+      apiKey, 
+      modelName,
+      speechToText: sttEnabled ? {
+        enabled: true,
+        apiUrl: sttApiUrl,
+        apiKey: sttApiKey,
+        model: sttModel
+      } : {
+        enabled: false
+      }
+    });
     alert('配置已保存');
   };
 
@@ -287,6 +311,86 @@ export default function SettingsScreen({ apiConfig, onUpdateConfig, onBack }: Se
           >
             保存配置
           </button>
+        </div>
+
+        {/* 语音转文字设置 */}
+        <div className="bg-white rounded-lg shadow-sm p-4 mt-4">
+          <h2 className="text-base font-semibold text-gray-900 mb-3">🎤 语音转文字</h2>
+          
+          {/* 开关 */}
+          <div className="flex items-center justify-between mb-4 p-3 bg-gray-50 rounded-lg">
+            <div className="flex-1">
+              <p className="font-medium text-gray-900">启用语音识别</p>
+              <p className="text-xs text-gray-500 mt-1">关闭后发送语音需手动输入文字</p>
+            </div>
+            <button
+              onClick={() => setSttEnabled(!sttEnabled)}
+              className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                sttEnabled ? 'bg-blue-500' : 'bg-gray-300'
+              }`}
+            >
+              <span
+                className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                  sttEnabled ? 'translate-x-6' : 'translate-x-1'
+                }`}
+              />
+            </button>
+          </div>
+
+          {sttEnabled && (
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  API 地址
+                </label>
+                <input
+                  type="text"
+                  value={sttApiUrl}
+                  onChange={(e) => setSttApiUrl(e.target.value)}
+                  placeholder="https://open.bigmodel.cn/api/paas/v4"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  API Key
+                </label>
+                <input
+                  type="password"
+                  value={sttApiKey}
+                  onChange={(e) => setSttApiKey(e.target.value)}
+                  placeholder="请输入语音识别API Key"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  识别模型
+                </label>
+                <input
+                  type="text"
+                  value={sttModel}
+                  onChange={(e) => setSttModel(e.target.value)}
+                  placeholder="glm-4-flash"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+
+              {/* 推荐提示 */}
+              <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                <p className="text-xs text-blue-800 leading-relaxed">
+                  <span className="font-semibold">💡 推荐使用：</span><br />
+                  • <span className="font-medium">智谱清言 glm-4-flash</span><br />
+                  • 免费无限次数，识别准确度高<br />
+                  • 支持60秒语音识别<br />
+                  • API地址: <span className="font-mono text-xs">https://open.bigmodel.cn/api/paas/v4</span><br />
+                  • 在 <a href="https://open.bigmodel.cn" target="_blank" rel="noopener noreferrer" className="text-blue-600 underline">智谱AI开放平台</a> 获取免费API Key
+                </p>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* 头像装饰设置 */}

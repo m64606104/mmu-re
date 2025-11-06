@@ -361,6 +361,7 @@ function App() {
         return (
           <MomentsScreen 
             moments={moments}
+            conversations={conversations}
             userProfile={userProfile}
             onAddMoment={addMoment}
             onLikeMoment={likeMoment}

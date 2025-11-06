@@ -14,6 +14,7 @@ import {
 } from '../utils/memorySystem';
 import { detectMemes } from '../utils/memeSystem';
 import { buildTimeAwarePrompt } from '../utils/timeAwareness';
+import { transcribeAudio, isValidSpeechConfig } from '../utils/speechToText';
 
 interface ChatScreenProps {
   conversation: Conversation;
@@ -55,10 +56,8 @@ export default function ChatScreen({
   const [showVoiceConfirmModal, setShowVoiceConfirmModal] = useState(false);
   const [voiceTranscript, setVoiceTranscript] = useState('');
   const [isTranscribing, setIsTranscribing] = useState(false);
-  const [showVoiceMethodModal, setShowVoiceMethodModal] = useState(false);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const recordingTimerRef = useRef<NodeJS.Timeout | null>(null);
-  const recognitionRef = useRef<any>(null);
   
   // 获取用户资料
   const getUserProfile = () => {
@@ -329,126 +328,11 @@ export default function ChatScreen({
 
   // 语音录音功能
   const handleVoiceClick = async () => {
-    // 显示选择弹窗，让用户选择模式
-    setShowVoiceMethodModal(true);
-  };
-
-  // Web Speech API 实时语音识别
-  const startVoiceRecognition = async () => {
-    try {
-      console.log('1. 开始请求麦克风权限...');
-      
-      // 先请求麦克风权限
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      console.log('2. 麦克风权限获取成功');
-      
-      // 权限获取成功，停止测试流
-      stream.getTracks().forEach(track => track.stop());
-      
-      console.log('3. 检查语音识别API...');
-      const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-      
-      if (!SpeechRecognition) {
-        console.error('4. 浏览器不支持Web Speech API');
-        throw new Error('浏览器不支持语音识别');
-      }
-      
-      console.log('4. 创建语音识别实例...');
-      const recognition = new SpeechRecognition();
-      
-      recognition.lang = 'zh-CN';
-      recognition.continuous = false;
-      recognition.interimResults = false;
-      
-      recognitionRef.current = recognition;
-      
-      console.log('5. 设置识别回调...');
-      
-      recognition.onstart = () => {
-        console.log('✅ 语音识别已成功启动！');
-        setIsRecording(true);
-        setIsTranscribing(true);
-        // 开始录音（保存音频文件）
-        startRecording(true);
-      };
-      
-      recognition.onresult = (event: any) => {
-        const transcript = event.results[0][0].transcript;
-        const confidence = event.results[0][0].confidence;
-        
-        console.log('✅ 识别结果:', transcript, '置信度:', confidence);
-        
-        setVoiceTranscript(transcript);
-        setIsTranscribing(false);
-        setIsRecording(false);
-        
-        // 停止录音
-        stopRecording();
-        
-        // 显示确认弹窗
-        setShowVoiceConfirmModal(true);
-      };
-      
-      recognition.onerror = (event: any) => {
-        console.error('❌ 语音识别错误 - 类型:', event.error);
-        console.error('   完整错误信息:', event);
-        console.error('   错误时间:', new Date().toISOString());
-        
-        setIsTranscribing(false);
-        setIsRecording(false);
-        stopRecording();
-        
-        // 特殊处理：如果是not-allowed或no-speech，可能是正常的停止
-        if (event.error === 'no-speech') {
-          console.log('   提示：未检测到语音，等待用户重试');
-        } else if (event.error === 'aborted') {
-          console.log('   提示：识别被中止');
-        }
-        
-        // 等待录音完成后再显示弹窗
-        setTimeout(() => {
-          setVoiceTranscript(''); 
-          setShowVoiceConfirmModal(true);
-        }, 500);
-      };
-      
-      recognition.onend = () => {
-        console.log('📝 语音识别会话结束');
-        // 确保状态重置
-        setIsTranscribing(false);
-      };
-      
-      console.log('6. 启动语音识别...');
-      
-      // 延迟启动，确保权限完全生效
-      await new Promise(resolve => setTimeout(resolve, 300));
-      
-      recognition.start();
-      console.log('7. 语音识别start()已调用，等待onstart回调...');
-      
-    } catch (error) {
-      console.error('❌ 启动语音识别失败:', error);
-      
-      // 如果是权限被拒绝
-      if (error instanceof DOMException && error.name === 'NotAllowedError') {
-        alert('需要麦克风权限才能使用语音功能。\n请在浏览器设置中允许麦克风权限后重试。');
-      } else if (error instanceof Error && error.message.includes('不支持')) {
-        // 浏览器不支持
-        alert('您的浏览器不支持自动语音识别\n将使用录音+手动输入模式');
-        startRecording();
-      } else {
-        // 其他错误，降级
-        console.error('   将降级到录音+手动输入模式');
-        startRecording();
-      }
-      
-      setIsRecording(false);
-      setIsTranscribing(false);
-    }
+    startRecording();
   };
 
   // 开始录音
-  const startRecording = async (withRecognition = false) => {
+  const startRecording = async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       const mediaRecorder = new MediaRecorder(stream);
@@ -458,20 +342,46 @@ export default function ChatScreen({
         audioChunks.push(event.data);
       };
       
-      mediaRecorder.onstop = () => {
+      mediaRecorder.onstop = async () => {
         const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
         setAudioBlob(audioBlob);
         
         // 停止所有音轨
         stream.getTracks().forEach(track => track.stop());
+        
+        // 尝试自动识别语音
+        if (isValidSpeechConfig(apiConfig.speechToText)) {
+          setIsTranscribing(true);
+          try {
+            console.log('🎤 开始调用语音识别API...');
+            const transcript = await transcribeAudio(audioBlob, {
+              apiUrl: apiConfig.speechToText!.apiUrl!,
+              apiKey: apiConfig.speechToText!.apiKey!,
+              model: apiConfig.speechToText!.model!
+            });
+            setVoiceTranscript(transcript);
+            console.log('✅ 语音识别完成:', transcript);
+          } catch (error) {
+            console.error('❌ 语音识别失败:', error);
+            // 显示错误提示
+            const errorMessage = error instanceof Error ? error.message : '语音识别失败';
+            alert(`语音识别失败：${errorMessage}\n\n您可以手动输入语音内容。`);
+            setVoiceTranscript('');
+          } finally {
+            setIsTranscribing(false);
+            setShowVoiceConfirmModal(true);
+          }
+        } else {
+          // 未启用语音识别，直接显示手动输入弹窗
+          console.log('⚠️ 未启用语音识别功能');
+          setVoiceTranscript('');
+          setShowVoiceConfirmModal(true);
+        }
       };
       
       mediaRecorder.start();
       mediaRecorderRef.current = mediaRecorder;
-      
-      if (!withRecognition) {
-        setIsRecording(true);
-      }
+      setIsRecording(true);
       
       // 开始计时
       setRecordingTime(0);
@@ -1217,49 +1127,6 @@ ${conversation.characterSettings.memoryEvents ? `记忆事件：${conversation.c
       </div>
     </div>
 
-    {/* 语音输入方式选择弹窗 */}
-    {showVoiceMethodModal && (
-      <div className="absolute inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-        <div className="bg-white rounded-2xl p-6 w-full max-w-sm shadow-2xl">
-          <h3 className="text-lg font-semibold text-gray-900 mb-4">选择语音输入方式</h3>
-          <div className="space-y-3">
-            <button
-              onClick={() => {
-                setShowVoiceMethodModal(false);
-                startVoiceRecognition();
-              }}
-              className="w-full px-4 py-4 bg-blue-50 border-2 border-blue-500 text-blue-700 rounded-xl hover:bg-blue-100 transition-colors text-left"
-            >
-              <div className="font-semibold mb-1">🎤 自动识别（推荐）</div>
-              <div className="text-sm text-blue-600">
-                说话后自动转文字，需要网络连接
-              </div>
-            </button>
-            
-            <button
-              onClick={() => {
-                setShowVoiceMethodModal(false);
-                startRecording();
-              }}
-              className="w-full px-4 py-4 bg-gray-50 border-2 border-gray-300 text-gray-700 rounded-xl hover:bg-gray-100 transition-colors text-left"
-            >
-              <div className="font-semibold mb-1">✍️ 手动输入</div>
-              <div className="text-sm text-gray-600">
-                录音后手动输入文字，更稳定可靠
-              </div>
-            </button>
-          </div>
-          
-          <button
-            onClick={() => setShowVoiceMethodModal(false)}
-            className="w-full mt-4 px-4 py-2.5 border border-gray-300 text-gray-700 rounded-xl hover:bg-gray-50 transition-colors font-medium"
-          >
-            取消
-          </button>
-        </div>
-      </div>
-    )}
-
     {/* 视频描述弹窗 */}
     {showVideoDescModal && (
       <div className="absolute inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
@@ -1320,9 +1187,6 @@ ${conversation.characterSettings.memoryEvents ? `记忆事件：${conversation.c
           {!isTranscribing && (
             <button
               onClick={() => {
-                if (recognitionRef.current) {
-                  recognitionRef.current.stop();
-                }
                 stopRecording();
                 setIsRecording(false);
                 setIsTranscribing(false);
@@ -1341,12 +1205,14 @@ ${conversation.characterSettings.memoryEvents ? `记忆事件：${conversation.c
       <div className="absolute inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
         <div className="bg-white rounded-2xl p-6 w-full max-w-sm shadow-2xl">
           <h3 className="text-lg font-semibold text-gray-900 mb-4">
-            {voiceTranscript ? '确认语音内容' : '语音识别失败'}
+            {voiceTranscript ? '✅ 语音识别成功' : '✍️ 输入语音内容'}
           </h3>
           <p className="text-sm text-gray-600 mb-4">
             {voiceTranscript 
-              ? '请确认或修改识别的文字内容' 
-              : '自动识别失败，请手动输入您想说的内容（已保存录音）'}
+              ? '已自动识别，您可以确认或修改内容' 
+              : isValidSpeechConfig(apiConfig.speechToText)
+                ? '自动识别失败，请手动输入您想说的内容'
+                : '请输入您想说的内容（未启用语音识别功能）'}
           </p>
           <textarea
             value={voiceTranscript}

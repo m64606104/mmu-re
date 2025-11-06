@@ -26,6 +26,18 @@ export default function ProactiveMessagingService({
 }: ProactiveMessagingServiceProps) {
   const checkIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const isCheckingRef = useRef(false);
+  const conversationsRef = useRef(conversations);
+  const apiConfigRef = useRef(apiConfig);
+  const onNewMessageRef = useRef(onNewMessage);
+  const onUpdateSettingsRef = useRef(onUpdateSettings);
+
+  // 更新refs以保持最新值
+  useEffect(() => {
+    conversationsRef.current = conversations;
+    apiConfigRef.current = apiConfig;
+    onNewMessageRef.current = onNewMessage;
+    onUpdateSettingsRef.current = onUpdateSettings;
+  }, [conversations, apiConfig, onNewMessage, onUpdateSettings]);
 
   useEffect(() => {
     // 初始化所有启用主动消息的对话
@@ -46,7 +58,10 @@ export default function ProactiveMessagingService({
         isCheckingRef.current = true;
         
         try {
-          for (const conversation of conversations) {
+          const currentConversations = conversationsRef.current;
+          const currentApiConfig = apiConfigRef.current;
+          
+          for (const conversation of currentConversations) {
             // 只检查私聊且启用了主动消息的对话
             if (
               conversation.type === 'private' &&
@@ -55,9 +70,9 @@ export default function ProactiveMessagingService({
             ) {
               await sendProactiveMessage(
                 conversation,
-                apiConfig,
-                onNewMessage,
-                onUpdateSettings
+                currentApiConfig,
+                onNewMessageRef.current,
+                onUpdateSettingsRef.current
               );
               
               // 每次发送后等待1秒，避免同时发送多条消息
@@ -80,7 +95,7 @@ export default function ProactiveMessagingService({
         clearInterval(checkIntervalRef.current);
       }
     };
-  }, [conversations, apiConfig, onNewMessage, onUpdateSettings]);
+  }, []); // 移除所有依赖项，只在组件挂载时创建一次定时器
 
   // 这是一个后台服务，不渲染任何UI
   return null;
