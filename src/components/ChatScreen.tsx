@@ -214,16 +214,10 @@ export default function ChatScreen({
     const file = e.target.files?.[0];
     if (!file) return;
 
-    // 检查API配置
-    if (!apiConfig.baseUrl || !apiConfig.apiKey || !apiConfig.modelName) {
-      alert('请先在设置中配置 API');
-      return;
-    }
-
     try {
       // 读取图片为base64
       const reader = new FileReader();
-      reader.onload = async () => {
+      reader.onload = () => {
         const imageData = reader.result as string;
         
         // 创建用户消息（显示图片）
@@ -236,6 +230,7 @@ export default function ChatScreen({
           mediaUrl: imageData
         };
 
+        // 只添加到聊天记录，不自动生成回复
         onUpdateConversation(conversation.id, {
           messages: [...conversation.messages, userMessage],
           lastMessageTime: Date.now()
@@ -243,94 +238,6 @@ export default function ChatScreen({
 
         // 关闭工具栏
         setShowToolbar(false);
-        setIsGenerating(true);
-        setShowTyping(true);
-
-        // 调用视觉识别API
-        try {
-          const response = await fetch(`${apiConfig.baseUrl}/v1/chat/completions`, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'Authorization': `Bearer ${apiConfig.apiKey}`,
-            },
-            body: JSON.stringify({
-              model: apiConfig.modelName,
-              messages: [
-                {
-                  role: 'user',
-                  content: [
-                    {
-                      type: 'text',
-                      text: '请描述这张图片的内容，并根据图片内容以及我们之前的对话自然地回复。'
-                    },
-                    {
-                      type: 'image_url',
-                      image_url: {
-                        url: imageData
-                      }
-                    }
-                  ]
-                }
-              ],
-              max_tokens: 500
-            })
-          });
-
-          if (!response.ok) {
-            throw new Error('图片识别失败');
-          }
-
-          const data = await response.json();
-          const aiResponse = data.choices?.[0]?.message?.content || '抱歉，我无法识别这张图片。';
-
-          setShowTyping(false);
-
-          // 分割AI回复
-          const messages = splitMessages(aiResponse);
-
-          // 发送第一条消息
-          if (messages.length > 0) {
-            const firstMessage: Message = {
-              id: `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-              role: 'assistant',
-              content: messages[0],
-              timestamp: Date.now()
-            };
-
-            onUpdateConversation(conversation.id, {
-              messages: [...conversation.messages, userMessage, firstMessage],
-              lastMessageTime: Date.now(),
-              unreadCount: 0
-            });
-
-            // 发送剩余消息
-            if (messages.length > 1) {
-              setPendingMessages(messages.slice(1));
-              await sendRemainingMessages(messages.slice(1));
-              setPendingMessages([]);
-            }
-          }
-
-        } catch (error) {
-          console.error('图片识别出错:', error);
-          setShowTyping(false);
-          
-          const errorMessage: Message = {
-            id: `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-            role: 'assistant',
-            content: '抱歉，图片识别失败了，请稍后再试。',
-            timestamp: Date.now()
-          };
-
-          onUpdateConversation(conversation.id, {
-            messages: [...conversation.messages, userMessage, errorMessage],
-            lastMessageTime: Date.now(),
-            unreadCount: 0
-          });
-        } finally {
-          setIsGenerating(false);
-        }
       };
 
       reader.readAsDataURL(file);
@@ -485,11 +392,14 @@ export default function ChatScreen({
     setShowSendingHint(true);
 
     try {
-      // 获取最后一条用户消息的时间戳和内容（用于时间感知）
+      // 获取最后一条用户消息
       const userMessagesForTime = conversation.messages.filter(m => m.role === 'user');
       const lastUserMsgForTime = userMessagesForTime[userMessagesForTime.length - 1];
       const lastUserTimestamp = lastUserMsgForTime?.timestamp;
       const lastUserContent = lastUserMsgForTime?.content;
+      
+      // 检查最后一条消息是否包含图片
+      const hasImage = lastUserMsgForTime?.mediaType === 'image' && lastUserMsgForTime?.mediaUrl;
       
       // 生成时间感知提示词
       const timeAwarePrompt = buildTimeAwarePrompt(lastUserTimestamp, lastUserContent);
@@ -523,13 +433,59 @@ ${conversation.characterSettings.memoryEvents ? `记忆事件：${conversation.c
       // 添加时间感知信息
       systemPrompt += timeAwarePrompt;
 
-      const messages = [
-        { role: 'system', content: systemPrompt },
-        ...conversation.messages.map(m => ({
+      let messages;
+      let requestBody;
+
+      // 如果最后一条消息包含图片，使用vision API
+      if (hasImage) {
+        // 构建包含图片的消息（只传最近的对话历史，不包括图片之前的所有历史）
+        const recentMessages = conversation.messages.slice(-10); // 只取最近10条
+        const historyMessages = recentMessages.slice(0, -1).map(m => ({
           role: m.role,
-          content: m.content,
-        })),
-      ];
+          content: m.content
+        }));
+
+        messages = [
+          { role: 'system', content: systemPrompt },
+          ...historyMessages,
+          {
+            role: 'user',
+            content: [
+              {
+                type: 'text',
+                text: '（用户发送了一张图片）请像真人朋友一样自然地对图片内容做出反应和回复，不要生硬地描述图片内容。'
+              },
+              {
+                type: 'image_url',
+                image_url: {
+                  url: lastUserMsgForTime.mediaUrl
+                }
+              }
+            ]
+          }
+        ];
+
+        requestBody = {
+          model: apiConfig.modelName,
+          messages,
+          max_tokens: 500,
+          temperature: 0.8
+        };
+      } else {
+        // 普通文本消息
+        messages = [
+          { role: 'system', content: systemPrompt },
+          ...conversation.messages.map(m => ({
+            role: m.role,
+            content: m.content,
+          })),
+        ];
+
+        requestBody = {
+          model: apiConfig.modelName,
+          messages
+        };
+      }
 
       const response = await fetch(`${apiConfig.baseUrl}/v1/chat/completions`, {
         method: 'POST',
@@ -537,10 +493,7 @@ ${conversation.characterSettings.memoryEvents ? `记忆事件：${conversation.c
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${apiConfig.apiKey}`,
         },
-        body: JSON.stringify({
-          model: apiConfig.modelName,
-          messages,
-        }),
+        body: JSON.stringify(requestBody),
       });
 
       if (!response.ok) {
