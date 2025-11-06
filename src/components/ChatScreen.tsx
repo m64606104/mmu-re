@@ -55,6 +55,7 @@ export default function ChatScreen({
   const [showVoiceConfirmModal, setShowVoiceConfirmModal] = useState(false);
   const [voiceTranscript, setVoiceTranscript] = useState('');
   const [isTranscribing, setIsTranscribing] = useState(false);
+  const [showVoiceMethodModal, setShowVoiceMethodModal] = useState(false);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const recordingTimerRef = useRef<NodeJS.Timeout | null>(null);
   const recognitionRef = useRef<any>(null);
@@ -328,22 +329,8 @@ export default function ChatScreen({
 
   // 语音录音功能
   const handleVoiceClick = async () => {
-    try {
-      // 检查浏览器是否支持语音识别
-      const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-      
-      if (SpeechRecognition) {
-        // 支持语音识别，使用实时转文字
-        startVoiceRecognition();
-      } else {
-        // 不支持，使用录音+手动输入
-        alert('您的浏览器不支持自动语音识别，将使用录音+手动输入模式');
-        startRecording();
-      }
-    } catch (error) {
-      console.error('启动语音功能失败:', error);
-      alert('启动语音功能失败');
-    }
+    // 显示选择弹窗，让用户选择模式
+    setShowVoiceMethodModal(true);
   };
 
   // Web Speech API 实时语音识别
@@ -1229,6 +1216,49 @@ ${conversation.characterSettings.memoryEvents ? `记忆事件：${conversation.c
         </div>
       </div>
     </div>
+
+    {/* 语音输入方式选择弹窗 */}
+    {showVoiceMethodModal && (
+      <div className="absolute inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+        <div className="bg-white rounded-2xl p-6 w-full max-w-sm shadow-2xl">
+          <h3 className="text-lg font-semibold text-gray-900 mb-4">选择语音输入方式</h3>
+          <div className="space-y-3">
+            <button
+              onClick={() => {
+                setShowVoiceMethodModal(false);
+                startVoiceRecognition();
+              }}
+              className="w-full px-4 py-4 bg-blue-50 border-2 border-blue-500 text-blue-700 rounded-xl hover:bg-blue-100 transition-colors text-left"
+            >
+              <div className="font-semibold mb-1">🎤 自动识别（推荐）</div>
+              <div className="text-sm text-blue-600">
+                说话后自动转文字，需要网络连接
+              </div>
+            </button>
+            
+            <button
+              onClick={() => {
+                setShowVoiceMethodModal(false);
+                startRecording();
+              }}
+              className="w-full px-4 py-4 bg-gray-50 border-2 border-gray-300 text-gray-700 rounded-xl hover:bg-gray-100 transition-colors text-left"
+            >
+              <div className="font-semibold mb-1">✍️ 手动输入</div>
+              <div className="text-sm text-gray-600">
+                录音后手动输入文字，更稳定可靠
+              </div>
+            </button>
+          </div>
+          
+          <button
+            onClick={() => setShowVoiceMethodModal(false)}
+            className="w-full mt-4 px-4 py-2.5 border border-gray-300 text-gray-700 rounded-xl hover:bg-gray-50 transition-colors font-medium"
+          >
+            取消
+          </button>
+        </div>
+      </div>
+    )}
 
     {/* 视频描述弹窗 */}
     {showVideoDescModal && (
