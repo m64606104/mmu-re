@@ -132,8 +132,8 @@ export default function ChatScreen({
       const hasParenthesesEmoji = /[（(][^）)]*\.(jpg|png|gif|jpeg|webp)[）)]/gi.test(trimmed);
       const hasShortParentheses = /[（(][^）)]{1,15}[）)]/.test(trimmed); // 短括号内容也保护
       
-      if (hasUrl || hasParenthesesEmoji || (hasShortParentheses && trimmed.length < 50)) {
-        // 如果包含URL、括号表情、或短括号内容，整段作为一条消息
+      // 如果整段较短（少于60字），直接作为一条消息，不分割
+      if (trimmed.length < 60 || hasUrl || hasParenthesesEmoji || hasShortParentheses) {
         messages.push(trimmed);
       } else {
         // 按句号、问号、感叹号等结束标点分割
@@ -143,14 +143,14 @@ export default function ChatScreen({
           const sentenceTrimmed = sentence.trim();
           if (!sentenceTrimmed) continue;
           
-          // 如果句子太长（超过30个字符），尝试按逗号、分号等分割
-          if (sentenceTrimmed.length > 30 && !hasShortParentheses) {
+          // 如果句子太长（超过40个字符），尝试按逗号、分号等分割
+          if (sentenceTrimmed.length > 40 && !hasShortParentheses) {
             const parts = sentenceTrimmed.match(/[^，,；;]+[，,；;]+|[^，,；;]+$/g) || [sentenceTrimmed];
             messages.push(...parts.map(p => {
               const cleaned = p.trim();
               // 去掉末尾的逗号，使显示更贴合人的发送习惯
               return cleaned.replace(/[，,]$/, '');
-            }).filter(p => p));
+            }).filter(p => p.length > 0));
           } else {
             messages.push(sentenceTrimmed);
           }
@@ -446,14 +446,14 @@ ${conversation.characterSettings.memoryEvents ? `记忆事件：${conversation.c
         }));
 
         messages = [
-          { role: 'system', content: systemPrompt + '\n\n【图片识别重要规则】：\n- 只能回复你在图片中实际看到的内容\n- 禁止编造、猜测、脑补任何图片中不存在的元素\n- 禁止基于图片进行二次创作或想象\n- 如果看不清楚某些细节，直接说看不清，不要猜测\n- 保持诚实，不确定的内容绝对不要说' },
+          { role: 'system', content: systemPrompt + '\n\n【图片识别规则】：\n- 只描述你在图片中实际看到的内容\n- 禁止编造、猜测图片中不存在的元素\n- 禁止说"让我看看""帮你看看"等话，直接自然反应即可\n- 不确定的内容不要说\n- 像朋友间日常聊天一样回复，不要太正式' },
           ...historyMessages,
           {
             role: 'user',
             content: [
               {
                 type: 'text',
-                text: '（用户发送了一张图片）\n\n请像真人朋友一样自然地对图片内容做出反应和回复。\n\n【关键要求】：\n1. 只说你在图片中实际看到的内容\n2. 绝对禁止编造、想象、脑补任何不存在的细节\n3. 不确定的内容不要说，看不清的地方直接说看不清\n4. 用自然口语回复，不要生硬地列举描述\n5. 如果图片内容简单，回复也应该简短自然'
+                text: '看这张图'
               },
               {
                 type: 'image_url',
@@ -468,8 +468,8 @@ ${conversation.characterSettings.memoryEvents ? `记忆事件：${conversation.c
         requestBody = {
           model: apiConfig.modelName,
           messages,
-          max_tokens: 300,
-          temperature: 0.3
+          max_tokens: 500,
+          temperature: 0.4
         };
       } else {
         // 普通文本消息
