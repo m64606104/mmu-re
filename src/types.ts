@@ -44,6 +44,27 @@ export interface CharacterSettings {
   };
 }
 
+// AI状态类型
+export type AIStatus = 'online' | 'offline' | 'busy' | 'resting' | 'away';
+
+// AI行为轨迹条目
+export interface AIActivityLog {
+  id: string;
+  timestamp: number; // 时间戳
+  activity: string; // 行为描述
+  location?: string; // 地点
+  status?: AIStatus; // 对应的状态
+}
+
+// AI状态信息
+export interface AIStatusInfo {
+  status: AIStatus; // 当前状态
+  statusText: string; // 状态显示文字（如"在线"、"休息中"）
+  currentActivity?: string; // 当前行为（如"查看Ta的行为轨迹"）
+  activityLogs: AIActivityLog[]; // 行为轨迹列表
+  lastUpdateTime: number; // 最后更新时间
+}
+
 export interface Conversation {
   id: string;
   type: 'private' | 'group';
@@ -56,6 +77,7 @@ export interface Conversation {
   enabledFeatures?: string[];
   groupRemark?: string; // 群备注名（仅群聊）
   members?: string[]; // 群成员ID数组（仅群聊）
+  aiStatus?: AIStatusInfo; // AI状态信息（仅私聊AI角色）
 }
 
 export interface UserProfile {
