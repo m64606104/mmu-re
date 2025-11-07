@@ -203,7 +203,7 @@ export const analyzeMessageAndUpdateStatus = async (
 
 /**
  * AI主动更新自己的状态（用于ChatScreen调用）
- * 解析AI消息中的状态更新指令和活动描述
+ * 解析AI消息中的状态更新指令和详细活动描述
  */
 export const analyzeAndUpdateStatusFromAI = async (
   conversationId: string,
@@ -211,292 +211,86 @@ export const analyzeAndUpdateStatusFromAI = async (
 ): Promise<void> => {
   const lowerMsg = message.toLowerCase();
   
-  // 智能提取活动描述和地点
-  const extractActivityAndLocation = (msg: string): { activity?: string; location?: string } => {
-    // 提取"在XXX做XXX"的模式
-    const patterns = [
-      // "在家休息"、"在公司加班"
-      { regex: /在(家|公司|办公室|实验室|图书馆|教室|咖啡厅|餐厅|健身房|商场|宿舍)([^\s。，,！!？?]{1,10})/, activity: (m: RegExpMatchArray) => m[2], location: (m: RegExpMatchArray) => m[1] },
-      // "回家睡觉"、"去公司开会"
-      { regex: /(回|去|到)(家|公司|办公室|实验室|图书馆|教室|咖啡厅|餐厅|健身房|商场|宿舍)([^\s。，,！!？?]{1,10})/, activity: (m: RegExpMatchArray) => m[3], location: (m: RegExpMatchArray) => m[2] },
-      // "正在XXX"
-      { regex: /正在([^\s。，,！!？?]{2,10})/, activity: (m: RegExpMatchArray) => m[1], location: undefined },
-      // "刚XXX"、"刚刚XXX"
-      { regex: /刚刚?([^\s。，,！!？?]{2,10})/, activity: (m: RegExpMatchArray) => m[1], location: undefined },
-    ];
-    
-    for (const { regex, activity, location } of patterns) {
-      const match = msg.match(regex);
-      if (match) {
-        return {
-          activity: activity ? activity(match) : undefined,
-          location: location ? location(match) : undefined
-        };
-      }
-    }
-    
-    return {};
-  };
-  
   // 检测AI是否明确表示要改状态
   // 例如："我把状态改回来"、"改成在线"、"状态填错了"
   if (lowerMsg.includes('状态') && (lowerMsg.includes('改') || lowerMsg.includes('换') || lowerMsg.includes('设置'))) {
-    const { activity, location } = extractActivityAndLocation(message);
+    // 提取活动描述和地点（从整个消息中推断）
+    let activityDescription = '';
+    let location: string | undefined = undefined;
+    
+    // 尝试从消息中提取活动描述
+    // 例如："在家休息"、"在公司工作"、"出门了"
+    const activityPatterns = [
+      /在(家|公司|实验室|图书馆|教室|宿舍|咖啡厅|餐厅|健身房|商场|办公室)(.*?)(?:[，。！？\n]|$)/,
+      /(睡觉|休息|工作|学习|吃饭|开会|上课|看书|锻炼|购物|喝咖啡|点外卖)(?:中|了|呢)?/,
+      /(刚|准备|正在|要)(.*?)(?:[，。！？\n]|$)/,
+    ];
+    
+    for (const pattern of activityPatterns) {
+      const match = message.match(pattern);
+      if (match) {
+        if (match[1] && match[2]) {
+          // 匹配到"在XX做YY"
+          location = match[1];
+          activityDescription = match[2].trim();
+          if (activityDescription) {
+            activityDescription = `在${location}${activityDescription}`;
+          } else {
+            activityDescription = `在${location}`;
+          }
+        } else if (match[1]) {
+          // 匹配到单独的活动
+          activityDescription = match[0].trim();
+        }
+        break;
+      }
+    }
     
     // 检测目标状态
     if (lowerMsg.includes('在线')) {
-      await updateAIStatus(conversationId, 'online', activity || '在线', location);
-      console.log(`✅ AI自主更新状态：在线${activity ? ` - ${activity}` : ''}${location ? ` @ ${location}` : ''}`);
+      await updateAIStatus(conversationId, 'online', activityDescription || '在线', location);
+      console.log(`✅ AI自主更新状态：在线${activityDescription ? ` - ${activityDescription}` : ''}`);
     }
     else if (lowerMsg.includes('忙碌') || lowerMsg.includes('在忙')) {
-      await updateAIStatus(conversationId, 'busy', activity || '忙碌', location);
-      console.log(`✅ AI自主更新状态：忙碌${activity ? ` - ${activity}` : ''}${location ? ` @ ${location}` : ''}`);
+      await updateAIStatus(conversationId, 'busy', activityDescription || '忙碌', location);
+      console.log(`✅ AI自主更新状态：忙碌${activityDescription ? ` - ${activityDescription}` : ''}`);
     }
     else if (lowerMsg.includes('休息')) {
-      await updateAIStatus(conversationId, 'resting', activity || '休息中', location);
-      console.log(`✅ AI自主更新状态：休息中${activity ? ` - ${activity}` : ''}${location ? ` @ ${location}` : ''}`);
+      await updateAIStatus(conversationId, 'resting', activityDescription || '休息中', location);
+      console.log(`✅ AI自主更新状态：休息中${activityDescription ? ` - ${activityDescription}` : ''}`);
     }
     else if (lowerMsg.includes('离开')) {
-      await updateAIStatus(conversationId, 'away', activity || '离开', location);
-      console.log(`✅ AI自主更新状态：离开${activity ? ` - ${activity}` : ''}${location ? ` @ ${location}` : ''}`);
+      await updateAIStatus(conversationId, 'away', activityDescription || '离开', location);
+      console.log(`✅ AI自主更新状态：离开${activityDescription ? ` - ${activityDescription}` : ''}`);
     }
     else if (lowerMsg.includes('离线')) {
-      await updateAIStatus(conversationId, 'offline', activity || '离线', location);
-      console.log(`✅ AI自主更新状态：离线${activity ? ` - ${activity}` : ''}${location ? ` @ ${location}` : ''}`);
+      await updateAIStatus(conversationId, 'offline', activityDescription || '离线', location);
+      console.log(`✅ AI自主更新状态：离线${activityDescription ? ` - ${activityDescription}` : ''}`);
     }
   }
   
   // 如果AI提到具体活动，也更新到轨迹
-  if (lowerMsg.includes('去') || lowerMsg.includes('在') || lowerMsg.includes('正在') || lowerMsg.includes('刚')) {
-    const { activity, location } = extractActivityAndLocation(message);
-    
-    if (activity) {
-      const activityText = location ? `${activity} @ ${location}` : activity;
-      await addActivityLog(conversationId, activityText, location);
-      console.log(`✅ AI自主更新活动：${activityText}`);
+  if (lowerMsg.includes('去') || lowerMsg.includes('在')) {
+    // 提取地点和活动
+    const locationMatch = message.match(/(在|去|到)(公司|家|实验室|图书馆|教室|会议室|咖啡厅|餐厅|健身房|商场|宿舍|办公室)(.*?)(?:[，。！？\n]|$)/);
+    if (locationMatch) {
+      const action = locationMatch[1];
+      const location = locationMatch[2];
+      const activity = locationMatch[3]?.trim();
+      
+      let logText = '';
+      if (action === '去') {
+        logText = activity ? `去${location}${activity}` : `正在去${location}`;
+      } else if (action === '在') {
+        logText = activity ? `在${location}${activity}` : `在${location}`;
+      } else if (action === '到') {
+        logText = activity ? `到${location}${activity}` : `到了${location}`;
+      }
+      
+      if (logText) {
+        await addActivityLog(conversationId, logText, location);
+        console.log(`✅ AI自主更新活动：${logText}`);
+      }
     }
   }
-};
-
-/**
- * 根据角色设定、时间、日期智能生成行为轨迹
- */
-export const generateSmartActivityLog = async (
-  conversationId: string,
-  characterSettings?: any
-): Promise<void> => {
-  const now = new Date();
-  const hour = now.getHours();
-  const dayOfWeek = now.getDay(); // 0=周日, 1=周一, ..., 6=周六
-  const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
-  
-  // 从角色设定中提取职业信息
-  const getCharacterType = (): 'student' | 'worker' | 'freelancer' | 'unknown' => {
-    if (!characterSettings) return 'unknown';
-    
-    const settings = JSON.stringify(characterSettings).toLowerCase();
-    
-    if (settings.includes('学生') || settings.includes('大学') || settings.includes('上课') || settings.includes('宿舍')) {
-      return 'student';
-    }
-    if (settings.includes('社畜') || settings.includes('上班') || settings.includes('公司') || 
-        settings.includes('职员') || settings.includes('白领') || settings.includes('助理') ||
-        settings.includes('经理') || settings.includes('总裁')) {
-      return 'worker';
-    }
-    if (settings.includes('自由职业') || settings.includes('freelance') || settings.includes('远程')) {
-      return 'freelancer';
-    }
-    
-    return 'unknown';
-  };
-  
-  const characterType = getCharacterType();
-  let activity = '';
-  let location = '';
-  let status: AIStatus = 'online';
-  
-  // 根据角色类型和时间生成合理的活动
-  if (characterType === 'student') {
-    // 学生
-    if (hour >= 0 && hour < 7) {
-      activity = '睡觉';
-      location = '宿舍';
-      status = 'offline';
-    } else if (hour >= 7 && hour < 8) {
-      activity = isWeekend ? '睡懒觉' : '起床洗漱';
-      location = '宿舍';
-      status = isWeekend ? 'offline' : 'online';
-    } else if (hour >= 8 && hour < 12) {
-      if (isWeekend) {
-        const activities = ['睡懒觉', '在宿舍玩游戏', '图书馆自习'];
-        activity = activities[Math.floor(Math.random() * activities.length)];
-        location = activity.includes('宿舍') ? '宿舍' : '图书馆';
-        status = activity === '睡懒觉' ? 'resting' : 'busy';
-      } else {
-        activity = '上课';
-        location = '教室';
-        status = 'busy';
-      }
-    } else if (hour >= 12 && hour < 14) {
-      const activities = ['食堂吃饭', '点外卖', '宿舍吃饭'];
-      activity = activities[Math.floor(Math.random() * activities.length)];
-      location = activity.includes('食堂') ? '食堂' : '宿舍';
-      status = 'online';
-    } else if (hour >= 14 && hour < 18) {
-      if (isWeekend) {
-        const activities = ['图书馆学习', '宿舍休息', '逛街', '打球'];
-        activity = activities[Math.floor(Math.random() * activities.length)];
-        location = activity.includes('图书馆') ? '图书馆' : activity.includes('宿舍') ? '宿舍' : '校外';
-        status = activity.includes('休息') ? 'resting' : 'busy';
-      } else {
-        const activities = ['上课', '图书馆自习', '实验室做实验'];
-        activity = activities[Math.floor(Math.random() * activities.length)];
-        location = activity.includes('上课') ? '教室' : activity.includes('图书馆') ? '图书馆' : '实验室';
-        status = 'busy';
-      }
-    } else if (hour >= 18 && hour < 20) {
-      const activities = ['食堂吃饭', '点外卖', '出去吃饭'];
-      activity = activities[Math.floor(Math.random() * activities.length)];
-      location = activity.includes('食堂') ? '食堂' : activity.includes('出去') ? '餐厅' : '宿舍';
-      status = 'online';
-    } else if (hour >= 20 && hour < 23) {
-      const activities = ['宿舍玩游戏', '图书馆自习', '宿舍追剧', '和朋友聊天'];
-      activity = activities[Math.floor(Math.random() * activities.length)];
-      location = activity.includes('图书馆') ? '图书馆' : '宿舍';
-      status = 'online';
-    } else {
-      activity = '准备睡觉';
-      location = '宿舍';
-      status = 'resting';
-    }
-  } else if (characterType === 'worker') {
-    // 上班族/社畜
-    if (hour >= 0 && hour < 7) {
-      activity = '睡觉';
-      location = '家';
-      status = 'offline';
-    } else if (hour >= 7 && hour < 9) {
-      if (isWeekend) {
-        activity = '睡懒觉';
-        location = '家';
-        status = 'resting';
-      } else {
-        const activities = ['准备上班', '通勤路上', '买早餐'];
-        activity = activities[Math.floor(Math.random() * activities.length)];
-        location = activity.includes('准备') ? '家' : '路上';
-        status = 'away';
-      }
-    } else if (hour >= 9 && hour < 12) {
-      if (isWeekend) {
-        const activities = ['在家休息', '逛街', '健身房锻炼'];
-        activity = activities[Math.floor(Math.random() * activities.length)];
-        location = activity.includes('在家') ? '家' : activity.includes('健身') ? '健身房' : '商场';
-        status = activity.includes('休息') ? 'online' : 'busy';
-      } else {
-        const activities = ['开会', '处理工作', '写方案'];
-        activity = activities[Math.floor(Math.random() * activities.length)];
-        location = '公司';
-        status = 'busy';
-      }
-    } else if (hour >= 12 && hour < 14) {
-      const activities = ['公司食堂吃饭', '点外卖', '出去吃饭', '买咖啡'];
-      activity = activities[Math.floor(Math.random() * activities.length)];
-      location = activity.includes('公司') ? '公司' : activity.includes('外卖') ? '公司' : activity.includes('咖啡') ? '咖啡厅' : '餐厅';
-      status = 'online';
-    } else if (hour >= 14 && hour < 18) {
-      if (isWeekend) {
-        const activities = ['在家看电影', '咖啡厅工作', '约朋友见面'];
-        activity = activities[Math.floor(Math.random() * activities.length)];
-        location = activity.includes('在家') ? '家' : activity.includes('咖啡厅') ? '咖啡厅' : '外面';
-        status = activity.includes('工作') ? 'busy' : 'online';
-      } else {
-        const activities = ['开会', '加班处理事务', '写报告', '买咖啡提神'];
-        activity = activities[Math.floor(Math.random() * activities.length)];
-        location = activity.includes('咖啡') ? '咖啡厅' : '公司';
-        status = 'busy';
-      }
-    } else if (hour >= 18 && hour < 20) {
-      if (isWeekend) {
-        activity = '在家做饭';
-        location = '家';
-        status = 'online';
-      } else {
-        const activities = ['准备下班', '加班', '回家路上', '和同事吃饭'];
-        activity = activities[Math.floor(Math.random() * activities.length)];
-        location = activity.includes('加班') ? '公司' : activity.includes('吃饭') ? '餐厅' : '公司';
-        status = activity.includes('加班') ? 'busy' : 'away';
-      }
-    } else if (hour >= 20 && hour < 23) {
-      const activities = ['在家休息', '追剧', '健身房锻炼', '处理私事'];
-      activity = activities[Math.floor(Math.random() * activities.length)];
-      location = activity.includes('健身') ? '健身房' : '家';
-      status = 'online';
-    } else {
-      activity = '准备睡觉';
-      location = '家';
-      status = 'resting';
-    }
-  } else if (characterType === 'freelancer') {
-    // 自由职业者
-    if (hour >= 0 && hour < 8) {
-      activity = '睡觉';
-      location = '家';
-      status = 'offline';
-    } else if (hour >= 8 && hour < 12) {
-      const activities = ['在家工作', '咖啡厅工作', '处理项目'];
-      activity = activities[Math.floor(Math.random() * activities.length)];
-      location = activity.includes('咖啡厅') ? '咖啡厅' : '家';
-      status = 'busy';
-    } else if (hour >= 12 && hour < 14) {
-      activity = '做饭/点外卖';
-      location = '家';
-      status = 'online';
-    } else if (hour >= 14 && hour < 18) {
-      const activities = ['在家工作', '咖啡厅工作', '图书馆工作', '休息放松'];
-      activity = activities[Math.floor(Math.random() * activities.length)];
-      location = activity.includes('咖啡厅') ? '咖啡厅' : activity.includes('图书馆') ? '图书馆' : '家';
-      status = activity.includes('休息') ? 'online' : 'busy';
-    } else if (hour >= 18 && hour < 23) {
-      const activities = ['在家做饭', '外出吃饭', '在家休息', '继续工作'];
-      activity = activities[Math.floor(Math.random() * activities.length)];
-      location = activity.includes('外出') ? '餐厅' : '家';
-      status = activity.includes('工作') ? 'busy' : 'online';
-    } else {
-      activity = '准备睡觉';
-      location = '家';
-      status = 'resting';
-    }
-  } else {
-    // 未知类型，使用通用逻辑
-    if (hour >= 0 && hour < 7) {
-      activity = '睡觉';
-      status = 'offline';
-    } else if (hour >= 7 && hour < 9) {
-      activity = '起床准备';
-      status = 'online';
-    } else if (hour >= 9 && hour < 12) {
-      activity = '忙碌中';
-      status = 'busy';
-    } else if (hour >= 12 && hour < 14) {
-      activity = '午餐时间';
-      status = 'online';
-    } else if (hour >= 14 && hour < 18) {
-      activity = '忙碌中';
-      status = 'busy';
-    } else if (hour >= 18 && hour < 20) {
-      activity = '晚餐时间';
-      status = 'online';
-    } else if (hour >= 20 && hour < 23) {
-      activity = '休息放松';
-      status = 'online';
-    } else {
-      activity = '准备睡觉';
-      status = 'resting';
-    }
-  }
-  
-  // 更新状态
-  await updateAIStatus(conversationId, status, activity, location);
-  console.log(`🤖 智能生成行为轨迹：${status} - ${activity}${location ? ` @ ${location}` : ''}`);
 };

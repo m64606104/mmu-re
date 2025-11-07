@@ -17,6 +17,7 @@ import { MomentsAutoGenerator } from './components/MomentsAutoGenerator';
 import ProactiveMessagingService from './components/ProactiveMessagingService';
 import MessageNotification from './components/MessageNotification';
 import { smartLoad, smartSave, migrateToIndexedDB } from './utils/storage';
+import SmartActivityScheduler from './components/SmartActivityScheduler';
 
 function App() {
   const [currentScreen, setCurrentScreen] = useState<Screen>('home');
@@ -493,6 +494,13 @@ function App() {
         apiConfig={apiConfig}
         onNewMessage={addMessageToConversation}
         onUpdateSettings={updateProactiveMessagingTime}
+      />
+      
+      {/* 智能行为轨迹调度器 - 后台运行 */}
+      <SmartActivityScheduler
+        conversations={conversations}
+        apiConfig={apiConfig}
+        intervalMinutes={90}
       />
     </>
   );
