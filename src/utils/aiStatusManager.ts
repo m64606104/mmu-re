@@ -202,8 +202,71 @@ export const analyzeMessageAndUpdateStatus = async (
 };
 
 /**
+ * 从AI消息中智能提取地点信息
+ */
+const extractLocationFromMessage = (message: string): string | undefined => {
+  const lowerMsg = message.toLowerCase();
+  
+  // 地点关键词匹配
+  const locationPatterns = [
+    { keywords: ['公司', '办公室', '写字楼', '上班'], location: '公司' },
+    { keywords: ['家', '家里', '家中', '房子', '租房'], location: '家' },
+    { keywords: ['实验室'], location: '实验室' },
+    { keywords: ['图书馆'], location: '图书馆' },
+    { keywords: ['教室', '上课'], location: '教室' },
+    { keywords: ['会议室', '开会'], location: '会议室' },
+    { keywords: ['咖啡厅', '咖啡馆', '咖啡店'], location: '咖啡厅' },
+    { keywords: ['餐厅', '饭店', '吃饭'], location: '餐厅' },
+    { keywords: ['健身房', '健身', '锻炼'], location: '健身房' },
+    { keywords: ['商场', '购物中心', '逛街'], location: '商场' },
+    { keywords: ['医院', '看病'], location: '医院' },
+    { keywords: ['机场', '飞机'], location: '机场' },
+    { keywords: ['车站', '高铁', '火车'], location: '车站' },
+    { keywords: ['路上', '在路上'], location: '路上' },
+  ];
+  
+  for (const { keywords, location } of locationPatterns) {
+    if (keywords.some(keyword => lowerMsg.includes(keyword))) {
+      return location;
+    }
+  }
+  
+  return undefined;
+};
+
+/**
+ * 从AI消息中智能提取活动描述
+ */
+const extractActivityFromMessage = (message: string): string | undefined => {
+  const lowerMsg = message.toLowerCase();
+  
+  // 活动关键词匹配
+  const activityPatterns = [
+    { keywords: ['休息', '歇会', '躺着', '放松'], activity: '休息' },
+    { keywords: ['工作', '加班', '干活'], activity: '工作' },
+    { keywords: ['学习', '看书', '复习'], activity: '学习' },
+    { keywords: ['做饭', '煮饭', '烹饪'], activity: '做饭' },
+    { keywords: ['看剧', '追剧', '看电影', '看视频'], activity: '看剧' },
+    { keywords: ['玩游戏', '打游戏', '开黑'], activity: '玩游戏' },
+    { keywords: ['运动', '健身', '跑步', '锻炼'], activity: '运动' },
+    { keywords: ['睡觉', '睡了', '入睡'], activity: '睡觉' },
+    { keywords: ['吃饭', '吃东西', '用餐'], activity: '吃饭' },
+    { keywords: ['开会', '会议'], activity: '开会' },
+    { keywords: ['聊天', '聊天中'], activity: '聊天' },
+  ];
+  
+  for (const { keywords, activity } of activityPatterns) {
+    if (keywords.some(keyword => lowerMsg.includes(keyword))) {
+      return activity;
+    }
+  }
+  
+  return undefined;
+};
+
+/**
  * AI主动更新自己的状态（用于ChatScreen调用）
- * 解析AI消息中的状态更新指令
+ * 解析AI消息中的状态更新指令，并智能生成活动描述和地点
  */
 export const analyzeAndUpdateStatusFromAI = async (
   conversationId: string,
@@ -211,47 +274,74 @@ export const analyzeAndUpdateStatusFromAI = async (
 ): Promise<void> => {
   const lowerMsg = message.toLowerCase();
   
+  // 智能提取地点和活动
+  const location = extractLocationFromMessage(message);
+  const activity = extractActivityFromMessage(message);
+  
   // 检测AI是否明确表示要改状态
   // 例如："我把状态改回来"、"改成在线"、"状态填错了"
-  if (lowerMsg.includes('状态') && (lowerMsg.includes('改') || lowerMsg.includes('换') || lowerMsg.includes('设置'))) {
+  if (lowerMsg.includes('状态') && (lowerMsg.includes('改') || lowerMsg.includes('换') || lowerMsg.includes('设置') || lowerMsg.includes('错'))) {
+    let targetStatus: AIStatus | null = null;
+    let statusActivity: string | undefined = undefined;
+    
     // 检测目标状态
     if (lowerMsg.includes('在线')) {
-      await updateAIStatus(conversationId, 'online', '在线', undefined);
-      console.log('✅ AI自主更新状态：在线');
+      targetStatus = 'online';
+      // 生成活动描述：优先使用提取的活动，否则使用地点信息
+      if (activity) {
+        statusActivity = `在${location || ''}${activity}`;
+      } else if (location) {
+        statusActivity = `在${location}`;
+      } else {
+        statusActivity = '在线';
+      }
     }
-    else if (lowerMsg.includes('忙碌') || lowerMsg.includes('在忙')) {
-      await updateAIStatus(conversationId, 'busy', '忙碌', undefined);
-      console.log('✅ AI自主更新状态：忙碌');
+    else if (lowerMsg.includes('忙碌') || lowerMsg.includes('在忙') || lowerMsg.includes('忙着')) {
+      targetStatus = 'busy';
+      if (activity) {
+        statusActivity = `忙着${activity}`;
+      } else if (location) {
+        statusActivity = `在${location}忙碌`;
+      } else {
+        statusActivity = '忙碌';
+      }
     }
     else if (lowerMsg.includes('休息')) {
-      await updateAIStatus(conversationId, 'resting', '休息中', undefined);
-      console.log('✅ AI自主更新状态：休息中');
+      targetStatus = 'resting';
+      statusActivity = location ? `在${location}休息` : '休息中';
     }
     else if (lowerMsg.includes('离开')) {
-      await updateAIStatus(conversationId, 'away', '离开', undefined);
-      console.log('✅ AI自主更新状态：离开');
+      targetStatus = 'away';
+      statusActivity = location ? `离开去${location}` : '离开';
     }
     else if (lowerMsg.includes('离线')) {
-      await updateAIStatus(conversationId, 'offline', '离线', undefined);
-      console.log('✅ AI自主更新状态：离线');
+      targetStatus = 'offline';
+      statusActivity = '离线';
+    }
+    
+    // 执行状态更新
+    if (targetStatus) {
+      await updateAIStatus(conversationId, targetStatus, statusActivity, location);
+      console.log(`✅ AI自主更新状态：${targetStatus} | 活动：${statusActivity} | 地点：${location || '无'}`);
+      return; // 已更新状态，直接返回
     }
   }
   
-  // 如果AI提到具体活动，也更新到轨迹
-  if (lowerMsg.includes('去') || lowerMsg.includes('在')) {
-    // 提取地点
-    const locationMatch = message.match(/(在|去|到)(公司|家|实验室|图书馆|教室|会议室|咖啡厅|餐厅|健身房|商场)/);
-    if (locationMatch) {
-      const action = locationMatch[1];
-      const location = locationMatch[2];
-      
-      if (action === '去') {
-        await addActivityLog(conversationId, `正在去${location}`);
-        console.log(`✅ AI自主更新活动：去${location}`);
-      } else if (action === '在' || action === '到') {
-        await addActivityLog(conversationId, `在${location}`);
-        console.log(`✅ AI自主更新活动：在${location}`);
-      }
+  // 如果没有明确的状态更新指令，但AI提到了具体活动和地点，也更新到轨迹
+  if (activity || location) {
+    let activityLog = '';
+    
+    if (activity && location) {
+      activityLog = `在${location}${activity}`;
+    } else if (activity) {
+      activityLog = activity;
+    } else if (location) {
+      activityLog = `在${location}`;
+    }
+    
+    if (activityLog) {
+      await addActivityLog(conversationId, activityLog, location);
+      console.log(`✅ AI自主更新活动：${activityLog}`);
     }
   }
 };
