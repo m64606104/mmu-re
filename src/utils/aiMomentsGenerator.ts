@@ -130,24 +130,33 @@ export const shouldGenerateMoment = async (contactId: string): Promise<{shouldGe
       data.todayPlans = []; // 将在生成时由AI规划
       await saveMomentsData(data);
       
-      // 返回需要生成计划
-      return {shouldGenerate: true, count: targetCount};
+      // 返回需要生成第一条
+      return {shouldGenerate: true, count: 1};
     }
     
     return {shouldGenerate: false, count: 0};
   } else {
     // 同一天，检查是否还有待发布的朋友圈
     if (data.todayGeneratedCount < data.todayTargetCount) {
-      // 如果还没有计划，返回需要生成
-      if (data.todayPlans.length === 0) {
-        return {shouldGenerate: true, count: data.todayTargetCount - data.todayGeneratedCount};
+      // 检查上一条朋友圈的时间间隔
+      if (data.todayGeneratedCount > 0) {
+        const todayPostsList = data.posts.filter(post => {
+          const postDate = new Date(post.timestamp).toISOString().split('T')[0];
+          return postDate === today;
+        }).sort((a, b) => b.timestamp - a.timestamp);
+        
+        const lastPost = todayPostsList[0];
+        if (lastPost) {
+          const hoursSinceLastPost = (now - lastPost.timestamp) / 3600000;
+          // 至少间隔30分钟再发下一条
+          if (hoursSinceLastPost < 0.5) {
+            return {shouldGenerate: false, count: 0};
+          }
+        }
       }
       
-      // 找到下一个应该发布的时间
-      const nextPlan = data.todayPlans[data.todayGeneratedCount];
-      if (nextPlan && now >= nextPlan.scheduledTime) {
-        return {shouldGenerate: true, count: 1};
-      }
+      // 可以生成新的朋友圈
+      return {shouldGenerate: true, count: 1};
     }
     
     return {shouldGenerate: false, count: 0};
@@ -158,7 +167,7 @@ export const shouldGenerateMoment = async (contactId: string): Promise<{shouldGe
 /**
  * 生成朋友圈提示词
  */
-const buildMomentPrompt = (conversation: Conversation): string => {
+const buildMomentPrompt = (conversation: Conversation, todayPosts: MomentPost[]): string => {
   const now = new Date();
   const hour = now.getHours();
   const dayOfWeek = now.toLocaleDateString('zh-CN', { weekday: 'long' });
@@ -240,8 +249,25 @@ ${timeContext}
 ${memoryContext}
 ${chatContext}
 
+【今天已发的朋友圈】
+${todayPosts.length > 0 ? todayPosts.map((p, i) => {
+  const postTime = new Date(p.timestamp);
+  const timeStr = `${postTime.getHours()}:${postTime.getMinutes().toString().padStart(2, '0')}`;
+  return `${i + 1}. [${timeStr}] ${p.content}${p.imageDescriptions ? ` [配图${p.imageDescriptions.length}张]` : ''}`;
+}).join('\n') : '今天还没发过朋友圈'}
+
 【任务】
-你今天计划发布${conversation.characterSettings?.nickname}的朋友圈。请生成一条符合你性格和情境的朋友圈内容，并决定合适的发布时间。
+根据你的角色设定、当前时间情境、以及今天已发的朋友圈（如有），决定下一条朋友圈的内容和发布时间。
+
+【发布时间要求】
+1. **符合身份和情境**：
+   - 上班族：可能在下班时间（18:00-19:00）吐槽工作，晚上（20:00-23:00）分享生活
+   - 学生：可能在课间、放学后、周末活动时发
+   - 如果是周末活动（演唱会、旅行等），时间要符合活动进程
+2. **与已发内容关联**：
+   - 如果今天已发过相关内容，新的可以在1-3小时后继续发（如演唱会后续照片）
+   - 如果是新话题，时间可以分散开
+3. **真实自然**：像真人一样选择发布时间，不要太规律
 
 【要求】
 1. **内容要真实自然**：像真人发朋友圈一样，不要太刻意
@@ -255,13 +281,26 @@ ${chatContext}
 9. **可以配图片**：如果内容适合配图（如风景、美食、自拍、宠物等），可以在内容后添加图片描述
 
 【输出格式】
-方式1（纯文字）：直接输出朋友圈文字
-方式2（带图片）：
-文字内容
-[图片1:图片描述，简短但具体，如"星空下的圣诞树"]
+必须按以下格式输出，第一行是时间，第二行空行，第三行开始是朋友圈内容：
+
+时间：HH:MM
+
+朋友圈文字内容
+[图片1:图片描述]
 [图片2:图片描述]
-[图片3:图片描述]
 ...
+
+示例1（纯文字）：
+时间：18:30
+
+今天又被老板留下加班了😤 说好的准时下班呢...
+
+示例2（带图片）：
+时间：22:15
+
+终于下班了！路边买杯咖啡放松一下✨
+[图片1:手拿咖啡杯，背景是夜晚的街道灯光]
+[图片2:咖啡拉花特写，心形图案]
 
 【图片数量规范】
 根据内容需要，你可以自由决定发送1-9张图片：
@@ -306,8 +345,18 @@ export const generateAIMoment = async (
       return null;
     }
     
+    // 读取今天已发的朋友圈
+    const momentsData = await getMomentsData(conversation.id);
+    const today = new Date().toISOString().split('T')[0];
+    const todayPosts = momentsData.posts.filter(post => {
+      const postDate = new Date(post.timestamp).toISOString().split('T')[0];
+      return postDate === today;
+    });
+    
+    console.log(`📅 今天已发 ${todayPosts.length} 条朋友圈`);
+    
     // 构建提示词
-    const prompt = buildMomentPrompt(conversation);
+    const prompt = buildMomentPrompt(conversation, todayPosts);
     
     // 调用API
     const response = await fetch(`${apiConfig.baseUrl}/v1/chat/completions`, {
@@ -337,8 +386,22 @@ export const generateAIMoment = async (
       return null;
     }
     
+    // 解析AI返回的时间和内容
+    const timeMatch = content.match(/时间[：:]\s*(\d{1,2}):(\d{2})/);
+    let scheduledTime = Date.now();
+    
+    if (timeMatch) {
+      const hours = parseInt(timeMatch[1]);
+      const minutes = parseInt(timeMatch[2]);
+      const now = new Date();
+      const scheduled = new Date(now.getFullYear(), now.getMonth(), now.getDate(), hours, minutes);
+      scheduledTime = scheduled.getTime();
+      console.log(`⏰ AI决定的发布时间: ${hours}:${minutes}`);
+    }
+    
     // 清理内容并解析图片描述
     let cleanedContent = content
+      .replace(/时间[：:]\s*\d{1,2}:\d{2}\s*/, '') // 移除时间行
       .replace(/^["']|["']$/g, '')
       .replace(/^朋友圈[：:]\s*/g, '')
       .trim();
@@ -366,7 +429,7 @@ export const generateAIMoment = async (
       content: cleanedContent,
       imageDescriptions: imageDescriptions.length > 0 ? imageDescriptions : undefined,
       contentType: imageDescriptions.length > 0 ? 'images' : 'text',
-      timestamp: Date.now(),
+      timestamp: scheduledTime,
       likes: [],
       comments: [],
       isRead: false
@@ -376,10 +439,10 @@ export const generateAIMoment = async (
     await addMomentPost(conversation.id, post);
     
     // 更新生成时间和计数
-    const momentsData = await getMomentsData(conversation.id);
-    momentsData.lastGeneratedTime = Date.now();
-    momentsData.todayGeneratedCount += 1;
-    await saveMomentsData(momentsData);
+    const updatedMomentsData = await getMomentsData(conversation.id);
+    updatedMomentsData.lastGeneratedTime = Date.now();
+    updatedMomentsData.todayGeneratedCount += 1;
+    await saveMomentsData(updatedMomentsData);
     
     console.log(`✅ 成功生成朋友圈: ${cleanedContent.substring(0, 30)}...`);
     
