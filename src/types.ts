@@ -124,6 +124,9 @@ export interface MomentsData {
   posts: MomentPost[];
   lastGeneratedTime: number; // 上次生成朋友圈的时间
   generatedCountToday: number; // 今天已生成的数量
+  todayPlannedCount?: number; // 今天计划生成的总数（1-5条）
+  lastGenerationDate?: string; // 上次生成日期（YYYY-MM-DD格式）
+  nextScheduledTime?: number; // 下次计划生成的时间戳
   settings: {
     autoGenerate: boolean; // 是否自动生成
     minInterval: number; // 最小间隔（小时）

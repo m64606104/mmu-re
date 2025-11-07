@@ -88,6 +88,35 @@ export const addMomentPost = async (contactId: string, post: MomentPost): Promis
 };
 
 /**
+ * 获取今天的日期字符串（YYYY-MM-DD格式）
+ */
+const getTodayDateString = (): string => {
+  const now = new Date();
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+};
+
+/**
+ * 生成当天的随机发布时间点
+ */
+const generateTodaySchedule = (count: number): number[] => {
+  const now = new Date();
+  const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+  const todayEnd = todayStart + 24 * 3600000;
+  const currentTime = Date.now();
+  
+  // 生成count个随机时间点（在当前时间到今天结束之间）
+  const times: number[] = [];
+  for (let i = 0; i < count; i++) {
+    const randomTime = currentTime + Math.random() * (todayEnd - currentTime);
+    times.push(randomTime);
+  }
+  
+  // 排序时间点
+  times.sort((a, b) => a - b);
+  return times;
+};
+
+/**
  * 检查是否应该生成新朋友圈
  */
 export const shouldGenerateMoment = async (contactId: string): Promise<boolean> => {
@@ -98,18 +127,52 @@ export const shouldGenerateMoment = async (contactId: string): Promise<boolean> 
   }
   
   const now = Date.now();
-  const hoursSinceLastGeneration = (now - data.lastGeneratedTime) / 3600000;
+  const today = getTodayDateString();
   
-  // 检查是否超过最小间隔
-  if (hoursSinceLastGeneration < data.settings.minInterval) {
+  // 检查是否是新的一天
+  if (data.lastGenerationDate !== today) {
+    // 新的一天，检查是否应该开始新周期
+    const hoursSinceLastGeneration = (now - data.lastGeneratedTime) / 3600000;
+    
+    // 如果距离上次生成超过最小间隔，决定是否开始新周期
+    if (hoursSinceLastGeneration >= data.settings.minInterval) {
+      const randomThreshold = data.settings.minInterval + 
+        Math.random() * (data.settings.maxInterval - data.settings.minInterval);
+      
+      if (hoursSinceLastGeneration >= randomThreshold) {
+        // 开始新周期，决定今天要发几条（1-5条随机）
+        const plannedCount = Math.floor(
+          Math.random() * (data.settings.maxPostsPerCycle - data.settings.minPostsPerCycle + 1)
+        ) + data.settings.minPostsPerCycle;
+        
+        // 生成今天的发布时间表
+        const schedule = generateTodaySchedule(plannedCount);
+        
+        // 更新数据
+        data.lastGenerationDate = today;
+        data.todayPlannedCount = plannedCount;
+        data.generatedCountToday = 0;
+        data.nextScheduledTime = schedule[0]; // 设置第一条的时间
+        await saveMomentsData(data);
+        
+        console.log(`📅 ${contactId} 新周期开始：今天计划发${plannedCount}条朋友圈`);
+        
+        // 检查第一条是否应该现在发
+        return now >= schedule[0];
+      }
+    }
     return false;
   }
   
-  // 在最小和最大间隔之间随机决定
-  const randomThreshold = data.settings.minInterval + 
-    Math.random() * (data.settings.maxInterval - data.settings.minInterval);
+  // 同一天，检查是否还有未发的朋友圈
+  if (data.todayPlannedCount && data.generatedCountToday < data.todayPlannedCount) {
+    // 检查是否到了计划的发布时间
+    if (data.nextScheduledTime && now >= data.nextScheduledTime) {
+      return true;
+    }
+  }
   
-  return hoursSinceLastGeneration >= randomThreshold;
+  return false;
 };
 
 /**
@@ -327,13 +390,25 @@ export const generateAIMoment = async (
     // 保存到数据库
     await addMomentPost(conversation.id, post);
     
-    // 更新生成时间
+    // 更新生成时间和计数
     const momentsData = await getMomentsData(conversation.id);
     momentsData.lastGeneratedTime = Date.now();
     momentsData.generatedCountToday += 1;
+    
+    // 如果今天还有未发的朋友圈，计算下次发布时间
+    if (momentsData.todayPlannedCount && momentsData.generatedCountToday < momentsData.todayPlannedCount) {
+      const remaining = momentsData.todayPlannedCount - momentsData.generatedCountToday;
+      const schedule = generateTodaySchedule(remaining);
+      momentsData.nextScheduledTime = schedule[0];
+      console.log(`⏰ 下次发布时间: ${new Date(schedule[0]).toLocaleTimeString('zh-CN')}`);
+    } else {
+      momentsData.nextScheduledTime = undefined;
+      console.log(`✨ 今天的朋友圈已全部发布完成`);
+    }
+    
     await saveMomentsData(momentsData);
     
-    console.log(`✅ 成功生成朋友圈: ${cleanedContent.substring(0, 30)}...`);
+    console.log(`✅ 成功生成朋友圈 (${momentsData.generatedCountToday}/${momentsData.todayPlannedCount || 1}): ${cleanedContent.substring(0, 30)}...`);
     
     return post;
   } catch (error) {
