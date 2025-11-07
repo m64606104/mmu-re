@@ -772,6 +772,34 @@ ${conversation.characterSettings.memoryEvents ? `记忆事件：${conversation.c
               });
             }
           }
+          
+          // 📸 检测是否请求AI发朋友圈
+          const lastUserMessage = updatedMessages
+            .filter(m => m.role === 'user')
+            .slice(-1)[0];
+          
+          if (lastUserMessage && onRequestAIMoment) {
+            const content = lastUserMessage.content.toLowerCase();
+            if (content.includes('发朋友圈') || content.includes('发个朋友圈') || 
+                content.includes('发条朋友圈') || content.includes('发动态')) {
+              console.log('检测到用户请求AI发朋友圈');
+              onRequestAIMoment().catch(err => console.error('手动触发AI朋友圈失败:', err));
+            }
+          }
+          
+          // 🔥 如果启用了热梗系统，检测用户消息中的梗
+          if (conversation.enabledFeatures?.includes('meme-system')) {
+            const lastUserMsg = updatedMessages
+              .filter(m => m.role === 'user')
+              .slice(-1)[0];
+            
+            if (lastUserMsg) {
+              const detectedMemes = detectMemes(lastUserMsg.content);
+              if (detectedMemes.length > 0) {
+                console.log(`检测到热梗: ${detectedMemes.map(m => m.keyword).join(', ')}`);
+              }
+            }
+          }
         }
       );
       
