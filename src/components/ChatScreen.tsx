@@ -1,7 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
-import { ChevronLeft, Send, Sparkles, Image, Video, Mic, Phone, Plus, MapPin, FileText, Smile, Play, Pause } from 'lucide-react';
+import { ChevronLeft, Send, Sparkles, Image, Video, Mic, Phone, Plus, MapPin, FileText, Smile, Play, Pause, Bell, BellOff } from 'lucide-react';
 import { Conversation, ApiConfig, Message, AIStatusInfo } from '../types';
-import FeaturesModal from './FeaturesModal';
 import ActivityLogModal from './ActivityLogModal';
 import { 
   getConversationMemories, 
@@ -40,7 +39,6 @@ export default function ChatScreen({
 }: ChatScreenProps) {
   const [currentInput, setCurrentInput] = useState('');
   const [isGenerating, setIsGenerating] = useState(false);
-  const [showFeaturesModal, setShowFeaturesModal] = useState(false);
   const [showToolbar, setShowToolbar] = useState(false);
   const [showVideoDescModal, setShowVideoDescModal] = useState(false);
   const [videoDescInput, setVideoDescInput] = useState('');
@@ -1202,13 +1200,21 @@ ${recentMessages}
           </div>
         </div>
         <div className="flex items-center gap-2">
+          {/* 免打扰按钮 */}
           <button
-            onClick={() => setShowFeaturesModal(true)}
+            onClick={() => {
+              onUpdateConversation(conversation.id, {
+                isMuted: !conversation.isMuted
+              });
+            }}
             className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+            title={conversation.isMuted ? '关闭免打扰' : '开启免打扰'}
           >
-            <svg className="w-5 h-5 text-gray-700" fill="currentColor" viewBox="0 0 24 24">
-              <path d="M12 2L15.09 8.26L22 9.27L17 14.14L18.18 21.02L12 17.77L5.82 21.02L7 14.14L2 9.27L8.91 8.26L12 2Z"/>
-            </svg>
+            {conversation.isMuted ? (
+              <BellOff className="w-5 h-5 text-gray-700" />
+            ) : (
+              <Bell className="w-5 h-5 text-gray-700" />
+            )}
           </button>
           {conversation.type === 'private' && (
             <button
@@ -1224,17 +1230,6 @@ ${recentMessages}
           )}
         </div>
       </div>
-
-      {/* Features Modal */}
-      <FeaturesModal
-        isOpen={showFeaturesModal}
-        onClose={() => setShowFeaturesModal(false)}
-        conversationId={conversation.id}
-        enabledFeatures={conversation.enabledFeatures || []}
-        onUpdateFeatures={(id, features) => {
-          onUpdateConversation(id, { enabledFeatures: features });
-        }}
-      />
 
       {/* Messages */}
       <div className="flex-1 overflow-y-auto p-4 space-y-3">

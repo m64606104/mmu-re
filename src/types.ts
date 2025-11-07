@@ -74,6 +74,7 @@ export interface Conversation {
   characterSettings?: CharacterSettings;
   lastMessageTime: number;
   unreadCount: number;
+  isMuted?: boolean; // 是否开启免打扰（默认false）
   enabledFeatures?: string[];
   groupRemark?: string; // 群备注名（仅群聊）
   members?: string[]; // 群成员ID数组（仅群聊）
