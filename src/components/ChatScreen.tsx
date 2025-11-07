@@ -138,12 +138,12 @@ export default function ChatScreen({
     inputRef.current?.focus();
   };
 
-  // 智能切分AI回复为多个气泡 - 分割多条消息（如果AI一次回复包含多段内容）
-  const splitMessages = (content: string): string[] => {
+  // 智能切分AI回复为多个气泡 - 按标点符号自然断句（参考Social Chat App Framework）
+  const splitMessages = (text: string): string[] => {
     const messages: string[] = [];
     
     // 清理文本：移除Markdown格式符号和引用标注
-    let cleanedText = content
+    let cleanedText = text
       // 移除粗体标记
       .replace(/\*\*([^*]+)\*\*/g, '$1')
       // 移除斜体标记
@@ -760,6 +760,18 @@ ${conversation.characterSettings.memoryEvents ? `记忆事件：${conversation.c
           
           // 触发消息通知（MessageNotification会处理）
           showMessageNotification(conversation.id, newMessages);
+          
+          // 🧠 检查是否需要自动总结记忆
+          if (conversation.enabledFeatures?.includes('memory-system')) {
+            if (shouldTriggerAutoSummary(conversation.id, updatedMessages.length)) {
+              console.log('🧠 触发自动记忆总结，当前消息数:', updatedMessages.length);
+              performMemorySummary(updatedMessages).catch(err => {
+                console.error('记忆总结失败:', err);
+                // 即使失败也更新计数器，避免重复尝试
+                updateSummaryCounter(conversation.id, updatedMessages.length);
+              });
+            }
+          }
         }
       );
       
@@ -1088,7 +1100,6 @@ ${recentMessages}
       setIsGenerating(false);
     }
   };
-  */
 
   // 🧠 执行记忆总结
   const performMemorySummary = async (currentMessages: Message[]) => {
@@ -1160,17 +1171,6 @@ ${recentMessages}
       }
     }
   };
-
-  // 保留未来可能使用的函数引用（避免TS未使用变量错误）
-  // 这些函数暂时未使用但保留以备后续功能扩展
-  useEffect(() => {
-    if (false as boolean) {
-      console.log(splitMessages, performMemorySummary, shouldTriggerAutoSummary);
-      console.log(buildMemorySummaryPrompt, parseMemorySummaryResponse, addMemory);
-      console.log(updateSummaryCounter, getMemoryBank, detectMemes);
-      console.log(onBack, onOpenCharacterSettings, onRequestAIMoment);
-    }
-  }, []);
 
   return (
     <>
