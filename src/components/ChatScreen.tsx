@@ -12,7 +12,7 @@ import {
   updateSummaryCounter,
   getMemoryBank
 } from '../utils/memorySystem';
-import { detectMemes } from '../utils/memeSystem';
+// import { detectMemes } from '../utils/memeSystem'; // 已删除热梗系统
 import { buildTimeAwarePrompt } from '../utils/timeAwareness';
 import { getMomentsData } from '../utils/aiMomentsGenerator';
 import { getAIStatus, analyzeMessageAndUpdateStatus } from '../utils/aiStatusManager';
@@ -787,19 +787,7 @@ ${conversation.characterSettings.memoryEvents ? `记忆事件：${conversation.c
             }
           }
           
-          // 🔥 如果启用了热梗系统，检测用户消息中的梗
-          if (conversation.enabledFeatures?.includes('meme-system')) {
-            const lastUserMsg = updatedMessages
-              .filter(m => m.role === 'user')
-              .slice(-1)[0];
-            
-            if (lastUserMsg) {
-              const detectedMemes = detectMemes(lastUserMsg.content);
-              if (detectedMemes.length > 0) {
-                console.log(`检测到热梗: ${detectedMemes.map(m => m.keyword).join(', ')}`);
-              }
-            }
-          }
+          // 🔥 热梗系统已删除
         }
       );
       
