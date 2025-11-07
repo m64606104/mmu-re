@@ -118,6 +118,13 @@ export interface MomentComment {
   replyToUsername?: string; // 旧版兼容
 }
 
+// 朋友圈发布计划
+export interface MomentPlan {
+  theme: string; // 朋友圈主题
+  scheduledTime: number; // 计划发布时间戳
+  relatedToPrevious: boolean; // 是否与上一条相关
+}
+
 // 朋友圈数据库（每个联系人的朋友圈）
 export interface MomentsData {
   contactId: string;
@@ -126,7 +133,7 @@ export interface MomentsData {
   lastGenerationDate: string; // 上次生成朋友圈的日期（YYYY-MM-DD）
   todayTargetCount: number; // 今天目标生成数量（1-5随机）
   todayGeneratedCount: number; // 今天已生成的数量
-  scheduledTimes: number[]; // 今天计划发布的时间戳列表
+  todayPlans: MomentPlan[]; // 今天的朋友圈发布计划
   settings: {
     autoGenerate: boolean; // 是否自动生成
     minInterval: number; // 最小间隔（小时，24-72，即1-3天）

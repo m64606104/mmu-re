@@ -41,7 +41,7 @@ export const getMomentsData = async (contactId: string): Promise<MomentsData> =>
     lastGenerationDate: '',
     todayTargetCount: 0,
     todayGeneratedCount: 0,
-    scheduledTimes: [],
+    todayPlans: [],
     settings: {
       autoGenerate: true,
       minInterval: 24, // 最少24小时
@@ -123,29 +123,29 @@ export const shouldGenerateMoment = async (contactId: string): Promise<{shouldGe
       const targetCount = data.settings.minPostsPerDay + 
         Math.floor(Math.random() * (data.settings.maxPostsPerDay - data.settings.minPostsPerDay + 1));
       
-      // 生成今天的发布时间表
-      const scheduledTimes = generateScheduledTimes(targetCount);
-      
-      // 更新数据
+      // 标记需要生成计划
       data.lastGenerationDate = today;
       data.todayTargetCount = targetCount;
       data.todayGeneratedCount = 0;
-      data.scheduledTimes = scheduledTimes;
+      data.todayPlans = []; // 将在生成时由AI规划
       await saveMomentsData(data);
       
-      // 检查现在是否到了第一个发布时间
-      if (scheduledTimes.length > 0 && now >= scheduledTimes[0]) {
-        return {shouldGenerate: true, count: 1};
-      }
+      // 返回需要生成计划
+      return {shouldGenerate: true, count: targetCount};
     }
     
     return {shouldGenerate: false, count: 0};
   } else {
     // 同一天，检查是否还有待发布的朋友圈
     if (data.todayGeneratedCount < data.todayTargetCount) {
+      // 如果还没有计划，返回需要生成
+      if (data.todayPlans.length === 0) {
+        return {shouldGenerate: true, count: data.todayTargetCount - data.todayGeneratedCount};
+      }
+      
       // 找到下一个应该发布的时间
-      const nextScheduledTime = data.scheduledTimes[data.todayGeneratedCount];
-      if (nextScheduledTime && now >= nextScheduledTime) {
+      const nextPlan = data.todayPlans[data.todayGeneratedCount];
+      if (nextPlan && now >= nextPlan.scheduledTime) {
         return {shouldGenerate: true, count: 1};
       }
     }
@@ -154,47 +154,6 @@ export const shouldGenerateMoment = async (contactId: string): Promise<{shouldGe
   }
 };
 
-/**
- * 生成今天的发布时间表
- * @param count 今天要发布的数量
- * @returns 时间戳数组
- */
-const generateScheduledTimes = (count: number): number[] => {
-  const times: number[] = [];
-  const now = new Date();
-  const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-  const todayEnd = new Date(todayStart.getTime() + 24 * 3600000);
-  
-  if (count === 1) {
-    // 只发1条，随机时间
-    const randomTime = todayStart.getTime() + Math.random() * (todayEnd.getTime() - todayStart.getTime());
-    times.push(randomTime);
-  } else {
-    // 发多条，考虑内容相关性
-    // 30%概率集中发布（相近时间），70%概率分散发布
-    const shouldCluster = Math.random() < 0.3;
-    
-    if (shouldCluster && count >= 2) {
-      // 集中发布：在2小时内发完
-      const baseTime = todayStart.getTime() + Math.random() * (todayEnd.getTime() - todayStart.getTime() - 2 * 3600000);
-      for (let i = 0; i < count; i++) {
-        const offset = Math.random() * 2 * 3600000; // 2小时内
-        times.push(baseTime + offset);
-      }
-    } else {
-      // 分散发布：全天随机分布
-      for (let i = 0; i < count; i++) {
-        const randomTime = todayStart.getTime() + Math.random() * (todayEnd.getTime() - todayStart.getTime());
-        times.push(randomTime);
-      }
-    }
-    
-    // 排序时间
-    times.sort((a, b) => a - b);
-  }
-  
-  return times;
-};
 
 /**
  * 生成朋友圈提示词
@@ -282,7 +241,7 @@ ${memoryContext}
 ${chatContext}
 
 【任务】
-请生成一条符合你性格和当前情境的朋友圈内容。
+你今天计划发布${conversation.characterSettings?.nickname}的朋友圈。请生成一条符合你性格和情境的朋友圈内容，并决定合适的发布时间。
 
 【要求】
 1. **内容要真实自然**：像真人发朋友圈一样，不要太刻意
@@ -528,7 +487,7 @@ export const generateAIMomentsInteraction = async (
           if (Math.random() > 0.3) continue; // 30%概率
 
           const interactionType = Math.random();
-          
+
           if (interactionType < 0.5) {
             // 50%概率点赞
             if (!post.likes.includes(otherAI.id)) {
