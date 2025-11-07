@@ -1,7 +1,8 @@
 import { useState, useRef, useEffect } from 'react';
 import { ChevronLeft, Send, Sparkles, Image, Video, Mic, Phone, Plus, MapPin, FileText, Smile, Play, Pause } from 'lucide-react';
-import { Conversation, ApiConfig, Message } from '../types';
+import { Conversation, ApiConfig, Message, AIStatusInfo } from '../types';
 import FeaturesModal from './FeaturesModal';
+import ActivityLogModal from './ActivityLogModal';
 import { 
   getConversationMemories, 
   applyMemoriesToContext,
@@ -15,6 +16,7 @@ import {
 import { detectMemes } from '../utils/memeSystem';
 import { buildTimeAwarePrompt } from '../utils/timeAwareness';
 import { getMomentsData } from '../utils/aiMomentsGenerator';
+import { getAIStatus, analyzeMessageAndUpdateStatus } from '../utils/aiStatusManager';
 // import { transcribeAudio, isValidSpeechConfig } from '../utils/speechToText';
 
 interface ChatScreenProps {
@@ -55,6 +57,10 @@ export default function ChatScreen({
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   
+  // AI状态相关state
+  const [aiStatus, setAIStatus] = useState<AIStatusInfo | null>(null);
+  const [showActivityModal, setShowActivityModal] = useState(false);
+  
   // 语音相关state
   const [isRecording, setIsRecording] = useState(false);
   const [recordingTime, setRecordingTime] = useState(0);
@@ -92,6 +98,23 @@ export default function ChatScreen({
   useEffect(() => {
     scrollToBottom();
   }, [conversation.messages, isGenerating]);
+
+  // 加载AI状态
+  useEffect(() => {
+    if (conversation.type === 'private' && conversation.characterSettings) {
+      const loadStatus = async () => {
+        const status = await getAIStatus(conversation.id);
+        if (status) {
+          setAIStatus(status);
+        }
+      };
+      loadStatus();
+      
+      // 每30秒刷新一次状态
+      const interval = setInterval(loadStatus, 30000);
+      return () => clearInterval(interval);
+    }
+  }, [conversation.id, conversation.type, conversation.characterSettings]);
 
 
   const handleSendMessage = () => {
@@ -960,6 +983,16 @@ ${recentMessages}
         }
       }
 
+      // 🎯 分析AI消息并更新状态
+      if (conversation.type === 'private' && conversation.characterSettings && assistantMessage) {
+        await analyzeMessageAndUpdateStatus(conversation.id, assistantMessage);
+        // 重新加载状态
+        const updatedStatus = await getAIStatus(conversation.id);
+        if (updatedStatus) {
+          setAIStatus(updatedStatus);
+        }
+      }
+
       // 🧠 检查是否需要自动总结记忆
       if (conversation.enabledFeatures?.includes('memory-system')) {
         if (shouldTriggerAutoSummary(conversation.id, currentMessages.length)) {
@@ -1091,10 +1124,28 @@ ${recentMessages}
           </button>
           <div className="flex flex-col">
             <h1 className="text-base font-semibold text-gray-900">{conversation.name}</h1>
-            <div className="flex items-center gap-1">
-              <div className="w-2 h-2 bg-green-500 rounded-full"></div>
-              <span className="text-xs text-gray-500">在线</span>
-            </div>
+            {conversation.type === 'private' && conversation.characterSettings ? (
+              <button 
+                onClick={() => setShowActivityModal(true)}
+                className="flex items-center gap-1 hover:bg-gray-50 px-2 py-0.5 -ml-2 rounded transition-colors text-left"
+              >
+                <div className={`w-2 h-2 rounded-full ${
+                  aiStatus?.status === 'online' ? 'bg-green-500' :
+                  aiStatus?.status === 'busy' ? 'bg-yellow-500' :
+                  aiStatus?.status === 'resting' ? 'bg-blue-500' :
+                  aiStatus?.status === 'away' ? 'bg-gray-400' :
+                  'bg-gray-300'
+                }`}></div>
+                <span className="text-xs text-gray-500">
+                  {aiStatus?.statusText || '在线'}
+                </span>
+              </button>
+            ) : (
+              <div className="flex items-center gap-1">
+                <div className="w-2 h-2 bg-green-500 rounded-full"></div>
+                <span className="text-xs text-gray-500">在线</span>
+              </div>
+            )}
           </div>
         </div>
         <div className="flex items-center gap-2">
@@ -1707,6 +1758,17 @@ ${recentMessages}
           </div>
         </div>
       </div>
+    )}
+
+    {/* AI行为轨迹弹窗 */}
+    {conversation.type === 'private' && conversation.characterSettings && aiStatus && (
+      <ActivityLogModal
+        isOpen={showActivityModal}
+        onClose={() => setShowActivityModal(false)}
+        statusInfo={aiStatus}
+        aiName={conversation.characterSettings.nickname || conversation.name}
+        aiAvatar={conversation.characterSettings.avatar || conversation.avatar}
+      />
     )}
     </>
   );
