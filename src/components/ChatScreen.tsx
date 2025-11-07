@@ -750,37 +750,100 @@ ${conversation.characterSettings.memoryEvents ? `记忆事件：${conversation.c
         setShowTyping(false);
         setIsGenerating(false);
         
-        // 显示友好的提示
-        const aiName = conversation.characterSettings?.nickname || conversation.name;
-        const tips = [
-          `${aiName}看到了你的消息，但现在想安静一会儿~`,
-          `${aiName}好像在忙别的事情，暂时没有回复`,
-          `${aiName}可能对这个话题不太感兴趣呢`,
-          `${aiName}正在思考中...或许稍后会回复你`,
-          `${aiName}收到了，但暂时不知道怎么回复`,
-        ];
-        const randomTip = tips[Math.floor(Math.random() * tips.length)];
+        // 根据上下文生成智能提示
+        const generateContextualHint = async () => {
+          try {
+            const aiName = conversation.characterSettings?.nickname || conversation.name;
+            
+            // 获取最近的对话上下文
+            const recentMessages = conversation.messages.slice(-10).map(m => 
+              `${m.role === 'user' ? '用户' : aiName}: ${m.content}`
+            ).join('\n');
+            
+            // 构建包含角色设定的提示
+            const characterInfo = conversation.characterSettings 
+              ? `\n【你的角色设定】\n性格：${conversation.characterSettings.personality || ''}\n喜好/厌恶：${conversation.characterSettings.memoryEvents || ''}\n`
+              : '';
+            
+            const hintPrompt = `你是 ${aiName}。${characterInfo}
+
+【最近的对话】
+${recentMessages}
+
+【任务】
+你刚才选择不回复用户的最后一条消息。请根据对话上下文和你的角色设定，用一句话解释为什么不回复。
+
+【判断原因】
+1. **情绪原因**：如果刚吵架/生气了 → "${aiName}现在还在生气，暂时不想理你"
+2. **忙碌原因**：如果提到在忙/工作/学习/实验室 → "${aiName}可能在忙，暂时没空回复"
+3. **话题原因**：
+   - 用户提到你不喜欢的东西 → "${aiName}不太喜欢这个话题"
+   - 话题无聊/重复 → "${aiName}觉得没什么好说的"
+   - 话题敏感/尴尬 → "${aiName}不知道该怎么回复"
+4. **性格原因**：根据你的性格特点（内向、高冷等）→ 用符合性格的说法
+
+【要求】
+- 语气要自然，像真人一样
+- 只输出一句话，不要有任何前缀或解释  
+- 控制在30字以内
+- 要符合你的性格和当前情境
+
+现在请生成提示：`;
+
+            const response = await fetch(`${apiConfig.baseUrl}/v1/chat/completions`, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${apiConfig.apiKey}`,
+              },
+              body: JSON.stringify({
+                model: apiConfig.modelName,
+                messages: [{ role: 'user', content: hintPrompt }],
+                max_tokens: 50,
+                temperature: 0.7
+              })
+            });
+
+            if (response.ok) {
+              const data = await response.json();
+              const contextualHint = data.choices[0]?.message?.content?.trim();
+              if (contextualHint) {
+                return contextualHint;
+              }
+            }
+          } catch (error) {
+            console.error('生成上下文提示失败:', error);
+          }
+          
+          // 如果生成失败，使用默认提示
+          const aiName = conversation.characterSettings?.nickname || conversation.name;
+          return `${aiName}看到了你的消息，但现在不想回复`;
+        };
         
-        // 使用温和的提示而不是alert
-        setTimeout(() => {
-          const hint = document.createElement('div');
-          hint.textContent = randomTip;
-          hint.style.cssText = `
-            position: fixed;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            background: rgba(0, 0, 0, 0.75);
-            color: white;
-            padding: 12px 24px;
-            border-radius: 8px;
-            font-size: 14px;
-            z-index: 10000;
-            animation: fadeInOut 2.5s ease-in-out;
-          `;
-          document.body.appendChild(hint);
-          setTimeout(() => hint.remove(), 2500);
-        }, 300);
+        // 异步生成并显示提示
+        generateContextualHint().then(contextualHint => {
+          setTimeout(() => {
+            const hint = document.createElement('div');
+            hint.textContent = contextualHint;
+            hint.style.cssText = `
+              position: fixed;
+              top: 50%;
+              left: 50%;
+              transform: translate(-50%, -50%);
+              background: rgba(0, 0, 0, 0.75);
+              color: white;
+              padding: 12px 24px;
+              border-radius: 8px;
+              font-size: 14px;
+              z-index: 10000;
+              animation: fadeInOut 2.5s ease-in-out;
+              max-width: 80%;
+              text-align: center;
+            `;
+            document.body.appendChild(hint);
+            setTimeout(() => hint.remove(), 2500);
+          }, 300);
+        });
         
         return;
       }
