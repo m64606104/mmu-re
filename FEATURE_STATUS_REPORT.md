@@ -132,18 +132,7 @@
   - **状态**: 未被任何组件导入
   - **建议**: 可集成到ChatScreen或删除
 
-### 3. 记忆系统部分功能 ⚠️
-- **memorySystem.ts** 中的部分函数未使用：
-  - `shouldTriggerAutoSummary` - 已导入但未调用
-  - `buildMemorySummaryPrompt` - 已导入但未调用
-  - `parseMemorySummaryResponse` - 已导入但未调用
-  - `addMemory` - 已导入但未调用
-  - `updateSummaryCounter` - 已导入但未调用
-  - `getMemoryBank` - 已导入但未调用
-  - **状态**: 功能完整但被注释或未激活
-  - **原因**: 可能是在后台生成改造时被禁用
-
-### 4. 热梗检测功能 ⚠️
+### 3. 热梗检测功能 ⚠️
 - **memeSystem.ts** 中的 `detectMemes`
   - 已导入到ChatScreen
   - **状态**: 导入但未实际调用
