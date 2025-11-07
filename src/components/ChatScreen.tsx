@@ -1088,6 +1088,7 @@ ${recentMessages}
       setIsGenerating(false);
     }
   };
+  */
 
   // 🧠 执行记忆总结
   const performMemorySummary = async (currentMessages: Message[]) => {
