@@ -184,7 +184,8 @@ class BackgroundTaskManager {
       // 检测媒体类型
       const imageMatch = content.match(/\[图片[:：]([^\]]+)\]/);
       const videoMatch = content.match(/\[视频[:：]([^\]]+)\]/);
-      const voiceMatch = content.match(/\[语音[:：]([^，,]+)[，,]时长(\d+)秒\]/);
+      // 修改语音正则：更宽松地匹配语音内容，支持包含标点符号的内容
+      const voiceMatch = content.match(/\[语音[:：](.+?)(?:[，,]\s*(?:时长)?(\d+)秒?)?\]/);
       const stickerMatch = content.match(/\[表情包[:：]([^\]]+)\]/);
 
       let message: Message;
@@ -213,15 +214,15 @@ class BackgroundTaskManager {
           isMediaDescriptionOnly: true
         };
       } else if (voiceMatch) {
-        const cleanContent = content.replace(/\[语音[:：][^\]]+\]/, '').trim();
+        const cleanContent = content.replace(/\[语音[:：].+?\]/, '').trim();
         message = {
           id: baseId,
           role: 'assistant',
           content: cleanContent || '[语音]',
           timestamp: Date.now(),
           mediaType: 'voice',
-          mediaDescription: voiceMatch[1],
-          voiceDuration: parseInt(voiceMatch[2]) || 3,
+          mediaDescription: voiceMatch[1].trim(), // 语音内容（去掉时长部分）
+          voiceDuration: parseInt(voiceMatch[2]) || 3, // 时长（秒）
           isMediaDescriptionOnly: true
         };
       } else if (stickerMatch) {

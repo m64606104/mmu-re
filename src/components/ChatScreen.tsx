@@ -976,7 +976,8 @@ ${recentMessages}
         const msgContent = limitedMessages[i].trim();
         const imageMatch = msgContent.match(/\[图片[:：]([^\]]+)\]/);
         const videoMatch = msgContent.match(/\[视频[:：]([^\]]+)\]/);
-        const voiceMatch = msgContent.match(/\[语音[:：]([^，,\]]+)[，,]?(?:时长)?(\d+)秒?\]/);
+        // 修改语音正则：更宽松地匹配语音内容，支持包含标点符号的内容
+        const voiceMatch = msgContent.match(/\[语音[:：](.+?)(?:[，,]\s*(?:时长)?(\d+)秒?)?\]/);
         const stickerMatch = msgContent.match(/\[表情包[:：]([^\]]+)\]/);
         
         let newMessage: Message;
@@ -1007,15 +1008,15 @@ ${recentMessages}
           };
         } else if (voiceMatch) {
           // AI发送语音
-          const cleanContent = msgContent.replace(/\[语音[:：][^\]]+\]/, '').trim();
+          const cleanContent = msgContent.replace(/\[语音[:：].+?\]/, '').trim();
           newMessage = {
             id: Date.now().toString() + '_ai_' + i + Math.random(),
             role: 'assistant' as const,
             content: cleanContent || '[语音]',
             timestamp: Date.now(),
             mediaType: 'voice',
-            mediaDescription: voiceMatch[1],
-            voiceDuration: parseInt(voiceMatch[2]) || 3,
+            mediaDescription: voiceMatch[1].trim(), // 语音内容（去掉时长部分）
+            voiceDuration: parseInt(voiceMatch[2]) || 3, // 时长（秒）
             isMediaDescriptionOnly: true
           };
         } else if (stickerMatch) {
