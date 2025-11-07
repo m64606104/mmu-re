@@ -57,6 +57,9 @@ export default function ChatScreen({
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   
+  // 追踪用户是否还在当前聊天页面
+  const isComponentMountedRef = useRef(true);
+  
   // AI状态相关state
   const [aiStatus, setAIStatus] = useState<AIStatusInfo | null>(null);
   const [showActivityModal, setShowActivityModal] = useState(false);
@@ -94,6 +97,16 @@ export default function ChatScreen({
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   };
+
+  // 追踪组件挂载状态（用户是否还在页面）
+  useEffect(() => {
+    isComponentMountedRef.current = true;
+    
+    return () => {
+      // 组件卸载时（用户离开页面）
+      isComponentMountedRef.current = false;
+    };
+  }, []);
 
   useEffect(() => {
     scrollToBottom();
@@ -659,25 +672,77 @@ ${conversation.characterSettings.memoryEvents ? `记忆事件：${conversation.c
       // 🚀 使用后台任务，不阻塞用户
       console.log('🚀 创建后台AI生成任务...');
       
-      // 立即隐藏发送提示，允许用户切换页面
-      setShowSendingHint(false);
-      setIsGenerating(false);
+      // 🎬 保持"消息发送中"提示，模拟输入动画将在下面逐条显示
+      // 用户可以退出页面，但如果留在页面则会看到完整的输入过程
       
       // 创建后台任务
       await backgroundTaskManager.createGenerationTask(
         conversation,
         apiConfig,
         requestBody,
-        (newMessages) => {
+        async (newMessages) => {
           // 后台任务完成回调
           console.log(`✅ 后台任务完成，收到${newMessages.length}条消息`);
           
-          // 更新conversation
-          const updatedMessages = [...conversation.messages, ...newMessages];
-          onUpdateConversation(conversation.id, {
-            messages: updatedMessages,
-            lastMessageTime: Date.now(),
-          });
+          // 🎯 检查用户是否还在当前聊天页面
+          const userStillOnPage = isComponentMountedRef.current;
+          
+          let currentMessages = [...conversation.messages];
+          
+          if (userStillOnPage) {
+            // 👤 用户还在页面：显示完整的输入动画
+            console.log('用户还在页面，显示输入动画');
+            
+            for (let i = 0; i < newMessages.length; i++) {
+              // 显示输入动画
+              setShowTyping(true);
+              
+              // 第一次显示输入动画时，隐藏"消息发送中"提示
+              if (i === 0) {
+                setShowSendingHint(false);
+              }
+              
+              // 等待0.8-2秒模拟输入
+              await new Promise(resolve => setTimeout(resolve, 800 + Math.random() * 1200));
+              
+              // 隐藏输入动画
+              setShowTyping(false);
+              
+              // 添加这条消息到conversation
+              currentMessages = [...currentMessages, newMessages[i]];
+              onUpdateConversation(conversation.id, {
+                messages: currentMessages,
+                lastMessageTime: Date.now(),
+              });
+              
+              // 短暂停顿再显示下一条
+              if (i < newMessages.length - 1) {
+                await new Promise(resolve => setTimeout(resolve, 300));
+              }
+            }
+            
+            // 所有消息显示完毕，隐藏生成状态
+            setIsGenerating(false);
+            
+          } else {
+            // 🚀 用户已离开：直接添加所有消息，不显示动画
+            console.log('用户已离开页面，直接添加所有消息');
+            
+            // 直接添加所有消息
+            currentMessages = [...conversation.messages, ...newMessages];
+            onUpdateConversation(conversation.id, {
+              messages: currentMessages,
+              lastMessageTime: Date.now(),
+            });
+            
+            // 清理状态（虽然用户已离开，但为了数据一致性）
+            setShowSendingHint(false);
+            setShowTyping(false);
+            setIsGenerating(false);
+          }
+          
+          // 使用最终的消息列表（确保同步）
+          const updatedMessages = currentMessages;
           
           // 分析AI消息更新状态
           if (conversation.type === 'private' && conversation.characterSettings && newMessages.length > 0) {
