@@ -58,22 +58,29 @@ export function MomentsAutoGenerator({ conversations, apiConfig, onMomentGenerat
       for (const conversation of aiConversations) {
         try {
           // 检查是否应该生成
-          const shouldGenerate = await shouldGenerateMoment(conversation.id);
+          const result = await shouldGenerateMoment(conversation.id);
           
-          if (shouldGenerate) {
-            console.log(`✨ ${conversation.name} 满足生成条件，开始生成朋友圈...`);
+          if (result.shouldGenerate && result.count > 0) {
+            console.log(`✨ ${conversation.name} 满足生成条件，开始生成 ${result.count} 条朋友圈...`);
             
-            // 生成朋友圈
-            const post = await generateAIMoment(conversation, currentApiConfig);
-            
-            if (post) {
-              console.log(`✅ ${conversation.name} 朋友圈生成成功`);
-              onMomentGeneratedRef.current?.(conversation.id);
-            } else {
-              console.log(`❌ ${conversation.name} 朋友圈生成失败`);
+            // 生成指定数量的朋友圈
+            for (let i = 0; i < result.count; i++) {
+              const post = await generateAIMoment(conversation, currentApiConfig);
+              
+              if (post) {
+                console.log(`✅ ${conversation.name} 第 ${i + 1}/${result.count} 条朋友圈生成成功`);
+                onMomentGeneratedRef.current?.(conversation.id);
+              } else {
+                console.log(`❌ ${conversation.name} 第 ${i + 1}/${result.count} 条朋友圈生成失败`);
+              }
+              
+              // 避免API限流，等待2秒
+              if (i < result.count - 1) {
+                await new Promise(resolve => setTimeout(resolve, 2000));
+              }
             }
             
-            // 避免API限流，等待2秒
+            // 联系人之间也等待2秒
             await new Promise(resolve => setTimeout(resolve, 2000));
           }
         } catch (error) {

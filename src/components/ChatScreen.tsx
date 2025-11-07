@@ -523,31 +523,23 @@ ${conversation.characterSettings.memoryEvents ? `记忆事件：${conversation.c
       try {
         const momentsData = await getMomentsData(conversation.id);
         if (momentsData.posts && momentsData.posts.length > 0) {
-          const recentPosts = momentsData.posts.slice(0, 10); // 最近10条朋友圈
-          let momentsContext = '\n\n【你最近发的朋友圈】\n以下是你最近发的朋友圈内容。当用户问起时（如"周四的朋友圈"、"前几天发的"等），你需要能够详细回忆起内容：\n';
+          const recentPosts = momentsData.posts.slice(0, 5); // 最近5条朋友圈
+          let momentsContext = '\n\n【你最近发的朋友圈（隐藏信息）】\n以下是你最近发的朋友圈内容。这些信息仅供你参考，不要刻意提起，只在以下情况下自然使用：\n';
+          momentsContext += '- 用户或其他人明确问起你的朋友圈时\n';
+          momentsContext += '- 对话内容自然关联到朋友圈事件时\n';
+          momentsContext += '- 你可以基于朋友圈内容、发送时间、你的角色设定自由发散创造细节，但不能偏离朋友圈内容太多\n\n';
+          
           recentPosts.forEach((post, index) => {
             const postDate = new Date(post.timestamp);
-            const dayOfWeek = postDate.toLocaleDateString('zh-CN', { weekday: 'long' });
-            const dateStr = postDate.toLocaleDateString('zh-CN', { month: 'long', day: 'numeric' });
-            const timeStr = postDate.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' });
+            const daysDiff = Math.floor((Date.now() - post.timestamp) / 86400000);
+            const timeDesc = daysDiff === 0 ? '今天' : daysDiff === 1 ? '昨天' : daysDiff === 2 ? '前天' : `${daysDiff}天前`;
+            const dateStr = postDate.toLocaleDateString('zh-CN', { month: 'long', day: 'numeric', weekday: 'long' });
             
-            const hoursAgo = Math.floor((Date.now() - post.timestamp) / 3600000);
-            let timeDesc = '';
-            if (hoursAgo < 24) {
-              timeDesc = `${hoursAgo}小时前`;
-            } else {
-              const daysAgo = Math.floor(hoursAgo / 24);
-              timeDesc = `${daysAgo}天前`;
-            }
-            
-            momentsContext += `\n${index + 1}. [${dayOfWeek} ${dateStr} ${timeStr}，${timeDesc}]\n`;
-            momentsContext += `   内容：${post.content}\n`;
+            momentsContext += `${index + 1}. [${timeDesc}，${dateStr}] ${post.content}`;
             if (post.imageDescriptions && post.imageDescriptions.length > 0) {
-              momentsContext += `   配图${post.imageDescriptions.length}张：\n`;
-              post.imageDescriptions.forEach((desc, i) => {
-                momentsContext += `   - 图${i + 1}: ${desc}\n`;
-              });
+              momentsContext += `\n   配图${post.imageDescriptions.length}张：${post.imageDescriptions.join('、')}`;
             }
+            momentsContext += '\n';
           });
           systemPrompt += momentsContext;
         }

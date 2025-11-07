@@ -38,13 +38,16 @@ export const getMomentsData = async (contactId: string): Promise<MomentsData> =>
     contactId,
     posts: [],
     lastGeneratedTime: 0,
-    generatedCountToday: 0,
+    lastGenerationDate: '',
+    todayTargetCount: 0,
+    todayGeneratedCount: 0,
+    scheduledTimes: [],
     settings: {
       autoGenerate: true,
       minInterval: 24, // 最少24小时
       maxInterval: 72, // 最多72小时（3天）
-      minPostsPerCycle: 1,
-      maxPostsPerCycle: 5
+      minPostsPerDay: 1,
+      maxPostsPerDay: 5
     }
   };
   
@@ -88,91 +91,109 @@ export const addMomentPost = async (contactId: string, post: MomentPost): Promis
 };
 
 /**
- * 获取今天的日期字符串（YYYY-MM-DD格式）
- */
-const getTodayDateString = (): string => {
-  const now = new Date();
-  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
-};
-
-/**
- * 生成当天的随机发布时间点
- */
-const generateTodaySchedule = (count: number): number[] => {
-  const now = new Date();
-  const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
-  const todayEnd = todayStart + 24 * 3600000;
-  const currentTime = Date.now();
-  
-  // 生成count个随机时间点（在当前时间到今天结束之间）
-  const times: number[] = [];
-  for (let i = 0; i < count; i++) {
-    const randomTime = currentTime + Math.random() * (todayEnd - currentTime);
-    times.push(randomTime);
-  }
-  
-  // 排序时间点
-  times.sort((a, b) => a - b);
-  return times;
-};
-
-/**
  * 检查是否应该生成新朋友圈
+ * 返回：{shouldGenerate: boolean, count: number} - 是否应该生成和生成数量
  */
-export const shouldGenerateMoment = async (contactId: string): Promise<boolean> => {
+export const shouldGenerateMoment = async (contactId: string): Promise<{shouldGenerate: boolean; count: number}> => {
   const data = await getMomentsData(contactId);
   
   if (!data.settings.autoGenerate) {
-    return false;
+    return {shouldGenerate: false, count: 0};
   }
   
   const now = Date.now();
-  const today = getTodayDateString();
+  const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
   
   // 检查是否是新的一天
   if (data.lastGenerationDate !== today) {
-    // 新的一天，检查是否应该开始新周期
+    // 新的一天，重置计数器
     const hoursSinceLastGeneration = (now - data.lastGeneratedTime) / 3600000;
     
-    // 如果距离上次生成超过最小间隔，决定是否开始新周期
-    if (hoursSinceLastGeneration >= data.settings.minInterval) {
-      const randomThreshold = data.settings.minInterval + 
-        Math.random() * (data.settings.maxInterval - data.settings.minInterval);
+    // 检查是否超过最小间隔（1-3天）
+    if (hoursSinceLastGeneration < data.settings.minInterval) {
+      return {shouldGenerate: false, count: 0};
+    }
+    
+    // 在最小和最大间隔之间随机决定是否生成
+    const randomThreshold = data.settings.minInterval + 
+      Math.random() * (data.settings.maxInterval - data.settings.minInterval);
+    
+    if (hoursSinceLastGeneration >= randomThreshold) {
+      // 决定今天生成的数量（1-5条随机）
+      const targetCount = data.settings.minPostsPerDay + 
+        Math.floor(Math.random() * (data.settings.maxPostsPerDay - data.settings.minPostsPerDay + 1));
       
-      if (hoursSinceLastGeneration >= randomThreshold) {
-        // 开始新周期，决定今天要发几条（1-5条随机）
-        const plannedCount = Math.floor(
-          Math.random() * (data.settings.maxPostsPerCycle - data.settings.minPostsPerCycle + 1)
-        ) + data.settings.minPostsPerCycle;
-        
-        // 生成今天的发布时间表
-        const schedule = generateTodaySchedule(plannedCount);
-        
-        // 更新数据
-        data.lastGenerationDate = today;
-        data.todayPlannedCount = plannedCount;
-        data.generatedCountToday = 0;
-        data.nextScheduledTime = schedule[0]; // 设置第一条的时间
-        await saveMomentsData(data);
-        
-        console.log(`📅 ${contactId} 新周期开始：今天计划发${plannedCount}条朋友圈`);
-        
-        // 检查第一条是否应该现在发
-        return now >= schedule[0];
+      // 生成今天的发布时间表
+      const scheduledTimes = generateScheduledTimes(targetCount);
+      
+      // 更新数据
+      data.lastGenerationDate = today;
+      data.todayTargetCount = targetCount;
+      data.todayGeneratedCount = 0;
+      data.scheduledTimes = scheduledTimes;
+      await saveMomentsData(data);
+      
+      // 检查现在是否到了第一个发布时间
+      if (scheduledTimes.length > 0 && now >= scheduledTimes[0]) {
+        return {shouldGenerate: true, count: 1};
       }
     }
-    return false;
-  }
-  
-  // 同一天，检查是否还有未发的朋友圈
-  if (data.todayPlannedCount && data.generatedCountToday < data.todayPlannedCount) {
-    // 检查是否到了计划的发布时间
-    if (data.nextScheduledTime && now >= data.nextScheduledTime) {
-      return true;
+    
+    return {shouldGenerate: false, count: 0};
+  } else {
+    // 同一天，检查是否还有待发布的朋友圈
+    if (data.todayGeneratedCount < data.todayTargetCount) {
+      // 找到下一个应该发布的时间
+      const nextScheduledTime = data.scheduledTimes[data.todayGeneratedCount];
+      if (nextScheduledTime && now >= nextScheduledTime) {
+        return {shouldGenerate: true, count: 1};
+      }
     }
+    
+    return {shouldGenerate: false, count: 0};
+  }
+};
+
+/**
+ * 生成今天的发布时间表
+ * @param count 今天要发布的数量
+ * @returns 时间戳数组
+ */
+const generateScheduledTimes = (count: number): number[] => {
+  const times: number[] = [];
+  const now = new Date();
+  const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const todayEnd = new Date(todayStart.getTime() + 24 * 3600000);
+  
+  if (count === 1) {
+    // 只发1条，随机时间
+    const randomTime = todayStart.getTime() + Math.random() * (todayEnd.getTime() - todayStart.getTime());
+    times.push(randomTime);
+  } else {
+    // 发多条，考虑内容相关性
+    // 30%概率集中发布（相近时间），70%概率分散发布
+    const shouldCluster = Math.random() < 0.3;
+    
+    if (shouldCluster && count >= 2) {
+      // 集中发布：在2小时内发完
+      const baseTime = todayStart.getTime() + Math.random() * (todayEnd.getTime() - todayStart.getTime() - 2 * 3600000);
+      for (let i = 0; i < count; i++) {
+        const offset = Math.random() * 2 * 3600000; // 2小时内
+        times.push(baseTime + offset);
+      }
+    } else {
+      // 分散发布：全天随机分布
+      for (let i = 0; i < count; i++) {
+        const randomTime = todayStart.getTime() + Math.random() * (todayEnd.getTime() - todayStart.getTime());
+        times.push(randomTime);
+      }
+    }
+    
+    // 排序时间
+    times.sort((a, b) => a - b);
   }
   
-  return false;
+  return times;
 };
 
 /**
@@ -284,21 +305,26 @@ ${chatContext}
 ...
 
 【图片数量规范】
-- 1张图：适合单一主体的内容（风景、自拍、重点物品等）
-- 2张图：适合对比、前后对照等
+根据内容需要，你可以自由决定发送1-9张图片：
+- 1张图：适合单一主体（风景、自拍、重点物品等）
+- 2张图：适合对比、前后对照
 - 3张图：适合记录多个相关场景
-- 4张图：2x2网格，适合四宫格形式
-- 5-9张图：适合记录丰富的日常、旅行、活动等
-- 最多9张图（微信朋友圈的上限）
+- 4张图：2x2网格，四宫格形式
+- 5-6张图：记录较丰富的日常、活动
+- 7-9张图：记录非常丰富的旅行、聚会、展览等
+- 不要每次都发满9张，根据实际内容决定合适的图片数量
 
 【图片描述要求】
 - 每个描述控制在10-30字
 - 描述要具体、生动，能让人想象出画面
 - 可以包含：场景、物品、人物、氛围、色彩等
+- 描述要贴合你的身份和当时的情境
 - 示例：
   * "夕阳西下的海边，天空渐变成橙红色"
   * "咖啡店角落的落地窗，阳光洒在书上"
   * "毛茸茸的橘猫蜷缩在沙发上睡觉"
+  * "实验室显微镜下的细胞切片，蓝紫色荧光"
+  * "图书馆自习区堆满的专业书和笔记"
 
 现在请生成一条朋友圈内容：`;
 
@@ -393,22 +419,10 @@ export const generateAIMoment = async (
     // 更新生成时间和计数
     const momentsData = await getMomentsData(conversation.id);
     momentsData.lastGeneratedTime = Date.now();
-    momentsData.generatedCountToday += 1;
-    
-    // 如果今天还有未发的朋友圈，计算下次发布时间
-    if (momentsData.todayPlannedCount && momentsData.generatedCountToday < momentsData.todayPlannedCount) {
-      const remaining = momentsData.todayPlannedCount - momentsData.generatedCountToday;
-      const schedule = generateTodaySchedule(remaining);
-      momentsData.nextScheduledTime = schedule[0];
-      console.log(`⏰ 下次发布时间: ${new Date(schedule[0]).toLocaleTimeString('zh-CN')}`);
-    } else {
-      momentsData.nextScheduledTime = undefined;
-      console.log(`✨ 今天的朋友圈已全部发布完成`);
-    }
-    
+    momentsData.todayGeneratedCount += 1;
     await saveMomentsData(momentsData);
     
-    console.log(`✅ 成功生成朋友圈 (${momentsData.generatedCountToday}/${momentsData.todayPlannedCount || 1}): ${cleanedContent.substring(0, 30)}...`);
+    console.log(`✅ 成功生成朋友圈: ${cleanedContent.substring(0, 30)}...`);
     
     return post;
   } catch (error) {

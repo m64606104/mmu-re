@@ -123,16 +123,16 @@ export interface MomentsData {
   contactId: string;
   posts: MomentPost[];
   lastGeneratedTime: number; // 上次生成朋友圈的时间
-  generatedCountToday: number; // 今天已生成的数量
-  todayPlannedCount?: number; // 今天计划生成的总数（1-5条）
-  lastGenerationDate?: string; // 上次生成日期（YYYY-MM-DD格式）
-  nextScheduledTime?: number; // 下次计划生成的时间戳
+  lastGenerationDate: string; // 上次生成朋友圈的日期（YYYY-MM-DD）
+  todayTargetCount: number; // 今天目标生成数量（1-5随机）
+  todayGeneratedCount: number; // 今天已生成的数量
+  scheduledTimes: number[]; // 今天计划发布的时间戳列表
   settings: {
     autoGenerate: boolean; // 是否自动生成
-    minInterval: number; // 最小间隔（小时）
+    minInterval: number; // 最小间隔（小时，24-72，即1-3天）
     maxInterval: number; // 最大间隔（小时）
-    minPostsPerCycle: number; // 每周期最少发布数
-    maxPostsPerCycle: number; // 每周期最多发布数
+    minPostsPerDay: number; // 每天最少发布数
+    maxPostsPerDay: number; // 每天最多发布数
   };
 }
 
