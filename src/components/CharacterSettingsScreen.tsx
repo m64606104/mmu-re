@@ -584,13 +584,13 @@ export default function CharacterSettingsScreen({
             {/* 图片数量选择 */}
             {momentsType === 'image' && (
               <div className="mb-4">
-                <label className="block text-sm font-medium text-gray-700 mb-2">图片数量</label>
-                <div className="flex gap-2">
-                  {[1, 2, 3, 4, 6, 9].map((count) => (
+                <label className="block text-sm font-medium text-gray-700 mb-2">图片数量（1-9张）</label>
+                <div className="grid grid-cols-5 gap-2 mb-2">
+                  {[1, 2, 3, 4, 5].map((count) => (
                     <button
                       key={count}
                       onClick={() => setImageCount(count)}
-                      className={`flex-1 py-2 rounded-lg font-medium transition-colors ${
+                      className={`py-2 rounded-lg font-medium transition-colors ${
                         imageCount === count
                           ? 'bg-blue-500 text-white'
                           : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
@@ -600,6 +600,24 @@ export default function CharacterSettingsScreen({
                     </button>
                   ))}
                 </div>
+                <div className="grid grid-cols-4 gap-2">
+                  {[6, 7, 8, 9].map((count) => (
+                    <button
+                      key={count}
+                      onClick={() => setImageCount(count)}
+                      className={`py-2 rounded-lg font-medium transition-colors ${
+                        imageCount === count
+                          ? 'bg-blue-500 text-white'
+                          : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                      }`}
+                    >
+                      {count}
+                    </button>
+                  ))}
+                </div>
+                <p className="text-xs text-gray-500 mt-2 text-center">
+                  📐 支持微信朋友圈全部布局样式
+                </p>
               </div>
             )}
 

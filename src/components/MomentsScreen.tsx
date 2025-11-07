@@ -156,17 +156,19 @@ export default function MomentsScreen({
     };
   };
 
-  // 获取微信风格的图片网格布局类名
+  // 获取微信风格的图片网格布局类名（支持1-9张）
   const getImageGridClass = (count: number) => {
     switch (count) {
       case 1:
-        return 'grid-cols-1 max-w-[200px]';
+        return 'grid-cols-1 max-w-[200px]'; // 单图：单独一列
       case 2:
-        return 'grid-cols-2 gap-1';
+        return 'grid-cols-2 gap-1'; // 2张：横向2列
+      case 3:
+        return 'grid-cols-3 gap-1'; // 3张：横向3列
       case 4:
-        return 'grid-cols-2 gap-1';
+        return 'grid-cols-2 gap-1'; // 4张：2x2网格
       default:
-        return 'grid-cols-3 gap-1';
+        return 'grid-cols-3 gap-1'; // 5-9张：3列布局
     }
   };
 
