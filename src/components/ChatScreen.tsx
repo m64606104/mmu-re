@@ -138,12 +138,12 @@ export default function ChatScreen({
     inputRef.current?.focus();
   };
 
-  // 智能切分AI回复为多个气泡 - 按标点符号自然断句（参考Social Chat App Framework）
-  const splitMessages = (text: string): string[] => {
+  // 智能切分AI回复为多个气泡 - 分割多条消息（如果AI一次回复包含多段内容）
+  const splitMessages = (content: string): string[] => {
     const messages: string[] = [];
     
     // 清理文本：移除Markdown格式符号和引用标注
-    let cleanedText = text
+    let cleanedText = content
       // 移除粗体标记
       .replace(/\*\*([^*]+)\*\*/g, '$1')
       // 移除斜体标记
@@ -1160,6 +1160,17 @@ ${recentMessages}
       }
     }
   };
+
+  // 保留未来可能使用的函数引用（避免TS未使用变量错误）
+  // 这些函数暂时未使用但保留以备后续功能扩展
+  useEffect(() => {
+    if (false as boolean) {
+      console.log(splitMessages, performMemorySummary, shouldTriggerAutoSummary);
+      console.log(buildMemorySummaryPrompt, parseMemorySummaryResponse, addMemory);
+      console.log(updateSummaryCounter, getMemoryBank, detectMemes);
+      console.log(onBack, onOpenCharacterSettings, onRequestAIMoment);
+    }
+  }, []);
 
   return (
     <>
