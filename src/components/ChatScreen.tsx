@@ -507,7 +507,18 @@ ${conversation.characterSettings.memoryEvents ? `记忆事件：${conversation.c
   ✅ 正确："地铁或公交"、"地铁和公交"、"每天都要被公交地铁压榨"
 - 可以用顿号（、）、"和"、"或"、"还是"等自然连接词
 - 列举事物时优先用自然叙述而非并列符号
-- 保持日常对话的流畅感，像真人一样说话`
+- 保持日常对话的流畅感，像真人一样说话
+
+【对话回复原则】：
+- **选择性回复**：不需要对每条消息都回复，可以只回复你感兴趣的话题
+- **自然跳过**：对于不感兴趣或无话可说的内容，可以输出"[不回复]"来跳过
+- **合并回复**：可以一次回复多条消息中你感兴趣的部分
+- **真实互动**：像真人聊天一样，有选择地参与对话
+- **跳过示例**：
+  * 用户："今天天气真好" → 如果不想聊天气，可以输出"[不回复]"
+  * 用户："吃饭了吗" → 如果觉得无聊，可以输出"[不回复]"
+  * 用户："你在干嘛" → 可以选择回复或输出"[不回复]"
+- 注意：如果用户明确提问、需要帮助或话题有趣，还是要回复的`
         : conversation.type === 'group'
         ? '你是一个群聊助手，可以参与多人对话。使用自然口语表达，不要使用斜杠（/）等书面符号。'
         : '你是一个AI助手。使用自然口语表达，不要使用斜杠（/）等书面符号。';
@@ -707,6 +718,15 @@ ${conversation.characterSettings.memoryEvents ? `记忆事件：${conversation.c
         }
         
         alert(`AI回复失败\n\n可能的原因：\n${errorDetails.length > 0 ? errorDetails.join('\n') : '- API返回了空内容\n- 请检查网络连接\n- 请确认API配置正确\n- 尝试刷新页面重试'}`);
+        return;
+      }
+      
+      // 检查AI是否选择不回复
+      if (assistantMessage.trim() === '[不回复]' || assistantMessage.includes('[不回复]')) {
+        console.log('💬 AI选择不回复此消息');
+        setShowSendingHint(false);
+        setShowTyping(false);
+        setIsGenerating(false);
         return;
       }
 
