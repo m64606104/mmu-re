@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
-import { ChevronLeft, Send, Sparkles, Image, Video, Mic, Phone, Plus, MapPin, FileText, Smile } from 'lucide-react';
+import { ChevronLeft, Send, Sparkles, Image, Video, Mic, Phone, Plus, MapPin, FileText, Smile, Play, Pause } from 'lucide-react';
 import { Conversation, ApiConfig, Message } from '../types';
 import FeaturesModal from './FeaturesModal';
 import { 
@@ -14,6 +14,7 @@ import {
 } from '../utils/memorySystem';
 import { detectMemes } from '../utils/memeSystem';
 import { buildTimeAwarePrompt } from '../utils/timeAwareness';
+import { getMomentsData } from '../utils/aiMomentsGenerator';
 // import { transcribeAudio, isValidSpeechConfig } from '../utils/speechToText';
 
 interface ChatScreenProps {
@@ -43,6 +44,8 @@ export default function ChatScreen({
   const [showStickerModal, setShowStickerModal] = useState(false);
   const [stickerDescInput, setStickerDescInput] = useState('');
   const [viewingVoice, setViewingVoice] = useState<string | null>(null);
+  const [playingVoice, setPlayingVoice] = useState<string | null>(null);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
   const imageInputRef = useRef<HTMLInputElement>(null);
   const videoInputRef = useRef<HTMLInputElement>(null);
   const [showSendingHint, setShowSendingHint] = useState(false);
@@ -149,10 +152,10 @@ export default function ChatScreen({
       // 检测是否包含完整的引号对（中英文引号）
       const hasCompleteQuotes = /([""][^""]+[""])|("[^"]+")/.test(trimmed);
       
-      // 如果包含特殊内容，整段作为一条消息
+      // 如果包含特殊内容，整段作为一条消息（不再分割）
       if (hasUrl || hasParenthesesEmoji || hasShortParentheses || hasCompleteQuotes) {
         messages.push(trimmed);
-      } else if (trimmed.length < 50) {
+      } else if (trimmed.length < 80) {
         // 较短消息（50字以内）直接发送
         messages.push(trimmed);
       } else {
@@ -516,6 +519,26 @@ ${conversation.characterSettings.memoryEvents ? `记忆事件：${conversation.c
         systemPrompt += memoryContext;
       }
       
+      // 添加朋友圈上下文
+      try {
+        const momentsData = await getMomentsData(conversation.id);
+        if (momentsData.posts && momentsData.posts.length > 0) {
+          const recentPosts = momentsData.posts.slice(0, 5); // 最近5条朋友圈
+          let momentsContext = '\n\n【你最近发的朋友圈】\n以下是你最近发的朋友圈内容，在对话中可以自然地提及：\n';
+          recentPosts.forEach((post, index) => {
+            const timeAgo = Math.floor((Date.now() - post.timestamp) / 3600000); // 小时
+            momentsContext += `${index + 1}. ${post.content}`;
+            if (post.imageDescriptions && post.imageDescriptions.length > 0) {
+              momentsContext += ` [配图${post.imageDescriptions.length}张]`;
+            }
+            momentsContext += ` (${timeAgo}小时前)\n`;
+          });
+          systemPrompt += momentsContext;
+        }
+      } catch (error) {
+        console.error('获取朋友圈数据失败:', error);
+      }
+      
       // 添加时间感知信息
       systemPrompt += timeAwarePrompt;
 
@@ -713,7 +736,7 @@ ${conversation.characterSettings.memoryEvents ? `记忆事件：${conversation.c
         const msgContent = limitedMessages[i].trim();
         const imageMatch = msgContent.match(/\[图片[:：]([^\]]+)\]/);
         const videoMatch = msgContent.match(/\[视频[:：]([^\]]+)\]/);
-        const voiceMatch = msgContent.match(/\[语音[:：]([^，,]+)[，,]?(\d+)秒?\]/);
+        const voiceMatch = msgContent.match(/\[语音[:：]([^，,\]]+)[，,]?(?:时长)?(\d+)秒?\]/);
         const stickerMatch = msgContent.match(/\[表情包[:：]([^\]]+)\]/);
         
         let newMessage: Message;
@@ -1030,11 +1053,11 @@ ${conversation.characterSettings.memoryEvents ? `记忆事件：${conversation.c
                       />
                     )}
                     {message.role === 'user' && message.mediaType === 'voice' && message.mediaUrl && (
-                      <div 
-                        onClick={() => setViewingVoice(viewingVoice === message.id ? null : message.id)}
-                        className="cursor-pointer"
-                      >
-                        <div className="flex items-center gap-2 px-3 py-2 bg-gray-50 rounded-xl min-w-[120px] max-w-[200px]">
+                      <div>
+                        <div 
+                          onClick={() => setViewingVoice(viewingVoice === message.id ? null : message.id)}
+                          className="cursor-pointer flex items-center gap-2 px-3 py-2 bg-gray-50 rounded-xl min-w-[120px] max-w-[200px]"
+                        >
                           <Mic className="w-4 h-4 text-gray-600 flex-shrink-0" />
                           <div className="flex-1 flex items-center gap-0.5">
                             <div className="flex gap-0.5">
@@ -1047,21 +1070,39 @@ ${conversation.characterSettings.memoryEvents ? `记忆事件：${conversation.c
                               ))}
                             </div>
                           </div>
-                          <span className="text-xs text-gray-600 flex-shrink-0">{message.voiceDuration || 0}"</span>
+                          <span className="text-xs text-gray-600 flex-shrink-0 mr-1">{message.voiceDuration || 0}"</span>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              if (playingVoice === message.id) {
+                                audioRef.current?.pause();
+                                setPlayingVoice(null);
+                              } else {
+                                if (audioRef.current) {
+                                  audioRef.current.pause();
+                                }
+                                const audio = new Audio(message.mediaUrl);
+                                audioRef.current = audio;
+                                audio.play();
+                                setPlayingVoice(message.id);
+                                audio.onended = () => setPlayingVoice(null);
+                              }
+                            }}
+                            className="flex-shrink-0 w-5 h-5 flex items-center justify-center hover:bg-gray-200 rounded-full transition-colors"
+                          >
+                            {playingVoice === message.id ? (
+                              <Pause className="w-3 h-3 text-gray-600" />
+                            ) : (
+                              <Play className="w-3 h-3 text-gray-600" />
+                            )}
+                          </button>
                         </div>
-                        {/* 语音内容文字 */}
+                        {/* 语音内容文字（点击气泡显示） */}
                         {viewingVoice === message.id && message.mediaDescription && (
                           <div className="mt-2 px-4 py-2 bg-gray-50 rounded-xl border border-gray-200">
                             <p className="text-[13px] text-gray-700">{message.mediaDescription}</p>
                           </div>
                         )}
-                        {/* 真实语音播放器（隐藏但可播放） */}
-                        <audio 
-                          src={message.mediaUrl} 
-                          controls 
-                          className="w-full mt-2"
-                          style={{ maxHeight: '40px' }}
-                        />
                       </div>
                     )}
                     {/* 用户表情包（浅蓝色半透明小正方形） */}
@@ -1101,11 +1142,11 @@ ${conversation.characterSettings.memoryEvents ? `记忆事件：${conversation.c
                       </div>
                     )}
                     {message.role === 'assistant' && message.mediaType === 'voice' && message.isMediaDescriptionOnly && (
-                      <div 
-                        onClick={() => setViewingVoice(viewingVoice === message.id ? null : message.id)}
-                        className="cursor-pointer"
-                      >
-                        <div className="flex items-center gap-2 px-3 py-2 bg-gray-50 rounded-xl min-w-[120px] max-w-[200px]">
+                      <div>
+                        <div 
+                          onClick={() => setViewingVoice(viewingVoice === message.id ? null : message.id)}
+                          className="cursor-pointer flex items-center gap-2 px-3 py-2 bg-gray-50 rounded-xl min-w-[120px] max-w-[200px]"
+                        >
                           <Mic className="w-4 h-4 text-gray-600 flex-shrink-0" />
                           <div className="flex-1 flex items-center gap-0.5">
                             <div className="flex gap-0.5">
@@ -1120,6 +1161,7 @@ ${conversation.characterSettings.memoryEvents ? `记忆事件：${conversation.c
                           </div>
                           <span className="text-xs text-gray-600 flex-shrink-0">{message.voiceDuration || 3}"</span>
                         </div>
+                        {/* 语音内容文字（点击气泡显示） */}
                         {viewingVoice === message.id && message.mediaDescription && (
                           <div className="mt-2 px-4 py-2 bg-gray-50 rounded-xl border border-gray-200">
                             <p className="text-[13px] text-gray-700">{message.mediaDescription}</p>
@@ -1141,8 +1183,8 @@ ${conversation.characterSettings.memoryEvents ? `记忆事件：${conversation.c
                     {!message.mediaType && (
                       <p className="text-[15px] leading-relaxed whitespace-pre-wrap break-words">{message.content}</p>
                     )}
-                    {/* 用户媒体的描述文字 */}
-                    {message.role === 'user' && message.mediaType && message.mediaType !== 'sticker' && message.mediaDescription && (
+                    {/* 用户媒体的描述文字（排除语音和表情包） */}
+                    {message.role === 'user' && message.mediaType && message.mediaType !== 'sticker' && message.mediaType !== 'voice' && message.mediaDescription && (
                       <p className="text-[13px] leading-relaxed px-3 py-2 text-gray-600">{message.mediaDescription}</p>
                     )}
                   </div>

@@ -1,12 +1,13 @@
 import { useState, useRef, useEffect } from 'react';
 import { ChevronLeft, Camera, Heart, MessageCircle, Send, Image as ImageIcon } from 'lucide-react';
-import { MomentPost, UserProfile, Conversation } from '../types';
-import { getAllMomentPosts, likeMomentPost, commentMomentPost } from '../utils/aiMomentsGenerator';
+import { MomentPost, UserProfile, Conversation, ApiConfig } from '../types';
+import { getAllMomentPosts, likeMomentPost, commentMomentPost, generateAIMomentsInteraction } from '../utils/aiMomentsGenerator';
 
 interface MomentsScreenProps {
   moments: MomentPost[];
   conversations: Conversation[];
   userProfile: UserProfile;
+  apiConfig: ApiConfig;
   onAddMoment: (content: string, images: string[]) => void;
   onLikeMoment: (momentId: string) => void;
   onCommentMoment: (momentId: string, content: string) => void;
@@ -17,6 +18,7 @@ export default function MomentsScreen({
   moments,
   conversations,
   userProfile,
+  apiConfig,
   onAddMoment,
   onLikeMoment,
   onCommentMoment,
@@ -37,6 +39,13 @@ export default function MomentsScreen({
       try {
         const posts = await getAllMomentPosts();
         setAiMoments(posts);
+        
+        // 触发AI互动（点赞和评论）
+        await generateAIMomentsInteraction(conversations, apiConfig);
+        
+        // 重新加载以显示最新的互动
+        const updatedPosts = await getAllMomentPosts();
+        setAiMoments(updatedPosts);
       } catch (error) {
         console.error('加载AI朋友圈失败:', error);
       }
@@ -49,7 +58,7 @@ export default function MomentsScreen({
     const interval = setInterval(loadAiMoments, 5 * 60 * 1000);
     
     return () => clearInterval(interval);
-  }, []);
+  }, [conversations, apiConfig]);
 
   // 合并用户朋友圈和AI朋友圈
   const allMoments = [...moments, ...aiMoments].sort((a, b) => b.timestamp - a.timestamp);

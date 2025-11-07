@@ -404,3 +404,138 @@ export const getAllMomentPosts = async (): Promise<MomentPost[]> => {
   
   return allPosts;
 };
+
+/**
+ * AI互动：随机点赞或评论其他AI的朋友圈
+ */
+export const generateAIMomentsInteraction = async (
+  conversations: Conversation[],
+  apiConfig: ApiConfig
+): Promise<void> => {
+  try {
+    const allMomentsData = await getAllMomentsData();
+    if (allMomentsData.length === 0) return;
+
+    // 获取所有AI角色（排除用户）
+    const aiConversations = conversations.filter(c => c.type === 'private' && c.characterSettings);
+    if (aiConversations.length < 2) return; // 至少需要2个AI才能互动
+
+    // 遍历所有朋友圈
+    for (const momentsData of allMomentsData) {
+      const authorConv = aiConversations.find(c => c.id === momentsData.contactId);
+      if (!authorConv) continue;
+
+      // 获取最近的朋友圈（24小时内的）
+      const recentPosts = momentsData.posts.filter(post => {
+        const hoursSincePost = (Date.now() - post.timestamp) / 3600000;
+        return hoursSincePost < 24 && !post.isRead;
+      });
+
+      for (const post of recentPosts) {
+        // 其他AI有30%的概率看到并互动
+        const otherAIs = aiConversations.filter(c => c.id !== momentsData.contactId);
+        
+        for (const otherAI of otherAIs) {
+          if (Math.random() > 0.3) continue; // 30%概率
+
+          const interactionType = Math.random();
+          
+          if (interactionType < 0.5) {
+            // 50%概率点赞
+            if (!post.likes.includes(otherAI.id)) {
+              await likeMomentPost(momentsData.contactId, post.id, otherAI.id);
+            }
+          } else {
+            // 50%概率评论
+            // 检查是否已经评论过
+            const hasCommented = post.comments.some(c => c.authorId === otherAI.id);
+            if (hasCommented) continue;
+
+            // 生成AI评论
+            const comment = await generateAIComment(post, authorConv, otherAI, apiConfig);
+            if (comment) {
+              await commentMomentPost(momentsData.contactId, post.id, {
+                authorId: otherAI.id,
+                authorName: otherAI.characterSettings?.nickname || otherAI.name,
+                authorAvatar: otherAI.characterSettings?.avatar || otherAI.avatar,
+                content: comment
+              });
+            }
+          }
+        }
+
+        // 标记为已读
+        post.isRead = true;
+      }
+
+      await saveMomentsData(momentsData);
+    }
+  } catch (error) {
+    console.error('AI朋友圈互动失败:', error);
+  }
+};
+
+/**
+ * 生成AI评论内容
+ */
+const generateAIComment = async (
+  post: MomentPost,
+  authorConv: Conversation,
+  commenterConv: Conversation,
+  apiConfig: ApiConfig
+): Promise<string | null> => {
+  try {
+    const commenterSettings = commenterConv.characterSettings;
+    if (!commenterSettings) return null;
+
+    const prompt = `你是 ${commenterSettings.nickname || commenterConv.name}。
+
+【你的性格】
+${commenterSettings.personality || ''}
+
+【你的说话风格】
+${commenterSettings.languageStyle || ''}
+
+【朋友圈内容】
+${authorConv.characterSettings?.nickname || authorConv.name} 发了一条朋友圈：
+${post.content}
+${post.imageDescriptions ? `配图：${post.imageDescriptions.join('、')}` : ''}
+
+【任务】
+请以你的性格和说话风格，对这条朋友圈发表一个简短的评论。
+
+【要求】
+1. 1-2句话即可，不要太长
+2. 要符合你的性格和说话风格
+3. 像真实朋友间的互动，自然、真诚
+4. 可以是赞美、调侃、共鸣、建议等
+5. 不要说"发得真好"这种空话
+6. 直接输出评论内容，不要有前缀
+
+现在请评论：`;
+
+    const response = await fetch(`${apiConfig.baseUrl}/v1/chat/completions`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${apiConfig.apiKey}`
+      },
+      body: JSON.stringify({
+        model: apiConfig.modelName,
+        messages: [{ role: 'user', content: prompt }],
+        temperature: 0.8,
+        max_tokens: 100
+      })
+    });
+
+    if (!response.ok) return null;
+
+    const data = await response.json();
+    const comment = data.choices?.[0]?.message?.content?.trim();
+
+    return comment || null;
+  } catch (error) {
+    console.error('生成AI评论失败:', error);
+    return null;
+  }
+};

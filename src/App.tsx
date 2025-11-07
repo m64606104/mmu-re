@@ -363,6 +363,7 @@ function App() {
             moments={moments}
             conversations={conversations}
             userProfile={userProfile}
+            apiConfig={apiConfig}
             onAddMoment={addMoment}
             onLikeMoment={likeMoment}
             onCommentMoment={commentMoment}
