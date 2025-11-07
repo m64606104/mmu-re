@@ -138,24 +138,7 @@ export const shouldGenerateMoment = async (contactId: string): Promise<{shouldGe
   } else {
     // 同一天，检查是否还有待发布的朋友圈
     if (data.todayGeneratedCount < data.todayTargetCount) {
-      // 检查上一条朋友圈的时间间隔
-      if (data.todayGeneratedCount > 0) {
-        const todayPostsList = data.posts.filter(post => {
-          const postDate = new Date(post.timestamp).toISOString().split('T')[0];
-          return postDate === today;
-        }).sort((a, b) => b.timestamp - a.timestamp);
-        
-        const lastPost = todayPostsList[0];
-        if (lastPost) {
-          const hoursSinceLastPost = (now - lastPost.timestamp) / 3600000;
-          // 至少间隔30分钟再发下一条
-          if (hoursSinceLastPost < 0.5) {
-            return {shouldGenerate: false, count: 0};
-          }
-        }
-      }
-      
-      // 可以生成新的朋友圈
+      // 直接允许生成，由AI决定发布时间和内容
       return {shouldGenerate: true, count: 1};
     }
     
@@ -259,15 +242,20 @@ ${todayPosts.length > 0 ? todayPosts.map((p, i) => {
 【任务】
 根据你的角色设定、当前时间情境、以及今天已发的朋友圈（如有），决定下一条朋友圈的内容和发布时间。
 
-【发布时间要求】
+【重要说明】
+- **内容完全自由**：可以与已发内容相关，也可以完全不相关，由你自己决定
+- **时间完全自由**：可以紧接着上一条发，也可以间隔几小时，由你自己决定
+- **唯一要求**：内容和时间都要符合你的角色身份、当前日期和时间情境
+
+【发布时间参考（仅供参考，不是限制）】
 1. **符合身份和情境**：
-   - 上班族：可能在下班时间（18:00-19:00）吐槽工作，晚上（20:00-23:00）分享生活
-   - 学生：可能在课间、放学后、周末活动时发
+   - 上班族：可能在上班路上、午休、下班时、晚上等任何时间发
+   - 学生：可能在课间、吃饭时、放学后、周末等任何时间发
    - 如果是周末活动（演唱会、旅行等），时间要符合活动进程
-2. **与已发内容关联**：
-   - 如果今天已发过相关内容，新的可以在1-3小时后继续发（如演唱会后续照片）
-   - 如果是新话题，时间可以分散开
-3. **真实自然**：像真人一样选择发布时间，不要太规律
+2. **内容关联**：
+   - 同一话题：可以连续发（如演唱会现场→演唱会照片）
+   - 不同话题：可以间隔发（如早上发早餐→晚上发加班）
+3. **真实自然**：像真人一样自由选择，想什么时候发就什么时候发
 
 【要求】
 1. **内容要真实自然**：像真人发朋友圈一样，不要太刻意
