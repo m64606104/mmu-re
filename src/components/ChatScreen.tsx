@@ -749,6 +749,39 @@ ${conversation.characterSettings.memoryEvents ? `记忆事件：${conversation.c
         setShowSendingHint(false);
         setShowTyping(false);
         setIsGenerating(false);
+        
+        // 显示友好的提示
+        const aiName = conversation.characterSettings?.nickname || conversation.name;
+        const tips = [
+          `${aiName}看到了你的消息，但现在想安静一会儿~`,
+          `${aiName}好像在忙别的事情，暂时没有回复`,
+          `${aiName}可能对这个话题不太感兴趣呢`,
+          `${aiName}正在思考中...或许稍后会回复你`,
+          `${aiName}收到了，但暂时不知道怎么回复`,
+        ];
+        const randomTip = tips[Math.floor(Math.random() * tips.length)];
+        
+        // 使用温和的提示而不是alert
+        setTimeout(() => {
+          const hint = document.createElement('div');
+          hint.textContent = randomTip;
+          hint.style.cssText = `
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(0, 0, 0, 0.75);
+            color: white;
+            padding: 12px 24px;
+            border-radius: 8px;
+            font-size: 14px;
+            z-index: 10000;
+            animation: fadeInOut 2.5s ease-in-out;
+          `;
+          document.body.appendChild(hint);
+          setTimeout(() => hint.remove(), 2500);
+        }, 300);
+        
         return;
       }
 
