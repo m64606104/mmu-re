@@ -1,6 +1,6 @@
-import { useState, useCallback, useEffect, useRef } from 'react';
-import { ChevronLeft, Send, Mic, Image as ImageIcon, Sparkles, Clock, Circle, Smile } from 'lucide-react';
-import { Conversation, Message, ApiConfig, MemoryEntry, MomentPost, UserProfile } from '../types';
+import { useState, useEffect, useRef } from 'react';
+import { ChevronLeft, Send, Mic, Sparkles, Smile, BellOff, Bell, Pause, Play, Image as ImageIcon, Video, Phone, MapPin, FileText, Plus } from 'lucide-react';
+import { Conversation, Message, ApiConfig, UserProfile } from '../types';
 import ActivityLogModal from './ActivityLogModal';
 import { 
   getConversationMemories, 
@@ -63,7 +63,7 @@ export default function ChatScreen({
   const isComponentMountedRef = useRef(true);
   
   // AI状态相关state
-  const [aiStatus, setAIStatus] = useState<AIStatusInfo | null>(null);
+  const [aiStatus, setAIStatus] = useState<any | null>(null);
   const [showActivityModal, setShowActivityModal] = useState(false);
   
   // 语音相关state
@@ -1418,7 +1418,7 @@ ${recentMessages}
                       >
                         <div className="absolute inset-0 bg-gradient-to-br from-white/10 to-gray-100/20" />
                         <div className="absolute inset-0 flex flex-col items-center justify-center p-3 text-center">
-                          <Image className="w-12 h-12 text-gray-400 mb-2" strokeWidth={1.5} />
+                          <ImageIcon className="w-12 h-12 text-gray-400 mb-2" strokeWidth={1.5} />
                           <p className="text-xs text-gray-600 line-clamp-3">{message.mediaDescription}</p>
                         </div>
                       </div>
@@ -1586,7 +1586,7 @@ ${recentMessages}
             <div className="flex gap-2 items-center overflow-x-auto">
               <button onClick={() => imageInputRef.current?.click()} className="flex-shrink-0">
                 <div className="w-9 h-9 rounded-full bg-white border border-gray-300 flex items-center justify-center hover:border-gray-400 transition-colors">
-                  <Image className="w-4 h-4 text-gray-600" />
+                  <ImageIcon className="w-4 h-4 text-gray-600" />
                 </div>
               </button>
               <input
