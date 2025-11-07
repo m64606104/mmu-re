@@ -15,6 +15,7 @@ import ThemeScreen from './components/ThemeScreen';
 import UserGuide from './components/UserGuide';
 import { MomentsAutoGenerator } from './components/MomentsAutoGenerator';
 import ProactiveMessagingService from './components/ProactiveMessagingService';
+import MessageNotification from './components/MessageNotification';
 import { smartLoad, smartSave, migrateToIndexedDB } from './utils/storage';
 
 function App() {
@@ -468,6 +469,15 @@ function App() {
         {/* 手机容器 - 优化尺寸 (393x805) */}
         <div className="w-[393px] h-[805px] bg-white rounded-[40px] shadow-2xl overflow-hidden relative -mt-[10px]">
           {renderScreen()}
+          
+          {/* 消息通知 - QQ风格顶部弹窗 */}
+          <MessageNotification
+            conversations={conversations}
+            onNavigate={(conversationId) => {
+              setCurrentConversationId(conversationId);
+              setCurrentScreen('chat');
+            }}
+          />
         </div>
       </div>
       
