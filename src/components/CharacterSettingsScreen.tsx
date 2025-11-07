@@ -1,7 +1,8 @@
 import { useState, useRef } from 'react';
-import { ChevronLeft, Upload, Brain, Trash2, Download, FileUp, Zap, X } from 'lucide-react';
-import { Conversation } from '../types';
+import { ChevronLeft, Upload, Brain, Trash2, Download, FileUp, Zap, X, Camera } from 'lucide-react';
+import { Conversation, ApiConfig } from '../types';
 import MemoryManager from './MemoryManager';
+import { addMomentPost } from '../utils/aiMomentsGenerator';
 
 interface CharacterSettingsScreenProps {
   conversation: Conversation;
@@ -36,6 +37,9 @@ export default function CharacterSettingsScreen({
   const [showMemoryManager, setShowMemoryManager] = useState(false);
   const [showImportModal, setShowImportModal] = useState(false);
   const [importData, setImportData] = useState<{messages: any[], count: number} | null>(null);
+  const [showMomentsTest, setShowMomentsTest] = useState(false);
+  const [momentsType, setMomentsType] = useState<'text' | 'image'>('text');
+  const [imageCount, setImageCount] = useState(1);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const chatImportRef = useRef<HTMLInputElement>(null);
   
@@ -143,11 +147,66 @@ export default function CharacterSettingsScreen({
   };
 
   const handleDelete = () => {
-    if (window.confirm(`确定要删除联系人“${conversation.name}”吗？\n\n此操作将永久删除该对话及所有消息。`)) {
+    if (window.confirm(`确定要删除联系人"${conversation.name}"吗？\n\n此操作将永久删除该对话及所有消息。`)) {
       if (onDeleteConversation) {
         onDeleteConversation(conversation.id);
         onBack();
       }
+    }
+  };
+
+  // 处理朋友圈测试
+  const handleTestMoment = async () => {
+    try {
+      // 获取API配置
+      const savedApiConfig = localStorage.getItem('apiConfig');
+      if (!savedApiConfig) {
+        alert('请先配置API设置');
+        return;
+      }
+      const apiConfig: ApiConfig = JSON.parse(savedApiConfig);
+      
+      if (!apiConfig.baseUrl || !apiConfig.apiKey || !apiConfig.modelName) {
+        alert('API配置不完整');
+        return;
+      }
+
+      let content = '';
+      let imageDescriptions: string[] = [];
+
+      if (momentsType === 'text') {
+        // 生成纯文字朋友圈
+        content = `测试朋友圈 - ${new Date().toLocaleString()}\n这是一条测试朋友圈内容，用于查看纯文字朋友圈的样式。`;
+      } else {
+        // 生成图片朋友圈
+        content = `测试朋友圈 - ${new Date().toLocaleString()}\n这是一条测试朋友圈，包含${imageCount}张图片。`;
+        
+        // 生成测试图片描述
+        for (let i = 0; i < imageCount; i++) {
+          imageDescriptions.push(`测试图片${i + 1}：一张美丽的风景照`);
+        }
+      }
+
+      // 创建朋友圈帖子对象
+      const momentPost = {
+        id: `test_moment_${Date.now()}`,
+        authorId: conversation.id,
+        authorName: conversation.characterSettings?.nickname || conversation.name,
+        authorAvatar: conversation.characterSettings?.avatar || conversation.avatar,
+        content,
+        imageDescriptions: imageDescriptions.length > 0 ? imageDescriptions : undefined,
+        timestamp: Date.now(),
+        likes: [],
+        comments: []
+      };
+
+      await addMomentPost(conversation.id, momentPost);
+
+      alert('✅ 测试朋友圈发布成功！');
+      setShowMomentsTest(false);
+    } catch (error) {
+      console.error('发布测试朋友圈失败:', error);
+      alert('❌ 发布失败，请检查配置');
     }
   };
 
@@ -407,6 +466,21 @@ export default function CharacterSettingsScreen({
           </p>
         </div>
 
+        {/* 朋友圈测试 */}
+        <div className="bg-white rounded-lg shadow-sm p-4">
+          <h3 className="text-sm font-medium text-gray-700 mb-3">朋友圈测试</h3>
+          <button
+            onClick={() => setShowMomentsTest(true)}
+            className="w-full py-3 border-2 border-purple-200 hover:border-purple-400 hover:bg-purple-50 rounded-lg transition-colors flex items-center justify-center gap-2 text-purple-700"
+          >
+            <Camera className="w-5 h-5" />
+            <span className="font-medium">发布测试朋友圈</span>
+          </button>
+          <p className="text-xs text-gray-500 mt-2 text-center">
+            🧪 测试不同类型的朋友圈样式
+          </p>
+        </div>
+
         {/* 聊天记录导入导出 */}
         <div className="bg-white rounded-lg shadow-sm p-4">
           <h3 className="text-sm font-medium text-gray-700 mb-3">聊天记录管理</h3>
@@ -462,6 +536,90 @@ export default function CharacterSettingsScreen({
           conversationName={conversation.name}
           onClose={() => setShowMemoryManager(false)}
         />
+      )}
+
+      {/* 朋友圈测试弹窗 */}
+      {showMomentsTest && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl p-6 w-full max-w-sm shadow-2xl">
+            <div className="flex items-start justify-between mb-4">
+              <h3 className="text-lg font-semibold text-gray-900">
+                朋友圈测试
+              </h3>
+              <button
+                onClick={() => setShowMomentsTest(false)}
+                className="p-1 hover:bg-gray-100 rounded-full transition-colors"
+              >
+                <X size={20} className="text-gray-500" />
+              </button>
+            </div>
+            
+            {/* 类型选择 */}
+            <div className="mb-4">
+              <label className="block text-sm font-medium text-gray-700 mb-2">朋友圈类型</label>
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  onClick={() => setMomentsType('text')}
+                  className={`py-2 px-4 rounded-lg font-medium transition-colors ${
+                    momentsType === 'text'
+                      ? 'bg-blue-500 text-white'
+                      : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                  }`}
+                >
+                  纯文字
+                </button>
+                <button
+                  onClick={() => setMomentsType('image')}
+                  className={`py-2 px-4 rounded-lg font-medium transition-colors ${
+                    momentsType === 'image'
+                      ? 'bg-blue-500 text-white'
+                      : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                  }`}
+                >
+                  图片
+                </button>
+              </div>
+            </div>
+
+            {/* 图片数量选择 */}
+            {momentsType === 'image' && (
+              <div className="mb-4">
+                <label className="block text-sm font-medium text-gray-700 mb-2">图片数量</label>
+                <div className="flex gap-2">
+                  {[1, 2, 3, 4, 6, 9].map((count) => (
+                    <button
+                      key={count}
+                      onClick={() => setImageCount(count)}
+                      className={`flex-1 py-2 rounded-lg font-medium transition-colors ${
+                        imageCount === count
+                          ? 'bg-blue-500 text-white'
+                          : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                      }`}
+                    >
+                      {count}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* 操作按钮 */}
+            <div className="space-y-3 mt-6">
+              <button
+                onClick={handleTestMoment}
+                className="w-full py-3 bg-blue-500 text-white rounded-xl hover:bg-blue-600 transition-colors font-medium"
+              >
+                发布测试朋友圈
+              </button>
+              <button
+                onClick={() => setShowMomentsTest(false)}
+                className="w-full py-3 border border-gray-300 text-gray-700 rounded-xl hover:bg-gray-50 transition-colors font-medium"
+              >
+                取消
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* 导入消息弹窗 */}

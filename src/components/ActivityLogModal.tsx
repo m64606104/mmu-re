@@ -19,19 +19,40 @@ const ActivityLogModal: React.FC<ActivityLogModalProps> = ({
 }) => {
   if (!isOpen) return null;
 
-  // 格式化时间为相对时间
+  // 格式化时间为24小时制
   const formatRelativeTime = (timestamp: number): string => {
-    const now = Date.now();
-    const diff = now - timestamp;
-    const minutes = Math.floor(diff / 60000);
-    const hours = Math.floor(diff / 3600000);
+    const date = new Date(timestamp);
+    const now = new Date();
+    const diffMs = now.getTime() - timestamp;
+    const diffMinutes = Math.floor(diffMs / 60000);
     
-    if (minutes < 1) return '刚刚';
-    if (minutes < 60) return `${minutes.toString().padStart(2, '0')}:00`;
-    if (hours < 24) return `${hours.toString().padStart(2, '0')}:${(minutes % 60).toString().padStart(2, '0')}`;
+    // 显示实际时间（24小时制）
+    const hours = date.getHours();
+    const minutes = date.getMinutes();
+    const timeStr = `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}`;
     
-    const days = Math.floor(hours / 24);
-    return `${days}天前`;
+    // 如果是今天，只显示时间
+    if (date.toDateString() === now.toDateString()) {
+      return timeStr;
+    }
+    
+    // 如果是昨天
+    const yesterday = new Date(now);
+    yesterday.setDate(yesterday.getDate() - 1);
+    if (date.toDateString() === yesterday.toDateString()) {
+      return `昨天 ${timeStr}`;
+    }
+    
+    // 如果是一周内
+    if (diffMinutes < 7 * 24 * 60) {
+      const days = Math.floor(diffMinutes / (24 * 60));
+      return `${days}天前 ${timeStr}`;
+    }
+    
+    // 更早的日期
+    const month = date.getMonth() + 1;
+    const day = date.getDate();
+    return `${month}/${day} ${timeStr}`;
   };
 
   return (

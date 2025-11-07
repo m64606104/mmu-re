@@ -15,7 +15,7 @@ import {
 // import { detectMemes } from '../utils/memeSystem'; // 已删除热梗系统
 import { buildTimeAwarePrompt } from '../utils/timeAwareness';
 import { getMomentsData } from '../utils/aiMomentsGenerator';
-import { getAIStatus, analyzeMessageAndUpdateStatus } from '../utils/aiStatusManager';
+import { getAIStatus, analyzeMessageAndUpdateStatus, analyzeAndUpdateStatusFromAI } from '../utils/aiStatusManager';
 import { backgroundTaskManager } from '../utils/backgroundTaskManager';
 import { showMessageNotification } from './MessageNotification';
 // import { transcribeAudio, isValidSpeechConfig } from '../utils/speechToText';
@@ -747,9 +747,13 @@ ${conversation.characterSettings.memoryEvents ? `记忆事件：${conversation.c
           // 分析AI消息更新状态
           if (conversation.type === 'private' && conversation.characterSettings && newMessages.length > 0) {
             const firstMessageContent = newMessages[0].content;
-            analyzeMessageAndUpdateStatus(conversation.id, firstMessageContent).then(() => {
-              getAIStatus(conversation.id).then(status => {
-                if (status) setAIStatus(status);
+            // 先尝试AI自主更新状态
+            analyzeAndUpdateStatusFromAI(conversation.id, firstMessageContent).then(() => {
+              // 然后再做常规分析
+              analyzeMessageAndUpdateStatus(conversation.id, firstMessageContent).then(() => {
+                getAIStatus(conversation.id).then(status => {
+                  if (status) setAIStatus(status);
+                });
               });
             });
           }
@@ -1057,6 +1061,9 @@ ${recentMessages}
 
       // 🎯 分析AI消息并更新状态
       if (conversation.type === 'private' && conversation.characterSettings && assistantMessage) {
+        // 先尝试AI自主更新状态（如果AI在消息中明确说要改状态）
+        await analyzeAndUpdateStatusFromAI(conversation.id, assistantMessage);
+        // 然后再做常规的状态分析
         await analyzeMessageAndUpdateStatus(conversation.id, assistantMessage);
         // 重新加载状态
         const updatedStatus = await getAIStatus(conversation.id);
