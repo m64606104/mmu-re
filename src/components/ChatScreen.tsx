@@ -629,7 +629,6 @@ ${conversation.characterSettings.memoryEvents ? `记忆事件：${conversation.c
         requestBody = {
           model: apiConfig.modelName,
           messages,
-          max_tokens: 500,
           temperature: 0.4
         };
       } else if (hasVideo) {
@@ -652,7 +651,6 @@ ${conversation.characterSettings.memoryEvents ? `记忆事件：${conversation.c
         requestBody = {
           model: apiConfig.modelName,
           messages,
-          max_tokens: 500,
           temperature: 0.7
         };
       } else if (hasVoice) {
@@ -675,7 +673,6 @@ ${conversation.characterSettings.memoryEvents ? `记忆事件：${conversation.c
         requestBody = {
           model: apiConfig.modelName,
           messages,
-          max_tokens: 500,
           temperature: 0.7
         };
       } else if (hasSticker) {
@@ -698,7 +695,6 @@ ${conversation.characterSettings.memoryEvents ? `记忆事件：${conversation.c
         requestBody = {
           model: apiConfig.modelName,
           messages,
-          max_tokens: 500,
           temperature: 0.8
         };
       } else {

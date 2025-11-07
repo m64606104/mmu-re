@@ -1,5 +1,5 @@
 import { useState, useRef } from 'react';
-import { ChevronLeft, Upload, Brain, Trash2, Download, FileUp, Zap } from 'lucide-react';
+import { ChevronLeft, Upload, Brain, Trash2, Download, FileUp, Zap, X } from 'lucide-react';
 import { Conversation } from '../types';
 import MemoryManager from './MemoryManager';
 
@@ -34,6 +34,8 @@ export default function CharacterSettingsScreen({
   const [languageExample, setLanguageExample] = useState(settings.languageExample);
   const [memoryEvents, setMemoryEvents] = useState(settings.memoryEvents);
   const [showMemoryManager, setShowMemoryManager] = useState(false);
+  const [showImportModal, setShowImportModal] = useState(false);
+  const [importData, setImportData] = useState<{messages: any[], count: number} | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const chatImportRef = useRef<HTMLInputElement>(null);
   
@@ -95,22 +97,12 @@ export default function CharacterSettingsScreen({
           return;
         }
 
-        // 合并消息（可选：询问用户是替换还是追加）
-        const shouldReplace = window.confirm(
-          `导入 ${importedData.messages.length} 条消息记录\n\n` +
-          '点击"确定"替换当前消息\n' +
-          '点击"取消"追加到现有消息后'
-        );
-
-        const newMessages = shouldReplace 
-          ? importedData.messages 
-          : [...conversation.messages, ...importedData.messages];
-
-        onUpdateConversation(conversation.id, {
-          messages: newMessages
+        // 显示导入选项弹窗
+        setImportData({
+          messages: importedData.messages,
+          count: importedData.messages.length
         });
-
-        alert(`成功导入 ${importedData.messages.length} 条消息！`);
+        setShowImportModal(true);
         
         // 重置file input
         if (chatImportRef.current) {
@@ -470,6 +462,68 @@ export default function CharacterSettingsScreen({
           conversationName={conversation.name}
           onClose={() => setShowMemoryManager(false)}
         />
+      )}
+
+      {/* 导入消息弹窗 */}
+      {showImportModal && importData && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl p-6 w-full max-w-sm shadow-2xl">
+            <div className="flex items-start justify-between mb-4">
+              <h3 className="text-lg font-semibold text-gray-900">
+                导入 {importData.count} 条消息记录
+              </h3>
+              <button
+                onClick={() => {
+                  setShowImportModal(false);
+                  setImportData(null);
+                }}
+                className="p-1 hover:bg-gray-100 rounded-full transition-colors"
+              >
+                <X size={20} className="text-gray-500" />
+              </button>
+            </div>
+            <p className="text-sm text-gray-600 mb-6">
+              请选择导入方式：
+            </p>
+            <div className="space-y-3">
+              <button
+                onClick={() => {
+                  onUpdateConversation(conversation.id, {
+                    messages: importData.messages
+                  });
+                  alert(`成功替换为 ${importData.count} 条消息！`);
+                  setShowImportModal(false);
+                  setImportData(null);
+                }}
+                className="w-full px-4 py-3 bg-red-500 text-white rounded-xl hover:bg-red-600 transition-colors font-medium"
+              >
+                替换现有全部消息
+              </button>
+              <button
+                onClick={() => {
+                  onUpdateConversation(conversation.id, {
+                    messages: [...conversation.messages, ...importData.messages]
+                  });
+                  alert(`成功追加 ${importData.count} 条消息！`);
+                  setShowImportModal(false);
+                  setImportData(null);
+                }}
+                className="w-full px-4 py-3 bg-blue-500 text-white rounded-xl hover:bg-blue-600 transition-colors font-medium"
+              >
+                追加消息
+              </button>
+              <button
+                onClick={() => {
+                  setShowImportModal(false);
+                  setImportData(null);
+                }}
+                className="w-full px-4 py-3 border border-gray-300 text-gray-700 rounded-xl hover:bg-gray-50 transition-colors font-medium"
+              >
+                取消
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
