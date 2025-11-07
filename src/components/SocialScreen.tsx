@@ -249,7 +249,7 @@ export default function SocialScreen({ conversations, onNavigate }: SocialScreen
                         ? conversation.messages[conversation.messages.length - 1].content
                         : '暂无消息'}
                     </p>
-                    {!conversation.unreadCount && (
+                    {conversation.isMuted && (
                       <BellOff className={`w-4 h-4 ml-2 flex-shrink-0 ${isDarkMode ? 'text-gray-600' : 'text-gray-300'}`} />
                     )}
                   </div>
