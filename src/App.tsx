@@ -172,6 +172,46 @@ function App() {
     }));
   }, []);
 
+  // 导入角色数据
+  const handleImportCharacter = useCallback((data: any) => {
+    try {
+      const newConversation: Conversation = {
+        id: Date.now().toString(),
+        type: 'private',
+        name: data.character.name,
+        avatar: data.character.avatar,
+        lastMessageTime: Date.now(),
+        unreadCount: 0,
+        messages: data.messages || [],
+        characterSettings: data.character.characterSettings,
+        enabledFeatures: data.character.enabledFeatures || [],
+      };
+      
+      // 添加对话
+      setConversations(prev => [...prev, newConversation]);
+      
+      // 导入记忆库
+      if (data.memories && data.memories.length > 0) {
+        const memoryKey = `memory_bank_${newConversation.id}`;
+        localStorage.setItem(memoryKey, JSON.stringify(data.memories));
+      }
+      
+      // 提示成功
+      alert(
+        `✅ 导入成功！\n\n` +
+        `角色：${data.character.name}\n` +
+        `记忆条数：${data.memories?.length || 0}\n` +
+        `消息数量：${data.messages?.length || 0}`
+      );
+      
+      // 导航到聊天界面
+      navigateTo('chat', newConversation.id);
+    } catch (error) {
+      console.error('导入失败:', error);
+      alert('❌ 导入失败，请检查文件格式');
+    }
+  }, [navigateTo]);
+
   // 更新主动消息的最后发送时间
   const updateProactiveMessagingTime = useCallback((conversationId: string, lastMessageTime: number) => {
     setConversations(prev => prev.map(conv => {
@@ -408,6 +448,7 @@ function App() {
           <NewConversationScreen 
             onNavigateToAddFriend={() => navigateTo('add-friend')}
             onNavigateToCreateGroup={() => navigateTo('create-group')}
+            onImportCharacter={handleImportCharacter}
             onBack={() => navigateTo('social')}
           />
         );

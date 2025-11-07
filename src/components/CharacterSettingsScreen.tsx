@@ -1,5 +1,5 @@
 import { useState, useRef } from 'react';
-import { ChevronLeft, Upload, Brain, Trash2, Download, FileUp, Zap, X, Camera } from 'lucide-react';
+import { ChevronLeft, Upload, Brain, Trash2, Download, FileUp, Zap, X, Camera, RefreshCw } from 'lucide-react';
 import { Conversation, ApiConfig } from '../types';
 import MemoryManager from './MemoryManager';
 import { addMomentPost } from '../utils/aiMomentsGenerator';
@@ -40,6 +40,8 @@ export default function CharacterSettingsScreen({
   const [showMomentsTest, setShowMomentsTest] = useState(false);
   const [momentsType, setMomentsType] = useState<'text' | 'image'>('text');
   const [imageCount, setImageCount] = useState(1);
+  const [showMigration, setShowMigration] = useState(false);
+  const [includeMessages, setIncludeMessages] = useState(true);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const chatImportRef = useRef<HTMLInputElement>(null);
   
@@ -152,6 +154,49 @@ export default function CharacterSettingsScreen({
         onDeleteConversation(conversation.id);
         onBack();
       }
+    }
+  };
+
+  // 处理角色迁移导出
+  const handleExportCharacter = async () => {
+    try {
+      // 获取记忆库数据
+      const memoryKey = `memory_bank_${conversation.id}`;
+      const memoryData = localStorage.getItem(memoryKey);
+      const memories = memoryData ? JSON.parse(memoryData) : [];
+      
+      // 构建导出数据
+      const exportData = {
+        version: '1.0',
+        exportTime: new Date().toISOString(),
+        character: {
+          name: conversation.name,
+          avatar: conversation.avatar,
+          characterSettings: conversation.characterSettings,
+          enabledFeatures: conversation.enabledFeatures,
+        },
+        memories: memories,
+        messages: includeMessages ? conversation.messages : [],
+      };
+      
+      // 生成文件
+      const dataStr = JSON.stringify(exportData, null, 2);
+      const dataBlob = new Blob([dataStr], { type: 'application/json' });
+      const url = URL.createObjectURL(dataBlob);
+      const link = document.createElement('a');
+      link.href = url;
+      const fileName = `${conversation.name}_角色迁移_${new Date().toLocaleDateString().replace(/\//g, '-')}.json`;
+      link.download = fileName;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+      
+      alert('✅ 角色数据已导出！\n\n可以通过"扫一扫"功能导入到其他设备');
+      setShowMigration(false);
+    } catch (error) {
+      console.error('导出失败:', error);
+      alert('❌ 导出失败，请重试');
     }
   };
 
@@ -466,6 +511,21 @@ export default function CharacterSettingsScreen({
           </p>
         </div>
 
+        {/* 角色迁移 */}
+        <div className="bg-white rounded-lg shadow-sm p-4">
+          <h3 className="text-sm font-medium text-gray-700 mb-3">角色迁移</h3>
+          <button
+            onClick={() => setShowMigration(true)}
+            className="w-full py-3 border-2 border-orange-200 hover:border-orange-400 hover:bg-orange-50 rounded-lg transition-colors flex items-center justify-center gap-2 text-orange-700"
+          >
+            <RefreshCw className="w-5 h-5" />
+            <span className="font-medium">迁移角色数据</span>
+          </button>
+          <p className="text-xs text-gray-500 mt-2 text-center">
+            📦 导出/导入角色设置、记忆库和聊天记录
+          </p>
+        </div>
+
         {/* 朋友圈测试 */}
         <div className="bg-white rounded-lg shadow-sm p-4">
           <h3 className="text-sm font-medium text-gray-700 mb-3">朋友圈测试</h3>
@@ -536,6 +596,76 @@ export default function CharacterSettingsScreen({
           conversationName={conversation.name}
           onClose={() => setShowMemoryManager(false)}
         />
+      )}
+
+      {/* 角色迁移弹窗 */}
+      {showMigration && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl p-6 w-full max-w-sm shadow-2xl">
+            <div className="flex items-start justify-between mb-4">
+              <h3 className="text-lg font-semibold text-gray-900">
+                角色迁移
+              </h3>
+              <button
+                onClick={() => setShowMigration(false)}
+                className="p-1 hover:bg-gray-100 rounded-full transition-colors"
+              >
+                <X size={20} className="text-gray-500" />
+              </button>
+            </div>
+
+            <p className="text-sm text-gray-600 mb-6">
+              导出角色设置、记忆库和聊天记录，导入到其他设备
+            </p>
+
+            {/* 导出选项 */}
+            <div className="mb-6">
+              <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg mb-3">
+                <span className="text-sm text-gray-700">包含聊天记录</span>
+                <button
+                  onClick={() => setIncludeMessages(!includeMessages)}
+                  className={`relative w-12 h-6 rounded-full transition-colors ${
+                    includeMessages ? 'bg-blue-500' : 'bg-gray-300'
+                  }`}
+                >
+                  <div
+                    className={`absolute top-1 left-1 w-4 h-4 bg-white rounded-full transition-transform ${
+                      includeMessages ? 'translate-x-6' : ''
+                    }`}
+                  />
+                </button>
+              </div>
+              <p className="text-xs text-gray-500">
+                {includeMessages ? '✅ 将导出所有聊天消息' : '⚠️ 仅导出角色设置和记忆库'}
+              </p>
+            </div>
+
+            {/* 操作按钮 */}
+            <div className="space-y-3">
+              <button
+                onClick={handleExportCharacter}
+                className="w-full py-3 bg-orange-500 text-white rounded-xl hover:bg-orange-600 transition-colors font-medium flex items-center justify-center gap-2"
+              >
+                <Download className="w-5 h-5" />
+                导出角色数据
+              </button>
+              <button
+                onClick={() => setShowMigration(false)}
+                className="w-full py-3 border border-gray-300 text-gray-700 rounded-xl hover:bg-gray-50 transition-colors font-medium"
+              >
+                取消
+              </button>
+            </div>
+
+            {/* 提示信息 */}
+            <div className="mt-4 p-3 bg-blue-50 rounded-lg">
+              <p className="text-xs text-blue-700 leading-relaxed">
+                💡 <strong>导入方式：</strong><br/>
+                在新建对话时使用"扫一扫"功能，扫描或选择导出的JSON文件即可一键导入
+              </p>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* 朋友圈测试弹窗 */}
