@@ -388,25 +388,60 @@ export const generateAIMoment = async (
     }
     
     // 清理内容并解析图片描述
-    let cleanedContent = content
-      .replace(/时间[：:]\s*\d{1,2}:\d{2}\s*/, '') // 移除时间行
-      .replace(/^["']|["']$/g, '')
+    // 按行分割，移除时间行，保留其他所有内容
+    const lines = content.split('\n');
+    const contentLines: string[] = [];
+    const imageDescriptions: string[] = [];
+    
+    for (const line of lines) {
+      const trimmedLine = line.trim();
+      
+      // 跳过时间行
+      if (trimmedLine.match(/^时间[：:]\s*\d{1,2}:\d{2}/)) {
+        continue;
+      }
+      
+      // 跳过空行
+      if (!trimmedLine) {
+        continue;
+      }
+      
+      // 提取图片描述
+      const imagePattern = /\[图片\d*[:：]([^\]]+)\]/g;
+      let match;
+      let hasImage = false;
+      
+      while ((match = imagePattern.exec(trimmedLine)) !== null) {
+        imageDescriptions.push(match[1].trim());
+        hasImage = true;
+      }
+      
+      // 移除图片标记后的内容
+      let cleanedLine = trimmedLine.replace(/\[图片\d*[:：][^\]]+\]/g, '').trim();
+      
+      // 如果不是纯图片行，保留文字内容
+      if (cleanedLine || !hasImage) {
+        contentLines.push(cleanedLine);
+      }
+    }
+    
+    // 合并内容行
+    let cleanedContent = contentLines.join('\n').trim();
+    
+    // 最后清理：移除开头的引号和"朋友圈："前缀
+    cleanedContent = cleanedContent
+      .replace(/^["'「『]+|["'」』]+$/g, '')
       .replace(/^朋友圈[：:]\s*/g, '')
       .trim();
     
-    // 提取图片描述
-    const imageDescriptions: string[] = [];
-    const imagePattern = /\[图片\d*[:：]([^\]]+)\]/g;
-    let match;
-    
-    while ((match = imagePattern.exec(cleanedContent)) !== null) {
-      imageDescriptions.push(match[1].trim());
+    // 🔧 容错：如果清理后内容为空或只剩下"时间"之类的，使用原始内容
+    if (!cleanedContent || cleanedContent.length < 3 || cleanedContent.match(/^时间[：:]/)) {
+      console.warn('⚠️ 清理后内容为空或异常，使用原始内容');
+      cleanedContent = content
+        .replace(/时间[：:]\s*\d{1,2}:\d{2}\s*/g, '')
+        .replace(/\[图片\d*[:：][^\]]+\]/g, '')
+        .trim();
     }
-    
-    // 移除图片标记，只保留文字内容
-    cleanedContent = cleanedContent
-      .replace(imagePattern, '')
-      .trim();
     
     // 创建朋友圈帖子
     const post: MomentPost = {
