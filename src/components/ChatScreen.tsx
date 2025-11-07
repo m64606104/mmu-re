@@ -17,6 +17,8 @@ import { detectMemes } from '../utils/memeSystem';
 import { buildTimeAwarePrompt } from '../utils/timeAwareness';
 import { getMomentsData } from '../utils/aiMomentsGenerator';
 import { getAIStatus, analyzeMessageAndUpdateStatus } from '../utils/aiStatusManager';
+import { backgroundTaskManager } from '../utils/backgroundTaskManager';
+import { showMessageNotification } from './MessageNotification';
 // import { transcribeAudio, isValidSpeechConfig } from '../utils/speechToText';
 
 interface ChatScreenProps {
@@ -729,7 +731,58 @@ ${conversation.characterSettings.memoryEvents ? `记忆事件：${conversation.c
         };
       }
 
-      const response = await fetch(`${apiConfig.baseUrl}/v1/chat/completions`, {
+      // 🚀 使用后台任务，不阻塞用户
+      console.log('🚀 创建后台AI生成任务...');
+      
+      // 立即隐藏发送提示，允许用户切换页面
+      setShowSendingHint(false);
+      setIsGenerating(false);
+      
+      // 创建后台任务
+      await backgroundTaskManager.createGenerationTask(
+        conversation,
+        apiConfig,
+        requestBody,
+        (newMessages) => {
+          // 后台任务完成回调
+          console.log(`✅ 后台任务完成，收到${newMessages.length}条消息`);
+          
+          // 更新conversation
+          const updatedMessages = [...conversation.messages, ...newMessages];
+          onUpdateConversation(conversation.id, {
+            messages: updatedMessages,
+            lastMessageTime: Date.now(),
+          });
+          
+          // 分析AI消息更新状态
+          if (conversation.type === 'private' && conversation.characterSettings && newMessages.length > 0) {
+            const firstMessageContent = newMessages[0].content;
+            analyzeMessageAndUpdateStatus(conversation.id, firstMessageContent).then(() => {
+              getAIStatus(conversation.id).then(status => {
+                if (status) setAIStatus(status);
+              });
+            });
+          }
+          
+          // 触发消息通知（MessageNotification会处理）
+          showMessageNotification(conversation.id, newMessages);
+        }
+      );
+      
+      console.log('✅ 后台任务已创建，可以自由切换页面了');
+      
+    } catch (error) {
+      console.error('Generate failed:', error);
+      alert('生成失败，请检查配置和网络');
+      setShowSendingHint(false);
+      setShowTyping(false);
+      setIsGenerating(false);
+    }
+  };
+
+  // 旧的同步代码已被删除，现在使用后台任务
+  /*
+  const response = await fetch(`${apiConfig.baseUrl}/v1/chat/completions`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
