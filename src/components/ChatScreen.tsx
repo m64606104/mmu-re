@@ -138,75 +138,6 @@ export default function ChatScreen({
     inputRef.current?.focus();
   };
 
-  // 智能切分AI回复为多个气泡 - 按标点符号自然断句（参考Social Chat App Framework）
-  const splitMessages = (text: string): string[] => {
-    const messages: string[] = [];
-    
-    // 清理文本：移除Markdown格式符号和引用标注
-    let cleanedText = text
-      // 移除粗体标记
-      .replace(/\*\*([^*]+)\*\*/g, '$1')
-      // 移除斜体标记
-      .replace(/\*([^*]+)\*/g, '$1')
-      // 移除列表标记（• - * 等）
-      .replace(/^[\s]*[•\-*]\s+/gm, '')
-      // 移除标题标记
-      .replace(/^[\s]*#+\s+/gm, '')
-      // 移除引用标注（如 [1]、[来源]、[参考] 等）
-      .replace(/\[[\d\u4e00-\u9fa5]+\]/g, '')
-      // 移除多余的空行
-      .replace(/\n{3,}/g, '\n\n');
-    
-    // 按换行符分割
-    const paragraphs = cleanedText.split('\n').filter(line => line.trim());
-    
-    for (const paragraph of paragraphs) {
-      const trimmed = paragraph.trim();
-      if (!trimmed) continue;
-      
-      // 检测是否包含URL（保护URL不被分割）
-      const urlPattern = /(https?:\/\/[^\s]+)/g;
-      const hasUrl = urlPattern.test(trimmed);
-      
-      // 检测是否包含括号表情或网络用语（如.jpg、.png等），保护不被分割
-      const hasParenthesesEmoji = /[（(][^）)]*\.(jpg|png|gif|jpeg|webp)[）)]/gi.test(trimmed);
-      const hasShortParentheses = /[（(][^）)]{1,15}[）)]/.test(trimmed); // 短括号内容也保护
-      
-      // 检测是否包含完整的引号对（中英文引号）
-      const hasCompleteQuotes = /([""][^""]+[""])|("[^"]+")/.test(trimmed);
-      
-      // 如果包含特殊内容，整段作为一条消息（不再分割）
-      if (hasUrl || hasParenthesesEmoji || hasShortParentheses || hasCompleteQuotes) {
-        messages.push(trimmed);
-      } else if (trimmed.length < 80) {
-        // 较短消息（50字以内）直接发送
-        messages.push(trimmed);
-      } else {
-        // 按句号、问号、感叹号等结束标点分割
-        const sentences = trimmed.match(/[^。！？!?.]+[。！？!?.]+|[^。！？!?.]+$/g) || [trimmed];
-        
-        for (const sentence of sentences) {
-          const sentenceTrimmed = sentence.trim();
-          if (!sentenceTrimmed) continue;
-          
-          // 如果句子太长（超过50个字符），尝试按逗号、分号等分割
-          if (sentenceTrimmed.length > 50) {
-            const parts = sentenceTrimmed.match(/[^，,；;]+[，,；;]+|[^，,；;]+$/g) || [sentenceTrimmed];
-            messages.push(...parts.map(p => {
-              const cleaned = p.trim();
-              // 去掉末尾的逗号，使显示更贴合人的发送习惯
-              return cleaned.replace(/[，,]$/, '');
-            }).filter(p => p.length > 0));
-          } else {
-            messages.push(sentenceTrimmed);
-          }
-        }
-      }
-    }
-    
-    return messages.filter(msg => msg.trim().length > 0);
-  };
-
   // 逐条发送剩余消息
   const sendRemainingMessages = async (messages: string[]) => {
     const batchSize = 23;
@@ -1116,6 +1047,7 @@ ${recentMessages}
       setIsGenerating(false);
     }
   };
+  */
 
   // 🧠 执行记忆总结
   const performMemorySummary = async (currentMessages: Message[]) => {
