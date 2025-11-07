@@ -1,6 +1,6 @@
-import { useState, useRef, useEffect } from 'react';
-import { ChevronLeft, Send, Sparkles, Image, Video, Mic, Phone, Plus, MapPin, FileText, Smile, Play, Pause, Bell, BellOff } from 'lucide-react';
-import { Conversation, ApiConfig, Message, AIStatusInfo } from '../types';
+import { useState, useCallback, useEffect, useRef } from 'react';
+import { ChevronLeft, Send, Mic, Image as ImageIcon, Sparkles, Clock, Circle, Smile } from 'lucide-react';
+import { Conversation, Message, ApiConfig, MemoryEntry, MomentPost, UserProfile } from '../types';
 import ActivityLogModal from './ActivityLogModal';
 import { 
   getConversationMemories, 
@@ -23,6 +23,7 @@ import { showMessageNotification } from './MessageNotification';
 interface ChatScreenProps {
   conversation: Conversation;
   apiConfig: ApiConfig;
+  currentUserProfile?: UserProfile; // 当前用户资料（用于AI参考）
   onUpdateConversation: (id: string, updates: Partial<Conversation>) => void;
   onBack: () => void;
   onOpenCharacterSettings: () => void;
@@ -32,6 +33,7 @@ interface ChatScreenProps {
 export default function ChatScreen({
   conversation,
   apiConfig,
+  currentUserProfile,
   onUpdateConversation,
   onBack,
   onOpenCharacterSettings,
@@ -460,6 +462,21 @@ export default function ChatScreen({
       // 生成时间感知提示词
       const timeAwarePrompt = buildTimeAwarePrompt(lastUserTimestamp, lastUserMsgForTime?.content);
       
+      // 构建用户资料提示
+      let userInfoPrompt = '';
+      if (currentUserProfile?.personalInfo) {
+        const info = currentUserProfile.personalInfo;
+        const infoParts = [];
+        if (info.name) infoParts.push(`姓名：${info.name}`);
+        if (info.gender) infoParts.push(`性别：${info.gender}`);
+        if (info.age) infoParts.push(`年龄：${info.age}`);
+        if (info.background) infoParts.push(`背景：${info.background}`);
+        
+        if (infoParts.length > 0) {
+          userInfoPrompt = `\n\n【对话用户信息】：\n${infoParts.join('、')}\n注意：这是对话用户的基本信息，用于更好地理解对话语境。`;
+        }
+      }
+      
       let systemPrompt = conversation.characterSettings
         ? `你是${conversation.characterSettings.nickname}。
 ${conversation.characterSettings.systemPrompt ? `人物设定：${conversation.characterSettings.systemPrompt}` : ''}
@@ -500,6 +517,9 @@ ${conversation.characterSettings.memoryEvents ? `记忆事件：${conversation.c
         ? '你是一个群聊助手，可以参与多人对话。使用自然口语表达，不要使用斜杠（/）等书面符号。'
         : '你是一个AI助手。使用自然口语表达，不要使用斜杠（/）等书面符号。';
 
+      // 添加用户资料信息
+      systemPrompt += userInfoPrompt;
+      
       // 如果启用了记忆系统，添加记忆上下文
       if (conversation.enabledFeatures?.includes('memory-system')) {
         const memories = getConversationMemories(conversation.id);

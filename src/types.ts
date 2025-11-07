@@ -88,6 +88,13 @@ export interface UserProfile {
   coverImage?: string;
   avatarBadge?: string; // 头像装饰图标
   status?: string; // 在线状态
+  // 个人资料（仅供AI参考，不在普通模式显示）
+  personalInfo?: {
+    name?: string; // 真实姓名/昵称
+    gender?: string; // 性别
+    age?: string; // 年龄
+    background?: string; // 身份背景
+  };
 }
 
 export interface MomentPost {

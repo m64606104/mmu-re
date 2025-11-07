@@ -24,6 +24,11 @@ export default function ProfileScreen({
   const [bio, setBio] = useState(userProfile.bio);
   const [avatar, setAvatar] = useState(userProfile.avatar || '');
   const [coverImage, setCoverImage] = useState(userProfile.coverImage || '');
+  // 个人资料状态
+  const [name, setName] = useState(userProfile.personalInfo?.name || '');
+  const [gender, setGender] = useState(userProfile.personalInfo?.gender || '');
+  const [age, setAge] = useState(userProfile.personalInfo?.age || '');
+  const [background, setBackground] = useState(userProfile.personalInfo?.background || '');
   const avatarInputRef = useRef<HTMLInputElement>(null);
   const coverInputRef = useRef<HTMLInputElement>(null);
 
@@ -93,6 +98,12 @@ export default function ProfileScreen({
       bio,
       avatar,
       coverImage,
+      personalInfo: {
+        name: name || undefined,
+        gender: gender || undefined,
+        age: age || undefined,
+        background: background || undefined,
+      },
     });
     setIsEditing(false);
   };
@@ -102,6 +113,10 @@ export default function ProfileScreen({
     setBio(userProfile.bio);
     setAvatar(userProfile.avatar || '');
     setCoverImage(userProfile.coverImage || '');
+    setName(userProfile.personalInfo?.name || '');
+    setGender(userProfile.personalInfo?.gender || '');
+    setAge(userProfile.personalInfo?.age || '');
+    setBackground(userProfile.personalInfo?.background || '');
     setIsEditing(false);
   };
 
@@ -196,6 +211,69 @@ export default function ProfileScreen({
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
                   placeholder="分享生活，记录美好"
                 />
+              </div>
+
+              {/* 个人资料模块（仅编辑模式显示，供AI参考） */}
+              <div className="mt-6 pt-6 border-t border-gray-200">
+                <div className="flex items-center justify-between mb-3">
+                  <h3 className="text-sm font-semibold text-gray-900">个人资料</h3>
+                  <span className="text-xs text-gray-500">仅供AI参考</span>
+                </div>
+                <div className="space-y-3">
+                  <div>
+                    <label className="block text-xs font-medium text-gray-600 mb-1">
+                      姓名/昵称
+                    </label>
+                    <input
+                      type="text"
+                      value={name}
+                      onChange={(e) => setName(e.target.value)}
+                      className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      placeholder="选填，如：张三"
+                    />
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xs font-medium text-gray-600 mb-1">
+                        性别
+                      </label>
+                      <input
+                        type="text"
+                        value={gender}
+                        onChange={(e) => setGender(e.target.value)}
+                        className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        placeholder="如：男/女"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-gray-600 mb-1">
+                        年龄
+                      </label>
+                      <input
+                        type="text"
+                        value={age}
+                        onChange={(e) => setAge(e.target.value)}
+                        className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        placeholder="如：25"
+                      />
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-600 mb-1">
+                      身份背景
+                    </label>
+                    <textarea
+                      value={background}
+                      onChange={(e) => setBackground(e.target.value)}
+                      rows={2}
+                      className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+                      placeholder="选填，如：大学生、程序员、设计师等"
+                    />
+                  </div>
+                  <p className="text-xs text-gray-500 leading-relaxed">
+                    💡 这些信息不会在个人主页显示，仅用于帮助AI更好地了解你，提供更个性化的对话体验。
+                  </p>
+                </div>
               </div>
             </div>
           ) : (

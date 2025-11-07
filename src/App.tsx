@@ -345,6 +345,7 @@ function App() {
           <ChatScreen 
             conversation={currentConversation}
             apiConfig={apiConfig}
+            currentUserProfile={userProfile}
             onUpdateConversation={updateConversation}
             onBack={() => navigateTo(previousScreen === 'contacts' ? 'contacts' : 'social')}
             onOpenCharacterSettings={() => navigateTo('character-settings')}
