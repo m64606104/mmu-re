@@ -110,24 +110,22 @@ export default function ChatScreen({
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   };
 
-  // 处理输入框聚焦 - 解决移动端键盘顶起问题
+  // 处理输入框聚焦 - 防止键盘遮挡
   const handleInputFocus = () => {
-    // 延迟滚动，等待键盘完全弹出
+    // 延迟一点等键盘弹出
     setTimeout(() => {
-      // 滚动到底部
-      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
-      // 确保页面不被顶出视口
+      // 滚动到底部确保输入框可见
       window.scrollTo(0, 0);
+      document.body.scrollTop = 0;
+      document.documentElement.scrollTop = 0;
     }, 300);
   };
 
   // 处理输入框失焦 - 恢复页面位置
   const handleInputBlur = () => {
-    // 延迟执行，等待键盘完全收起
+    // 确保页面回到顶部
     setTimeout(() => {
-      // 重置页面滚动位置
       window.scrollTo(0, 0);
-      // 确保消息列表在正确位置
       document.body.scrollTop = 0;
       document.documentElement.scrollTop = 0;
     }, 100);
@@ -248,6 +246,26 @@ export default function ChatScreen({
     }
   }, [conversation.id, conversation.type, conversation.characterSettings]);
 
+  // 监听visualViewport变化，防止键盘顶起页面
+  useEffect(() => {
+    const handleResize = () => {
+      // 确保页面不被顶起
+      if (window.visualViewport) {
+        const viewport = window.visualViewport;
+        document.body.style.height = `${viewport.height}px`;
+      }
+    };
+
+    if (window.visualViewport) {
+      window.visualViewport.addEventListener('resize', handleResize);
+      window.visualViewport.addEventListener('scroll', handleResize);
+      
+      return () => {
+        window.visualViewport?.removeEventListener('resize', handleResize);
+        window.visualViewport?.removeEventListener('scroll', handleResize);
+      };
+    }
+  }, []);
 
   const handleSendMessage = () => {
     if (!currentInput.trim()) return;
