@@ -68,6 +68,8 @@ export default function CharacterSettingsScreen({
   const [editingKnowledge, setEditingKnowledge] = useState<KnowledgeBaseItem | null>(null);
   const [knowledgeTitle, setKnowledgeTitle] = useState('');
   const [knowledgeContent, setKnowledgeContent] = useState('');
+  const [isParsingFile, setIsParsingFile] = useState(false);
+  const documentInputRef = useRef<HTMLInputElement>(null);
 
   const handleAvatarUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -235,6 +237,35 @@ export default function CharacterSettingsScreen({
   const handleDeleteKnowledge = (id: string) => {
     if (window.confirm('确定要删除这条资料吗？')) {
       setKnowledgeBase(knowledgeBase.filter(item => item.id !== id));
+    }
+  };
+
+  // 处理文档上传
+  const handleDocumentUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setIsParsingFile(true);
+    
+    try {
+      const { parseDocument } = await import('../utils/documentParser');
+      const text = await parseDocument(file);
+      
+      // 自动填充标题和内容
+      const fileName = file.name.replace(/\.(pdf|docx?|txt)$/i, '');
+      setKnowledgeTitle(fileName);
+      setKnowledgeContent(text);
+      
+      alert(`文档解析成功！\n提取了 ${text.length} 个字符`);
+    } catch (error: any) {
+      alert(`文档解析失败\n${error.message || '未知错误'}`);
+      console.error('文档解析错误:', error);
+    } finally {
+      setIsParsingFile(false);
+      // 清空input以允许重复上传同一文件
+      if (documentInputRef.current) {
+        documentInputRef.current.value = '';
+      }
     }
   };
 
@@ -1197,18 +1228,36 @@ export default function CharacterSettingsScreen({
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  资料内容
-                </label>
+                <div className="flex items-center justify-between mb-2">
+                  <label className="block text-sm font-medium text-gray-700">
+                    资料内容
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => documentInputRef.current?.click()}
+                    disabled={isParsingFile}
+                    className="flex items-center gap-1 px-3 py-1 text-xs bg-purple-100 hover:bg-purple-200 text-purple-700 rounded-lg transition-colors disabled:opacity-50"
+                  >
+                    <Upload className="w-3 h-3" />
+                    {isParsingFile ? '解析中...' : '上传文档'}
+                  </button>
+                  <input
+                    ref={documentInputRef}
+                    type="file"
+                    accept=".pdf,.docx,.doc,.txt"
+                    onChange={handleDocumentUpload}
+                    className="hidden"
+                  />
+                </div>
                 <textarea
                   value={knowledgeContent}
                   onChange={(e) => setKnowledgeContent(e.target.value)}
-                  placeholder="输入详细的资料内容，AI会在对话中参考这些信息..."
+                  placeholder="输入详细的资料内容，AI会在对话中参考这些信息...&#10;&#10;或点击上方上传文档按钮，支持PDF、Word、TXT格式"
                   rows={12}
                   className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent resize-none"
                 />
                 <p className="text-xs text-gray-500 mt-1">
-                  💡 建议：清晰、详细地描述专业术语、规则或背景知识
+                  💡 支持上传PDF、Word(.docx)、TXT文档，AI会自动解析文本内容
                 </p>
               </div>
             </div>

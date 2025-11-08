@@ -1305,8 +1305,8 @@ ${conversation.characterSettings.memoryEvents ? `记忆事件：${conversation.c
           // 移除JSON格式的数据块（如搜索查询等）
           .replace(/\{[\s\S]*?"box_id"[\s\S]*?\}/g, '')
           .replace(/\{[\s\S]*?"search_query"[\s\S]*?\}/g, '')
-          // 移除独立的JSON数组
-          .replace(/^\s*\[[\s\S]*?\]\s*$/gm, '')
+          // 移除独立的JSON数组（但保护媒体标记：图片、视频、语音、表情包）
+          .replace(/^\s*\[(?!图片|视频|语音|表情包)[\s\S]*?\]\s*$/gm, '')
           // 移除to understand/to inform等内部说明
           .replace(/^.*?(to understand|to inform|to analyze).*?(?=\n|$)/gmi, '')
           // 移除引用部分（主要引用:、引用:、参考资料: 等开头的部分及后续链接）
