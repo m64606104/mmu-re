@@ -34,7 +34,8 @@ const openDB = (): Promise<IDBDatabase> => {
     };
     
     request.onsuccess = () => {
-      console.log('✅ IndexedDB 打开成功');
+      // 🔥 性能优化：移除频繁的成功日志
+      // console.log('✅ IndexedDB 打开成功');
       resolve(request.result);
     };
     
@@ -42,7 +43,7 @@ const openDB = (): Promise<IDBDatabase> => {
       const db = (event.target as IDBOpenDBRequest).result;
       if (!db.objectStoreNames.contains(STORE_NAME)) {
         db.createObjectStore(STORE_NAME);
-        console.log('✅ IndexedDB 对象存储创建成功');
+        // console.log('✅ IndexedDB 对象存储创建成功');
       }
     };
   });
@@ -58,7 +59,10 @@ const saveToLocalStorage = (key: string, value: any): boolean => {
     
     localStorage.setItem(key, jsonData);
     
-    console.log(`✅ localStorage 保存成功: ${key} (${sizeKB} KB)`);
+    // 🔥 性能优化：只在重要数据时打印
+    if (key === 'conversations' || key === 'apiConfig') {
+      console.log(`✅ localStorage 保存成功: ${key} (${sizeKB} KB)`);
+    }
     return true;
   } catch (e) {
     if (e instanceof Error && e.name === 'QuotaExceededError') {
@@ -89,11 +93,12 @@ const loadFromLocalStorage = (key: string): any => {
   try {
     const jsonData = localStorage.getItem(key);
     if (jsonData === null) {
-      console.log(`ℹ️ localStorage 无数据: ${key}`);
+      // console.log(`ℹ️ localStorage 无数据: ${key}`);
       return null;
     }
     const data = JSON.parse(jsonData);
-    console.log(`✅ localStorage 读取成功: ${key}`);
+    // 🔥 性能优化：移除频繁的读取日志
+    // console.log(`✅ localStorage 读取成功: ${key}`);
     return data;
   } catch (e) {
     console.error(`❌ localStorage 读取失败 (${key}):`, e);
@@ -126,7 +131,8 @@ const saveToIndexedDB = async (key: string, value: any): Promise<boolean> => {
     return new Promise((resolve, reject) => {
       transaction.oncomplete = () => {
         db.close();
-        console.log(`✅ IndexedDB 保存成功: ${key}`);
+        // 🔥 性能优化：移除频繁的保存日志
+        // console.log(`✅ IndexedDB 保存成功: ${key}`);
         resolve(true);
       };
       transaction.onerror = () => {
@@ -154,11 +160,12 @@ const loadFromIndexedDB = async (key: string): Promise<any> => {
     return new Promise((resolve, reject) => {
       request.onsuccess = () => {
         db.close();
-        if (request.result) {
-          console.log(`✅ IndexedDB 读取成功: ${key}`);
-        } else {
-          console.log(`ℹ️ IndexedDB 无数据: ${key}`);
-        }
+        // 🔥 性能优化：移除频繁的读取日志
+        // if (request.result) {
+        //   console.log(`✅ IndexedDB 读取成功: ${key}`);
+        // } else {
+        //   console.log(`ℹ️ IndexedDB 无数据: ${key}`);
+        // }
         resolve(request.result);
       };
       request.onerror = () => {
@@ -186,7 +193,7 @@ const removeFromIndexedDB = async (key: string): Promise<void> => {
     return new Promise((resolve, reject) => {
       transaction.oncomplete = () => {
         db.close();
-        console.log(`✅ IndexedDB 删除成功: ${key}`);
+        // console.log(`✅ IndexedDB 删除成功: ${key}`);
         resolve();
       };
       transaction.onerror = () => {
@@ -204,7 +211,8 @@ const removeFromIndexedDB = async (key: string): Promise<void> => {
  * 保存数据（智能选择存储方式）
  */
 export const smartSave = async (key: string, value: any): Promise<void> => {
-  console.log(`💾 开始保存数据: ${key}`);
+  // 🔥 性能优化：只在关键操作时打印
+  // console.log(`💾 开始保存数据: ${key}`);
   
   if (shouldUseIndexedDB(key)) {
     const success = await saveToIndexedDB(key, value);

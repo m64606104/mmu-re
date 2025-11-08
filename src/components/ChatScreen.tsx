@@ -15,7 +15,7 @@ import {
 // import { detectMemes } from '../utils/memeSystem'; // 已删除热梗系统
 import { buildTimeAwarePrompt } from '../utils/timeAwareness';
 import { getMomentsData } from '../utils/aiMomentsGenerator';
-import { getAIStatus, analyzeMessageAndUpdateStatus, analyzeAndUpdateStatusFromAI } from '../utils/aiStatusManager';
+import { getAIStatus, analyzeAndUpdateStatusFromAI } from '../utils/aiStatusManager';
 import { backgroundTaskManager } from '../utils/backgroundTaskManager';
 import { showMessageNotification } from './MessageNotification';
 // import { transcribeAudio, isValidSpeechConfig } from '../utils/speechToText';
@@ -294,9 +294,9 @@ ${recentMessages}
       };
       loadStatus();
       
-      // 每30秒刷新一次状态
-      const interval = setInterval(loadStatus, 30000);
-      return () => clearInterval(interval);
+      // 🔥 性能优化：移除定时刷新，AI状态只在有消息时更新
+      // const interval = setInterval(loadStatus, 30000);
+      // return () => clearInterval(interval);
     }
   }, [conversation.id, conversation.type, conversation.characterSettings]);
 
@@ -1066,15 +1066,22 @@ ${conversation.characterSettings.memoryEvents ? `记忆事件：${conversation.c
           // 分析AI消息更新状态
           if (conversation.type === 'private' && conversation.characterSettings && newMessages.length > 0) {
             const firstMessageContent = newMessages[0].content;
-            // 先尝试AI自主更新状态
-            analyzeAndUpdateStatusFromAI(conversation.id, firstMessageContent).then(() => {
-              // 然后再做常规分析
-              analyzeMessageAndUpdateStatus(conversation.id, firstMessageContent).then(() => {
+            // 🔥 性能优化：只在重要消息时更新AI状态
+            // 仅在消息包含特定关键词时更新
+            const shouldUpdateStatus = 
+              firstMessageContent.includes('在哪') ||
+              firstMessageContent.includes('去了') ||
+              firstMessageContent.includes('到了') ||
+              firstMessageContent.includes('回家') ||
+              firstMessageContent.includes('出门');
+              
+            if (shouldUpdateStatus) {
+              analyzeAndUpdateStatusFromAI(conversation.id, firstMessageContent).then(() => {
                 getAIStatus(conversation.id).then(status => {
                   if (status && isComponentMountedRef.current) setAIStatus(status);
                 });
               });
-            });
+            }
           }
           
           // 🧠 检查是否需要自动总结记忆
@@ -1328,14 +1335,14 @@ ${conversation.characterSettings.memoryEvents ? `记忆事件：${conversation.c
 
       // 🎯 分析AI消息并更新状态
       if (conversation.type === 'private' && conversation.characterSettings && assistantMessage) {
-        // 先尝试AI自主更新状态（如果AI在消息中明确说要改状态）
-        await analyzeAndUpdateStatusFromAI(conversation.id, assistantMessage);
-        // 然后再做常规的状态分析
-        await analyzeMessageAndUpdateStatus(conversation.id, assistantMessage);
-        // 重新加载状态
-        const updatedStatus = await getAIStatus(conversation.id);
-        if (updatedStatus) {
-          setAIStatus(updatedStatus);
+        // 🔥 性能优化：仅在AI明确表达状态变化时更新
+        if (assistantMessage.includes('我在') || assistantMessage.includes('我去') || 
+            assistantMessage.includes('我到') || assistantMessage.includes('正在')) {
+          await analyzeAndUpdateStatusFromAI(conversation.id, assistantMessage);
+          const updatedStatus = await getAIStatus(conversation.id);
+          if (updatedStatus) {
+            setAIStatus(updatedStatus);
+          }
         }
       }
 
