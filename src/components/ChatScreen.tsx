@@ -49,7 +49,7 @@ export default function ChatScreen({
   const [pendingVideoFile, setPendingVideoFile] = useState<File | null>(null);
   const [showStickerModal, setShowStickerModal] = useState(false);
   const [stickerDescInput, setStickerDescInput] = useState('');
-  const [viewingVoice, setViewingVoice] = useState<string | null>(null);
+  const [viewingVoice, setViewingVoice] = useState<string[]>([]);
   const [playingVoice, setPlayingVoice] = useState<string | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const imageInputRef = useRef<HTMLInputElement>(null);
@@ -1511,7 +1511,11 @@ ${recentMessages}
                     {message.role === 'user' && message.mediaType === 'voice' && message.mediaUrl && (
                       <div>
                         <div 
-                          onClick={() => setViewingVoice(viewingVoice === message.id ? null : message.id)}
+                          onClick={() => setViewingVoice(prev => 
+                            prev.includes(message.id) 
+                              ? prev.filter(id => id !== message.id)
+                              : [...prev, message.id]
+                          )}
                           className="cursor-pointer flex items-center gap-2 px-3 py-2 bg-gray-50 rounded-xl min-w-[120px] max-w-[200px]"
                         >
                           <Mic className="w-4 h-4 text-gray-600 flex-shrink-0" />
@@ -1554,7 +1558,7 @@ ${recentMessages}
                           </button>
                         </div>
                         {/* 语音内容文字（点击气泡显示） */}
-                        {viewingVoice === message.id && message.mediaDescription && (
+                        {viewingVoice.includes(message.id) && message.mediaDescription && (
                           <div className="mt-2 px-4 py-2 bg-gray-50 rounded-xl border border-gray-200">
                             <p className="text-[13px] text-gray-700">{message.mediaDescription}</p>
                           </div>
@@ -1600,7 +1604,11 @@ ${recentMessages}
                     {message.role === 'assistant' && message.mediaType === 'voice' && message.isMediaDescriptionOnly && (
                       <div>
                         <div 
-                          onClick={() => setViewingVoice(viewingVoice === message.id ? null : message.id)}
+                          onClick={() => setViewingVoice(prev => 
+                            prev.includes(message.id) 
+                              ? prev.filter(id => id !== message.id)
+                              : [...prev, message.id]
+                          )}
                           className="cursor-pointer flex items-center gap-2 px-3 py-2 bg-gray-50 rounded-xl min-w-[120px] max-w-[200px]"
                         >
                           <Mic className="w-4 h-4 text-gray-600 flex-shrink-0" />
@@ -1618,7 +1626,7 @@ ${recentMessages}
                           <span className="text-xs text-gray-600 flex-shrink-0">{message.voiceDuration || 3}"</span>
                         </div>
                         {/* 语音内容文字（点击气泡显示） */}
-                        {viewingVoice === message.id && message.mediaDescription && (
+                        {viewingVoice.includes(message.id) && message.mediaDescription && (
                           <div className="mt-2 px-4 py-2 bg-gray-50 rounded-xl border border-gray-200">
                             <p className="text-[13px] text-gray-700">{message.mediaDescription}</p>
                           </div>

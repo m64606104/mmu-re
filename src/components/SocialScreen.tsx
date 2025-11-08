@@ -27,6 +27,32 @@ export default function SocialScreen({ conversations, onNavigate }: SocialScreen
     return { username: '123', avatar: null, status: '在线' };
   });
 
+  // 获取最后一条消息的预览文本
+  const getLastMessagePreview = (conversation: Conversation): string => {
+    if (conversation.messages.length === 0) return '暂无消息';
+    
+    // 从后往前找第一条非系统消息
+    for (let i = conversation.messages.length - 1; i >= 0; i--) {
+      const msg = conversation.messages[i];
+      if (msg.role !== 'system') {
+        // 根据消息类型返回预览
+        if (msg.mediaType === 'voice') {
+          return '[语音]';
+        } else if (msg.mediaType === 'image') {
+          return '[图片]';
+        } else if (msg.mediaType === 'video') {
+          return '[视频]';
+        } else if (msg.mediaType === 'sticker') {
+          return '[表情]';
+        } else {
+          return msg.content || '暂无消息';
+        }
+      }
+    }
+    
+    return '暂无消息';
+  };
+
   // 更新用户状态（流畅更新，不刷新页面）
   const handleStatusChange = (newStatus: string) => {
     const updatedProfile = { ...userProfile, status: newStatus };
@@ -245,9 +271,7 @@ export default function SocialScreen({ conversations, onNavigate }: SocialScreen
                   </div>
                   <div className="flex items-center justify-between">
                     <p className={`text-[13px] truncate leading-tight ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>
-                      {conversation.messages.length > 0
-                        ? conversation.messages[conversation.messages.length - 1].content
-                        : '暂无消息'}
+                      {getLastMessagePreview(conversation)}
                     </p>
                     {conversation.isMuted && (
                       <BellOff className={`w-4 h-4 ml-2 flex-shrink-0 ${isDarkMode ? 'text-gray-600' : 'text-gray-300'}`} />
