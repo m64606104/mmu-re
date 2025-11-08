@@ -110,6 +110,29 @@ export default function ChatScreen({
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   };
 
+  // 处理输入框聚焦 - 解决移动端键盘顶起问题
+  const handleInputFocus = () => {
+    // 延迟滚动，等待键盘完全弹出
+    setTimeout(() => {
+      // 滚动到底部
+      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
+      // 确保页面不被顶出视口
+      window.scrollTo(0, 0);
+    }, 300);
+  };
+
+  // 处理输入框失焦 - 恢复页面位置
+  const handleInputBlur = () => {
+    // 延迟执行，等待键盘完全收起
+    setTimeout(() => {
+      // 重置页面滚动位置
+      window.scrollTo(0, 0);
+      // 确保消息列表在正确位置
+      document.body.scrollTop = 0;
+      document.documentElement.scrollTop = 0;
+    }, 100);
+  };
+
   // 消息长按处理
   const handleLongPressStart = (messageId: string) => {
     longPressTimerRef.current = setTimeout(() => {
@@ -1943,6 +1966,8 @@ ${recentMessages}
                 value={currentInput}
                 onChange={(e) => setCurrentInput(e.target.value)}
                 onKeyPress={handleKeyPress}
+                onFocus={handleInputFocus}
+                onBlur={handleInputBlur}
                 placeholder="输入消息..."
                 className="flex-1 outline-none text-[15px] bg-transparent text-gray-900 placeholder-gray-400"
                 disabled={isGenerating}
