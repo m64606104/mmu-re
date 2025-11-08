@@ -594,17 +594,18 @@ export const getAllMomentPosts = async (): Promise<MomentPost[]> => {
 };
 
 /**
- * AI智能互动：模拟真实的人类行为
- * - 不是所有AI都会看到
- * - 看到了也不一定互动
- * - 互动概率基于性格和内容
- * - 随机延迟模拟真实时间差
+ * AI智能互动：基于LLM决策的真实互动
+ * - AI自己决定是否互动
+ * - 基于性格、内容、关系智能判断
+ * - 不使用固定概率，完全由AI决策
  */
 export const generateAIMomentsInteraction = async (
   conversations: Conversation[],
   apiConfig: ApiConfig
 ): Promise<void> => {
   try {
+    // 导入关系系统（已移至makeInteractionDecision中使用）
+    
     const allMomentsData = await getAllMomentsData();
     if (allMomentsData.length === 0) return;
 
@@ -612,7 +613,7 @@ export const generateAIMomentsInteraction = async (
     const aiConversations = conversations.filter(c => c.type === 'private' && c.characterSettings);
     if (aiConversations.length < 2) return;
 
-    // 🎯 随机选择几个"在线"的AI（不是所有AI都在看朋友圈）
+    // 🎯 随机选择几个"在线"的AI
     const onlineAICount = Math.floor(Math.random() * Math.min(3, aiConversations.length)) + 1;
     const shuffledAIs = [...aiConversations].sort(() => Math.random() - 0.5);
     const onlineAIs = shuffledAIs.slice(0, onlineAICount);
@@ -626,7 +627,6 @@ export const generateAIMomentsInteraction = async (
       const authorConv = aiConversations.find(c => c.id === momentsData.contactId);
       if (!authorConv) continue;
 
-      // 获取最近24小时内的未读朋友圈
       const recentPosts = momentsData.posts.filter(post => {
         const hoursSincePost = (Date.now() - post.timestamp) / 3600000;
         return hoursSincePost < 24 && !post.isRead;
@@ -644,67 +644,51 @@ export const generateAIMomentsInteraction = async (
 
     console.log(`📬 发现 ${unreadPosts.length} 条未读朋友圈`);
 
-    // 🎯 只处理部分朋友圈（模拟真实情况：不是每条都会看到）
+    // 只处理部分朋友圈
     const postsToProcess = unreadPosts.slice(0, Math.min(5, unreadPosts.length));
 
-    // 遍历朋友圈，让在线的AI智能互动
+    // 让AI智能决策是否互动
     for (const { post, author, momentsData } of postsToProcess) {
-      // 其他在线的AI
       const otherOnlineAIs = onlineAIs.filter(ai => ai.id !== author.id);
       
       for (const ai of otherOnlineAIs) {
-        // 🎯 基于内容决定是否互动（而不是固定30%）
-        // 有图片的朋友圈更容易吸引互动
-        const hasImages = post.imageDescriptions && post.imageDescriptions.length > 0;
-        const baseInterestRate = hasImages ? 0.5 : 0.3;
-        
-        // 内容长度也影响互动率（太长可能懒得看）
-        const contentLength = post.content.length;
-        const lengthFactor = contentLength < 50 ? 1.2 : contentLength > 200 ? 0.7 : 1.0;
-        
-        const interestRate = Math.min(0.8, baseInterestRate * lengthFactor);
-        
-        if (Math.random() > interestRate) {
-          continue; // 不感兴趣，跳过
-        }
-
         console.log(`👀 ${ai.characterSettings?.nickname || ai.name} 看到了 ${author.characterSettings?.nickname || author.name} 的朋友圈`);
 
-        // 🎯 决定互动类型（点赞更容易，评论需要更多精力）
-        // 70%点赞，30%评论
-        const willComment = Math.random() < 0.3;
+        // 🎯 让AI自己决定是否互动
+        const decision = await makeInteractionDecision(ai, author, post, apiConfig);
+        
+        if (!decision.shouldInteract) {
+          console.log(`😐 ${ai.characterSettings?.nickname || ai.name} 决定不互动`);
+          continue;
+        }
 
-        if (willComment) {
-          // 评论（更少见，更有意义）
+        // 根据AI的决定执行互动
+        if (decision.action === 'comment') {
           const hasCommented = post.comments.some(c => c.authorId === ai.id);
           if (hasCommented) continue;
 
-          console.log(`💬 ${ai.characterSettings?.nickname || ai.name} 正在评论...`);
+          console.log(`💬 ${ai.characterSettings?.nickname || ai.name} 决定评论...`);
           
-          // 生成AI评论
-          const comment = await generateAIComment(post, author, ai, apiConfig);
-          if (comment) {
+          if (decision.commentContent) {
             await commentMomentPost(momentsData.contactId, post.id, {
               authorId: ai.id,
               authorName: ai.characterSettings?.nickname || ai.name,
               authorAvatar: ai.characterSettings?.avatar || ai.avatar,
-              content: comment
+              content: decision.commentContent
             });
-            console.log(`✅ 评论成功: ${comment.substring(0, 20)}...`);
+            console.log(`✅ 评论成功: ${decision.commentContent.substring(0, 20)}...`);
           }
-        } else {
-          // 点赞（更常见）
+        } else if (decision.action === 'like') {
           if (!post.likes.includes(ai.id)) {
             await likeMomentPost(momentsData.contactId, post.id, ai.id);
             console.log(`❤️ ${ai.characterSettings?.nickname || ai.name} 点赞了`);
           }
         }
 
-        // 🎯 随机延迟0-2秒再处理下一个（模拟真实查看速度）
+        // 随机延迟
         await new Promise(resolve => setTimeout(resolve, Math.random() * 2000));
       }
 
-      // 标记为已读
       post.isRead = true;
     }
 
@@ -720,45 +704,75 @@ export const generateAIMomentsInteraction = async (
 };
 
 /**
- * 生成AI评论内容
+ * AI智能决策：是否互动以及如何互动
  */
-const generateAIComment = async (
-  post: MomentPost,
-  authorConv: Conversation,
-  commenterConv: Conversation,
-  apiConfig: ApiConfig
-): Promise<string | null> => {
-  try {
-    const commenterSettings = commenterConv.characterSettings;
-    if (!commenterSettings) return null;
+interface InteractionDecision {
+  shouldInteract: boolean;
+  action?: 'like' | 'comment';
+  commentContent?: string;
+  reason?: string;
+}
 
-    const prompt = `你是 ${commenterSettings.nickname || commenterConv.name}。
+const makeInteractionDecision = async (
+  viewerAI: Conversation,
+  authorAI: Conversation,
+  post: MomentPost,
+  apiConfig: ApiConfig
+): Promise<InteractionDecision> => {
+  try {
+    const { getRelationship, getRelationshipLabel } = await import('./aiRelationships');
+    
+    const viewerSettings = viewerAI.characterSettings;
+    if (!viewerSettings) {
+      return { shouldInteract: false };
+    }
+
+    // 获取关系
+    const relationship = getRelationship(viewerAI.id, authorAI.id);
+    const relationshipDesc = relationship ? getRelationshipLabel(relationship.level) : '普通关系';
+
+    // 构建决策提示词
+    const prompt = `你是 ${viewerSettings.nickname || viewerAI.name}。
 
 【你的性格】
-${commenterSettings.personality || ''}
+${viewerSettings.personality || ''}
 
 【你的说话风格】
-${commenterSettings.languageStyle || ''}
+${viewerSettings.languageStyle || ''}
+
+【你对${authorAI.characterSettings?.nickname || authorAI.name}的关系】
+${relationshipDesc}${relationship?.description ? `（${relationship.description}）` : ''}
 
 【朋友圈内容】
-${authorConv.characterSettings?.nickname || authorConv.name} 发了一条朋友圈：
+${authorAI.characterSettings?.nickname || authorAI.name} 发了一条朋友圈：
 ${post.content}
 ${post.imageDescriptions ? `配图：${post.imageDescriptions.join('、')}` : ''}
 
 【任务】
-请以你的性格和说话风格，对这条朋友圈发表一个简短的评论。
+你刷朋友圈时看到了这条动态，请根据：
+1. 你的性格和兴趣
+2. 朋友圈的内容
+3. 你和发布者的关系
 
-【要求】
-1. 1-2句话即可，不要太长
-2. 要符合你的性格和说话风格
-3. 像真实朋友间的互动，自然、真诚
-4. 可以是赞美、调侃、共鸣、建议等
-5. 不要说"发得真好"这种空话
-6. 直接输出评论内容，不要有前缀
+决定是否互动，以及如何互动。
 
-现在请评论：`;
+【输出格式】
+请以JSON格式回复（只输出JSON，不要其他内容）：
+{
+  "shouldInteract": true/false,  // 是否互动
+  "action": "like"或"comment"或null,  // 如果互动，选择点赞还是评论
+  "commentContent": "评论内容"或null,  // 如果选择评论，写出评论内容（1-2句话）
+  "reason": "决策理由"  // 简短说明你的想法
+}
 
-    const response = await fetch(`${apiConfig.baseUrl}/v1/chat/completions`, {
+【决策指南】
+- 如果内容不感兴趣、和你无关、或者关系不好，可以选择不互动
+- 如果只是觉得还可以，点个赞就行
+- 如果真的有共鸣、想法、或者关系很好，可以评论
+- 评论要真诚、自然，符合你的性格和说话风格`;
+
+    // 调用API
+    const response = await fetch(`${apiConfig.baseUrl}/chat/completions`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -766,20 +780,42 @@ ${post.imageDescriptions ? `配图：${post.imageDescriptions.join('、')}` : ''
       },
       body: JSON.stringify({
         model: apiConfig.modelName,
-        messages: [{ role: 'user', content: prompt }],
+        messages: [
+          { role: 'user', content: prompt }
+        ],
         temperature: 0.8,
-        max_tokens: 100
+        max_tokens: 300
       })
     });
 
-    if (!response.ok) return null;
+    if (!response.ok) {
+      console.error('AI决策失败:', response.status, response.statusText);
+      return { shouldInteract: false };
+    }
 
     const data = await response.json();
-    const comment = data.choices?.[0]?.message?.content?.trim();
-
-    return comment || null;
+    const content = data.choices?.[0]?.message?.content || '';
+    
+    // 解析JSON响应
+    try {
+      // 提取JSON内容（可能被包裹在代码块中）
+      const jsonMatch = content.match(/\{[\s\S]*\}/);
+      if (!jsonMatch) {
+        console.error('AI决策响应格式错误:', content);
+        return { shouldInteract: false };
+      }
+      
+      const decision: InteractionDecision = JSON.parse(jsonMatch[0]);
+      console.log(`🧠 决策: ${decision.reason}`);
+      
+      return decision;
+    } catch (parseError) {
+      console.error('解析AI决策失败:', content, parseError);
+      return { shouldInteract: false };
+    }
   } catch (error) {
-    console.error('生成AI评论失败:', error);
-    return null;
+    console.error('AI决策出错:', error);
+    return { shouldInteract: false };
   }
 };
+
