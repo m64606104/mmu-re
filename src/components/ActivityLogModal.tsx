@@ -1,6 +1,7 @@
-import React from 'react';
-import { AIStatusInfo } from '../types';
+import React, { useState, useEffect } from 'react';
+import { AIStatusInfo, Conversation, ActivityLogEntry } from '../types';
 import { X, MapPin, RefreshCw } from 'lucide-react';
+import { fillMissingActivities } from '../utils/lifeSimulation';
 
 interface ActivityLogModalProps {
   isOpen: boolean;
@@ -8,6 +9,7 @@ interface ActivityLogModalProps {
   statusInfo: AIStatusInfo;
   aiName: string;
   aiAvatar?: string;
+  conversation?: Conversation;
 }
 
 const ActivityLogModal: React.FC<ActivityLogModalProps> = ({
@@ -15,9 +17,64 @@ const ActivityLogModal: React.FC<ActivityLogModalProps> = ({
   onClose,
   statusInfo,
   aiName,
-  aiAvatar
+  aiAvatar,
+  conversation
 }) => {
   if (!isOpen) return null;
+  
+  // 补充缺失的活动轨迹（恢复之前在aiStatusManager中移除的逻辑）
+  const [activityLogs, setActivityLogs] = useState(statusInfo.activityLogs || []);
+  
+  useEffect(() => {
+    console.log('🚀 ActivityLogModal打开，准备填充活动');
+    if (conversation && statusInfo.activityLogs) {
+      try {
+        // 将AIActivityLog转换为ActivityLogEntry格式
+        const existingActivities: ActivityLogEntry[] = statusInfo.activityLogs.map(log => ({
+          timestamp: log.timestamp,
+          activity: log.activity,
+          status: log.status ? (
+            log.status === 'online' ? '在线' : 
+            log.status === 'busy' ? '忙碌' : 
+            log.status === 'resting' ? '休息中' : 
+            log.status === 'away' ? '离开' : '在线'
+          ) : '在线',
+          location: log.location || '未知',
+          mood: '平常'
+        }));
+        
+        // 补充缺失的活动
+        const filledActivities = fillMissingActivities(conversation, existingActivities);
+        console.log(`📊 活动轨迹：原有${existingActivities.length}条，补充后${filledActivities.length}条`);
+        
+        // 将补充的活动转换回AIActivityLog格式展示
+        if (filledActivities.length > existingActivities.length) {
+          const updatedLogs = [...statusInfo.activityLogs];
+          
+          // 添加新生成的活动
+          const newActivities = filledActivities.slice(existingActivities.length);
+          for (const activity of newActivities) {
+            updatedLogs.push({
+              id: `activity_${activity.timestamp}_${Math.random().toString(36).substr(2, 9)}`,
+              timestamp: activity.timestamp,
+              activity: activity.activity,
+              location: activity.location,
+              status: activity.status === '在线' ? 'online' : 
+                     activity.status === '忙碌' ? 'busy' : 
+                     activity.status === '休息中' ? 'resting' : 
+                     activity.status === '离开' ? 'away' : 'online'
+            });
+          }
+          
+          // 按时间排序
+          updatedLogs.sort((a, b) => b.timestamp - a.timestamp);
+          setActivityLogs(updatedLogs);
+        }
+      } catch (error) {
+        console.error('填充活动轨迹失败:', error);
+      }
+    }
+  }, [isOpen, conversation, statusInfo]);
 
   // 格式化时间为24小时制
   const formatRelativeTime = (timestamp: number): string => {
@@ -97,13 +154,13 @@ const ActivityLogModal: React.FC<ActivityLogModalProps> = ({
 
         {/* 行为轨迹列表 */}
         <div className="overflow-y-auto max-h-[calc(80vh-100px)] p-4">
-          {statusInfo.activityLogs.length === 0 ? (
+          {activityLogs.length === 0 ? (
             <div className="text-center py-12 text-gray-400">
               暂无行为记录
             </div>
           ) : (
             <div className="space-y-3">
-              {statusInfo.activityLogs.map((log, index) => (
+              {activityLogs.map((log, index) => (
                 <div
                   key={log.id}
                   className="bg-gray-50 rounded-xl p-4 hover:bg-gray-100 transition-colors"

@@ -16,7 +16,60 @@ import {
 import { buildTimeAwarePrompt } from '../utils/timeAwareness';
 import { getMomentsData } from '../utils/aiMomentsGenerator';
 import { getAIStatus, analyzeAndUpdateStatusFromAI } from '../utils/aiStatusManager';
-import { backgroundTaskManager } from '../utils/backgroundTaskManager';
+// import { backgroundTaskManager } from '../utils/backgroundTaskManager';
+// 直接在这里定义一个简化版的backgroundTaskManager作为替代
+const backgroundTaskManager = {
+  createGenerationTask: async (
+    conversation: Conversation, 
+    apiConfig: ApiConfig, 
+    requestBody: any, 
+    callback: (messages: Message[], conversationId: string, error?: string) => void
+  ) => {
+    console.log('🚀 创建生成任务...');
+    try {
+      const response = await fetch(`${apiConfig.baseUrl}/v1/chat/completions`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${apiConfig.apiKey}`,
+        },
+        body: JSON.stringify(requestBody),
+      });
+
+      if (!response.ok) {
+        throw new Error(`API请求失败: HTTP ${response.status}`);
+      }
+
+      const data = await response.json();
+      const assistantMessage = data.choices[0]?.message?.content;
+
+      if (!assistantMessage || assistantMessage.trim() === '') {
+        throw new Error('AI返回空内容');
+      }
+
+      // 检查是否选择不回复
+      if (assistantMessage.trim() === '[不回复]' || assistantMessage.includes('[不回复]')) {
+        callback([], conversation.id);
+        return;
+      }
+
+      // 解析和分割消息
+      let messages: Message[] = [{
+        id: Date.now().toString(),
+        role: 'assistant',
+        content: assistantMessage,
+        timestamp: Date.now()
+      }];
+      
+      callback(messages, conversation.id);
+      return "task_" + Date.now();
+    } catch (error) {
+      console.error('API调用失败:', error);
+      callback([], conversation.id, error instanceof Error ? error.message : String(error));
+      return "task_failed_" + Date.now();
+    }
+  }
+};
 import { showMessageNotification } from './MessageNotification';
 // import { transcribeAudio, isValidSpeechConfig } from '../utils/speechToText';
 
@@ -959,7 +1012,7 @@ ${conversation.characterSettings.memoryEvents ? `记忆事件：${conversation.c
         conversation,
         apiConfig,
         requestBody,
-        async (newMessages, conversationId, error) => {
+        async (newMessages: Message[], conversationId: string, error?: string) => {
           // 后台任务完成回调
           console.log(`✅ 后台任务完成，收到${newMessages.length}条消息${error ? `，错误: ${error}` : ''}`);
           
@@ -1529,7 +1582,10 @@ ${conversation.characterSettings.memoryEvents ? `记忆事件：${conversation.c
             <h1 className="text-base font-semibold text-gray-900">{conversation.name}</h1>
             {conversation.type === 'private' && conversation.characterSettings ? (
               <button 
-                onClick={() => setShowActivityModal(true)}
+                onClick={() => {
+                  console.log('🚀 打开行为轨迹弹窗');
+                  setShowActivityModal(true);
+                }}
                 className="flex items-center gap-1 hover:bg-gray-50 px-2 py-0.5 -ml-2 rounded transition-colors text-left max-w-[200px]"
               >
                 <div className={`w-2 h-2 rounded-full flex-shrink-0 ${
@@ -2317,6 +2373,7 @@ ${conversation.characterSettings.memoryEvents ? `记忆事件：${conversation.c
         isOpen={showActivityModal}
         onClose={() => setShowActivityModal(false)}
         statusInfo={aiStatus}
+        conversation={conversation} // 传递conversation参数
         aiName={conversation.characterSettings.nickname || conversation.name}
         aiAvatar={conversation.characterSettings.avatar || conversation.avatar}
       />
