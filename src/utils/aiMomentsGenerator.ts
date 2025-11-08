@@ -163,12 +163,8 @@ const buildMomentPrompt = (conversation: Conversation, todayPosts: MomentPost[])
     throw new Error('联系人没有角色设定');
   }
   
-  // 为缺失的字段提供默认值
-  const nickname = characterSettings.nickname || conversation.name;
-  const systemPrompt = characterSettings.systemPrompt || '你是一个有趣的AI朋友，喜欢分享日常生活。';
-  const personality = characterSettings.personality || '活泼开朗，积极乐观，喜欢结交朋友。';
-  const languageStyle = characterSettings.languageStyle || '轻松随意，喜欢用emoji，口语化表达。';
-  const languageExample = characterSettings.languageExample || '“今天天气超好！🌞” “我们一起去吃饭吧～”';
+  // 只使用已填写的字段，未填写的完全略过
+  const nickname = characterSettings.nickname;
   
   // 获取记忆库
   const memoryBank = getMemoryBank(conversation.id);
@@ -222,20 +218,26 @@ const buildMomentPrompt = (conversation: Conversation, todayPosts: MomentPost[])
     });
   }
   
-  const prompt = `你是 ${nickname}。
-
-【角色设定】
-${systemPrompt}
-
-【性格特点】
-${personality}
-
-【说话风格】
-${languageStyle}
-
-【语言示例】
-${languageExample}
-
+  // 构建角色信息部分（只包含已填写的字段）
+  let characterInfo = `你是 ${nickname}。\n`;
+  
+  if (characterSettings.systemPrompt) {
+    characterInfo += `\n【角色设定】\n${characterSettings.systemPrompt}\n`;
+  }
+  
+  if (characterSettings.personality) {
+    characterInfo += `\n【性格特点】\n${characterSettings.personality}\n`;
+  }
+  
+  if (characterSettings.languageStyle) {
+    characterInfo += `\n【说话风格】\n${characterSettings.languageStyle}\n`;
+  }
+  
+  if (characterSettings.languageExample) {
+    characterInfo += `\n【语言示例】\n${characterSettings.languageExample}\n`;
+  }
+  
+  const prompt = `${characterInfo}
 ${timeContext}
 ${memoryContext}
 ${chatContext}
