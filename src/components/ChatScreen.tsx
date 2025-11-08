@@ -16,6 +16,7 @@ import {
 import { buildTimeAwarePrompt } from '../utils/timeAwareness';
 import { getMomentsData } from '../utils/aiMomentsGenerator';
 import { getAIStatus, analyzeAndUpdateStatusFromAI } from '../utils/aiStatusManager';
+import { getErrorFromResponse, formatErrorMessage } from '../utils/apiErrorHandler';
 // import { backgroundTaskManager } from '../utils/backgroundTaskManager';
 // 直接在这里定义一个简化版的backgroundTaskManager作为替代
 const backgroundTaskManager = {
@@ -37,7 +38,8 @@ const backgroundTaskManager = {
       });
 
       if (!response.ok) {
-        throw new Error(`API请求失败: HTTP ${response.status}`);
+        const errorInfo = await getErrorFromResponse(response);
+        throw new Error(formatErrorMessage(errorInfo));
       }
 
       const data = await response.json();
@@ -1277,7 +1279,8 @@ ${conversation.characterSettings.memoryEvents ? `记忆事件：${conversation.c
       });
 
       if (!response.ok) {
-        throw new Error('API 请求失败');
+        const errorInfo = await getErrorFromResponse(response);
+        throw new Error(formatErrorMessage(errorInfo));
       }
 
       const data = await response.json();
@@ -1560,7 +1563,8 @@ ${conversation.characterSettings.memoryEvents ? `记忆事件：${conversation.c
       });
       
       if (!response.ok) {
-        console.error('记忆总结API请求失败');
+        const errorInfo = await getErrorFromResponse(response);
+        console.error('记忆总结失败:', formatErrorMessage(errorInfo));
         return;
       }
       

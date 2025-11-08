@@ -6,6 +6,7 @@
 import { Conversation, MomentsData, MomentPost, ApiConfig } from '../types';
 import { smartLoad, smartSave } from './storage';
 import { getMemoryBank } from './memory';
+import { getErrorFromResponse, formatErrorMessage } from './apiErrorHandler';
 
 const MOMENTS_STORAGE_KEY = 'moments_data';
 
@@ -380,7 +381,8 @@ export const generateAIMoment = async (
     });
     
     if (!response.ok) {
-      console.error('❌ API请求失败:', response.status);
+      const errorInfo = await getErrorFromResponse(response);
+      console.error('✅ 朋友圈生成失败:', formatErrorMessage(errorInfo));
       return null;
     }
     
