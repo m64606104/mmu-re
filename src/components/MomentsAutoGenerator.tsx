@@ -40,11 +40,10 @@ export function MomentsAutoGenerator({ conversations, apiConfig, onMomentGenerat
       const currentConversations = conversationsRef.current;
       const currentApiConfig = apiConfigRef.current;
       
-      // 筛选出AI联系人（私聊且有角色设定）
+      // 筛选出AI联系人（私聊且有角色设定，只需要有昵称即可）
       const aiConversations = currentConversations.filter(c => 
         c.type === 'private' && 
-        c.characterSettings?.nickname &&
-        c.characterSettings?.systemPrompt
+        c.characterSettings?.nickname  // 只要有昵称就能发朋友圈
       );
 
       if (aiConversations.length === 0) {

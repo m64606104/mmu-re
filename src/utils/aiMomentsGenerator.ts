@@ -157,11 +157,18 @@ const buildMomentPrompt = (conversation: Conversation, todayPosts: MomentPost[])
   const dayOfWeek = now.toLocaleDateString('zh-CN', { weekday: 'long' });
   const dateStr = now.toLocaleDateString('zh-CN');
   
-  // 获取角色设定
+  // 获取角色设定（允许不完整）
   const characterSettings = conversation.characterSettings;
   if (!characterSettings) {
     throw new Error('联系人没有角色设定');
   }
+  
+  // 为缺失的字段提供默认值
+  const nickname = characterSettings.nickname || conversation.name;
+  const systemPrompt = characterSettings.systemPrompt || '你是一个有趣的AI朋友，喜欢分享日常生活。';
+  const personality = characterSettings.personality || '活泼开朗，积极乐观，喜欢结交朋友。';
+  const languageStyle = characterSettings.languageStyle || '轻松随意，喜欢用emoji，口语化表达。';
+  const languageExample = characterSettings.languageExample || '“今天天气超好！🌞” “我们一起去吃饭吧～”';
   
   // 获取记忆库
   const memoryBank = getMemoryBank(conversation.id);
@@ -215,19 +222,19 @@ const buildMomentPrompt = (conversation: Conversation, todayPosts: MomentPost[])
     });
   }
   
-  const prompt = `你是 ${characterSettings.nickname || conversation.name}。
+  const prompt = `你是 ${nickname}。
 
 【角色设定】
-${characterSettings.systemPrompt || ''}
+${systemPrompt}
 
 【性格特点】
-${characterSettings.personality || ''}
+${personality}
 
 【说话风格】
-${characterSettings.languageStyle || ''}
+${languageStyle}
 
 【语言示例】
-${characterSettings.languageExample || ''}
+${languageExample}
 
 ${timeContext}
 ${memoryContext}
