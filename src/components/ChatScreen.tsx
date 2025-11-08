@@ -24,6 +24,7 @@ interface ChatScreenProps {
   conversation: Conversation;
   apiConfig: ApiConfig;
   currentUserProfile?: UserProfile; // 当前用户资料（用于AI参考）
+  isActiveScreen?: boolean; // 是否是当前活跃的聊天页面
   onUpdateConversation: (id: string, updates: Partial<Conversation>) => void;
   onBack: () => void;
   onOpenCharacterSettings: () => void;
@@ -34,6 +35,7 @@ export default function ChatScreen({
   conversation,
   apiConfig,
   currentUserProfile,
+  isActiveScreen = true,
   onUpdateConversation,
   onBack,
   onOpenCharacterSettings,
@@ -76,6 +78,14 @@ export default function ChatScreen({
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const recordingTimerRef = useRef<NodeJS.Timeout | null>(null);
   
+  // 消息操作相关状态
+  const [longPressMessageId, setLongPressMessageId] = useState<string | null>(null);
+  const [selectedMessages, setSelectedMessages] = useState<string[]>([]);
+  const [isMultiSelectMode, setIsMultiSelectMode] = useState(false);
+  const [editingMessage, setEditingMessage] = useState<Message | null>(null);
+  const [replyingToMessage, setReplyingToMessage] = useState<Message | null>(null);
+  const longPressTimerRef = useRef<NodeJS.Timeout | null>(null);
+  
   // 获取用户资料
   const getUserProfile = () => {
     try {
@@ -98,6 +108,90 @@ export default function ChatScreen({
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  };
+
+  // 消息长按处理
+  const handleLongPressStart = (messageId: string) => {
+    longPressTimerRef.current = setTimeout(() => {
+      setLongPressMessageId(messageId);
+    }, 500); // 长按500ms触发
+  };
+
+  const handleLongPressEnd = () => {
+    if (longPressTimerRef.current) {
+      clearTimeout(longPressTimerRef.current);
+      longPressTimerRef.current = null;
+    }
+  };
+
+  // 开始删除模式
+  const handleStartDelete = (messageId: string) => {
+    setIsMultiSelectMode(true);
+    setSelectedMessages([messageId]);
+    setLongPressMessageId(null);
+  };
+
+  // 切换选择消息
+  const toggleMessageSelection = (messageId: string) => {
+    setSelectedMessages(prev => 
+      prev.includes(messageId) 
+        ? prev.filter(id => id !== messageId)
+        : [...prev, messageId]
+    );
+  };
+
+  // 删除选中的消息
+  const handleDeleteMessages = () => {
+    if (selectedMessages.length === 0) return;
+    
+    if (window.confirm(`确定删除选中的 ${selectedMessages.length} 条消息吗？此操作无法撤销。`)) {
+      const updatedMessages = conversation.messages.filter(
+        msg => !selectedMessages.includes(msg.id)
+      );
+      onUpdateConversation(conversation.id, { messages: updatedMessages });
+      
+      // 取消选择模式
+      setIsMultiSelectMode(false);
+      setSelectedMessages([]);
+      
+      alert('✅ 消息已删除');
+    }
+  };
+
+  // 编辑消息
+  const handleEditMessage = (message: Message) => {
+    setEditingMessage(message);
+    setCurrentInput(message.content);
+    setLongPressMessageId(null);
+    inputRef.current?.focus();
+  };
+
+  // 保存编辑
+  const handleSaveEdit = () => {
+    if (!editingMessage || !currentInput.trim()) return;
+    
+    const updatedMessages = conversation.messages.map(msg =>
+      msg.id === editingMessage.id 
+        ? { ...msg, content: currentInput.trim() }
+        : msg
+    );
+    
+    onUpdateConversation(conversation.id, { messages: updatedMessages });
+    setEditingMessage(null);
+    setCurrentInput('');
+    alert('✅ 消息已更新');
+  };
+
+  // 引用消息
+  const handleReplyMessage = (message: Message) => {
+    setReplyingToMessage(message);
+    setLongPressMessageId(null);
+    inputRef.current?.focus();
+  };
+
+  // 取消引用
+  const handleCancelReply = () => {
+    setReplyingToMessage(null);
   };
 
   // 追踪组件挂载状态（用户是否还在页面）
@@ -135,11 +229,25 @@ export default function ChatScreen({
   const handleSendMessage = () => {
     if (!currentInput.trim()) return;
 
+    // 如果是编辑模式,保存编辑
+    if (editingMessage) {
+      handleSaveEdit();
+      return;
+    }
+
     const newMessage: Message = {
       id: Date.now().toString() + Math.random(),
       role: 'user',
       content: currentInput.trim(),
       timestamp: Date.now(),
+      // 如果有引用消息,添加引用信息
+      ...(replyingToMessage && replyingToMessage.role !== 'system' && {
+        replyTo: {
+          id: replyingToMessage.id,
+          content: replyingToMessage.content,
+          role: replyingToMessage.role as 'user' | 'assistant'
+        }
+      })
     };
 
     onUpdateConversation(conversation.id, {
@@ -150,6 +258,7 @@ export default function ChatScreen({
     setCurrentInput('');
     setPendingMessages([]); // 清除剩余消息
     setShowAllSentHint(false);
+    setReplyingToMessage(null); // 清除引用
     inputRef.current?.focus();
   };
 
@@ -778,8 +887,10 @@ ${conversation.characterSettings.memoryEvents ? `记忆事件：${conversation.c
             });
           }
           
-          // 触发消息通知（MessageNotification会处理）
-          showMessageNotification(conversation.id, newMessages);
+          // 触发消息通知（只在离开聊天页时显示）
+          if (!isActiveScreen) {
+            showMessageNotification(conversation.id, newMessages);
+          }
           
           // 🧠 检查是否需要自动总结记忆
           if (conversation.enabledFeatures?.includes('memory-system')) {
@@ -838,7 +949,28 @@ ${conversation.characterSettings.memoryEvents ? `记忆事件：${conversation.c
       }
 
       const data = await response.json();
-      const assistantMessage = data.choices[0]?.message?.content;
+      let assistantMessage = data.choices[0]?.message?.content;
+      
+      // 清理AI回复中的内部思考内容
+      if (assistantMessage) {
+        // 移除常见的内部思考模式
+        assistantMessage = assistantMessage
+          // 移除"silently..."开头的内部思考
+          .replace(/^silently\s+.*?(?=\n|$)/gmi, '')
+          // 移除"[thinking]"或类似的标记
+          .replace(/\[thinking\].*?\[\/thinking\]/gs, '')
+          .replace(/\[internal.*?\].*?(?=\n|$)/gmi, '')
+          // 移除JSON格式的数据块（如搜索查询等）
+          .replace(/\{[\s\S]*?"box_id"[\s\S]*?\}/g, '')
+          .replace(/\{[\s\S]*?"search_query"[\s\S]*?\}/g, '')
+          // 移除独立的JSON数组
+          .replace(/^\s*\[[\s\S]*?\]\s*$/gm, '')
+          // 移除to understand/to inform等内部说明
+          .replace(/^.*?(to understand|to inform|to analyze).*?(?=\n|$)/gmi, '')
+          // 清理多余的空行
+          .replace(/\n{3,}/g, '\n\n')
+          .trim();
+      }
       
       // 检查空回复
       if (!assistantMessage || assistantMessage.trim() === '') {
@@ -1324,13 +1456,43 @@ ${recentMessages}
                   </div>
                 )}
                 <div className="relative max-w-[70%]">
+                  {/* 多选模式复选框 */}
+                  {isMultiSelectMode && (
+                    <input
+                      type="checkbox"
+                      checked={selectedMessages.includes(message.id)}
+                      onChange={() => toggleMessageSelection(message.id)}
+                      className="absolute -left-8 top-1/2 -translate-y-1/2 w-5 h-5 rounded border-2 border-gray-300 cursor-pointer"
+                    />
+                  )}
+                  
                   <div
+                    onMouseDown={() => !isMultiSelectMode && handleLongPressStart(message.id)}
+                    onMouseUp={handleLongPressEnd}
+                    onMouseLeave={handleLongPressEnd}
+                    onTouchStart={() => !isMultiSelectMode && handleLongPressStart(message.id)}
+                    onTouchEnd={handleLongPressEnd}
+                    onClick={() => isMultiSelectMode && toggleMessageSelection(message.id)}
                     className={`rounded-2xl shadow-sm ${
                       message.role === 'user'
                         ? 'bg-white text-gray-900 border border-gray-200'
                         : 'bg-white text-gray-900 border border-gray-200'
-                    } ${message.mediaType ? 'p-0 overflow-hidden' : 'px-4 py-2.5'}`}
+                    } ${message.mediaType ? 'p-0 overflow-hidden' : 'px-4 py-2.5'} ${
+                      isMultiSelectMode ? 'cursor-pointer' : ''
+                    } ${selectedMessages.includes(message.id) ? 'ring-2 ring-blue-500' : ''}`}
                   >
+                    {/* 引用消息显示 */}
+                    {message.replyTo && (
+                      <div className="mb-2 pb-2 border-b border-gray-200">
+                        <div className="text-xs text-gray-500 flex items-start gap-1">
+                          <div className="w-0.5 h-full bg-blue-400 mr-1"></div>
+                          <div>
+                            <div className="font-medium">{message.replyTo.role === 'user' ? '我' : conversation.name}</div>
+                            <div className="line-clamp-2">{message.replyTo.content}</div>
+                          </div>
+                        </div>
+                      </div>
+                    )}
                     {/* 用户真实媒体内容 */}
                     {message.role === 'user' && message.mediaType === 'image' && message.mediaUrl && (
                       <img 
@@ -1509,6 +1671,47 @@ ${recentMessages}
                 )}
               </div>
               )}
+              
+              {/* 长按操作菜单 */}
+              {longPressMessageId === message.id && (
+                <>
+                  <div 
+                    className="fixed inset-0 z-40" 
+                    onClick={() => setLongPressMessageId(null)}
+                  />
+                  <div className="absolute bottom-full mb-2 right-0 bg-white rounded-lg shadow-xl border border-gray-200 py-1 z-50 min-w-[140px]">
+                    <button
+                      onClick={() => handleReplyMessage(message)}
+                      className="w-full px-4 py-2.5 text-left text-sm text-gray-700 hover:bg-gray-50 transition-colors flex items-center gap-2"
+                    >
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6" />
+                      </svg>
+                      引用
+                    </button>
+                    {message.role === 'user' && (
+                      <button
+                        onClick={() => handleEditMessage(message)}
+                        className="w-full px-4 py-2.5 text-left text-sm text-gray-700 hover:bg-gray-50 transition-colors flex items-center gap-2"
+                      >
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                        </svg>
+                        编辑
+                      </button>
+                    )}
+                    <button
+                      onClick={() => handleStartDelete(message.id)}
+                      className="w-full px-4 py-2.5 text-left text-sm text-red-600 hover:bg-red-50 transition-colors flex items-center gap-2"
+                    >
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                      </svg>
+                      删除
+                    </button>
+                  </div>
+                </>
+              )}
             </div>
           );
         })}
@@ -1565,6 +1768,79 @@ ${recentMessages}
 
       {/* Input area */}
       <div className="bg-white/95 backdrop-blur-sm border-t border-gray-200">
+        {/* 多选模式工具栏 */}
+        {isMultiSelectMode && (
+          <div className="px-4 py-3 bg-blue-50 border-b border-blue-100 flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <button
+                onClick={() => {
+                  setIsMultiSelectMode(false);
+                  setSelectedMessages([]);
+                }}
+                className="text-sm text-gray-600 hover:text-gray-800"
+              >
+                取消
+              </button>
+              <span className="text-sm text-gray-700">
+                已选择 {selectedMessages.length} 条消息
+              </span>
+            </div>
+            <button
+              onClick={handleDeleteMessages}
+              disabled={selectedMessages.length === 0}
+              className="px-4 py-2 bg-red-500 text-white text-sm rounded-lg hover:bg-red-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              删除
+            </button>
+          </div>
+        )}
+        
+        {/* 引用消息提示 */}
+        {replyingToMessage && (
+          <div className="px-4 py-2 bg-gray-50 border-b border-gray-200 flex items-start justify-between gap-2">
+            <div className="flex-1 flex items-start gap-2">
+              <div className="w-1 h-full bg-blue-400 rounded-full"></div>
+              <div className="flex-1 min-w-0">
+                <div className="text-xs font-medium text-gray-600 mb-0.5">
+                  回复 {replyingToMessage.role === 'user' ? '自己' : conversation.name}
+                </div>
+                <div className="text-sm text-gray-700 truncate">
+                  {replyingToMessage.content}
+                </div>
+              </div>
+            </div>
+            <button
+              onClick={handleCancelReply}
+              className="flex-shrink-0 p-1 hover:bg-gray-200 rounded-full transition-colors"
+            >
+              <svg className="w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
+        )}
+        
+        {/* 编辑模式提示 */}
+        {editingMessage && (
+          <div className="px-4 py-2 bg-amber-50 border-b border-amber-200 flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <svg className="w-4 h-4 text-amber-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+              </svg>
+              <span className="text-sm text-amber-700">编辑消息</span>
+            </div>
+            <button
+              onClick={() => {
+                setEditingMessage(null);
+                setCurrentInput('');
+              }}
+              className="text-sm text-amber-600 hover:text-amber-800"
+            >
+              取消
+            </button>
+          </div>
+        )}
+        
         {/* 剩余消息提示 */}
         {pendingMessages.length > 0 && !isGenerating && (
           <div className="px-4 py-2 bg-blue-50 border-b border-blue-100 flex items-center justify-between">

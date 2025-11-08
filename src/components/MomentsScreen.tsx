@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
-import { ChevronLeft, Camera, Heart, MessageCircle, Send, Image as ImageIcon } from 'lucide-react';
+import { ChevronLeft, Camera, Heart, MessageCircle, Send, Image as ImageIcon, MoreHorizontal, Trash2 } from 'lucide-react';
 import { MomentPost, UserProfile, Conversation, ApiConfig } from '../types';
-import { getAllMomentPosts, likeMomentPost, commentMomentPost, generateAIMomentsInteraction } from '../utils/aiMomentsGenerator';
+import { getAllMomentPosts, likeMomentPost, commentMomentPost, generateAIMomentsInteraction, deleteMomentPost } from '../utils/aiMomentsGenerator';
 
 interface MomentsScreenProps {
   moments: MomentPost[];
@@ -32,6 +32,7 @@ export default function MomentsScreen({
   const [aiMoments, setAiMoments] = useState<MomentPost[]>([]);
   const imageInputRef = useRef<HTMLInputElement>(null);
   const [viewingImageDesc, setViewingImageDesc] = useState<{ desc: string; index: number } | null>(null);
+  const [showMenuForMoment, setShowMenuForMoment] = useState<string | null>(null);
 
   // 加载AI朋友圈
   useEffect(() => {
@@ -125,6 +126,26 @@ export default function MomentsScreen({
     } else {
       // 用户朋友圈点赞
       onLikeMoment(momentId);
+    }
+  };
+
+  // 删除朋友圈
+  const handleDeleteMoment = async (moment: MomentPost) => {
+    const authorId = moment.authorId || moment.userId;
+    if (!authorId) return;
+    
+    if (window.confirm('确定要删除这条朋友圈吗？此操作无法撤销。')) {
+      try {
+        await deleteMomentPost(authorId, moment.id);
+        // 重新加载朋友圈列表
+        const posts = await getAllMomentPosts();
+        setAiMoments(posts);
+        setShowMenuForMoment(null);
+        alert('✅ 朋友圈已删除');
+      } catch (error) {
+        console.error('删除朋友圈失败:', error);
+        alert('❌ 删除失败，请重试');
+      }
     }
   };
 
@@ -275,6 +296,34 @@ export default function MomentsScreen({
                     <div className="font-semibold text-gray-900">{username}</div>
                     <div className="text-xs text-gray-500">{formatTime(moment.timestamp)}</div>
                   </div>
+                  {/* 三点菜单 - 只对AI朋友圈显示 */}
+                  {(moment.authorId || moment.userId) && (moment.authorId || moment.userId) !== 'user' && (
+                    <div className="relative">
+                      <button
+                        onClick={() => setShowMenuForMoment(showMenuForMoment === moment.id ? null : moment.id)}
+                        className="p-1.5 hover:bg-gray-100 rounded-full transition-colors"
+                      >
+                        <MoreHorizontal className="w-5 h-5 text-gray-500" />
+                      </button>
+                      {showMenuForMoment === moment.id && (
+                        <>
+                          <div 
+                            className="fixed inset-0 z-40" 
+                            onClick={() => setShowMenuForMoment(null)}
+                          />
+                          <div className="absolute right-0 top-8 bg-white rounded-lg shadow-xl border border-gray-200 py-1 z-50 min-w-[120px]">
+                            <button
+                              onClick={() => handleDeleteMoment(moment)}
+                              className="w-full px-4 py-2 text-left text-sm text-red-600 hover:bg-red-50 transition-colors flex items-center gap-2"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                              删除朋友圈
+                            </button>
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  )}
                 </div>
 
                 {/* Content */}

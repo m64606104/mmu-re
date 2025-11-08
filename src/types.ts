@@ -22,6 +22,11 @@ export interface Message {
   isMediaDescriptionOnly?: boolean; // 是否仅为文字描述（AI发送）
   voiceDuration?: number; // 语音时长（秒）
   isVoicePlayed?: boolean; // 语音是否已播放
+  replyTo?: {
+    id: string;
+    content: string;
+    role: 'user' | 'assistant';
+  }; // 引用的消息
 }
 
 export interface CharacterSettings {
