@@ -32,7 +32,7 @@ export default function MomentsScreen({
   const [viewingImageDesc, setViewingImageDesc] = useState<{ desc: string; index: number } | null>(null);
   const [showMenuForMoment, setShowMenuForMoment] = useState<string | null>(null);
 
-  // 加载AI朋友圈（只负责加载，不负责互动）
+  // 加载AI朋友圈并触发智能互动
   useEffect(() => {
     const loadAiMoments = async () => {
       try {
@@ -45,6 +45,20 @@ export default function MomentsScreen({
     
     // 首次加载
     loadAiMoments();
+    
+    // 🎯 触发AI智能互动（模拟用户打开朋友圈，AI们也在看）
+    // @ts-ignore
+    if (window.triggerAIMomentsInteraction) {
+      // 随机延迟5-15秒，模拟AI不是立即看到
+      const randomDelay = 5000 + Math.random() * 10000;
+      const interactionTimer = setTimeout(() => {
+        // @ts-ignore
+        window.triggerAIMomentsInteraction?.();
+      }, randomDelay);
+      
+      // 清理定时器
+      return () => clearTimeout(interactionTimer);
+    }
     
     // 每30秒刷新一次以显示最新内容
     const interval = setInterval(loadAiMoments, 30 * 1000);

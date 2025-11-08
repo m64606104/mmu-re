@@ -594,7 +594,11 @@ export const getAllMomentPosts = async (): Promise<MomentPost[]> => {
 };
 
 /**
- * AI互动：随机点赞或评论其他AI的朋友圈
+ * AI智能互动：模拟真实的人类行为
+ * - 不是所有AI都会看到
+ * - 看到了也不一定互动
+ * - 互动概率基于性格和内容
+ * - 随机延迟模拟真实时间差
  */
 export const generateAIMomentsInteraction = async (
   conversations: Conversation[],
@@ -604,62 +608,114 @@ export const generateAIMomentsInteraction = async (
     const allMomentsData = await getAllMomentsData();
     if (allMomentsData.length === 0) return;
 
-    // 获取所有AI角色（排除用户）
+    // 获取所有AI角色
     const aiConversations = conversations.filter(c => c.type === 'private' && c.characterSettings);
-    if (aiConversations.length < 2) return; // 至少需要2个AI才能互动
+    if (aiConversations.length < 2) return;
 
-    // 遍历所有朋友圈
+    // 🎯 随机选择几个"在线"的AI（不是所有AI都在看朋友圈）
+    const onlineAICount = Math.floor(Math.random() * Math.min(3, aiConversations.length)) + 1;
+    const shuffledAIs = [...aiConversations].sort(() => Math.random() - 0.5);
+    const onlineAIs = shuffledAIs.slice(0, onlineAICount);
+    
+    console.log(`👥 当前有 ${onlineAICount} 个AI在线查看朋友圈`);
+
+    // 收集所有未读的朋友圈
+    const unreadPosts: Array<{ post: MomentPost; author: Conversation; momentsData: any }> = [];
+    
     for (const momentsData of allMomentsData) {
       const authorConv = aiConversations.find(c => c.id === momentsData.contactId);
       if (!authorConv) continue;
 
-      // 获取最近的朋友圈（24小时内的）
+      // 获取最近24小时内的未读朋友圈
       const recentPosts = momentsData.posts.filter(post => {
         const hoursSincePost = (Date.now() - post.timestamp) / 3600000;
         return hoursSincePost < 24 && !post.isRead;
       });
 
       for (const post of recentPosts) {
-        // 其他AI有30%的概率看到并互动
-        const otherAIs = aiConversations.filter(c => c.id !== momentsData.contactId);
+        unreadPosts.push({ post, author: authorConv, momentsData });
+      }
+    }
+
+    if (unreadPosts.length === 0) {
+      console.log('📭 没有未读的朋友圈');
+      return;
+    }
+
+    console.log(`📬 发现 ${unreadPosts.length} 条未读朋友圈`);
+
+    // 🎯 只处理部分朋友圈（模拟真实情况：不是每条都会看到）
+    const postsToProcess = unreadPosts.slice(0, Math.min(5, unreadPosts.length));
+
+    // 遍历朋友圈，让在线的AI智能互动
+    for (const { post, author, momentsData } of postsToProcess) {
+      // 其他在线的AI
+      const otherOnlineAIs = onlineAIs.filter(ai => ai.id !== author.id);
+      
+      for (const ai of otherOnlineAIs) {
+        // 🎯 基于内容决定是否互动（而不是固定30%）
+        // 有图片的朋友圈更容易吸引互动
+        const hasImages = post.imageDescriptions && post.imageDescriptions.length > 0;
+        const baseInterestRate = hasImages ? 0.5 : 0.3;
         
-        for (const otherAI of otherAIs) {
-          if (Math.random() > 0.3) continue; // 30%概率
+        // 内容长度也影响互动率（太长可能懒得看）
+        const contentLength = post.content.length;
+        const lengthFactor = contentLength < 50 ? 1.2 : contentLength > 200 ? 0.7 : 1.0;
+        
+        const interestRate = Math.min(0.8, baseInterestRate * lengthFactor);
+        
+        if (Math.random() > interestRate) {
+          continue; // 不感兴趣，跳过
+        }
 
-          const interactionType = Math.random();
+        console.log(`👀 ${ai.characterSettings?.nickname || ai.name} 看到了 ${author.characterSettings?.nickname || author.name} 的朋友圈`);
 
-          if (interactionType < 0.5) {
-            // 50%概率点赞
-            if (!post.likes.includes(otherAI.id)) {
-              await likeMomentPost(momentsData.contactId, post.id, otherAI.id);
-            }
-          } else {
-            // 50%概率评论
-            // 检查是否已经评论过
-            const hasCommented = post.comments.some(c => c.authorId === otherAI.id);
-            if (hasCommented) continue;
+        // 🎯 决定互动类型（点赞更容易，评论需要更多精力）
+        // 70%点赞，30%评论
+        const willComment = Math.random() < 0.3;
 
-            // 生成AI评论
-            const comment = await generateAIComment(post, authorConv, otherAI, apiConfig);
-            if (comment) {
-              await commentMomentPost(momentsData.contactId, post.id, {
-                authorId: otherAI.id,
-                authorName: otherAI.characterSettings?.nickname || otherAI.name,
-                authorAvatar: otherAI.characterSettings?.avatar || otherAI.avatar,
-                content: comment
-              });
-            }
+        if (willComment) {
+          // 评论（更少见，更有意义）
+          const hasCommented = post.comments.some(c => c.authorId === ai.id);
+          if (hasCommented) continue;
+
+          console.log(`💬 ${ai.characterSettings?.nickname || ai.name} 正在评论...`);
+          
+          // 生成AI评论
+          const comment = await generateAIComment(post, author, ai, apiConfig);
+          if (comment) {
+            await commentMomentPost(momentsData.contactId, post.id, {
+              authorId: ai.id,
+              authorName: ai.characterSettings?.nickname || ai.name,
+              authorAvatar: ai.characterSettings?.avatar || ai.avatar,
+              content: comment
+            });
+            console.log(`✅ 评论成功: ${comment.substring(0, 20)}...`);
+          }
+        } else {
+          // 点赞（更常见）
+          if (!post.likes.includes(ai.id)) {
+            await likeMomentPost(momentsData.contactId, post.id, ai.id);
+            console.log(`❤️ ${ai.characterSettings?.nickname || ai.name} 点赞了`);
           }
         }
 
-        // 标记为已读
-        post.isRead = true;
+        // 🎯 随机延迟0-2秒再处理下一个（模拟真实查看速度）
+        await new Promise(resolve => setTimeout(resolve, Math.random() * 2000));
       }
 
+      // 标记为已读
+      post.isRead = true;
+    }
+
+    // 保存所有更新
+    for (const momentsData of allMomentsData) {
       await saveMomentsData(momentsData);
     }
+
+    console.log('✅ AI互动完成');
   } catch (error) {
-    console.error('AI朋友圈互动失败:', error);
+    console.error('❌ AI朋友圈互动失败:', error);
   }
 };
 
