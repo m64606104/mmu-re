@@ -1067,16 +1067,14 @@ ${conversation.characterSettings.memoryEvents ? `记忆事件：${conversation.c
             if (error) {
               console.error('❌ API调用失败:', error);
               
+              // 显示详细的错误提示弹窗
+              alert(error);
+              
               // 添加错误提示到聊天记录
               const errorMessage: Message = {
                 id: Date.now().toString(),
                 role: 'system',
-                content: `⚠️ 消息发送失败\n\n${
-                  error.includes('503') ? 'API服务暂时不可用，请稍后重试' :
-                  error.includes('timeout') || error.includes('abort') ? '请求超时，请检查网络连接' :
-                  error.includes('HTTP') ? 'API服务异常，请联系管理员' :
-                  '未知错误，请重试'
-                }`,
+                content: `⚠️ 消息发送失败\n\n${error}`,
                 timestamp: Date.now(),
               };
               
