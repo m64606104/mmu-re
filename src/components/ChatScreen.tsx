@@ -1105,11 +1105,11 @@ ${conversation.characterSettings.memoryEvents ? `记忆事件：${conversation.c
           // 使用最终的消息列表（确保同步）
           const updatedMessages = currentMessages;
           
-          // 分析AI消息更新状态
+          // 🚀 性能优化：后台异步处理，不阻塞UI
+          // 分析AI消息更新状态（不等待结果）
           if (conversation.type === 'private' && conversation.characterSettings && newMessages.length > 0) {
             const firstMessageContent = newMessages[0].content;
-            // 🔥 性能优化：只在重要消息时更新AI状态
-            // 仅在消息包含特定关键词时更新
+            // 只在重要消息时更新AI状态
             const shouldUpdateStatus = 
               firstMessageContent.includes('在哪') ||
               firstMessageContent.includes('去了') ||
@@ -1118,22 +1118,29 @@ ${conversation.characterSettings.memoryEvents ? `记忆事件：${conversation.c
               firstMessageContent.includes('出门');
               
             if (shouldUpdateStatus) {
-              analyzeAndUpdateStatusFromAI(conversation.id, firstMessageContent).then(() => {
-                getAIStatus(conversation.id).then(status => {
+              // 异步处理，不阻塞主流程
+              Promise.resolve().then(async () => {
+                try {
+                  await analyzeAndUpdateStatusFromAI(conversation.id, firstMessageContent);
+                  const status = await getAIStatus(conversation.id);
                   if (status && isComponentMountedRef.current) setAIStatus(status);
-                });
+                } catch (err) {
+                  console.error('后台更新AI状态失败:', err);
+                }
               });
             }
           }
           
-          // 🧠 检查是否需要自动总结记忆
+          // 🧠 记忆总结也改为完全异步，不阻塞主流程
           if (conversation.enabledFeatures?.includes('memory-system')) {
             if (shouldTriggerAutoSummary(conversation.id, updatedMessages.length)) {
-              console.log('🧠 触发自动记忆总结，当前消息数:', updatedMessages.length);
-              performMemorySummary(updatedMessages).catch(err => {
-                console.error('记忆总结失败:', err);
-                // 即使失败也更新计数器，避免重复尝试
-                updateSummaryCounter(conversation.id, updatedMessages.length);
+              console.log('🧠 触发自动记忆总结（后台异步）');
+              // 异步处理，不阻塞
+              Promise.resolve().then(() => {
+                performMemorySummary(updatedMessages).catch(err => {
+                  console.error('记忆总结失败:', err);
+                  updateSummaryCounter(conversation.id, updatedMessages.length);
+                });
               });
             }
           }

@@ -1,5 +1,5 @@
-import { AIStatus, AIStatusInfo, AIActivityLog, ActivityLogEntry, Conversation } from '../types';
-import { generateCurrentActivity, fillMissingActivities } from './lifeSimulation';
+import { AIStatus, AIStatusInfo, AIActivityLog, Conversation } from '../types';
+import { generateCurrentActivity } from './lifeSimulation';
 
 /**
  * 状态映射
@@ -22,13 +22,13 @@ export const getAIStatus = async (conversationId: string): Promise<AIStatusInfo 
     if (data) {
       const status = JSON.parse(data) as AIStatusInfo;
       
-      // 智能生活模拟：检查并补充今天的活动轨迹
+      // 🚀 性能优化：智能生活模拟改为更低频率
       const now = Date.now();
       const lastUpdate = status.lastUpdateTime || 0;
       const hoursSinceUpdate = (now - lastUpdate) / (1000 * 60 * 60);
       
-      // 如果距离上次更新超过1小时，生成新活动
-      if (hoursSinceUpdate > 1) {
+      // 如果距离上次更新超过3小时，才生成新活动（降低频率）
+      if (hoursSinceUpdate > 3) {
         const conversationsData = localStorage.getItem('conversations');
         if (conversationsData) {
           const conversations = JSON.parse(conversationsData) as Conversation[];
@@ -159,39 +159,9 @@ export const addActivityLog = async (
     // 添加新的活动日志
     currentStatus.activityLogs.unshift(newLog);
     
-    // 智能生活模拟：补充缺失的日常活动
-    const conversationsData = localStorage.getItem('conversations');
-    if (conversationsData) {
-      const conversations = JSON.parse(conversationsData) as Conversation[];
-      const conversation = conversations.find(c => c.id === conversationId);
-      
-      if (conversation) {
-        // 将AIActivityLog转换为ActivityLogEntry格式
-        const existingActivities: ActivityLogEntry[] = currentStatus.activityLogs.map(log => ({
-          timestamp: log.timestamp,
-          activity: log.activity,
-          status: STATUS_MAP[log.status || 'online'],
-          location: log.location || '未知',
-          mood: '平常'
-        }));
-        
-        // 补充缺失的活动
-        const filledActivities = fillMissingActivities(conversation, existingActivities);
-        
-        // 将补充的活动转换回来
-        if (filledActivities.length > currentStatus.activityLogs.length) {
-          const newLogs = filledActivities.slice(currentStatus.activityLogs.length).map(activity => ({
-            id: `activity_${activity.timestamp}_${Math.random().toString(36).substr(2, 9)}`,
-            timestamp: activity.timestamp,
-            activity: activity.activity,
-            location: activity.location,
-            status: getStatusFromActivity(activity.status)
-          }));
-          
-          currentStatus.activityLogs.push(...newLogs);
-        }
-      }
-    }
+    // 🚀 性能优化：移除实时补充活动的逻辑
+    // 补充活动会在用户主动查看轨迹时进行，不在这里实时处理
+    // 这样可以避免每次添加轨迹都进行复杂的计算
     
     // 保留最近100条
     if (currentStatus.activityLogs.length > 100) {

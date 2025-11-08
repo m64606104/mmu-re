@@ -86,10 +86,8 @@ class BackgroundTaskManager {
     try {
       task.status = 'generating';
       
-      // 🔥 添加60秒超时
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 60000);
-      
+      // 🚀 移除超时限制，让API自然完成
+      // 之前的60秒超时会导致请求被提前中止，影响长回复的生成
       const response = await fetch(`${apiConfig.baseUrl}/v1/chat/completions`, {
         method: 'POST',
         headers: {
@@ -97,10 +95,7 @@ class BackgroundTaskManager {
           'Authorization': `Bearer ${apiConfig.apiKey}`,
         },
         body: JSON.stringify(requestBody),
-        signal: controller.signal,
       });
-      
-      clearTimeout(timeoutId);
 
       if (!response.ok) {
         throw new Error(`API请求失败: HTTP ${response.status}`);
