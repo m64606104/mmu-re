@@ -238,7 +238,7 @@ export interface MemoryBank {
   };
 }
 
-export type Screen = 'home' | 'settings' | 'social' | 'chat' | 'character-settings' | 'new-conversation' | 'profile' | 'moments' | 'contacts' | 'add-friend' | 'create-group' | 'theme' | 'guide' | 'relationships';
+export type Screen = 'home' | 'settings' | 'social' | 'chat' | 'character-settings' | 'new-conversation' | 'profile' | 'moments' | 'contacts' | 'add-friend' | 'create-group' | 'theme' | 'guide' | 'relationships' | 'announcement';
 
 export interface ThemeSettings {
   wallpaper: string;

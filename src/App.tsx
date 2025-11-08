@@ -14,6 +14,7 @@ import CreateGroupScreen from './components/CreateGroupScreen';
 import ThemeScreen from './components/ThemeScreen';
 import UserGuide from './components/UserGuide';
 import RelationshipsScreen from './components/RelationshipsScreen';
+import AnnouncementScreen from './components/AnnouncementScreen';
 import { MomentsAutoGenerator } from './components/MomentsAutoGenerator';
 import { AIMomentsInteractionManager } from './components/AIMomentsInteractionManager';
 import ProactiveMessagingService from './components/ProactiveMessagingService';
@@ -510,6 +511,8 @@ function App() {
             onBack={() => navigateTo('home')}
           />
         );
+      case 'announcement':
+        return <AnnouncementScreen onBack={() => navigateTo('home')} />;
       default:
         return <HomeScreen onNavigate={navigateTo} theme={theme} />;
     }

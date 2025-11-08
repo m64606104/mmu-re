@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { MessageCircle, Settings, Music, Phone, Heart, Camera, Play, Pause, SkipBack, SkipForward, MapPin, Sun, Palette, Upload, BookOpen, Mail, X, Users } from 'lucide-react';
+import { MessageCircle, Settings, Music, Phone, Heart, Bell, Play, Pause, SkipBack, SkipForward, MapPin, Sun, Palette, Upload, BookOpen, Mail, X, Users } from 'lucide-react';
 import { Screen, ThemeSettings } from '../types';
 
 interface HomeScreenProps {
@@ -55,7 +55,7 @@ export default function HomeScreen({ onNavigate, theme }: HomeScreenProps) {
   });
   const [quickLayout, setQuickLayout] = useState<string[]>(() => {
     const saved = localStorage.getItem('quickLayout');
-    return saved ? JSON.parse(saved) : ['camera', 'social', 'heart', 'settings'];
+    return saved ? JSON.parse(saved) : ['announcement', 'social', 'heart', 'settings'];
   });
   const [dockLayout, setDockLayout] = useState<string[]>(() => {
     const saved = localStorage.getItem('dockLayout');
@@ -412,7 +412,7 @@ export default function HomeScreen({ onNavigate, theme }: HomeScreenProps) {
     phone: { icon: Phone, name: '电话' },
     bell: { icon: BookOpen, name: '使用说明', onClick: () => onNavigate('guide') },
     mail: { icon: Mail, name: '邮件' },
-    camera: { icon: Camera, name: '相机', onClick: () => onNavigate('social') },
+    announcement: { icon: Bell, name: '公告', onClick: () => onNavigate('announcement') },
     heart: { icon: Heart, name: '收藏' },
   };
 
@@ -670,7 +670,7 @@ export default function HomeScreen({ onNavigate, theme }: HomeScreenProps) {
                   <img src={landscapeImage} alt="风景" className="w-full h-full object-cover" />
                 ) : (
                   <div className="w-full h-full bg-gradient-to-br from-blue-200 to-purple-200 flex items-center justify-center">
-                    <Camera className="w-12 h-12 text-white/50" />
+                    <Upload className="w-12 h-12 text-white/50" />
                   </div>
                 )}
                 <div className="absolute inset-0 rounded-full bg-gradient-to-br from-white/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity"></div>
