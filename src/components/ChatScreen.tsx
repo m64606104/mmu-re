@@ -17,6 +17,52 @@ import { buildTimeAwarePrompt } from '../utils/timeAwareness';
 import { getMomentsData } from '../utils/aiMomentsGenerator';
 import { getAIStatus, analyzeAndUpdateStatusFromAI } from '../utils/aiStatusManager';
 import { getErrorFromResponse, formatErrorMessage } from '../utils/apiErrorHandler';
+// 智能分割消息函数
+const splitMessages = (text: string): string[] => {
+  if (!text || text.trim() === '') return [];
+  
+  // 按双换行分割（段落）
+  const paragraphs = text.split(/\n\n+/);
+  const messages: string[] = [];
+  
+  for (const para of paragraphs) {
+    const trimmed = para.trim();
+    if (!trimmed) continue;
+    
+    // 如果段落很短（<50字），直接作为一条消息
+    if (trimmed.length < 50) {
+      messages.push(trimmed);
+      continue;
+    }
+    
+    // 如果段落较长，尝试按句子分割
+    const sentences = trimmed.split(/([。！？\n]+)/);
+    let currentMsg = '';
+    
+    for (let i = 0; i < sentences.length; i++) {
+      const sentence = sentences[i];
+      if (!sentence) continue;
+      
+      currentMsg += sentence;
+      
+      // 如果是标点符号且累积长度合适，或遇到换行，分割消息
+      if ((sentence.match(/[。！？]/) && currentMsg.length >= 30) || sentence === '\n') {
+        if (currentMsg.trim()) {
+          messages.push(currentMsg.trim());
+          currentMsg = '';
+        }
+      }
+    }
+    
+    // 剩余内容
+    if (currentMsg.trim()) {
+      messages.push(currentMsg.trim());
+    }
+  }
+  
+  return messages.length > 0 ? messages : [text];
+};
+
 // import { backgroundTaskManager } from '../utils/backgroundTaskManager';
 // 直接在这里定义一个简化版的backgroundTaskManager作为替代
 const backgroundTaskManager = {
@@ -1293,7 +1339,7 @@ ${conversation.characterSettings.memoryEvents ? `记忆事件：${conversation.c
       const data = await response.json();
       let assistantMessage = data.choices[0]?.message?.content;
       
-      // 清理AI回复中的内部思考内容和引用链接
+      // 清理AI回复中的内部思考内容、引用链接和Markdown格式
       if (assistantMessage) {
         // 移除常见的内部思考模式
         assistantMessage = assistantMessage
@@ -1309,6 +1355,10 @@ ${conversation.characterSettings.memoryEvents ? `记忆事件：${conversation.c
           .replace(/^\s*\[(?!图片|视频|语音|表情包)[\s\S]*?\]\s*$/gm, '')
           // 移除to understand/to inform等内部说明
           .replace(/^.*?(to understand|to inform|to analyze).*?(?=\n|$)/gmi, '')
+          // 移除Markdown格式标记（加粗、斜体、代码、删除线）
+          .split('**').join('')
+          .replace(/`([^`]+)`/g, '$1')
+          .replace(/~{2}([^~]+)~{2}/g, '$1')
           // 移除引用部分（主要引用:、引用:、参考资料: 等开头的部分及后续链接）
           .replace(/(?:主要)?引用[:：]\s*[\s\S]*$/gmi, '')
           .replace(/参考资料[:：]\s*[\s\S]*$/gmi, '')
