@@ -1,6 +1,6 @@
 import { useState, useRef } from 'react';
-import { ChevronLeft, Upload, Brain, Trash2, Download, FileUp, Zap, X, Camera, RefreshCw } from 'lucide-react';
-import { Conversation, ApiConfig } from '../types';
+import { ChevronLeft, Upload, Brain, Trash2, Download, FileUp, Zap, X, Camera, RefreshCw, BookOpen, Plus, Edit, FileText } from 'lucide-react';
+import { Conversation, ApiConfig, KnowledgeBaseItem } from '../types';
 import MemoryManager from './MemoryManager';
 import { addMomentPost } from '../utils/aiMomentsGenerator';
 
@@ -61,6 +61,13 @@ export default function CharacterSettingsScreen({
   // 📝 自定义上下文配置
   const [contextConfigEnabled, setContextConfigEnabled] = useState(settings.contextConfig?.enabled || false);
   const [contextMessageCount, setContextMessageCount] = useState(settings.contextConfig?.messageCount || 20);
+  
+  // 📚 资料库配置
+  const [knowledgeBase, setKnowledgeBase] = useState<KnowledgeBaseItem[]>(settings.knowledgeBase || []);
+  const [showKnowledgeModal, setShowKnowledgeModal] = useState(false);
+  const [editingKnowledge, setEditingKnowledge] = useState<KnowledgeBaseItem | null>(null);
+  const [knowledgeTitle, setKnowledgeTitle] = useState('');
+  const [knowledgeContent, setKnowledgeContent] = useState('');
 
   const handleAvatarUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -162,6 +169,7 @@ export default function CharacterSettingsScreen({
           enabled: contextConfigEnabled,
           messageCount: contextMessageCount,
         },
+        knowledgeBase: knowledgeBase,
       },
     });
     alert('角色设置已保存');
@@ -174,6 +182,59 @@ export default function CharacterSettingsScreen({
         onDeleteConversation(conversation.id);
         onBack();
       }
+    }
+  };
+
+  // 资料库管理函数
+  const handleAddKnowledge = () => {
+    setEditingKnowledge(null);
+    setKnowledgeTitle('');
+    setKnowledgeContent('');
+    setShowKnowledgeModal(true);
+  };
+
+  const handleEditKnowledge = (item: KnowledgeBaseItem) => {
+    setEditingKnowledge(item);
+    setKnowledgeTitle(item.title);
+    setKnowledgeContent(item.content);
+    setShowKnowledgeModal(true);
+  };
+
+  const handleSaveKnowledge = () => {
+    if (!knowledgeTitle.trim() || !knowledgeContent.trim()) {
+      alert('请填写标题和内容');
+      return;
+    }
+
+    if (editingKnowledge) {
+      // 编辑现有文档
+      setKnowledgeBase(knowledgeBase.map(item =>
+        item.id === editingKnowledge.id
+          ? { ...item, title: knowledgeTitle, content: knowledgeContent, updatedAt: Date.now() }
+          : item
+      ));
+    } else {
+      // 添加新文档
+      const newItem: KnowledgeBaseItem = {
+        id: Date.now().toString(),
+        title: knowledgeTitle,
+        content: knowledgeContent,
+        type: 'text',
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+      };
+      setKnowledgeBase([...knowledgeBase, newItem]);
+    }
+
+    setShowKnowledgeModal(false);
+    setKnowledgeTitle('');
+    setKnowledgeContent('');
+    setEditingKnowledge(null);
+  };
+
+  const handleDeleteKnowledge = (id: string) => {
+    if (window.confirm('确定要删除这条资料吗？')) {
+      setKnowledgeBase(knowledgeBase.filter(item => item.id !== id));
     }
   };
 
@@ -709,6 +770,69 @@ export default function CharacterSettingsScreen({
           )}
         </div>
 
+        {/* 📚 资料库 */}
+        <div className="bg-white rounded-lg shadow-sm p-4">
+          <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center gap-2">
+              <BookOpen className="w-5 h-5 text-purple-500" />
+              <h3 className="text-sm font-medium text-gray-900">专属资料库</h3>
+            </div>
+            <button
+              onClick={handleAddKnowledge}
+              className="flex items-center gap-1 px-3 py-1.5 bg-purple-500 hover:bg-purple-600 text-white text-xs rounded-lg transition-colors"
+            >
+              <Plus className="w-4 h-4" />
+              <span>新建资料</span>
+            </button>
+          </div>
+
+          <div className="bg-purple-50 border border-purple-100 rounded-lg p-3 mb-3">
+            <p className="text-xs text-purple-700 leading-relaxed">
+              📚 上传或新建专业资料，AI会在对话中调取这些内容作为参考。比如语C术语、角色设定、专业知识等。
+            </p>
+          </div>
+
+          {knowledgeBase.length > 0 ? (
+            <div className="space-y-2">
+              {knowledgeBase.map(item => (
+                <div key={item.id} className="bg-gray-50 border border-gray-200 rounded-lg p-3 hover:bg-gray-100 transition-colors">
+                  <div className="flex items-start justify-between">
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2 mb-1">
+                        <FileText className="w-4 h-4 text-purple-500" />
+                        <h4 className="text-sm font-medium text-gray-900">{item.title}</h4>
+                      </div>
+                      <p className="text-xs text-gray-600 line-clamp-2">{item.content}</p>
+                      <p className="text-xs text-gray-400 mt-1">
+                        {new Date(item.updatedAt).toLocaleDateString()}
+                      </p>
+                    </div>
+                    <div className="flex gap-1 ml-2">
+                      <button
+                        onClick={() => handleEditKnowledge(item)}
+                        className="p-1.5 hover:bg-white rounded transition-colors"
+                      >
+                        <Edit className="w-4 h-4 text-blue-500" />
+                      </button>
+                      <button
+                        onClick={() => handleDeleteKnowledge(item.id)}
+                        className="p-1.5 hover:bg-white rounded transition-colors"
+                      >
+                        <Trash2 className="w-4 h-4 text-red-500" />
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="text-center py-6 text-gray-400">
+              <BookOpen className="w-12 h-12 mx-auto mb-2 opacity-30" />
+              <p className="text-sm">暂无资料，点击上方按钮添加</p>
+            </div>
+          )}
+        </div>
+
         {/* 提示信息 */}
         <div className="bg-blue-50 border border-blue-100 rounded-lg p-4">
           <p className="text-sm text-blue-700 leading-relaxed">
@@ -1029,6 +1153,81 @@ export default function CharacterSettingsScreen({
                   setImportData(null);
                 }}
                 className="w-full px-4 py-3 border border-gray-300 text-gray-700 rounded-xl hover:bg-gray-50 transition-colors font-medium"
+              >
+                取消
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 资料库编辑弹窗 */}
+      {showKnowledgeModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl p-6 w-full max-w-lg shadow-2xl max-h-[80vh] overflow-y-auto">
+            <div className="flex items-start justify-between mb-4">
+              <h3 className="text-lg font-semibold text-gray-900">
+                {editingKnowledge ? '编辑资料' : '新建资料'}
+              </h3>
+              <button
+                onClick={() => {
+                  setShowKnowledgeModal(false);
+                  setKnowledgeTitle('');
+                  setKnowledgeContent('');
+                  setEditingKnowledge(null);
+                }}
+                className="text-gray-400 hover:text-gray-600 transition-colors"
+              >
+                <X className="w-6 h-6" />
+              </button>
+            </div>
+
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  资料标题
+                </label>
+                <input
+                  type="text"
+                  value={knowledgeTitle}
+                  onChange={(e) => setKnowledgeTitle(e.target.value)}
+                  placeholder="例如：语C术语表、角色背景设定"
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  资料内容
+                </label>
+                <textarea
+                  value={knowledgeContent}
+                  onChange={(e) => setKnowledgeContent(e.target.value)}
+                  placeholder="输入详细的资料内容，AI会在对话中参考这些信息..."
+                  rows={12}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent resize-none"
+                />
+                <p className="text-xs text-gray-500 mt-1">
+                  💡 建议：清晰、详细地描述专业术语、规则或背景知识
+                </p>
+              </div>
+            </div>
+
+            <div className="flex gap-3 mt-6">
+              <button
+                onClick={handleSaveKnowledge}
+                className="flex-1 px-4 py-3 bg-purple-500 text-white rounded-xl hover:bg-purple-600 transition-colors font-medium"
+              >
+                保存
+              </button>
+              <button
+                onClick={() => {
+                  setShowKnowledgeModal(false);
+                  setKnowledgeTitle('');
+                  setKnowledgeContent('');
+                  setEditingKnowledge(null);
+                }}
+                className="flex-1 px-4 py-3 border border-gray-300 text-gray-700 rounded-xl hover:bg-gray-50 transition-colors font-medium"
               >
                 取消
               </button>

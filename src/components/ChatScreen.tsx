@@ -728,13 +728,22 @@ ${recentMessages}
         }
       }
       
+      // 构建资料库内容
+      let knowledgeBaseContent = '';
+      if (conversation.characterSettings?.knowledgeBase && conversation.characterSettings.knowledgeBase.length > 0) {
+        knowledgeBaseContent = '\n\n【专属资料库】\n以下是你需要了解和参考的专业资料，在对话中遇到相关内容时请调取这些知识：\n\n';
+        conversation.characterSettings.knowledgeBase.forEach((item, index) => {
+          knowledgeBaseContent += `${index + 1}. ${item.title}\n${item.content}\n\n`;
+        });
+      }
+      
       let systemPrompt = conversation.characterSettings
         ? `你是${conversation.characterSettings.nickname}。
 ${conversation.characterSettings.systemPrompt ? `人物设定：${conversation.characterSettings.systemPrompt}` : ''}
 ${conversation.characterSettings.personality ? `性格特征：${conversation.characterSettings.personality}` : ''}
 ${conversation.characterSettings.languageStyle ? `语言风格：${conversation.characterSettings.languageStyle}` : ''}
 ${conversation.characterSettings.languageExample ? `语言示例：${conversation.characterSettings.languageExample}` : ''}
-${conversation.characterSettings.memoryEvents ? `记忆事件：${conversation.characterSettings.memoryEvents}` : ''}
+${conversation.characterSettings.memoryEvents ? `记忆事件：${conversation.characterSettings.memoryEvents}` : ''}${knowledgeBaseContent}
 
 【重要表达规范】：
 - 使用真人自然口语表达，不要使用斜杠（/）来表示"或"，例如：
@@ -1284,7 +1293,7 @@ ${conversation.characterSettings.memoryEvents ? `记忆事件：${conversation.c
       const data = await response.json();
       let assistantMessage = data.choices[0]?.message?.content;
       
-      // 清理AI回复中的内部思考内容
+      // 清理AI回复中的内部思考内容和引用链接
       if (assistantMessage) {
         // 移除常见的内部思考模式
         assistantMessage = assistantMessage
@@ -1300,6 +1309,15 @@ ${conversation.characterSettings.memoryEvents ? `记忆事件：${conversation.c
           .replace(/^\s*\[[\s\S]*?\]\s*$/gm, '')
           // 移除to understand/to inform等内部说明
           .replace(/^.*?(to understand|to inform|to analyze).*?(?=\n|$)/gmi, '')
+          // 移除引用部分（主要引用:、引用:、参考资料: 等开头的部分及后续链接）
+          .replace(/(?:主要)?引用[:：]\s*[\s\S]*$/gmi, '')
+          .replace(/参考资料[:：]\s*[\s\S]*$/gmi, '')
+          .replace(/来源[:：]\s*[\s\S]*$/gmi, '')
+          // 移除 [数字] 格式的引用标记和紧随的链接
+          .replace(/\[\d+\]\s*\[.*?\]\s*\(https?:\/\/[^\)]+\)/g, '')
+          .replace(/\[\d+\]\s*\(https?:\/\/[^\)]+\)/g, '')
+          // 移除单独的引用链接
+          .replace(/\(https?:\/\/[^\)]+\)/g, '')
           // 清理多余的空行
           .replace(/\n{3,}/g, '\n\n')
           .trim();

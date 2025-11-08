@@ -62,6 +62,18 @@ export interface CharacterSettings {
     enabled: boolean; // 是否启用自定义上下文数量（默认false）
     messageCount: number; // 上下文消息数量（1-100）
   };
+  // 📚 资料库配置
+  knowledgeBase?: KnowledgeBaseItem[];
+}
+
+// 资料库条目
+export interface KnowledgeBaseItem {
+  id: string;
+  title: string; // 文档标题
+  content: string; // 文档内容
+  type: 'text' | 'file'; // 类型：直接文本或上传文件
+  createdAt: number; // 创建时间
+  updatedAt: number; // 更新时间
 }
 
 // AI状态类型
