@@ -972,9 +972,9 @@ ${conversation.characterSettings.memoryEvents ? `记忆事件：${conversation.c
           if (newMessages.length === 0) {
             console.log('💬 AI选择不回复或任务失败');
             
-            // 生成智能的不回复提示
+            // 🔥 无论用户是否在页面，都生成并保存不回复提示
             generateContextualHint(conversation).then(contextualHint => {
-              // 添加智能提示到聊天记录（因为用户不在页面）
+              // 添加智能提示到聊天记录（无论用户在不在页面都保留）
               const systemMessage: Message = {
                 id: Date.now().toString(),
                 role: 'system',
@@ -982,10 +982,18 @@ ${conversation.characterSettings.memoryEvents ? `记忆事件：${conversation.c
                 timestamp: Date.now(),
               };
               
-              onUpdateConversation(conversationId, {
-                messages: [...conversation.messages, systemMessage],
-                lastMessageTime: Date.now(),
-              });
+              // 从localStorage获取最新的消息列表
+              const storedConversations = localStorage.getItem('conversations');
+              if (storedConversations) {
+                const allConversations = JSON.parse(storedConversations) as Conversation[];
+                const currentConversation = allConversations.find((c: Conversation) => c.id === conversationId);
+                if (currentConversation) {
+                  onUpdateConversation(conversationId, {
+                    messages: [...currentConversation.messages, systemMessage],
+                    lastMessageTime: Date.now(),
+                  });
+                }
+              }
             });
             
             return;

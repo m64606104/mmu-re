@@ -1,4 +1,5 @@
-import { AIStatus, AIStatusInfo, AIActivityLog } from '../types';
+import { AIStatus, AIStatusInfo, AIActivityLog, ActivityLogEntry, Conversation } from '../types';
+import { generateCurrentActivity, fillMissingActivities } from './lifeSimulation';
 
 /**
  * 状态映射
@@ -19,20 +20,68 @@ export const getAIStatus = async (conversationId: string): Promise<AIStatusInfo 
     const key = `ai_status_${conversationId}`;
     const data = localStorage.getItem(key);
     if (data) {
-      return JSON.parse(data);
+      const status = JSON.parse(data) as AIStatusInfo;
+      
+      // 智能生活模拟：检查并补充今天的活动轨迹
+      const now = Date.now();
+      const lastUpdate = status.lastUpdateTime || 0;
+      const hoursSinceUpdate = (now - lastUpdate) / (1000 * 60 * 60);
+      
+      // 如果距离上次更新超过1小时，生成新活动
+      if (hoursSinceUpdate > 1) {
+        const conversationsData = localStorage.getItem('conversations');
+        if (conversationsData) {
+          const conversations = JSON.parse(conversationsData) as Conversation[];
+          const conversation = conversations.find(c => c.id === conversationId);
+          
+          if (conversation) {
+            const newActivity = generateCurrentActivity(conversation);
+            if (newActivity) {
+              // 转换为AIActivityLog格式
+              const aiActivity: AIActivityLog = {
+                id: `activity_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+                timestamp: newActivity.timestamp,
+                activity: newActivity.activity,
+                location: newActivity.location,
+                status: getStatusFromActivity(newActivity.status)
+              };
+              
+              // 添加到活动日志
+              status.activityLogs = status.activityLogs || [];
+              status.activityLogs.push(aiActivity);
+              
+              // 更新当前活动
+              status.currentActivity = newActivity.activity;
+              status.lastUpdateTime = now;
+              
+              // 保存更新
+              localStorage.setItem(key, JSON.stringify(status));
+            }
+          }
+        }
+      }
+      
+      return status;
     }
-    
-    // 返回默认状态
-    return {
-      status: 'online',
-      statusText: '在线',
-      activityLogs: [],
-      lastUpdateTime: Date.now()
-    };
+    return null;
   } catch (error) {
-    console.error('获取AI状态失败:', error);
+    console.error('Failed to get AI status:', error);
     return null;
   }
+};
+
+// 辅助函数：从活动状态转换为AIStatus
+const getStatusFromActivity = (activityStatus: string): AIStatus => {
+  const statusMap: Record<string, AIStatus> = {
+    '吃饭中': 'busy',
+    '工作中': 'busy',
+    '娱乐中': 'online',
+    '社交中': 'online',
+    '休息中': 'resting',
+    '外出中': 'busy',
+    '忙碌中': 'busy'
+  };
+  return statusMap[activityStatus] || 'online';
 };
 
 /**
@@ -41,41 +90,49 @@ export const getAIStatus = async (conversationId: string): Promise<AIStatusInfo 
 export const updateAIStatus = async (
   conversationId: string,
   status: AIStatus,
-  activity?: string,
+  activity: string,
   location?: string
 ): Promise<void> => {
   try {
-    const currentStatus = await getAIStatus(conversationId) || {
+    const currentStatus = await getAIStatus(conversationId);
+    const initialStatus = currentStatus || {
       status: 'online',
-      statusText: '在线',
+      statusText: STATUS_MAP.online,
       activityLogs: [],
       lastUpdateTime: Date.now()
     };
     
-    // 创建新的行为轨迹
+    // 更新状态
+    const updatedStatus: AIStatusInfo = {
+      ...initialStatus,
+      status,
+      statusText: STATUS_MAP[status],
+      currentActivity: activity,
+      lastUpdateTime: Date.now()
+    };
+    
+    // 添加新的活动日志
     const newLog: AIActivityLog = {
-      id: `log_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+      id: `activity_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
       timestamp: Date.now(),
-      activity: activity || `状态变更为${STATUS_MAP[status]}`,
+      activity,
       location,
       status
     };
     
-    // 更新状态信息
-    const updatedStatus: AIStatusInfo = {
-      status,
-      statusText: STATUS_MAP[status],
-      currentActivity: activity,
-      activityLogs: [newLog, ...currentStatus.activityLogs].slice(0, 50), // 保留最近50条
-      lastUpdateTime: Date.now()
-    };
+    updatedStatus.activityLogs.unshift(newLog);
+    
+    // 保留最近100条
+    if (updatedStatus.activityLogs.length > 100) {
+      updatedStatus.activityLogs = updatedStatus.activityLogs.slice(0, 100);
+    }
     
     const key = `ai_status_${conversationId}`;
     localStorage.setItem(key, JSON.stringify(updatedStatus));
     
     console.log(`✅ AI状态已更新: ${conversationId} -> ${STATUS_MAP[status]}`);
   } catch (error) {
-    console.error('更新AI状态失败:', error);
+    console.error('Failed to update AI status:', error);
   }
 };
 
@@ -92,23 +149,65 @@ export const addActivityLog = async (
     if (!currentStatus) return;
     
     const newLog: AIActivityLog = {
-      id: `log_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+      id: `activity_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
       timestamp: Date.now(),
       activity,
       location,
       status: currentStatus.status
     };
     
-    currentStatus.activityLogs = [newLog, ...currentStatus.activityLogs].slice(0, 50);
+    // 添加新的活动日志
+    currentStatus.activityLogs.unshift(newLog);
+    
+    // 智能生活模拟：补充缺失的日常活动
+    const conversationsData = localStorage.getItem('conversations');
+    if (conversationsData) {
+      const conversations = JSON.parse(conversationsData) as Conversation[];
+      const conversation = conversations.find(c => c.id === conversationId);
+      
+      if (conversation) {
+        // 将AIActivityLog转换为ActivityLogEntry格式
+        const existingActivities: ActivityLogEntry[] = currentStatus.activityLogs.map(log => ({
+          timestamp: log.timestamp,
+          activity: log.activity,
+          status: STATUS_MAP[log.status || 'online'],
+          location: log.location || '未知',
+          mood: '平常'
+        }));
+        
+        // 补充缺失的活动
+        const filledActivities = fillMissingActivities(conversation, existingActivities);
+        
+        // 将补充的活动转换回来
+        if (filledActivities.length > currentStatus.activityLogs.length) {
+          const newLogs = filledActivities.slice(currentStatus.activityLogs.length).map(activity => ({
+            id: `activity_${activity.timestamp}_${Math.random().toString(36).substr(2, 9)}`,
+            timestamp: activity.timestamp,
+            activity: activity.activity,
+            location: activity.location,
+            status: getStatusFromActivity(activity.status)
+          }));
+          
+          currentStatus.activityLogs.push(...newLogs);
+        }
+      }
+    }
+    
+    // 保留最近100条
+    if (currentStatus.activityLogs.length > 100) {
+      currentStatus.activityLogs = currentStatus.activityLogs.slice(0, 100);
+    }
+    
+    // 更新当前活动
     currentStatus.currentActivity = activity;
     currentStatus.lastUpdateTime = Date.now();
     
     const key = `ai_status_${conversationId}`;
     localStorage.setItem(key, JSON.stringify(currentStatus));
     
-    console.log(`📝 添加行为轨迹: ${activity}`);
+    console.log(`添加行为轨迹: ${activity}`);
   } catch (error) {
-    console.error('添加行为轨迹失败:', error);
+    console.error('Failed to add activity log:', error);
   }
 };
 

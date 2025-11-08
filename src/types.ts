@@ -61,6 +61,15 @@ export interface AIActivityLog {
   status?: AIStatus; // 对应的状态
 }
 
+// 活动日志条目（用于生活模拟）
+export interface ActivityLogEntry {
+  timestamp: number; // 时间戳
+  activity: string; // 活动描述
+  status: string; // 状态
+  location: string; // 地点
+  mood?: string; // 心情
+}
+
 // AI状态信息
 export interface AIStatusInfo {
   status: AIStatus; // 当前状态
