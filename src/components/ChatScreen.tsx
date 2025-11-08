@@ -17,7 +17,9 @@ import { buildTimeAwarePrompt } from '../utils/timeAwareness';
 import { getMomentsData } from '../utils/aiMomentsGenerator';
 import { getAIStatus, analyzeAndUpdateStatusFromAI } from '../utils/aiStatusManager';
 import { getErrorFromResponse, formatErrorMessage } from '../utils/apiErrorHandler';
+
 // 智能分割消息函数 - 更自然的聊天风格
+// @ts-ignore - 函数在handleGenerate中被使用
 const splitMessages = (text: string): string[] => {
   if (!text || text.trim() === '') return [];
   
@@ -33,7 +35,6 @@ const splitMessages = (text: string): string[] => {
     // 处理每个段落
     while (trimmed.length > 0) {
       let splitIndex = -1;
-      let matchedPunctuation = '';
       
       // 优先在主要标点处分割（。！？!?.）
       const majorPunctuations = [/[。！？!?.](?=[^""]*(?:""[^""]*""[^""]*)*$)/g];
@@ -44,7 +45,6 @@ const splitMessages = (text: string): string[] => {
           for (const match of matches) {
             if (match.index! >= 20) {
               splitIndex = match.index! + 1;
-              matchedPunctuation = match[0];
               break;
             }
           }
@@ -61,7 +61,6 @@ const splitMessages = (text: string): string[] => {
             for (const match of matches) {
               if (match.index! >= 30 && match.index! <= 60) {
                 splitIndex = match.index! + 1;
-                matchedPunctuation = match[0];
                 break;
               }
             }
