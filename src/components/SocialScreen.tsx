@@ -6,9 +6,10 @@ import StatusSelector from './StatusSelector';
 interface SocialScreenProps {
   conversations: Conversation[];
   onNavigate: (screen: Screen, conversationId?: string) => void;
+  onImportCharacter?: (data: any) => void;
 }
 
-export default function SocialScreen({ conversations, onNavigate }: SocialScreenProps) {
+export default function SocialScreen({ conversations, onNavigate, onImportCharacter }: SocialScreenProps) {
   const sortedConversations = [...conversations].sort((a, b) => b.lastMessageTime - a.lastMessageTime);
   const [isDarkMode, setIsDarkMode] = useState(true);
   const [showMenu, setShowMenu] = useState(false);
@@ -26,6 +27,48 @@ export default function SocialScreen({ conversations, onNavigate }: SocialScreen
     }
     return { username: '123', avatar: null, status: '在线' };
   });
+
+  // 处理扫一扫导入角色
+  const handleScanImport = () => {
+    setShowMenu(false);
+    
+    // 创建文件选择器
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.json';
+    
+    input.onchange = (e: Event) => {
+      const file = (e.target as HTMLInputElement).files?.[0];
+      if (!file) return;
+      
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        try {
+          const data = JSON.parse(event.target?.result as string);
+          
+          // 验证数据格式
+          if (!data.character || !data.character.name) {
+            alert('❌ 文件格式错误，请选择正确的角色迁移文件');
+            return;
+          }
+          
+          // 调用导入回调
+          if (onImportCharacter) {
+            onImportCharacter(data);
+          } else {
+            alert('❌ 导入功能未启用');
+          }
+        } catch (error) {
+          console.error('解析文件失败:', error);
+          alert('❌ 文件解析失败，请检查文件格式');
+        }
+      };
+      
+      reader.readAsText(file);
+    };
+    
+    input.click();
+  };
 
   // 获取最后一条消息的预览文本
   const getLastMessagePreview = (conversation: Conversation): string => {
@@ -184,10 +227,7 @@ export default function SocialScreen({ conversations, onNavigate }: SocialScreen
                     <span className={`text-sm ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>添加朋友</span>
                   </button>
                   <button
-                    onClick={() => {
-                      setShowMenu(false);
-                      alert('扫一扫功能开发中...');
-                    }}
+                    onClick={handleScanImport}
                     className={`w-full px-4 py-3 flex items-center gap-3 transition-colors ${isDarkMode ? 'hover:bg-gray-700' : 'hover:bg-gray-50'}`}
                   >
                     <Scan className={`w-5 h-5 ${isDarkMode ? 'text-white' : 'text-gray-700'}`} />

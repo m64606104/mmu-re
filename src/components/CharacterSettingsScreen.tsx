@@ -350,9 +350,14 @@ export default function CharacterSettingsScreen({
 
         {/* System Prompt */}
         <div className="bg-white rounded-lg shadow-sm p-4">
-          <label className="block text-sm font-medium text-gray-700 mb-2">
-            人物设定
-          </label>
+          <div className="flex justify-between items-center mb-2">
+            <label className="block text-sm font-medium text-gray-700">
+              人物设定
+            </label>
+            <span className={`text-xs ${systemPrompt.length > 200 ? 'text-orange-600 font-medium' : 'text-gray-500'}`}>
+              {systemPrompt.length} / 200字
+            </span>
+          </div>
           <textarea
             value={systemPrompt}
             onChange={(e) => setSystemPrompt(e.target.value)}
@@ -360,13 +365,23 @@ export default function CharacterSettingsScreen({
             rows={3}
             className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
           />
+          {systemPrompt.length > 200 && (
+            <p className="text-xs text-orange-600 mt-1">
+              ⚠️ 内容过长可能导致AI回复变慢，建议精简描述
+            </p>
+          )}
         </div>
 
         {/* Personality */}
         <div className="bg-white rounded-lg shadow-sm p-4">
-          <label className="block text-sm font-medium text-gray-700 mb-2">
-            性格特征
-          </label>
+          <div className="flex justify-between items-center mb-2">
+            <label className="block text-sm font-medium text-gray-700">
+              性格特征
+            </label>
+            <span className={`text-xs ${personality.length > 150 ? 'text-orange-600 font-medium' : 'text-gray-500'}`}>
+              {personality.length} / 150字
+            </span>
+          </div>
           <textarea
             value={personality}
             onChange={(e) => setPersonality(e.target.value)}
@@ -374,13 +389,23 @@ export default function CharacterSettingsScreen({
             rows={3}
             className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
           />
+          {personality.length > 150 && (
+            <p className="text-xs text-orange-600 mt-1">
+              ⚠️ 内容过长可能导致AI回复变慢，建议精简描述
+            </p>
+          )}
         </div>
 
         {/* Language Style */}
         <div className="bg-white rounded-lg shadow-sm p-4">
-          <label className="block text-sm font-medium text-gray-700 mb-2">
-            语言风格
-          </label>
+          <div className="flex justify-between items-center mb-2">
+            <label className="block text-sm font-medium text-gray-700">
+              语言风格
+            </label>
+            <span className={`text-xs ${languageStyle.length > 150 ? 'text-orange-600 font-medium' : 'text-gray-500'}`}>
+              {languageStyle.length} / 150字
+            </span>
+          </div>
           <textarea
             value={languageStyle}
             onChange={(e) => setLanguageStyle(e.target.value)}
@@ -388,13 +413,23 @@ export default function CharacterSettingsScreen({
             rows={3}
             className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
           />
+          {languageStyle.length > 150 && (
+            <p className="text-xs text-orange-600 mt-1">
+              ⚠️ 内容过长可能导致AI回复变慢，建议精简描述
+            </p>
+          )}
         </div>
 
         {/* Language Example */}
         <div className="bg-white rounded-lg shadow-sm p-4">
-          <label className="block text-sm font-medium text-gray-700 mb-2">
-            语言示例
-          </label>
+          <div className="flex justify-between items-center mb-2">
+            <label className="block text-sm font-medium text-gray-700">
+              语言示例
+            </label>
+            <span className={`text-xs ${languageExample.length > 300 ? 'text-orange-600 font-medium' : 'text-gray-500'}`}>
+              {languageExample.length} / 300字
+            </span>
+          </div>
           <textarea
             value={languageExample}
             onChange={(e) => setLanguageExample(e.target.value)}
@@ -402,13 +437,23 @@ export default function CharacterSettingsScreen({
             rows={3}
             className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
           />
+          {languageExample.length > 300 && (
+            <p className="text-xs text-orange-600 mt-1">
+              ⚠️ 内容过长可能导致AI回复变慢，建议提供2-3个简短示例
+            </p>
+          )}
         </div>
 
         {/* Memory Events */}
         <div className="bg-white rounded-lg shadow-sm p-4">
-          <label className="block text-sm font-medium text-gray-700 mb-2">
-            记忆事件
-          </label>
+          <div className="flex justify-between items-center mb-2">
+            <label className="block text-sm font-medium text-gray-700">
+              记忆事件
+            </label>
+            <span className={`text-xs ${memoryEvents.length > 200 ? 'text-orange-600 font-medium' : 'text-gray-500'}`}>
+              {memoryEvents.length} / 200字
+            </span>
+          </div>
           <textarea
             value={memoryEvents}
             onChange={(e) => setMemoryEvents(e.target.value)}
@@ -416,6 +461,11 @@ export default function CharacterSettingsScreen({
             rows={3}
             className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
           />
+          {memoryEvents.length > 200 && (
+            <p className="text-xs text-orange-600 mt-1">
+              ⚠️ 内容过长可能导致AI回复变慢，建议使用长期记忆库功能代替
+            </p>
+          )}
         </div>
 
         {/* 长期记忆库按钮 */}

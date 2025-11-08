@@ -24,7 +24,6 @@ interface ChatScreenProps {
   conversation: Conversation;
   apiConfig: ApiConfig;
   currentUserProfile?: UserProfile; // 当前用户资料（用于AI参考）
-  isActiveScreen?: boolean; // 是否是当前活跃的聊天页面
   onUpdateConversation: (id: string, updates: Partial<Conversation>) => void;
   onBack: () => void;
   onOpenCharacterSettings: () => void;
@@ -35,7 +34,6 @@ export default function ChatScreen({
   conversation,
   apiConfig,
   currentUserProfile,
-  isActiveScreen = true,
   onUpdateConversation,
   onBack,
   onOpenCharacterSettings,
@@ -61,6 +59,76 @@ export default function ChatScreen({
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   
+  // 生成智能的不回复提示
+  const generateContextualHint = async (conversationData: Conversation) => {
+    try {
+      const aiName = conversationData.characterSettings?.nickname || conversationData.name;
+      
+      // 获取最近的对话上下文
+      const recentMessages = conversationData.messages.slice(-10).map(m => 
+        `${m.role === 'user' ? '用户' : aiName}: ${m.content}`
+      ).join('\n');
+      
+      // 构建包含角色设定的提示
+      const characterInfo = conversationData.characterSettings 
+        ? `\n【你的角色设定】\n性格：${conversationData.characterSettings.personality || ''}\n喜好/厌恶：${conversationData.characterSettings.memoryEvents || ''}\n`
+        : '';
+      
+      const hintPrompt = `你是 ${aiName}。${characterInfo}
+
+【最近的对话】
+${recentMessages}
+
+【任务】
+你刚才选择不回复用户的最后一条消息。请根据对话上下文和你的角色设定，用一句话解释为什么不回复。
+
+【判断原因】
+1. **情绪原因**：如果刚吵架/生气了 → "${aiName}现在还在生气，暂时不想理你"
+2. **忙碌原因**：如果提到在忙/工作/学习/实验室 → "${aiName}可能在忙，暂时没空回复"
+3. **话题原因**：
+   - 用户提到你不喜欢的东西 → "${aiName}不太喜欢这个话题"
+   - 话题无聊/重复 → "${aiName}觉得没什么好说的"
+   - 话题敏感/尴尬 → "${aiName}不知道该怎么回复"
+4. **性格原因**：根据你的性格特点（内向、高冷等）→ 用符合性格的说法
+
+【要求】
+- 语气要自然，像真人一样
+- 只输出一句话，不要有任何前缀或解释  
+- 控制在30字以内
+- 要符合你的性格和当前情境
+
+现在请生成提示：`;
+
+      const response = await fetch(`${apiConfig.baseUrl}/v1/chat/completions`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${apiConfig.apiKey}`,
+        },
+        body: JSON.stringify({
+          model: apiConfig.modelName,
+          messages: [{ role: 'user', content: hintPrompt }],
+          max_tokens: 50,
+          temperature: 0.7
+        })
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        const contextualHint = data.choices[0]?.message?.content?.trim();
+        if (contextualHint) {
+          return contextualHint;
+        }
+      }
+    } catch (error) {
+      console.error('生成上下文提示失败:', error);
+    }
+    
+    // 如果生成失败，使用默认提示
+    const aiName = conversationData.characterSettings?.nickname || conversationData.name;
+    return `${aiName}看到了你的消息，但现在不想回复`;
+  };
+  
   // 追踪用户是否还在当前聊天页面
   const isComponentMountedRef = useRef(true);
   
@@ -79,12 +147,11 @@ export default function ChatScreen({
   const recordingTimerRef = useRef<NodeJS.Timeout | null>(null);
   
   // 消息操作相关状态
-  const [longPressMessageId, setLongPressMessageId] = useState<string | null>(null);
+  const [clickedMessageId, setClickedMessageId] = useState<string | null>(null);
   const [selectedMessages, setSelectedMessages] = useState<string[]>([]);
   const [isMultiSelectMode, setIsMultiSelectMode] = useState(false);
   const [editingMessage, setEditingMessage] = useState<Message | null>(null);
   const [replyingToMessage, setReplyingToMessage] = useState<Message | null>(null);
-  const longPressTimerRef = useRef<NodeJS.Timeout | null>(null);
   
   // 获取用户资料
   const getUserProfile = () => {
@@ -110,25 +177,33 @@ export default function ChatScreen({
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   };
 
-  // 消息长按处理
-  const handleLongPressStart = (messageId: string) => {
-    longPressTimerRef.current = setTimeout(() => {
-      setLongPressMessageId(messageId);
-    }, 500); // 长按500ms触发
-  };
-
-  const handleLongPressEnd = () => {
-    if (longPressTimerRef.current) {
-      clearTimeout(longPressTimerRef.current);
-      longPressTimerRef.current = null;
+  // 消息点击处理 - 显示/隐藏操作栏
+  const handleMessageClick = (messageId: string, event: React.MouseEvent) => {
+    // 如果点击的是操作按钮或语音/视频/图片等媒体控件，不处理
+    const target = event.target as HTMLElement;
+    if (target.closest('.message-action-btn') || 
+        target.closest('audio') || 
+        target.closest('video') || 
+        target.closest('button') ||
+        target.tagName === 'IMG') {
+      return;
     }
+    
+    // 如果是多选模式，切换选择
+    if (isMultiSelectMode) {
+      toggleMessageSelection(messageId);
+      return;
+    }
+    
+    // 切换操作栏显示
+    setClickedMessageId(prev => prev === messageId ? null : messageId);
   };
 
   // 开始删除模式
   const handleStartDelete = (messageId: string) => {
     setIsMultiSelectMode(true);
     setSelectedMessages([messageId]);
-    setLongPressMessageId(null);
+    setClickedMessageId(null);
   };
 
   // 切换选择消息
@@ -162,7 +237,7 @@ export default function ChatScreen({
   const handleEditMessage = (message: Message) => {
     setEditingMessage(message);
     setCurrentInput(message.content);
-    setLongPressMessageId(null);
+    setClickedMessageId(null);
     inputRef.current?.focus();
   };
 
@@ -185,7 +260,7 @@ export default function ChatScreen({
   // 引用消息
   const handleReplyMessage = (message: Message) => {
     setReplyingToMessage(message);
-    setLongPressMessageId(null);
+    setClickedMessageId(null);
     inputRef.current?.focus();
   };
 
@@ -865,14 +940,54 @@ ${conversation.characterSettings.memoryEvents ? `记忆事件：${conversation.c
         conversation,
         apiConfig,
         requestBody,
-        async (newMessages) => {
+        async (newMessages, conversationId) => {
           // 后台任务完成回调
           console.log(`✅ 后台任务完成，收到${newMessages.length}条消息`);
+          
+          // 检查AI是否选择不回复
+          if (newMessages.length === 0) {
+            console.log('💬 AI选择不回复此消息（后台）');
+            setShowSendingHint(false);
+            setShowTyping(false);
+            setIsGenerating(false);
+            
+            // 生成智能的不回复提示
+            generateContextualHint(conversation).then(contextualHint => {
+              // 添加智能提示到聊天记录（因为用户不在页面）
+              const systemMessage: Message = {
+                id: Date.now().toString(),
+                role: 'system',
+                content: contextualHint,
+                timestamp: Date.now(),
+              };
+              
+              onUpdateConversation(conversationId, {
+                messages: [...conversation.messages, systemMessage],
+                lastMessageTime: Date.now(),
+              });
+            });
+            
+            return;
+          }
           
           // 🎯 检查用户是否还在当前聊天页面
           const userStillOnPage = isComponentMountedRef.current;
           
+          // 获取最新的conversation（可能已经从localStorage更新了）
+          const latestConversationData = localStorage.getItem('conversations');
           let currentMessages = [...conversation.messages];
+          
+          if (latestConversationData) {
+            try {
+              const conversations = JSON.parse(latestConversationData);
+              const latestConv = conversations.find((c: Conversation) => c.id === conversationId);
+              if (latestConv) {
+                currentMessages = [...latestConv.messages];
+              }
+            } catch (e) {
+              console.error('Failed to get latest conversation:', e);
+            }
+          }
           
           if (userStillOnPage) {
             // 👤 用户还在页面：显示完整的输入动画
@@ -895,7 +1010,7 @@ ${conversation.characterSettings.memoryEvents ? `记忆事件：${conversation.c
               
               // 添加这条消息到conversation
               currentMessages = [...currentMessages, newMessages[i]];
-              onUpdateConversation(conversation.id, {
+              onUpdateConversation(conversationId, {
                 messages: currentMessages,
                 lastMessageTime: Date.now(),
               });
@@ -911,19 +1026,17 @@ ${conversation.characterSettings.memoryEvents ? `记忆事件：${conversation.c
             
           } else {
             // 🚀 用户已离开：直接添加所有消息，不显示动画
-            console.log('用户已离开页面，直接添加所有消息');
+            console.log('用户已离开页面，直接添加所有消息并显示通知');
             
             // 直接添加所有消息
-            currentMessages = [...conversation.messages, ...newMessages];
-            onUpdateConversation(conversation.id, {
+            currentMessages = [...currentMessages, ...newMessages];
+            onUpdateConversation(conversationId, {
               messages: currentMessages,
               lastMessageTime: Date.now(),
             });
             
-            // 清理状态（虽然用户已离开，但为了数据一致性）
-            setShowSendingHint(false);
-            setShowTyping(false);
-            setIsGenerating(false);
+            // 显示消息通知（用户已离开页面）
+            showMessageNotification(conversationId, newMessages);
           }
           
           // 使用最终的消息列表（确保同步）
@@ -937,15 +1050,10 @@ ${conversation.characterSettings.memoryEvents ? `记忆事件：${conversation.c
               // 然后再做常规分析
               analyzeMessageAndUpdateStatus(conversation.id, firstMessageContent).then(() => {
                 getAIStatus(conversation.id).then(status => {
-                  if (status) setAIStatus(status);
+                  if (status && isComponentMountedRef.current) setAIStatus(status);
                 });
               });
             });
-          }
-          
-          // 触发消息通知（只在离开聊天页时显示）
-          if (!isActiveScreen) {
-            showMessageNotification(conversation.id, newMessages);
           }
           
           // 🧠 检查是否需要自动总结记忆
@@ -1056,78 +1164,8 @@ ${conversation.characterSettings.memoryEvents ? `记忆事件：${conversation.c
         setShowTyping(false);
         setIsGenerating(false);
         
-        // 根据上下文生成智能提示
-        const generateContextualHint = async () => {
-          try {
-            const aiName = conversation.characterSettings?.nickname || conversation.name;
-            
-            // 获取最近的对话上下文
-            const recentMessages = conversation.messages.slice(-10).map(m => 
-              `${m.role === 'user' ? '用户' : aiName}: ${m.content}`
-            ).join('\n');
-            
-            // 构建包含角色设定的提示
-            const characterInfo = conversation.characterSettings 
-              ? `\n【你的角色设定】\n性格：${conversation.characterSettings.personality || ''}\n喜好/厌恶：${conversation.characterSettings.memoryEvents || ''}\n`
-              : '';
-            
-            const hintPrompt = `你是 ${aiName}。${characterInfo}
-
-【最近的对话】
-${recentMessages}
-
-【任务】
-你刚才选择不回复用户的最后一条消息。请根据对话上下文和你的角色设定，用一句话解释为什么不回复。
-
-【判断原因】
-1. **情绪原因**：如果刚吵架/生气了 → "${aiName}现在还在生气，暂时不想理你"
-2. **忙碌原因**：如果提到在忙/工作/学习/实验室 → "${aiName}可能在忙，暂时没空回复"
-3. **话题原因**：
-   - 用户提到你不喜欢的东西 → "${aiName}不太喜欢这个话题"
-   - 话题无聊/重复 → "${aiName}觉得没什么好说的"
-   - 话题敏感/尴尬 → "${aiName}不知道该怎么回复"
-4. **性格原因**：根据你的性格特点（内向、高冷等）→ 用符合性格的说法
-
-【要求】
-- 语气要自然，像真人一样
-- 只输出一句话，不要有任何前缀或解释  
-- 控制在30字以内
-- 要符合你的性格和当前情境
-
-现在请生成提示：`;
-
-            const response = await fetch(`${apiConfig.baseUrl}/v1/chat/completions`, {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${apiConfig.apiKey}`,
-              },
-              body: JSON.stringify({
-                model: apiConfig.modelName,
-                messages: [{ role: 'user', content: hintPrompt }],
-                max_tokens: 50,
-                temperature: 0.7
-              })
-            });
-
-            if (response.ok) {
-              const data = await response.json();
-              const contextualHint = data.choices[0]?.message?.content?.trim();
-              if (contextualHint) {
-                return contextualHint;
-              }
-            }
-          } catch (error) {
-            console.error('生成上下文提示失败:', error);
-          }
-          
-          // 如果生成失败，使用默认提示
-          const aiName = conversation.characterSettings?.nickname || conversation.name;
-          return `${aiName}看到了你的消息，但现在不想回复`;
-        };
-        
-        // 异步生成并显示提示
-        generateContextualHint().then(contextualHint => {
+        // 异步生成并显示提示（用户在页面时显示浮动提示框）
+        generateContextualHint(conversation).then(contextualHint => {
           setTimeout(() => {
             const hint = document.createElement('div');
             hint.textContent = contextualHint;
@@ -1415,16 +1453,16 @@ ${recentMessages}
             {conversation.type === 'private' && conversation.characterSettings ? (
               <button 
                 onClick={() => setShowActivityModal(true)}
-                className="flex items-center gap-1 hover:bg-gray-50 px-2 py-0.5 -ml-2 rounded transition-colors text-left"
+                className="flex items-center gap-1 hover:bg-gray-50 px-2 py-0.5 -ml-2 rounded transition-colors text-left max-w-[200px]"
               >
-                <div className={`w-2 h-2 rounded-full ${
+                <div className={`w-2 h-2 rounded-full flex-shrink-0 ${
                   aiStatus?.status === 'online' ? 'bg-green-500' :
                   aiStatus?.status === 'busy' ? 'bg-yellow-500' :
                   aiStatus?.status === 'resting' ? 'bg-blue-500' :
                   aiStatus?.status === 'away' ? 'bg-gray-400' :
                   'bg-gray-300'
                 }`}></div>
-                <span className="text-xs text-gray-500">
+                <span className="text-xs text-gray-500 truncate">
                   {aiStatus?.statusText || '在线'}
                 </span>
               </button>
@@ -1469,7 +1507,15 @@ ${recentMessages}
       </div>
 
       {/* Messages - 固定布局，添加顶部和底部padding */}
-      <div className="absolute top-[60px] bottom-[60px] left-0 right-0 overflow-y-auto p-4 space-y-3">
+      <div 
+        className="absolute top-[60px] bottom-[60px] left-0 right-0 overflow-y-auto p-4 space-y-3"
+        onClick={(e) => {
+          // 点击空白区域关闭操作栏
+          if (e.target === e.currentTarget || !(e.target as HTMLElement).closest('.message-bubble')) {
+            setClickedMessageId(null);
+          }
+        }}
+      >
         {conversation.messages.map((message, index) => {
           // 微信风格：超过5分钟才显示时间
           const showTime = index === 0 || 
@@ -1494,7 +1540,7 @@ ${recentMessages}
                   </span>
                 </div>
               ) : (
-              <div className={`flex gap-2 items-end ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+              <div className={`message-bubble flex gap-2 items-end ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}>
                 {message.role === 'assistant' && (
                   <div className="relative flex-shrink-0">
                     {conversation.characterSettings?.avatar ? (
@@ -1523,13 +1569,8 @@ ${recentMessages}
                   )}
                   
                   <div
-                    onMouseDown={() => !isMultiSelectMode && handleLongPressStart(message.id)}
-                    onMouseUp={handleLongPressEnd}
-                    onMouseLeave={handleLongPressEnd}
-                    onTouchStart={() => !isMultiSelectMode && handleLongPressStart(message.id)}
-                    onTouchEnd={handleLongPressEnd}
-                    onClick={() => isMultiSelectMode && toggleMessageSelection(message.id)}
-                    className={`rounded-2xl shadow-sm ${
+                    onClick={(e) => handleMessageClick(message.id, e)}
+                    className={`rounded-2xl shadow-sm cursor-pointer ${
                       message.role === 'user'
                         ? 'bg-white text-gray-900 border border-gray-200'
                         : 'bg-white text-gray-900 border border-gray-200'
@@ -1736,45 +1777,41 @@ ${recentMessages}
               </div>
               )}
               
-              {/* 长按操作菜单 */}
-              {longPressMessageId === message.id && (
-                <>
-                  <div 
-                    className="fixed inset-0 z-40" 
-                    onClick={() => setLongPressMessageId(null)}
-                  />
-                  <div className="absolute bottom-full mb-2 right-0 bg-white rounded-lg shadow-xl border border-gray-200 py-1 z-50 min-w-[140px]">
+              {/* iMessage风格操作栏 */}
+              {clickedMessageId === message.id && !message.mediaType && (
+                <div className="absolute -top-9 left-0 right-0 flex justify-center z-50">
+                  <div className="bg-gray-100/95 backdrop-blur-sm rounded-full shadow-lg px-2 py-1.5 flex items-center gap-1">
                     <button
-                      onClick={() => handleReplyMessage(message)}
-                      className="w-full px-4 py-2.5 text-left text-sm text-gray-700 hover:bg-gray-50 transition-colors flex items-center gap-2"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleReplyMessage(message);
+                      }}
+                      className="message-action-btn px-3 py-1.5 text-xs text-gray-700 hover:bg-gray-200/60 rounded-full transition-colors"
                     >
-                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6" />
-                      </svg>
                       引用
                     </button>
-                    {message.role === 'user' && (
-                      <button
-                        onClick={() => handleEditMessage(message)}
-                        className="w-full px-4 py-2.5 text-left text-sm text-gray-700 hover:bg-gray-50 transition-colors flex items-center gap-2"
-                      >
-                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                        </svg>
-                        编辑
-                      </button>
-                    )}
+                    <div className="w-px h-3 bg-gray-300"></div>
                     <button
-                      onClick={() => handleStartDelete(message.id)}
-                      className="w-full px-4 py-2.5 text-left text-sm text-red-600 hover:bg-red-50 transition-colors flex items-center gap-2"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleEditMessage(message);
+                      }}
+                      className="message-action-btn px-3 py-1.5 text-xs text-gray-700 hover:bg-gray-200/60 rounded-full transition-colors"
                     >
-                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                      </svg>
+                      编辑
+                    </button>
+                    <div className="w-px h-3 bg-gray-300"></div>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleStartDelete(message.id);
+                      }}
+                      className="message-action-btn px-3 py-1.5 text-xs text-gray-700 hover:bg-gray-200/60 rounded-full transition-colors"
+                    >
                       删除
                     </button>
                   </div>
-                </>
+                </div>
               )}
             </div>
           );

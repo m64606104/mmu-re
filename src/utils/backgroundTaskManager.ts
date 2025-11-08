@@ -51,7 +51,7 @@ class BackgroundTaskManager {
     conversation: Conversation,
     apiConfig: ApiConfig,
     requestBody: any,
-    onUpdate: (messages: Message[]) => void
+    onUpdate: (messages: Message[], conversationId: string) => void
   ): Promise<string> {
     const taskId = `task_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
     
@@ -78,7 +78,7 @@ class BackgroundTaskManager {
     conversation: Conversation,
     apiConfig: ApiConfig,
     requestBody: any,
-    onUpdate: (messages: Message[]) => void
+    onUpdate: (messages: Message[], conversationId: string) => void
   ) {
     const task = this.tasks.get(taskId);
     if (!task) return;
@@ -121,7 +121,7 @@ class BackgroundTaskManager {
       task.messages = messages;
 
       // 更新回调
-      onUpdate(messages);
+      onUpdate(messages, conversation.id);
       
       // 触发通知
       this.notifyMessage(conversation.id, messages);
@@ -181,18 +181,23 @@ class BackgroundTaskManager {
    */
   private convertToMessages(contents: string[]): Message[] {
     return contents.slice(0, 23).map((content, i) => {
+      // 清理可能泄漏的角色前缀
+      let cleanedContent = content
+        .replace(/^(User|用户|AI|Assistant|助手|System|系统)[:：\s]/i, '')
+        .trim();
+      
       // 检测媒体类型
-      const imageMatch = content.match(/\[图片[:：]([^\]]+)\]/);
-      const videoMatch = content.match(/\[视频[:：]([^\]]+)\]/);
+      const imageMatch = cleanedContent.match(/\[图片[:：]([^\]]+)\]/);
+      const videoMatch = cleanedContent.match(/\[视频[:：]([^\]]+)\]/);
       // 修改语音正则：更宽松地匹配语音内容，支持包含标点符号的内容
-      const voiceMatch = content.match(/\[语音[:：](.+?)(?:[，,]\s*(?:时长)?(\d+)秒?)?\]/);
-      const stickerMatch = content.match(/\[表情包[:：]([^\]]+)\]/);
+      const voiceMatch = cleanedContent.match(/\[语音[:：](.+?)(?:[，,]\s*(?:时长)?(\d+)秒?)?\]/);
+      const stickerMatch = cleanedContent.match(/\[表情包[:：]([^\]]+)\]/);
 
       let message: Message;
       const baseId = Date.now().toString() + '_ai_' + i + Math.random();
 
       if (imageMatch) {
-        const cleanContent = content.replace(/\[图片[:：][^\]]+\]/, '').trim();
+        const cleanContent = cleanedContent.replace(/\[图片[:：][^\]]+\]/, '').trim();
         message = {
           id: baseId,
           role: 'assistant',
@@ -203,7 +208,7 @@ class BackgroundTaskManager {
           isMediaDescriptionOnly: true
         };
       } else if (videoMatch) {
-        const cleanContent = content.replace(/\[视频[:：][^\]]+\]/, '').trim();
+        const cleanContent = cleanedContent.replace(/\[视频[:：][^\]]+\]/, '').trim();
         message = {
           id: baseId,
           role: 'assistant',
@@ -214,7 +219,7 @@ class BackgroundTaskManager {
           isMediaDescriptionOnly: true
         };
       } else if (voiceMatch) {
-        const cleanContent = content.replace(/\[语音[:：].+?\]/, '').trim();
+        const cleanContent = cleanedContent.replace(/\[语音[:：].+?\]/, '').trim();
         message = {
           id: baseId,
           role: 'assistant',
@@ -226,7 +231,7 @@ class BackgroundTaskManager {
           isMediaDescriptionOnly: true
         };
       } else if (stickerMatch) {
-        const cleanContent = content.replace(/\[表情包[:：][^\]]+\]/, '').trim();
+        const cleanContent = cleanedContent.replace(/\[表情包[:：][^\]]+\]/, '').trim();
         message = {
           id: baseId,
           role: 'assistant',
@@ -240,7 +245,7 @@ class BackgroundTaskManager {
         message = {
           id: baseId,
           role: 'assistant',
-          content: content,
+          content: cleanedContent,
           timestamp: Date.now(),
         };
       }
