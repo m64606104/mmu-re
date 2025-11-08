@@ -14,6 +14,7 @@ import CreateGroupScreen from './components/CreateGroupScreen';
 import ThemeScreen from './components/ThemeScreen';
 import UserGuide from './components/UserGuide';
 import { MomentsAutoGenerator } from './components/MomentsAutoGenerator';
+import { AIMomentsInteractionManager } from './components/AIMomentsInteractionManager';
 import ProactiveMessagingService from './components/ProactiveMessagingService';
 import MessageNotification from './components/MessageNotification';
 import { smartLoad, smartSave, migrateToIndexedDB } from './utils/storage';
@@ -407,7 +408,6 @@ function App() {
             moments={moments}
             conversations={conversations}
             userProfile={userProfile}
-            apiConfig={apiConfig}
             onAddMoment={addMoment}
             onLikeMoment={likeMoment}
             onCommentMoment={commentMoment}
@@ -529,6 +529,13 @@ function App() {
       <MomentsAutoGenerator 
         conversations={conversations}
         apiConfig={apiConfig}
+      />
+      
+      {/* AI朋友圈互动管理器 - 在聊天App中激活 */}
+      <AIMomentsInteractionManager
+        conversations={conversations}
+        apiConfig={apiConfig}
+        isActive={['social', 'chat', 'contacts', 'moments', 'profile'].includes(currentScreen)}
       />
       
       {/* AI主动发消息服务 - 后台运行 */}
