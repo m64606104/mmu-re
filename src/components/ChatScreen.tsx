@@ -109,26 +109,6 @@ export default function ChatScreen({
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   };
 
-  // 处理输入框聚焦 - 防止键盘遮挡
-  const handleInputFocus = () => {
-    // 延迟一点等键盘弹出
-    setTimeout(() => {
-      // 滚动到底部确保输入框可见
-      window.scrollTo(0, 0);
-      document.body.scrollTop = 0;
-      document.documentElement.scrollTop = 0;
-    }, 300);
-  };
-
-  // 处理输入框失焦 - 恢复页面位置
-  const handleInputBlur = () => {
-    // 确保页面回到顶部
-    setTimeout(() => {
-      window.scrollTo(0, 0);
-      document.body.scrollTop = 0;
-      document.documentElement.scrollTop = 0;
-    }, 100);
-  };
 
   // 消息点击处理 - 切换操作菜单显示
   const handleMessageClick = (messageId: string) => {
@@ -242,26 +222,6 @@ export default function ChatScreen({
     }
   }, [conversation.id, conversation.type, conversation.characterSettings]);
 
-  // 监听visualViewport变化，防止键盘顶起页面
-  useEffect(() => {
-    const handleResize = () => {
-      // 确保页面不被顶起
-      if (window.visualViewport) {
-        const viewport = window.visualViewport;
-        document.body.style.height = `${viewport.height}px`;
-      }
-    };
-
-    if (window.visualViewport) {
-      window.visualViewport.addEventListener('resize', handleResize);
-      window.visualViewport.addEventListener('scroll', handleResize);
-      
-      return () => {
-        window.visualViewport?.removeEventListener('resize', handleResize);
-        window.visualViewport?.removeEventListener('scroll', handleResize);
-      };
-    }
-  }, []);
 
   const handleSendMessage = () => {
     if (!currentInput.trim()) return;
@@ -1556,11 +1516,14 @@ ${recentMessages}
                     {message.role === 'user' && message.mediaType === 'voice' && message.mediaUrl && (
                       <div>
                         <div 
-                          onClick={() => setViewingVoice(prev => 
-                            prev.includes(message.id) 
-                              ? prev.filter(id => id !== message.id)
-                              : [...prev, message.id]
-                          )}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setViewingVoice(prev => 
+                              prev.includes(message.id) 
+                                ? prev.filter(id => id !== message.id)
+                                : [...prev, message.id]
+                            );
+                          }}
                           className="cursor-pointer flex items-center gap-2 px-3 py-2 bg-gray-50 rounded-xl min-w-[120px] max-w-[200px]"
                         >
                           <Mic className="w-4 h-4 text-gray-600 flex-shrink-0" />
@@ -1990,8 +1953,6 @@ ${recentMessages}
                 value={currentInput}
                 onChange={(e) => setCurrentInput(e.target.value)}
                 onKeyPress={handleKeyPress}
-                onFocus={handleInputFocus}
-                onBlur={handleInputBlur}
                 placeholder="输入消息..."
                 className="flex-1 outline-none text-[15px] bg-transparent text-gray-900 placeholder-gray-400"
                 disabled={isGenerating}
