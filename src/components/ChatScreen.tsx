@@ -17,46 +17,77 @@ import { buildTimeAwarePrompt } from '../utils/timeAwareness';
 import { getMomentsData } from '../utils/aiMomentsGenerator';
 import { getAIStatus, analyzeAndUpdateStatusFromAI } from '../utils/aiStatusManager';
 import { getErrorFromResponse, formatErrorMessage } from '../utils/apiErrorHandler';
-// 智能分割消息函数
+// 智能分割消息函数 - 更自然的聊天风格
 const splitMessages = (text: string): string[] => {
   if (!text || text.trim() === '') return [];
   
-  // 按双换行分割（段落）
-  const paragraphs = text.split(/\n\n+/);
   const messages: string[] = [];
   
+  // 先按段落分割（双换行）
+  const paragraphs = text.split(/\n\n+/);
+  
   for (const para of paragraphs) {
-    const trimmed = para.trim();
+    let trimmed = para.trim();
     if (!trimmed) continue;
     
-    // 如果段落很短（<50字），直接作为一条消息
-    if (trimmed.length < 50) {
-      messages.push(trimmed);
-      continue;
-    }
-    
-    // 如果段落较长，尝试按句子分割
-    const sentences = trimmed.split(/([。！？\n]+)/);
-    let currentMsg = '';
-    
-    for (let i = 0; i < sentences.length; i++) {
-      const sentence = sentences[i];
-      if (!sentence) continue;
+    // 处理每个段落
+    while (trimmed.length > 0) {
+      let splitIndex = -1;
+      let matchedPunctuation = '';
       
-      currentMsg += sentence;
-      
-      // 如果是标点符号且累积长度合适，或遇到换行，分割消息
-      if ((sentence.match(/[。！？]/) && currentMsg.length >= 30) || sentence === '\n') {
-        if (currentMsg.trim()) {
-          messages.push(currentMsg.trim());
-          currentMsg = '';
+      // 优先在主要标点处分割（。！？!?.）
+      const majorPunctuations = [/[。！？!?.](?=[^""]*(?:""[^""]*""[^""]*)*$)/g];
+      for (const regex of majorPunctuations) {
+        const matches = [...trimmed.matchAll(regex)];
+        if (matches.length > 0) {
+          // 找到第一个标点后至少30字的位置
+          for (const match of matches) {
+            if (match.index! >= 20) {
+              splitIndex = match.index! + 1;
+              matchedPunctuation = match[0];
+              break;
+            }
+          }
+          if (splitIndex > 0) break;
         }
       }
-    }
-    
-    // 剩余内容
-    if (currentMsg.trim()) {
-      messages.push(currentMsg.trim());
+      
+      // 如果没找到主要标点且超过50字，在逗号或分号处分割
+      if (splitIndex === -1 && trimmed.length > 50) {
+        const minorPunctuations = [/[，,；;](?=[^""]*(?:""[^""]*""[^""]*)*$)/g];
+        for (const regex of minorPunctuations) {
+          const matches = [...trimmed.matchAll(regex)];
+          if (matches.length > 0) {
+            for (const match of matches) {
+              if (match.index! >= 30 && match.index! <= 60) {
+                splitIndex = match.index! + 1;
+                matchedPunctuation = match[0];
+                break;
+              }
+            }
+            if (splitIndex > 0) break;
+          }
+        }
+      }
+      
+      // 分割消息
+      if (splitIndex > 0 && splitIndex < trimmed.length) {
+        let msg = trimmed.substring(0, splitIndex).trim();
+        // 如果末尾是逗号，去掉
+        if (msg.endsWith(',') || msg.endsWith('，')) {
+          msg = msg.slice(0, -1);
+        }
+        messages.push(msg);
+        trimmed = trimmed.substring(splitIndex).trim();
+      } else {
+        // 剩余内容作为最后一条消息
+        let msg = trimmed.trim();
+        if (msg.endsWith(',') || msg.endsWith('，')) {
+          msg = msg.slice(0, -1);
+        }
+        messages.push(msg);
+        break;
+      }
     }
   }
   
@@ -1355,10 +1386,14 @@ ${conversation.characterSettings.memoryEvents ? `记忆事件：${conversation.c
           .replace(/^\s*\[(?!图片|视频|语音|表情包)[\s\S]*?\]\s*$/gm, '')
           // 移除to understand/to inform等内部说明
           .replace(/^.*?(to understand|to inform|to analyze).*?(?=\n|$)/gmi, '')
-          // 移除Markdown格式标记（加粗、斜体、代码、删除线）
-          .split('**').join('')
-          .replace(/`([^`]+)`/g, '$1')
-          .replace(/~{2}([^~]+)~{2}/g, '$1')
+          // 移除Markdown格式标记（列表、加粗、斜体、代码、删除线）
+          .replace(/^[*+-]\s+/gm, '')  // 移除列表标记
+          .replace(/^\d+\.\s+/gm, '')  // 移除数字列表
+          .split('**').join('')  // 移除加粗**
+          .split('*').join('')  // 移除斜体*
+          .replace(/`([^`]+)`/g, '$1')  // 移除代码`
+          .replace(/~{2}([^~]+)~{2}/g, '$1')  // 移除删除线~~
+          .replace(/^#{1,6}\s+/gm, '')  // 移除标题#
           // 移除引用部分（主要引用:、引用:、参考资料: 等开头的部分及后续链接）
           .replace(/(?:主要)?引用[:：]\s*[\s\S]*$/gmi, '')
           .replace(/参考资料[:：]\s*[\s\S]*$/gmi, '')
