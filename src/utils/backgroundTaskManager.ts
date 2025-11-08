@@ -51,7 +51,7 @@ class BackgroundTaskManager {
     conversation: Conversation,
     apiConfig: ApiConfig,
     requestBody: any,
-    onUpdate: (messages: Message[], conversationId: string) => void
+    onUpdate: (messages: Message[], conversationId: string, error?: string) => void
   ): Promise<string> {
     const taskId = `task_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
     
@@ -78,7 +78,7 @@ class BackgroundTaskManager {
     conversation: Conversation,
     apiConfig: ApiConfig,
     requestBody: any,
-    onUpdate: (messages: Message[], conversationId: string) => void
+    onUpdate: (messages: Message[], conversationId: string, error?: string) => void
   ) {
     const task = this.tasks.get(taskId);
     if (!task) return;
@@ -142,11 +142,11 @@ class BackgroundTaskManager {
       task.error = errorMessage;
       console.error(`❌ 后台任务失败: ${taskId}`, error);
       
-      // 🔥 关键修复：失败时也要通知ChatScreen
-      // 传递空数组，并在控制台输出错误
-      // ChatScreen会自动清理loading状态
+      // 🔥 关键修复：失败时通知ChatScreen，并传递错误信息
+      // 空数组 + error = API调用失败
+      // 空数组 + 无error = AI选择不回复
       console.log(`通知ChatScreen任务失败: ${errorMessage}`);
-      onUpdate([], conversation.id);
+      onUpdate([], conversation.id, errorMessage);
     }
   }
 

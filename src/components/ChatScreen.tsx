@@ -959,20 +959,54 @@ ${conversation.characterSettings.memoryEvents ? `记忆事件：${conversation.c
         conversation,
         apiConfig,
         requestBody,
-        async (newMessages, conversationId) => {
+        async (newMessages, conversationId, error) => {
           // 后台任务完成回调
-          console.log(`✅ 后台任务完成，收到${newMessages.length}条消息`);
+          console.log(`✅ 后台任务完成，收到${newMessages.length}条消息${error ? `，错误: ${error}` : ''}`);
           
           // 🔥 清理loading状态
           setShowSendingHint(false);
           setShowTyping(false);
           setIsGenerating(false);
           
-          // 检查AI是否选择不回复或任务失败
+          // 🔥 关键修复：区分API失败和AI不回复
           if (newMessages.length === 0) {
-            console.log('💬 AI选择不回复或任务失败');
+            // 情况1：API调用失败（有error）
+            if (error) {
+              console.error('❌ API调用失败:', error);
+              
+              // 添加错误提示到聊天记录
+              const errorMessage: Message = {
+                id: Date.now().toString(),
+                role: 'system',
+                content: `⚠️ 消息发送失败\n\n${
+                  error.includes('503') ? 'API服务暂时不可用，请稍后重试' :
+                  error.includes('timeout') || error.includes('abort') ? '请求超时，请检查网络连接' :
+                  error.includes('HTTP') ? 'API服务异常，请联系管理员' :
+                  '未知错误，请重试'
+                }`,
+                timestamp: Date.now(),
+              };
+              
+              // 从localStorage获取最新的消息列表
+              const storedConversations = localStorage.getItem('conversations');
+              if (storedConversations) {
+                const allConversations = JSON.parse(storedConversations) as Conversation[];
+                const currentConversation = allConversations.find((c: Conversation) => c.id === conversationId);
+                if (currentConversation) {
+                  onUpdateConversation(conversationId, {
+                    messages: [...currentConversation.messages, errorMessage],
+                    lastMessageTime: Date.now(),
+                  });
+                }
+              }
+              
+              return;
+            }
             
-            // 🔥 无论用户是否在页面，都生成并保存不回复提示
+            // 情况2：AI选择不回复（无error）
+            console.log('💬 AI选择不回复');
+            
+            // 🔥 生成智能的上下文不回复提示
             generateContextualHint(conversation).then(contextualHint => {
               // 添加智能提示到聊天记录（无论用户在不在页面都保留）
               const systemMessage: Message = {
