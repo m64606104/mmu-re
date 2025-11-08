@@ -84,6 +84,7 @@ export default function ChatScreen({
   const [isMultiSelectMode, setIsMultiSelectMode] = useState(false);
   const [editingMessage, setEditingMessage] = useState<Message | null>(null);
   const [replyingToMessage, setReplyingToMessage] = useState<Message | null>(null);
+  const longPressTimerRef = useRef<NodeJS.Timeout | null>(null);
   
   // 获取用户资料
   const getUserProfile = () => {
@@ -109,16 +110,18 @@ export default function ChatScreen({
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   };
 
+  // 消息长按处理
+  const handleLongPressStart = (messageId: string) => {
+    longPressTimerRef.current = setTimeout(() => {
+      setLongPressMessageId(messageId);
+    }, 500); // 长按500ms触发
+  };
 
-  // 消息点击处理 - 切换操作菜单显示
-  const handleMessageClick = (messageId: string) => {
-    // 如果正在多选模式，执行选择操作
-    if (isMultiSelectMode) {
-      toggleMessageSelection(messageId);
-      return;
+  const handleLongPressEnd = () => {
+    if (longPressTimerRef.current) {
+      clearTimeout(longPressTimerRef.current);
+      longPressTimerRef.current = null;
     }
-    // 切换操作菜单显示
-    setLongPressMessageId(prev => prev === messageId ? null : messageId);
   };
 
   // 开始删除模式
@@ -555,26 +558,27 @@ export default function ChatScreen({
     setShowSendingHint(true);
 
     try {
-      // 获取最近未回复的用户消息（支持混合消息类型）
-      const allMessages = conversation.messages;
-      const lastAIIndex = allMessages.map(m => m.role).lastIndexOf('assistant');
-      const unreadUserMessages = lastAIIndex >= 0 
-        ? allMessages.slice(lastAIIndex + 1).filter(m => m.role === 'user')
-        : allMessages.filter(m => m.role === 'user');
-      
-      // 如果没有未回复的消息，取最后一条用户消息
-      const recentUserMessages = unreadUserMessages.length > 0 
-        ? unreadUserMessages 
-        : allMessages.filter(m => m.role === 'user').slice(-1);
-      
-      const lastUserMsgForTime = recentUserMessages[recentUserMessages.length - 1];
+      // 获取最近的用户消息（支持混合消息类型）
+      const userMessages = conversation.messages.filter(m => m.role === 'user');
+      const lastUserMsgForTime = userMessages[userMessages.length - 1];
       const lastUserTimestamp = lastUserMsgForTime?.timestamp;
       
-      // 检查最近的用户消息中是否包含各种媒体类型
-      const hasImage = recentUserMessages.some(m => m.mediaType === 'image' && m.mediaUrl);
-      const hasVideo = recentUserMessages.some(m => m.mediaType === 'video' && m.mediaDescription);
-      const hasVoice = recentUserMessages.some(m => m.mediaType === 'voice' && m.mediaDescription);
-      const hasSticker = recentUserMessages.some(m => m.mediaType === 'sticker' && m.mediaDescription);
+      // 获取自上次AI回复后的所有用户消息
+      const lastAssistantIndex = conversation.messages.map(m => m.role).lastIndexOf('assistant');
+      const unhandledUserMessages = lastAssistantIndex >= 0 
+        ? conversation.messages.slice(lastAssistantIndex + 1).filter(m => m.role === 'user')
+        : userMessages.slice(-5); // 如果没有AI回复，取最近5条
+      
+      // 检查未处理的消息中是否包含各种媒体类型
+      const hasImage = unhandledUserMessages.some(m => m.mediaType === 'image' && m.mediaUrl);
+      const hasVideo = unhandledUserMessages.some(m => m.mediaType === 'video' && m.mediaDescription);
+      const hasVoice = unhandledUserMessages.some(m => m.mediaType === 'voice' && m.mediaDescription);
+      const hasSticker = unhandledUserMessages.some(m => m.mediaType === 'sticker' && m.mediaDescription);
+      
+      // 获取包含图片的消息
+      const imageMessage = unhandledUserMessages.find(m => m.mediaType === 'image' && m.mediaUrl);
+      // 获取纯文字消息
+      const textMessages = unhandledUserMessages.filter(m => !m.mediaType);
       
       // 生成时间感知提示词
       const timeAwarePrompt = buildTimeAwarePrompt(lastUserTimestamp, lastUserMsgForTime?.content);
@@ -678,68 +682,51 @@ ${conversation.characterSettings.memoryEvents ? `记忆事件：${conversation.c
       let messages;
       let requestBody;
 
-      // 构建混合消息内容
-      const buildMixedContent = () => {
-        const contentParts: any[] = [];
-        const textParts: string[] = [];
-        
-        // 收集所有未回复消息的内容
-        recentUserMessages.forEach(msg => {
-          if (msg.mediaType === 'image' && msg.mediaUrl) {
-            // 图片
-            if (hasImage && contentParts.filter(p => p.type === 'image_url').length === 0) {
-              contentParts.push({
-                type: 'image_url',
-                image_url: { url: msg.mediaUrl }
-              });
-            }
-          } else if (msg.mediaType === 'video' && msg.mediaDescription) {
-            // 视频
-            textParts.push(`（分享了视频：${msg.mediaDescription}）`);
-          } else if (msg.mediaType === 'voice' && msg.mediaDescription) {
-            // 语音
-            textParts.push(msg.mediaDescription);
-          } else if (msg.mediaType === 'sticker' && msg.mediaDescription) {
-            // 表情包
-            textParts.push(`[表情包:${msg.mediaDescription}]`);
-          } else if (msg.content) {
-            // 文字
-            textParts.push(msg.content);
-          }
-        });
-        
-        return { contentParts, textParts };
-      };
-
-      // 如果包含图片，使用vision API
+      // 如果包含图片，使用vision API（支持图片+文字混合）
       if (hasImage) {
-        const { contentParts, textParts } = buildMixedContent();
-        
-        // 构建历史消息（排除未回复的部分）
+        // 构建包含图片的消息
         const recentMessages = conversation.messages.slice(-10);
         const historyMessages = recentMessages
-          .filter(m => !recentUserMessages.includes(m))
+          .filter(m => !unhandledUserMessages.includes(m))
           .map(m => ({
             role: m.role,
             content: m.content
           }));
 
-        // 合并文字和图片
-        const mixedContent: any[] = [];
-        if (textParts.length > 0) {
-          mixedContent.push({
-            type: 'text',
-            text: textParts.join('\n')
+        // 构建混合内容（图片 + 用户的文字消息）
+        const contentParts: any[] = [];
+        
+        // 先添加图片
+        if (imageMessage) {
+          contentParts.push({
+            type: 'image_url',
+            image_url: {
+              url: imageMessage.mediaUrl
+            }
           });
         }
-        mixedContent.push(...contentParts);
+        
+        // 再添加文字消息
+        const combinedText = textMessages.map(m => m.content).filter(Boolean).join('\n');
+        if (combinedText) {
+          contentParts.push({
+            type: 'text',
+            text: combinedText
+          });
+        } else {
+          // 如果没有文字，添加默认提示
+          contentParts.push({
+            type: 'text',
+            text: '看这张图'
+          });
+        }
 
         messages = [
-          { role: 'system', content: systemPrompt + '\n\n【图片识别规则】：\n- 只描述你在图片中实际看到的内容\n- 禁止编造、猜测图片中不存在的元素\n- 禁止说"让我看看""帮你看看"等话，直接自然反应即可\n- 不确定的内容不要说\n- 像朋友间日常聊天一样回复，不要太正式' },
+          { role: 'system', content: systemPrompt + '\n\n【图片识别规则】：\n- 只描述你在图片中实际看到的内容\n- 禁止编造、猜测图片中不存在的元素\n- 禁止说"让我看看""帮你看看"等话，直接自然反应即可\n- 不确定的内容不要说\n- 像朋友间日常聊天一样回复，不要太正式\n- 如果用户除了图片还发了文字消息，一起回复图片和文字内容' },
           ...historyMessages,
           {
             role: 'user',
-            content: mixedContent
+            content: contentParts
           }
         ];
 
@@ -748,30 +735,29 @@ ${conversation.characterSettings.memoryEvents ? `记忆事件：${conversation.c
           messages,
           temperature: 0.4
         };
-      } else if (hasVideo || hasVoice || hasSticker) {
-        // 包含视频、语音或表情包（支持混合）
-        const { textParts } = buildMixedContent();
-        
-        // 构建历史消息（排除未回复的部分）
+      } else if (hasVideo) {
+        // 如果包含视频，基于文字描述回复（支持视频+文字混合）
         const recentMessages = conversation.messages.slice(-10);
         const historyMessages = recentMessages
-          .filter(m => !recentUserMessages.includes(m))
+          .filter(m => !unhandledUserMessages.includes(m))
           .map(m => ({
             role: m.role,
             content: m.content
           }));
 
-        let mediaRules = '';
-        if (hasVideo) mediaRules += '\n【视频内容理解】：用户分享了视频，根据描述自然回复';
-        if (hasVoice) mediaRules += '\n【语音消息理解】：用户发送了语音，根据转录内容自然回复';
-        if (hasSticker) mediaRules += '\n【表情包理解】：用户发送了表情包，理解情绪并自然反应';
+        // 组合视频描述和文字消息
+        const videoMessage = unhandledUserMessages.find(m => m.mediaType === 'video');
+        const combinedText = textMessages.map(m => m.content).filter(Boolean).join('\n');
+        const videoContent = videoMessage?.mediaDescription 
+          ? `（分享了视频：${videoMessage.mediaDescription}）${combinedText ? '\n' + combinedText : ''}`
+          : combinedText;
 
         messages = [
-          { role: 'system', content: systemPrompt + '\n\n【多媒体消息理解规则】：' + mediaRules + '\n- 像朋友间日常聊天一样回复\n- 可以回复文字、也可以回复媒体消息' },
+          { role: 'system', content: systemPrompt + '\n\n【视频内容理解规则】：\n- 用户分享了视频，根据提供的内容描述自然回复\n- 像朋友间日常聊天一样对视频内容做出反应\n- 不要说"我看不到视频"、"无法观看"等话\n- 基于描述内容自然地评论、提问或互动\n- 如果用户除了视频还发了文字消息，一起回复视频和文字内容' },
           ...historyMessages,
           {
             role: 'user',
-            content: textParts.join('\n')
+            content: videoContent
           }
         ];
 
@@ -779,6 +765,66 @@ ${conversation.characterSettings.memoryEvents ? `记忆事件：${conversation.c
           model: apiConfig.modelName,
           messages,
           temperature: 0.7
+        };
+      } else if (hasVoice) {
+        // 如果包含语音，基于语音转文字内容回复（支持语音+文字混合）
+        const recentMessages = conversation.messages.slice(-10);
+        const historyMessages = recentMessages
+          .filter(m => !unhandledUserMessages.includes(m))
+          .map(m => ({
+            role: m.role,
+            content: m.mediaType === 'voice' && m.mediaDescription ? m.mediaDescription : m.content
+          }));
+
+        // 组合语音转文字和其他文字消息
+        const voiceMessages = unhandledUserMessages.filter(m => m.mediaType === 'voice');
+        const voiceTexts = voiceMessages.map(m => m.mediaDescription).filter(Boolean);
+        const textContents = textMessages.map(m => m.content).filter(Boolean);
+        const combinedContent = [...voiceTexts, ...textContents].join('\n');
+
+        messages = [
+          { role: 'system', content: systemPrompt + '\n\n【语音消息理解规则】：\n- 用户发送了语音消息，根据语音转文字的内容自然回复\n- 像朋友间日常聊天一样对语音内容做出反应\n- 不要说"我听不到语音"、"无法播放"等话\n- 基于转录的文字内容自然回复即可\n- 可以回复文字、也可以回复语音/图片/视频/表情包\n- 如果用户除了语音还发了文字消息，一起回复所有内容' },
+          ...historyMessages,
+          {
+            role: 'user',
+            content: combinedContent
+          }
+        ];
+
+        requestBody = {
+          model: apiConfig.modelName,
+          messages,
+          temperature: 0.7
+        };
+      } else if (hasSticker) {
+        // 如果包含表情包，理解并自然回复（支持表情包+文字混合）
+        const recentMessages = conversation.messages.slice(-10);
+        const historyMessages = recentMessages
+          .filter(m => !unhandledUserMessages.includes(m))
+          .map(m => ({
+            role: m.role,
+            content: m.content
+          }));
+
+        // 组合表情包和文字消息
+        const stickerMessages = unhandledUserMessages.filter(m => m.mediaType === 'sticker');
+        const stickerContents = stickerMessages.map(m => `[表情包:${m.mediaDescription}]`).filter(Boolean);
+        const textContents = textMessages.map(m => m.content).filter(Boolean);
+        const combinedContent = [...stickerContents, ...textContents].join('\n');
+
+        messages = [
+          { role: 'system', content: systemPrompt + '\n\n【表情包理解规则】：\n- 用户发送了表情包，根据描述的内容理解用户的情绪和意图\n- 像朋友间日常聊天一样对表情包做出自然反应\n- 可以回复文字、也可以回复表情包（使用[表情包:描述内容]格式）\n- 根据表情包内容判断是否要发送图片/视频/语音/表情包回复\n- 如果用户除了表情包还发了文字消息，一起回复所有内容\n\n【发送多媒体消息格式】：\n- 发送图片：[图片:详细的图片内容描述，10-50字，要生动具体]\n- 发送视频：[视频:详细的视频内容描述，10-50字]\n- 发送语音：[语音:语音内容的文字，时长X秒]\n- 发送表情包：[表情包:表情包的详细描述]\n\n示例：\n用户：[表情包:一只猫咪害羞捂脸]\nAI：哈哈哈好可爱！[表情包:小狗狗笑得很开心的样子]' },
+          ...historyMessages,
+          {
+            role: 'user',
+            content: combinedContent
+          }
+        ];
+
+        requestBody = {
+          model: apiConfig.modelName,
+          messages,
+          temperature: 0.8
         };
       } else {
         // 普通文本消息
@@ -1357,9 +1403,9 @@ ${recentMessages}
 
   return (
     <>
-    <div className="h-full bg-gradient-to-b from-gray-50 to-gray-100 flex flex-col" style={{ backgroundImage: 'url("data:image/svg+xml,%3Csvg width=\"20\" height=\"20\" xmlns=\"http://www.w3.org/2000/svg\"%3E%3Cpath d=\"M0 0h20v20H0z\" fill=\"%23fafafa\"/%3E%3Cpath d=\"M0 0h10v10H0z\" fill=\"%23f5f5f5\" fill-opacity=\".5\"/%3E%3C/svg%3E")' }}>
-      {/* Header */}
-      <div className="bg-white/95 backdrop-blur-sm border-b border-gray-200 px-4 py-3 flex items-center justify-between shadow-sm">
+    <div className="h-full bg-gradient-to-b from-gray-50 to-gray-100 relative" style={{ backgroundImage: 'url("data:image/svg+xml,%3Csvg width=\"20\" height=\"20\" xmlns=\"http://www.w3.org/2000/svg\"%3E%3Cpath d=\"M0 0h20v20H0z\" fill=\"%23fafafa\"/%3E%3Cpath d=\"M0 0h10v10H0z\" fill=\"%23f5f5f5\" fill-opacity=\".5\"/%3E%3C/svg%3E")' }}>
+      {/* Header - 固定在顶部 */}
+      <div className="absolute top-0 left-0 right-0 bg-white/95 backdrop-blur-sm border-b border-gray-200 px-4 py-3 flex items-center justify-between shadow-sm z-10">
         <div className="flex items-center gap-3">
           <button onClick={onBack} className="p-1 -ml-1 hover:bg-gray-100 rounded-full transition-colors">
             <ChevronLeft className="w-6 h-6 text-gray-800" strokeWidth={2.5} />
@@ -1422,8 +1468,8 @@ ${recentMessages}
         </div>
       </div>
 
-      {/* Messages */}
-      <div className="flex-1 overflow-y-auto p-4 space-y-3">
+      {/* Messages - 固定布局，添加顶部和底部padding */}
+      <div className="absolute top-[60px] bottom-[60px] left-0 right-0 overflow-y-auto p-4 space-y-3">
         {conversation.messages.map((message, index) => {
           // 微信风格：超过5分钟才显示时间
           const showTime = index === 0 || 
@@ -1477,8 +1523,13 @@ ${recentMessages}
                   )}
                   
                   <div
-                    onClick={() => handleMessageClick(message.id)}
-                    className={`rounded-2xl shadow-sm cursor-pointer ${
+                    onMouseDown={() => !isMultiSelectMode && handleLongPressStart(message.id)}
+                    onMouseUp={handleLongPressEnd}
+                    onMouseLeave={handleLongPressEnd}
+                    onTouchStart={() => !isMultiSelectMode && handleLongPressStart(message.id)}
+                    onTouchEnd={handleLongPressEnd}
+                    onClick={() => isMultiSelectMode && toggleMessageSelection(message.id)}
+                    className={`rounded-2xl shadow-sm ${
                       message.role === 'user'
                         ? 'bg-white text-gray-900 border border-gray-200'
                         : 'bg-white text-gray-900 border border-gray-200'
@@ -1516,14 +1567,11 @@ ${recentMessages}
                     {message.role === 'user' && message.mediaType === 'voice' && message.mediaUrl && (
                       <div>
                         <div 
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setViewingVoice(prev => 
-                              prev.includes(message.id) 
-                                ? prev.filter(id => id !== message.id)
-                                : [...prev, message.id]
-                            );
-                          }}
+                          onClick={() => setViewingVoice(prev => 
+                            prev.includes(message.id) 
+                              ? prev.filter(id => id !== message.id)
+                              : [...prev, message.id]
+                          )}
                           className="cursor-pointer flex items-center gap-2 px-3 py-2 bg-gray-50 rounded-xl min-w-[120px] max-w-[200px]"
                         >
                           <Mic className="w-4 h-4 text-gray-600 flex-shrink-0" />
@@ -1688,45 +1736,43 @@ ${recentMessages}
               </div>
               )}
               
-              {/* iMessage风格操作菜单 - 小胶囊栏 */}
+              {/* 长按操作菜单 */}
               {longPressMessageId === message.id && (
                 <>
                   <div 
                     className="fixed inset-0 z-40" 
                     onClick={() => setLongPressMessageId(null)}
                   />
-                  <div className={`absolute ${message.role === 'user' ? 'right-0' : 'left-0'} bottom-full mb-1 z-50`}>
-                    <div className="bg-gray-100/95 backdrop-blur-sm rounded-full shadow-lg px-2 py-1.5 flex items-center gap-1">
+                  <div className="absolute bottom-full mb-2 right-0 bg-white rounded-lg shadow-xl border border-gray-200 py-1 z-50 min-w-[140px]">
+                    <button
+                      onClick={() => handleReplyMessage(message)}
+                      className="w-full px-4 py-2.5 text-left text-sm text-gray-700 hover:bg-gray-50 transition-colors flex items-center gap-2"
+                    >
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6" />
+                      </svg>
+                      引用
+                    </button>
+                    {message.role === 'user' && (
                       <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleReplyMessage(message);
-                        }}
-                        className="px-3 py-1.5 text-xs text-gray-700 hover:bg-white/60 rounded-full transition-colors"
+                        onClick={() => handleEditMessage(message)}
+                        className="w-full px-4 py-2.5 text-left text-sm text-gray-700 hover:bg-gray-50 transition-colors flex items-center gap-2"
                       >
-                        引用
-                      </button>
-                      <div className="w-px h-4 bg-gray-300"></div>
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleEditMessage(message);
-                        }}
-                        className="px-3 py-1.5 text-xs text-gray-700 hover:bg-white/60 rounded-full transition-colors"
-                      >
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                        </svg>
                         编辑
                       </button>
-                      <div className="w-px h-4 bg-gray-300"></div>
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleStartDelete(message.id);
-                        }}
-                        className="px-3 py-1.5 text-xs text-red-600 hover:bg-white/60 rounded-full transition-colors"
-                      >
-                        删除
-                      </button>
-                    </div>
+                    )}
+                    <button
+                      onClick={() => handleStartDelete(message.id)}
+                      className="w-full px-4 py-2.5 text-left text-sm text-red-600 hover:bg-red-50 transition-colors flex items-center gap-2"
+                    >
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                      </svg>
+                      删除
+                    </button>
                   </div>
                 </>
               )}
@@ -1784,8 +1830,8 @@ ${recentMessages}
         <div ref={messagesEndRef} />
       </div>
 
-      {/* Input area */}
-      <div className="bg-white/95 backdrop-blur-sm border-t border-gray-200">
+      {/* Input area - 固定在底部 */}
+      <div className="absolute bottom-0 left-0 right-0 bg-white/95 backdrop-blur-sm border-t border-gray-200 z-10">
         {/* 多选模式工具栏 */}
         {isMultiSelectMode && (
           <div className="px-4 py-3 bg-blue-50 border-b border-blue-100 flex items-center justify-between">
