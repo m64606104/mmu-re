@@ -113,155 +113,80 @@ export default function UserGuide({ onBack }: UserGuideProps) {
           </div>
         </div>
 
-        {/* 设置App */}
-        <div id="settings-app" className="bg-white rounded-2xl p-5 shadow-sm border border-slate-200">
-          <h2 className="text-lg font-bold text-slate-900 mb-4 flex items-center gap-2">
-            <span className="text-2xl">⚙️</span>
-            设置App
-          </h2>
-          <p className="text-sm text-slate-600 mb-4">管理API配置、数据和系统设置。</p>
+        {/* AI 对话功能 */}
+        <div id="chat" className="bg-white rounded-2xl p-5 shadow-sm border border-slate-200">
+          <h2 className="text-lg font-bold text-slate-900 mb-4">AI 对话功能</h2>
           
-          <div className="space-y-4">
-            <div className="bg-slate-50 rounded-xl p-4">
-              <h3 className="font-semibold text-slate-800 mb-2">📡 API配置</h3>
-              <div className="space-y-2 text-sm text-slate-600 ml-2">
-                <p><strong>Base URL：</strong>填写API服务商地址</p>
-                <p><strong>API Key：</strong>填写你的密钥</p>
-                <p><strong>Model Name：</strong>选择或填写模型名称</p>
-                <p className="text-xs text-slate-500 mt-2">💡 填写完成后点击「调用」测试，成功后点击「保持」保存</p>
-              </div>
-            </div>
-
-            <div className="bg-slate-50 rounded-xl p-4">
-              <h3 className="font-semibold text-slate-800 mb-2">💾 数据管理</h3>
-              <ul className="list-disc list-inside space-y-1 text-sm text-slate-600 ml-2">
-                <li><strong>导出所有数据：</strong>下载包含对话、设置的JSON文件</li>
-                <li><strong>导入数据：</strong>上传之前导出的JSON恢复数据</li>
-                <li><strong>清空所有数据：</strong>删除所有内容（谨慎使用）</li>
+          <div className="space-y-3 text-sm">
+            <div>
+              <h4 className="font-semibold text-slate-800 mb-1">角色定制（单人对话）</h4>
+              <p className="text-slate-600">
+                点击聊天界面右上角的 AI 头像，可以自定义：
+              </p>
+              <ul className="list-disc list-inside space-y-1 text-slate-600 ml-2 mt-1">
+                <li>角色头像：上传自定义图片</li>
+                <li>备注名：修改显示名称</li>
+                <li>人物设定：描述角色背景、身份</li>
+                <li>性格特征：定义角色性格</li>
+                <li>语言风格：设置说话方式</li>
+                <li>记忆事件：记录重要事件</li>
               </ul>
             </div>
 
-            <div className="bg-slate-50 rounded-xl p-4">
-              <h3 className="font-semibold text-slate-800 mb-2">🎨 个性化设置</h3>
-              <ul className="list-disc list-inside space-y-1 text-sm text-slate-600 ml-2">
-                <li><strong>主题选择：</strong>切换应用主题风格</li>
-                <li><strong>壁纸设置：</strong>自定义桌面背景</li>
-                <li><strong>布局调整：</strong>编辑桌面图标布局</li>
+            <div>
+              <h4 className="font-semibold text-slate-800 mb-1">多媒体消息</h4>
+              <p className="text-slate-600">
+                在输入框左侧点击"+"按钮，可发送：
+              </p>
+              <ul className="list-disc list-inside space-y-1 text-slate-600 ml-2 mt-1">
+                <li>图片消息：AI 会识别图片内容</li>
+                <li>视频消息：AI 会理解视频内容</li>
+                <li>语音消息：AI 会转文字理解</li>
               </ul>
+            </div>
+
+            <div>
+              <h4 className="font-semibold text-slate-800 mb-1">长期记忆</h4>
+              <p className="text-slate-600">
+                AI 会自动记住重要的对话内容和你的喜好，提供更个性化的体验。可在角色设置中查看和编辑记忆事件。
+              </p>
             </div>
           </div>
         </div>
 
-        {/* 聊天App */}
-        <div id="chat-app" className="bg-white rounded-2xl p-5 shadow-sm border border-slate-200">
-          <h2 className="text-lg font-bold text-slate-900 mb-4 flex items-center gap-2">
-            <span className="text-2xl">💬</span>
-            聊天App
-          </h2>
-          <p className="text-sm text-slate-600 mb-4">与AI角色对话、管理联系人、查看朋友圈。</p>
+        {/* 朋友圈功能 */}
+        <div id="moments" className="bg-white rounded-2xl p-5 shadow-sm border border-slate-200">
+          <h2 className="text-lg font-bold text-slate-900 mb-4">朋友圈功能</h2>
           
-          <div className="space-y-4">
-            {/* 新建对话 */}
-            <div className="bg-blue-50 rounded-xl p-4">
-              <h3 className="font-semibold text-slate-800 mb-2">➕ 新建对话</h3>
-              <ol className="list-decimal list-inside space-y-1 text-sm text-slate-600 ml-2">
-                <li>点击右上角「+」按钮</li>
-                <li>选择单人对话或群聊</li>
-                <li>填写名称和角色信息</li>
-                <li>点击创建即可开始聊天</li>
+          <div className="space-y-3 text-sm">
+            <div>
+              <h4 className="font-semibold text-slate-800 mb-1">发布动态</h4>
+              <ol className="list-decimal list-inside space-y-1 text-slate-600 ml-2">
+                <li>点击"聊天"应用进入社交页面</li>
+                <li>点击顶部相机图标</li>
+                <li>选择动态类型（图文/纯文字/照片墙）</li>
+                <li>输入内容和图片</li>
+                <li>点击"发布"</li>
               </ol>
             </div>
 
-            {/* 聊天功能 */}
-            <div className="bg-purple-50 rounded-xl p-4">
-              <h3 className="font-semibold text-slate-800 mb-2">💭 聊天功能</h3>
-              <div className="space-y-3 text-sm text-slate-600 ml-2">
-                <div>
-                  <p className="font-semibold">基础聊天：</p>
-                  <ul className="list-disc list-inside ml-2 mt-1">
-                    <li>输入文字消息</li>
-                    <li>发送图片/视频/语音</li>
-                    <li>引用回复消息</li>
-                    <li>编辑已发送消息</li>
-                  </ul>
-                </div>
-                <div>
-                  <p className="font-semibold">多媒体支持：</p>
-                  <ul className="list-disc list-inside ml-2 mt-1">
-                    <li>📷 图片：AI会识别图片内容</li>
-                    <li>🎥 视频：AI理解视频场景</li>
-                    <li>🎤 语音：自动转文字理解</li>
-                    <li>😊 表情包：发送和识别表情</li>
-                  </ul>
-                </div>
-              </div>
-            </div>
-
-            {/* 角色设置 */}
-            <div className="bg-green-50 rounded-xl p-4">
-              <h3 className="font-semibold text-slate-800 mb-2">🎭 角色设置</h3>
-              <p className="text-sm text-slate-600 mb-2">点击聊天界面右上角头像进入角色设置：</p>
-              <ul className="list-disc list-inside space-y-1 text-sm text-slate-600 ml-2">
-                <li><strong>昵称：</strong>AI的名字</li>
-                <li><strong>头像：</strong>上传自定义图片</li>
-                <li><strong>系统提示：</strong>角色背景设定</li>
-                <li><strong>性格特点：</strong>定义性格特征</li>
-                <li><strong>说话风格：</strong>语言表达方式</li>
-                <li><strong>记忆事件：</strong>重要信息记录</li>
-              </ul>
-              <p className="text-xs text-slate-500 mt-2">💡 只填写昵称即可使用，其他字段可选</p>
-            </div>
-
-            {/* 联系人管理 */}
-            <div className="bg-orange-50 rounded-xl p-4">
-              <h3 className="font-semibold text-slate-800 mb-2">👥 联系人</h3>
-              <p className="text-sm text-slate-600 mb-2">底部导航切换到「联系人」：</p>
-              <ul className="list-disc list-inside space-y-1 text-sm text-slate-600 ml-2">
-                <li>查看所有对话列表</li>
-                <li>点击进入对话</li>
-                <li>长按删除对话</li>
-                <li>查看未读消息数</li>
+            <div>
+              <h4 className="font-semibold text-slate-800 mb-1">查看与互动</h4>
+              <ul className="list-disc list-inside space-y-1 text-slate-600 ml-2">
+                <li>在朋友圈列表滚动查看所有动态</li>
+                <li>点击❤️图标给动态点赞</li>
+                <li>点击评论图标添加评论</li>
               </ul>
             </div>
 
-            {/* 朋友圈 */}
-            <div className="bg-pink-50 rounded-xl p-4">
-              <h3 className="font-semibold text-slate-800 mb-2">📱 朋友圈</h3>
-              <div className="space-y-2 text-sm text-slate-600 ml-2">
-                <div>
-                  <p className="font-semibold">查看朋友圈：</p>
-                  <p className="ml-2">底部导航切换到「朋友圈」，可以看到所有动态</p>
-                </div>
-                <div>
-                  <p className="font-semibold">发布动态：</p>
-                  <ol className="list-decimal list-inside ml-2 mt-1">
-                    <li>点击右上角相机图标</li>
-                    <li>选择类型（文字/图片/照片墙）</li>
-                    <li>输入内容</li>
-                    <li>点击发布</li>
-                  </ol>
-                </div>
-                <div>
-                  <p className="font-semibold">互动操作：</p>
-                  <ul className="list-disc list-inside ml-2 mt-1">
-                    <li>点赞❤️</li>
-                    <li>评论💬</li>
-                    <li>查看AI自动生成的朋友圈</li>
-                  </ul>
-                </div>
-              </div>
-              <p className="text-xs text-slate-500 mt-2">💡 AI会自动发布朋友圈，每1-3天更新</p>
-            </div>
-
-            {/* 我的资料 */}
-            <div className="bg-yellow-50 rounded-xl p-4">
-              <h3 className="font-semibold text-slate-800 mb-2">👤 我的资料</h3>
-              <p className="text-sm text-slate-600 mb-2">底部导航切换到「我的」：</p>
-              <ul className="list-disc list-inside space-y-1 text-sm text-slate-600 ml-2">
-                <li><strong>个人信息：</strong>设置头像、昵称等</li>
-                <li><strong>我的朋友圈：</strong>查看已发布的动态</li>
-                <li><strong>设置选项：</strong>各类功能设置</li>
-              </ul>
+            <div>
+              <h4 className="font-semibold text-slate-800 mb-1">AI 自动生成</h4>
+              <ol className="list-decimal list-inside space-y-1 text-slate-600 ml-2">
+                <li>进入"设置"应用</li>
+                <li>找到"AI 自动生成朋友圈"选项</li>
+                <li>打开开关，设置生成频率</li>
+                <li>AI 会定期自动发布精美动态</li>
+              </ol>
             </div>
           </div>
         </div>
@@ -341,42 +266,61 @@ export default function UserGuide({ onBack }: UserGuideProps) {
           </div>
         </div>
 
-        {/* 主题App */}
-        <div id="theme-app" className="bg-white rounded-2xl p-5 shadow-sm border border-slate-200">
-          <h2 className="text-lg font-bold text-slate-900 mb-4 flex items-center gap-2">
-            <span className="text-2xl">🎨</span>
-            主题App
-          </h2>
-          <p className="text-sm text-slate-600 mb-4">自定义桌面外观和主题风格。</p>
+        {/* 主题定制 */}
+        <div id="theme" className="bg-white rounded-2xl p-5 shadow-sm border border-slate-200">
+          <h2 className="text-lg font-bold text-slate-900 mb-4">主题定制</h2>
           
-          <div className="space-y-4">
-            <div className="bg-indigo-50 rounded-xl p-4">
-              <h3 className="font-semibold text-slate-800 mb-2">🖼️ 更换壁纸</h3>
-              <div className="space-y-2 text-sm text-slate-600 ml-2">
-                <p><strong>预设壁纸：</strong>6种精选样式</p>
-                <ul className="list-disc list-inside ml-2 mt-1">
-                  <li>梦幻紫</li>
-                  <li>清新蓝</li>
-                  <li>热情橙</li>
-                  <li>翡翠绿</li>
-                  <li>粉紫色</li>
-                  <li>暗黑模式</li>
-                </ul>
-                <p className="mt-2"><strong>自定义壁纸：</strong>点击「上传壁纸」使用你自己的图片</p>
-              </div>
-            </div>
-
-            <div className="bg-pink-50 rounded-xl p-4">
-              <h3 className="font-semibold text-slate-800 mb-2">🖌️ 自定义横幅</h3>
-              <p className="text-sm text-slate-600 ml-2">
-                在第二页应用页面，点击横幅区域可上传自定义图片
+          <div className="space-y-3 text-sm">
+            <div>
+              <h4 className="font-semibold text-slate-800 mb-1">更换壁纸</h4>
+              <ol className="list-decimal list-inside space-y-1 text-slate-600 ml-2">
+                <li>在主屏幕点击"主题"应用</li>
+                <li>在预设壁纸中选择喜欢的样式</li>
+                <li>或点击"上传壁纸"使用自定义图片</li>
+              </ol>
+              <p className="text-slate-600 mt-1">
+                提供梦幻紫、清新蓝、热情橙、翡翠绿、粉紫色、暗黑模式 6 种预设壁纸。
               </p>
             </div>
 
-            <div className="bg-purple-50 rounded-xl p-4">
-              <h3 className="font-semibold text-slate-800 mb-2">🔄 恢复默认</h3>
-              <p className="text-sm text-slate-600 ml-2">
-                点击「恢复初始桌面布局」可将所有图标恢复到默认位置
+            <div>
+              <h4 className="font-semibold text-slate-800 mb-1">自定义横幅</h4>
+              <p className="text-slate-600">
+                在第二页应用页面，点击横幅图片区域可上传自定义图片。
+              </p>
+            </div>
+          </div>
+        </div>
+
+        {/* 数据管理 */}
+        <div id="data" className="bg-white rounded-2xl p-5 shadow-sm border border-slate-200">
+          <h2 className="text-lg font-bold text-slate-900 mb-4">数据管理</h2>
+          
+          <div className="space-y-3 text-sm">
+            <div>
+              <h4 className="font-semibold text-slate-800 mb-1">导出数据</h4>
+              <ol className="list-decimal list-inside space-y-1 text-slate-600 ml-2">
+                <li>进入"设置"应用</li>
+                <li>向下滚动找到"数据管理"区域</li>
+                <li>点击"导出所有数据"</li>
+                <li>JSON 文件将自动下载</li>
+              </ol>
+            </div>
+
+            <div>
+              <h4 className="font-semibold text-slate-800 mb-1">导入数据</h4>
+              <ol className="list-decimal list-inside space-y-1 text-slate-600 ml-2">
+                <li>进入"设置"应用</li>
+                <li>点击"导入数据"</li>
+                <li>选择之前导出的 JSON 文件</li>
+                <li>确认导入后数据将恢复</li>
+              </ol>
+            </div>
+
+            <div>
+              <h4 className="font-semibold text-slate-800 mb-1">清空数据</h4>
+              <p className="text-slate-600">
+                在数据管理区域点击"清空所有数据"可以删除所有对话记录和设置。此操作不可撤销，请谨慎使用。
               </p>
             </div>
           </div>
