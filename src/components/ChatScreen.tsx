@@ -716,39 +716,56 @@ ${conversation.characterSettings.memoryEvents ? `记忆事件：${conversation.c
       // 添加用户资料信息
       systemPrompt += userInfoPrompt;
       
-      // 如果启用了记忆系统，添加记忆上下文
-      if (conversation.enabledFeatures?.includes('memory-system')) {
-        const memories = getConversationMemories(conversation.id);
-        const memoryContext = applyMemoriesToContext(conversation, memories);
+      // 🚀 性能优化：只在用户明确询问时才加载记忆
+      const shouldLoadMemory = conversation.enabledFeatures?.includes('memory-system') && 
+        (lastUserMsgForTime?.content?.includes('记得') ||
+         lastUserMsgForTime?.content?.includes('记忆') ||
+         lastUserMsgForTime?.content?.includes('之前') ||
+         lastUserMsgForTime?.content?.includes('上次') ||
+         lastUserMsgForTime?.content?.includes('还记得') ||
+         lastUserMsgForTime?.content?.includes('忘了'));
+      
+      if (shouldLoadMemory) {
+        console.log('🧠 检测到记忆相关询问，加载记忆系统');
+        const allMemories = getConversationMemories(conversation.id);
+        const importantMemories = allMemories
+          .filter(m => m.importance === 'high' || m.importance === 'medium')
+          .slice(0, 5); // 进一步减少到5条
+        const memoryContext = applyMemoriesToContext(conversation, importantMemories);
         systemPrompt += memoryContext;
       }
       
-      // 添加朋友圈上下文
-      try {
-        const momentsData = await getMomentsData(conversation.id);
-        if (momentsData.posts && momentsData.posts.length > 0) {
-          const recentPosts = momentsData.posts.slice(0, 5); // 最近5条朋友圈
-          let momentsContext = '\n\n【你最近发的朋友圈（隐藏信息）】\n以下是你最近发的朋友圈内容。这些信息仅供你参考，不要刻意提起，只在以下情况下自然使用：\n';
-          momentsContext += '- 用户或其他人明确问起你的朋友圈时\n';
-          momentsContext += '- 对话内容自然关联到朋友圈事件时\n';
-          momentsContext += '- 你可以基于朋友圈内容、发送时间、你的角色设定自由发散创造细节，但不能偏离朋友圈内容太多\n\n';
-          
-          recentPosts.forEach((post, index) => {
-            const postDate = new Date(post.timestamp);
-            const daysDiff = Math.floor((Date.now() - post.timestamp) / 86400000);
-            const timeDesc = daysDiff === 0 ? '今天' : daysDiff === 1 ? '昨天' : daysDiff === 2 ? '前天' : `${daysDiff}天前`;
-            const dateStr = postDate.toLocaleDateString('zh-CN', { month: 'long', day: 'numeric', weekday: 'long' });
+      // 🚀 性能优化：只在用户明确询问朋友圈时才加载
+      const shouldLoadMoments = 
+        lastUserMsgForTime?.content?.includes('朋友圈') ||
+        lastUserMsgForTime?.content?.includes('发了什么') ||
+        lastUserMsgForTime?.content?.includes('最近在干嘛') ||
+        lastUserMsgForTime?.content?.includes('动态') ||
+        lastUserMsgForTime?.content?.includes('分享');
+      
+      if (shouldLoadMoments) {
+        console.log('📱 检测到朋友圈相关询问，加载朋友圈数据');
+        try {
+          const momentsData = await getMomentsData(conversation.id);
+          if (momentsData.posts && momentsData.posts.length > 0) {
+            const recentPosts = momentsData.posts.slice(0, 2); // 只加载2条
+            let momentsContext = '\n\n【你最近发的朋友圈】\n';
             
-            momentsContext += `${index + 1}. [${timeDesc}，${dateStr}] ${post.content}`;
-            if (post.imageDescriptions && post.imageDescriptions.length > 0) {
-              momentsContext += `\n   配图${post.imageDescriptions.length}张：${post.imageDescriptions.join('、')}`;
-            }
-            momentsContext += '\n';
-          });
-          systemPrompt += momentsContext;
+            recentPosts.forEach((post, index) => {
+              const daysDiff = Math.floor((Date.now() - post.timestamp) / 86400000);
+              const timeDesc = daysDiff === 0 ? '今天' : daysDiff === 1 ? '昨天' : `${daysDiff}天前`;
+              
+              momentsContext += `${index + 1}. [${timeDesc}] ${post.content}`;
+              if (post.imageDescriptions && post.imageDescriptions.length > 0) {
+                momentsContext += ` (配图${post.imageDescriptions.length}张)`;
+              }
+              momentsContext += '\n';
+            });
+            systemPrompt += momentsContext;
+          }
+        } catch (error) {
+          console.error('获取朋友圈数据失败:', error);
         }
-      } catch (error) {
-        console.error('获取朋友圈数据失败:', error);
       }
       
       // 添加时间感知信息
@@ -760,7 +777,7 @@ ${conversation.characterSettings.memoryEvents ? `记忆事件：${conversation.c
       // 如果包含图片，使用vision API（支持图片+文字混合）
       if (hasImage) {
         // 构建包含图片的消息
-        const recentMessages = conversation.messages.slice(-10);
+        const recentMessages = conversation.messages.slice(-5); // 🔥 性能优化：从10条减少到5条
         const historyMessages = recentMessages
           .filter(m => !unhandledUserMessages.includes(m))
           .map(m => ({
@@ -814,7 +831,7 @@ ${conversation.characterSettings.memoryEvents ? `记忆事件：${conversation.c
         };
       } else if (hasVideo) {
         // 如果包含视频，基于文字描述回复（支持视频+文字混合）
-        const recentMessages = conversation.messages.slice(-10);
+        const recentMessages = conversation.messages.slice(-5); // 🔥 性能优化：从10条减少到5条
         const historyMessages = recentMessages
           .filter(m => !unhandledUserMessages.includes(m))
           .map(m => ({
@@ -845,7 +862,7 @@ ${conversation.characterSettings.memoryEvents ? `记忆事件：${conversation.c
         };
       } else if (hasVoice) {
         // 如果包含语音，基于语音转文字内容回复（支持语音+文字混合）
-        const recentMessages = conversation.messages.slice(-10);
+        const recentMessages = conversation.messages.slice(-5); // 🔥 性能优化：从10条减少到5条
         const historyMessages = recentMessages
           .filter(m => !unhandledUserMessages.includes(m))
           .map(m => ({
@@ -875,7 +892,7 @@ ${conversation.characterSettings.memoryEvents ? `记忆事件：${conversation.c
         };
       } else if (hasSticker) {
         // 如果包含表情包，理解并自然回复（支持表情包+文字混合）
-        const recentMessages = conversation.messages.slice(-10);
+        const recentMessages = conversation.messages.slice(-5); // 🔥 性能优化：从10条减少到5条
         const historyMessages = recentMessages
           .filter(m => !unhandledUserMessages.includes(m))
           .map(m => ({
@@ -908,7 +925,7 @@ ${conversation.characterSettings.memoryEvents ? `记忆事件：${conversation.c
         // 获取最近的用户消息，让AI能看到多条消息的上下文
         const recentUserMessages = conversation.messages
           .filter(m => m.role === 'user')
-          .slice(-5); // 最近5条用户消息
+          .slice(-3); // 🔥 性能优化：从5条减少到3条用户消息
         
         let contextPrompt = systemPrompt + '\n\n【发送多媒体消息规则】：\n你可以发送多种类型的消息，使用以下格式：\n- 发送图片：[图片:详细的图片内容描述，10-50字，要生动具体]\n- 发送视频：[视频:详细的视频内容描述，10-50字]\n- 发送语音：[语音:语音内容的文字，时长X秒]\n- 发送表情包：[表情包:表情包的详细描述]\n\n使用场景：\n- 想分享美景、照片时发图片\n- 想分享有趣的视频时发视频\n- 想发语音聊天时发语音（控制在3-10秒）\n- 想表达情绪、开玩笑时发表情包\n\n可以在文字消息中添加媒体，也可以单独发送媒体。根据对话情境自然决定是否使用多媒体。';
         
