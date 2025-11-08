@@ -47,6 +47,21 @@ export interface CharacterSettings {
     activeHourEnd: number; // 活跃时段结束（小时，0-23）
     lastMessageTime?: number; // 上次主动发消息的时间戳
   };
+  // 🧠 记忆系统配置
+  memoryConfig?: {
+    enabled: boolean; // 是否启用完整记忆系统（默认true）
+    // true: 每次对话都包含记忆（性能要求高）
+    // false: 仅在需要时调取记忆（性能友好）
+  };
+  // 📸 朋友圈记忆配置
+  momentsMemoryConfig?: {
+    enabled: boolean; // 是否记录朋友圈内容到记忆（默认true）
+  };
+  // 📝 自定义上下文配置
+  contextConfig?: {
+    enabled: boolean; // 是否启用自定义上下文数量（默认false）
+    messageCount: number; // 上下文消息数量（1-100）
+  };
 }
 
 // AI状态类型

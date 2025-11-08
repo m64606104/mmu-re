@@ -769,56 +769,79 @@ ${conversation.characterSettings.memoryEvents ? `记忆事件：${conversation.c
       // 添加用户资料信息
       systemPrompt += userInfoPrompt;
       
-      // 🚀 性能优化：只在用户明确询问时才加载记忆
-      const shouldLoadMemory = conversation.enabledFeatures?.includes('memory-system') && 
-        (lastUserMsgForTime?.content?.includes('记得') ||
-         lastUserMsgForTime?.content?.includes('记忆') ||
-         lastUserMsgForTime?.content?.includes('之前') ||
-         lastUserMsgForTime?.content?.includes('上次') ||
-         lastUserMsgForTime?.content?.includes('还记得') ||
-         lastUserMsgForTime?.content?.includes('忘了'));
+      // 🧠 记忆系统加载逻辑（根据配置开关）
+      const memoryEnabled = conversation.characterSettings?.memoryConfig?.enabled ?? true;
       
-      if (shouldLoadMemory) {
-        console.log('🧠 检测到记忆相关询问，加载记忆系统');
-        const allMemories = getConversationMemories(conversation.id);
-        const importantMemories = allMemories
-          .filter(m => m.importance === 'high' || m.importance === 'medium')
-          .slice(0, 5); // 进一步减少到5条
-        const memoryContext = applyMemoriesToContext(conversation, importantMemories);
-        systemPrompt += memoryContext;
+      if (conversation.enabledFeatures?.includes('memory-system')) {
+        if (memoryEnabled) {
+          // ✅ 完整记忆模式：每次对话都加载记忆
+          console.log('🧠 完整记忆模式：加载所有重要记忆');
+          const allMemories = getConversationMemories(conversation.id);
+          const importantMemories = allMemories
+            .filter(m => m.importance === 'high' || m.importance === 'medium')
+            .slice(0, 10); // 完整模式加载更多记忆
+          const memoryContext = applyMemoriesToContext(conversation, importantMemories);
+          systemPrompt += memoryContext;
+        } else {
+          // ⚡ 性能优化模式：只在用户明确询问时才加载记忆
+          const shouldLoadMemory = 
+            lastUserMsgForTime?.content?.includes('记得') ||
+            lastUserMsgForTime?.content?.includes('记忆') ||
+            lastUserMsgForTime?.content?.includes('之前') ||
+            lastUserMsgForTime?.content?.includes('上次') ||
+            lastUserMsgForTime?.content?.includes('还记得') ||
+            lastUserMsgForTime?.content?.includes('忘了');
+          
+          if (shouldLoadMemory) {
+            console.log('🧠 检测到记忆相关询问，加载记忆系统');
+            const allMemories = getConversationMemories(conversation.id);
+            const importantMemories = allMemories
+              .filter(m => m.importance === 'high' || m.importance === 'medium')
+              .slice(0, 5); // 性能模式加载较少记忆
+            const memoryContext = applyMemoriesToContext(conversation, importantMemories);
+            systemPrompt += memoryContext;
+          }
+        }
       }
       
-      // 🚀 性能优化：只在用户明确询问朋友圈时才加载
-      const shouldLoadMoments = 
-        lastUserMsgForTime?.content?.includes('朋友圈') ||
-        lastUserMsgForTime?.content?.includes('发了什么') ||
-        lastUserMsgForTime?.content?.includes('最近在干嘛') ||
-        lastUserMsgForTime?.content?.includes('动态') ||
-        lastUserMsgForTime?.content?.includes('分享');
+      // 📸 朋友圈记忆加载逻辑（根据配置开关）
+      const momentsMemoryEnabled = conversation.characterSettings?.momentsMemoryConfig?.enabled ?? true;
       
-      if (shouldLoadMoments) {
-        console.log('📱 检测到朋友圈相关询问，加载朋友圈数据');
-        try {
-          const momentsData = await getMomentsData(conversation.id);
-          if (momentsData.posts && momentsData.posts.length > 0) {
-            const recentPosts = momentsData.posts.slice(0, 2); // 只加载2条
-            let momentsContext = '\n\n【你最近发的朋友圈】\n';
-            
-            recentPosts.forEach((post, index) => {
-              const daysDiff = Math.floor((Date.now() - post.timestamp) / 86400000);
-              const timeDesc = daysDiff === 0 ? '今天' : daysDiff === 1 ? '昨天' : `${daysDiff}天前`;
+      if (momentsMemoryEnabled) {
+        // ✅ 朋友圈记忆开启：只在用户询问时加载
+        const shouldLoadMoments = 
+          lastUserMsgForTime?.content?.includes('朋友圈') ||
+          lastUserMsgForTime?.content?.includes('发了什么') ||
+          lastUserMsgForTime?.content?.includes('最近在干嘛') ||
+          lastUserMsgForTime?.content?.includes('动态') ||
+          lastUserMsgForTime?.content?.includes('分享');
+        
+        if (shouldLoadMoments) {
+          console.log('📱 检测到朋友圈相关询问，加载朋友圈数据');
+          try {
+            const momentsData = await getMomentsData(conversation.id);
+            if (momentsData.posts && momentsData.posts.length > 0) {
+              const recentPosts = momentsData.posts.slice(0, 3); // 开启记忆时加载更多条
+              let momentsContext = '\n\n【你最近发的朋友圈】\n';
               
-              momentsContext += `${index + 1}. [${timeDesc}] ${post.content}`;
-              if (post.imageDescriptions && post.imageDescriptions.length > 0) {
-                momentsContext += ` (配图${post.imageDescriptions.length}张)`;
-              }
-              momentsContext += '\n';
-            });
-            systemPrompt += momentsContext;
+              recentPosts.forEach((post, index) => {
+                const daysDiff = Math.floor((Date.now() - post.timestamp) / 86400000);
+                const timeDesc = daysDiff === 0 ? '今天' : daysDiff === 1 ? '昨天' : `${daysDiff}天前`;
+                
+                momentsContext += `${index + 1}. [${timeDesc}] ${post.content}`;
+                if (post.imageDescriptions && post.imageDescriptions.length > 0) {
+                  momentsContext += ` (配图${post.imageDescriptions.length}张)`;
+                }
+                momentsContext += '\n';
+              });
+              systemPrompt += momentsContext;
+            }
+          } catch (error) {
+            console.error('获取朋友圈数据失败:', error);
           }
-        } catch (error) {
-          console.error('获取朋友圈数据失败:', error);
         }
+      } else {
+        console.log('⚡ 朋友圈记忆已关闭，不加载朋友圈内容');
       }
       
       // 添加时间感知信息
@@ -978,7 +1001,7 @@ ${conversation.characterSettings.memoryEvents ? `记忆事件：${conversation.c
         // 获取最近的用户消息，让AI能看到多条消息的上下文
         const recentUserMessages = conversation.messages
           .filter(m => m.role === 'user')
-          .slice(-3); // 🔥 性能优化：从5条减少到3条用户消息
+          .slice(-3); // 🚀 性能优化：从5条减少到3条用户消息
         
         let contextPrompt = systemPrompt + '\n\n【发送多媒体消息规则】：\n你可以发送多种类型的消息，使用以下格式：\n- 发送图片：[图片:详细的图片内容描述，10-50字，要生动具体]\n- 发送视频：[视频:详细的视频内容描述，10-50字]\n- 发送语音：[语音:语音内容的文字，时长X秒]\n- 发送表情包：[表情包:表情包的详细描述]\n\n使用场景：\n- 想分享美景、照片时发图片\n- 想分享有趣的视频时发视频\n- 想发语音聊天时发语音（控制在3-10秒）\n- 想表达情绪、开玩笑时发表情包\n\n可以在文字消息中添加媒体，也可以单独发送媒体。根据对话情境自然决定是否使用多媒体。';
         
@@ -987,9 +1010,24 @@ ${conversation.characterSettings.memoryEvents ? `记忆事件：${conversation.c
           contextPrompt += '\n\n【当前对话情境】：\n用户最近发了多条消息，请根据优先级判断标准，优先回复重要的、有趣的话题。可以合并回复，也可以选择性跳过某些消息。';
         }
         
+        // 📝 自定义上下文数量（根据配置开关）
+        const contextConfigEnabled = conversation.characterSettings?.contextConfig?.enabled || false;
+        const contextMessageCount = conversation.characterSettings?.contextConfig?.messageCount || 20;
+        
+        let contextMessages;
+        if (contextConfigEnabled) {
+          // ✅ 自定义上下文数量
+          console.log(`📝 自定义上下文：发送最近 ${contextMessageCount} 条消息`);
+          contextMessages = conversation.messages.slice(-contextMessageCount);
+        } else {
+          // ⚡ 默认模式：发送所有消息
+          console.log('⚡ 默认上下文：发送所有历史消息');
+          contextMessages = conversation.messages;
+        }
+        
         messages = [
           { role: 'system', content: contextPrompt },
-          ...conversation.messages.map(m => ({
+          ...contextMessages.map(m => ({
             role: m.role,
             content: m.content,
           })),

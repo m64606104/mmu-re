@@ -51,6 +51,16 @@ export default function CharacterSettingsScreen({
   const [maxInterval, setMaxInterval] = useState(settings.proactiveMessaging?.maxInterval || 120);
   const [activeHourStart, setActiveHourStart] = useState(settings.proactiveMessaging?.activeHourStart || 8);
   const [activeHourEnd, setActiveHourEnd] = useState(settings.proactiveMessaging?.activeHourEnd || 23);
+  
+  // 🧠 记忆系统配置
+  const [memoryConfigEnabled, setMemoryConfigEnabled] = useState(settings.memoryConfig?.enabled ?? true);
+  
+  // 📸 朋友圈记忆配置
+  const [momentsMemoryEnabled, setMomentsMemoryEnabled] = useState(settings.momentsMemoryConfig?.enabled ?? true);
+  
+  // 📝 自定义上下文配置
+  const [contextConfigEnabled, setContextConfigEnabled] = useState(settings.contextConfig?.enabled || false);
+  const [contextMessageCount, setContextMessageCount] = useState(settings.contextConfig?.messageCount || 20);
 
   const handleAvatarUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -141,6 +151,16 @@ export default function CharacterSettingsScreen({
           activeHourStart,
           activeHourEnd,
           lastMessageTime: settings.proactiveMessaging?.lastMessageTime,
+        },
+        memoryConfig: {
+          enabled: memoryConfigEnabled,
+        },
+        momentsMemoryConfig: {
+          enabled: momentsMemoryEnabled,
+        },
+        contextConfig: {
+          enabled: contextConfigEnabled,
+          messageCount: contextMessageCount,
         },
       },
     });
@@ -562,6 +582,129 @@ export default function CharacterSettingsScreen({
                   💡 AI会在设定的时间段内，根据情境主动发送消息与你聊天
                 </p>
               </div>
+            </div>
+          )}
+        </div>
+
+        {/* 🧠 记忆系统配置 */}
+        <div className="bg-white rounded-lg shadow-sm p-4">
+          <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center gap-2">
+              <Brain className="w-5 h-5 text-purple-500" />
+              <h3 className="text-sm font-medium text-gray-900">完整记忆系统</h3>
+            </div>
+            <label className="relative inline-flex items-center cursor-pointer">
+              <input
+                type="checkbox"
+                checked={memoryConfigEnabled}
+                onChange={(e) => setMemoryConfigEnabled(e.target.checked)}
+                className="sr-only peer"
+              />
+              <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-purple-300 rounded-full peer peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-purple-600"></div>
+            </label>
+          </div>
+          <div className={`rounded-lg p-3 ${
+            memoryConfigEnabled ? 'bg-purple-50 border border-purple-100' : 'bg-gray-50 border border-gray-200'
+          }`}>
+            <p className="text-xs leading-relaxed ${
+              memoryConfigEnabled ? 'text-purple-700' : 'text-gray-600'
+            }">
+              {memoryConfigEnabled ? (
+                <><span className="font-medium">✅ 已开启</span> - 每次对话都包含完整记忆库内容，AI能记住所有重要信息（性能要求较高）</>
+              ) : (
+                <><span className="font-medium">⚡ 已关闭</span> - 仅在需要时调取记忆，性能更友好，适合轻量级使用</>
+              )}
+            </p>
+          </div>
+        </div>
+
+        {/* 📸 朋友圈记忆配置 */}
+        <div className="bg-white rounded-lg shadow-sm p-4">
+          <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center gap-2">
+              <Camera className="w-5 h-5 text-pink-500" />
+              <h3 className="text-sm font-medium text-gray-900">朋友圈记忆</h3>
+            </div>
+            <label className="relative inline-flex items-center cursor-pointer">
+              <input
+                type="checkbox"
+                checked={momentsMemoryEnabled}
+                onChange={(e) => setMomentsMemoryEnabled(e.target.checked)}
+                className="sr-only peer"
+              />
+              <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-pink-300 rounded-full peer peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-pink-600"></div>
+            </label>
+          </div>
+          <div className={`rounded-lg p-3 ${
+            momentsMemoryEnabled ? 'bg-pink-50 border border-pink-100' : 'bg-gray-50 border border-gray-200'
+          }`}>
+            <p className="text-xs leading-relaxed ${
+              momentsMemoryEnabled ? 'text-pink-700' : 'text-gray-600'
+            }">
+              {momentsMemoryEnabled ? (
+                <><span className="font-medium">✅ 已开启</span> - AI会记住查看过的朋友圈内容，可以在聊天中提及</>
+              ) : (
+                <><span className="font-medium">⚡ 已关闭</span> - 朋友圈内容不会记录到记忆库，减少记忆负担</>
+              )}
+            </p>
+          </div>
+        </div>
+
+        {/* 📝 自定义上下文配置 */}
+        <div className="bg-white rounded-lg shadow-sm p-4">
+          <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center gap-2">
+              <FileUp className="w-5 h-5 text-blue-500" />
+              <h3 className="text-sm font-medium text-gray-900">自定义上下文数量</h3>
+            </div>
+            <label className="relative inline-flex items-center cursor-pointer">
+              <input
+                type="checkbox"
+                checked={contextConfigEnabled}
+                onChange={(e) => setContextConfigEnabled(e.target.checked)}
+                className="sr-only peer"
+              />
+              <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+            </label>
+          </div>
+
+          {contextConfigEnabled && (
+            <div className="space-y-3 mt-4">
+              <div className="flex items-center gap-3">
+                <input
+                  type="range"
+                  min="1"
+                  max="100"
+                  value={contextMessageCount}
+                  onChange={(e) => setContextMessageCount(parseInt(e.target.value))}
+                  className="flex-1 h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-blue-600"
+                />
+                <input
+                  type="number"
+                  min="1"
+                  max="100"
+                  value={contextMessageCount}
+                  onChange={(e) => setContextMessageCount(Math.max(1, Math.min(100, parseInt(e.target.value) || 1)))}
+                  className="w-20 px-3 py-2 text-center border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+              <div className="bg-blue-50 border border-blue-100 rounded-lg p-3">
+                <p className="text-xs text-blue-700 leading-relaxed">
+                  💡 当前设置：发送给AI <span className="font-medium">{contextMessageCount}</span> 条历史消息作为上下文
+                </p>
+                <p className="text-xs text-gray-600 mt-1">
+                  • 数量越少，回复越快，但AI可能遗忘较早的内容<br/>
+                  • 数量越多，AI记得更完整，但回复会变慢
+                </p>
+              </div>
+            </div>
+          )}
+
+          {!contextConfigEnabled && (
+            <div className="bg-gray-50 border border-gray-200 rounded-lg p-3 mt-3">
+              <p className="text-xs text-gray-600 leading-relaxed">
+                ⚡ 已关闭 - 使用默认逻辑（发送所有历史消息）
+              </p>
             </div>
           )}
         </div>
