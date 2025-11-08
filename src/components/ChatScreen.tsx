@@ -650,8 +650,8 @@ ${recentMessages}
       const hasVoice = unhandledUserMessages.some(m => m.mediaType === 'voice' && m.mediaDescription);
       const hasSticker = unhandledUserMessages.some(m => m.mediaType === 'sticker' && m.mediaDescription);
       
-      // 获取包含图片的消息
-      const imageMessage = unhandledUserMessages.find(m => m.mediaType === 'image' && m.mediaUrl);
+      // 获取所有包含图片的消息（支持多图片）
+      const imageMessages = unhandledUserMessages.filter(m => m.mediaType === 'image' && m.mediaUrl);
       // 获取纯文字消息
       const textMessages = unhandledUserMessages.filter(m => !m.mediaType);
       
@@ -768,18 +768,18 @@ ${conversation.characterSettings.memoryEvents ? `记忆事件：${conversation.c
             content: m.content
           }));
 
-        // 构建混合内容（图片 + 用户的文字消息）
+        // 构建混合内容（多图片 + 用户的文字消息）
         const contentParts: any[] = [];
         
-        // 先添加图片
-        if (imageMessage) {
+        // 添加所有图片
+        imageMessages.forEach(imgMsg => {
           contentParts.push({
             type: 'image_url',
             image_url: {
-              url: imageMessage.mediaUrl
+              url: imgMsg.mediaUrl
             }
           });
-        }
+        });
         
         // 再添加文字消息
         const combinedText = textMessages.map(m => m.content).filter(Boolean).join('\n');
@@ -789,10 +789,12 @@ ${conversation.characterSettings.memoryEvents ? `记忆事件：${conversation.c
             text: combinedText
           });
         } else {
-          // 如果没有文字，添加默认提示
+          // 如果没有文字，根据图片数量添加提示
+          const imageCount = imageMessages.length;
+          const defaultText = imageCount > 1 ? `看这${imageCount}张图` : '看这张图';
           contentParts.push({
             type: 'text',
-            text: '看这张图'
+            text: defaultText
           });
         }
 
