@@ -54,6 +54,48 @@ export default function AnnouncementScreen({ onBack }: AnnouncementScreenProps) 
 
         {/* 公告列表 */}
         <div className="space-y-4">
+          {/* 11.9 版本更新 */}
+          <div className="bg-white/10 backdrop-blur-sm border border-white/20 rounded-xl p-4 shadow-lg">
+            <div className="flex items-start gap-3 mb-3">
+              <div className="w-10 h-10 rounded-full bg-gradient-to-br from-green-400 to-emerald-600 flex items-center justify-center flex-shrink-0">
+                <Bell className="w-5 h-5 text-white" />
+              </div>
+              <div className="flex-1">
+                <h3 className="text-lg font-bold text-white mb-1">📦 11.9 版本更新</h3>
+                <p className="text-xs text-gray-400">2024年11月9日</p>
+              </div>
+            </div>
+            <div className="pl-13 space-y-3">
+              <div>
+                <h4 className="text-sm font-semibold text-blue-300 mb-1">📚 资料库增强</h4>
+                <p className="text-gray-200 text-sm leading-relaxed">
+                  在角色设置里更新了资料库，新增文档上传和解析功能。现在支持上传PDF、Word(.docx)、TXT文档，AI会自动提取文本内容并在对话中参考。
+                </p>
+              </div>
+              
+              <div>
+                <h4 className="text-sm font-semibold text-purple-300 mb-1">🤝 关系管理系统</h4>
+                <p className="text-gray-200 text-sm leading-relaxed">
+                  增加了"关系"App，现在可以自由管理AI之间的关系。支持设置好朋友、普通好友、看不爽等多种关系状态，让AI互动更加真实。
+                </p>
+              </div>
+              
+              <div>
+                <h4 className="text-sm font-semibold text-pink-300 mb-1">💡 朋友圈智能互动</h4>
+                <p className="text-gray-200 text-sm leading-relaxed">
+                  修复了朋友圈互动相关功能，现在更加智能了。AI会根据性格、内容和关系智能决定是否点赞或评论，不再是固定概率。
+                </p>
+              </div>
+              
+              <div>
+                <h4 className="text-sm font-semibold text-orange-300 mb-1">🔧 其他优化</h4>
+                <p className="text-gray-200 text-sm leading-relaxed">
+                  修复了表情包显示问题，移除了AI回复中的引用链接，以及一些零零碎碎的小修复，提升整体使用体验。
+                </p>
+              </div>
+            </div>
+          </div>
+
           {/* 11.9 公告 */}
           <div className="bg-white/10 backdrop-blur-sm border border-white/20 rounded-xl p-4 shadow-lg">
             <div className="flex items-start gap-3 mb-3">
