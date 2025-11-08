@@ -946,12 +946,14 @@ ${conversation.characterSettings.memoryEvents ? `记忆事件：${conversation.c
           // 后台任务完成回调
           console.log(`✅ 后台任务完成，收到${newMessages.length}条消息`);
           
-          // 检查AI是否选择不回复
+          // 🔥 清理loading状态
+          setShowSendingHint(false);
+          setShowTyping(false);
+          setIsGenerating(false);
+          
+          // 检查AI是否选择不回复或任务失败
           if (newMessages.length === 0) {
-            console.log('💬 AI选择不回复此消息（后台）');
-            setShowSendingHint(false);
-            setShowTyping(false);
-            setIsGenerating(false);
+            console.log('💬 AI选择不回复或任务失败');
             
             // 生成智能的不回复提示
             generateContextualHint(conversation).then(contextualHint => {

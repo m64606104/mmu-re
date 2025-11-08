@@ -86,6 +86,10 @@ class BackgroundTaskManager {
     try {
       task.status = 'generating';
       
+      // 🔥 添加60秒超时
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 60000);
+      
       const response = await fetch(`${apiConfig.baseUrl}/v1/chat/completions`, {
         method: 'POST',
         headers: {
@@ -93,10 +97,13 @@ class BackgroundTaskManager {
           'Authorization': `Bearer ${apiConfig.apiKey}`,
         },
         body: JSON.stringify(requestBody),
+        signal: controller.signal,
       });
+      
+      clearTimeout(timeoutId);
 
       if (!response.ok) {
-        throw new Error('API请求失败');
+        throw new Error(`API请求失败: HTTP ${response.status}`);
       }
 
       const data = await response.json();
@@ -110,6 +117,8 @@ class BackgroundTaskManager {
       if (assistantMessage.trim() === '[不回复]' || assistantMessage.includes('[不回复]')) {
         task.status = 'completed';
         task.messages = [];
+        // ✅ 通知ChatScreen（传递空数组表示不回复）
+        onUpdate([], conversation.id);
         return;
       }
 
@@ -129,8 +138,15 @@ class BackgroundTaskManager {
       console.log(`✅ 后台任务完成: ${taskId}`);
     } catch (error) {
       task.status = 'failed';
-      task.error = error instanceof Error ? error.message : '未知错误';
+      const errorMessage = error instanceof Error ? error.message : '未知错误';
+      task.error = errorMessage;
       console.error(`❌ 后台任务失败: ${taskId}`, error);
+      
+      // 🔥 关键修复：失败时也要通知ChatScreen
+      // 传递空数组，并在控制台输出错误
+      // ChatScreen会自动清理loading状态
+      console.log(`通知ChatScreen任务失败: ${errorMessage}`);
+      onUpdate([], conversation.id);
     }
   }
 
