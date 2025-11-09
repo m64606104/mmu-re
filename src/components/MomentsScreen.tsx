@@ -86,11 +86,11 @@ export default function MomentsScreen({
       return () => clearTimeout(interactionTimer);
     }
     
-    // 每30秒刷新一次以显示最新内容
-    const interval = setInterval(loadAiMoments, 30 * 1000);
+    // ⚠️ 不再自动刷新，改为手动刷新或由AI互动后触发刷新
+    // 正常人浏览朋友圈不会每30秒刷一次，而是手动下拉刷新
+    // 仅在有新内容时由AI互动触发刷新即可
     
     return () => {
-      clearInterval(interval);
       // @ts-ignore
       delete window.refreshMomentsScreen;
     };

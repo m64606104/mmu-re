@@ -60,9 +60,10 @@ export function AIMomentsInteractionManager({
       return;
     }
 
-    // 防止频繁调用（至少间隔30秒）
+    // 防止频繁调用（至少间隔5分钟）
     const now = Date.now();
-    if (now - lastInteractionTime.current < 30 * 1000) {
+    if (now - lastInteractionTime.current < 5 * 60 * 1000) {
+      console.log('⏸️ 距上次互动不足5分钟，跳过本次');
       return;
     }
 
@@ -99,25 +100,25 @@ export function AIMomentsInteractionManager({
   const getRefreshInterval = () => {
     const now = Date.now();
     
-    // ⚡️ 朋友圈界面：快速刷新
+    // ⚡️ 朋友圈界面：适度刷新（正常人不会一直盯着看）
     if (isInMomentsScreen) {
-      return 30000 + Math.random() * 30000; // 30-60秒
+      return 180000 + Math.random() * 180000; // 3-6分钟
     }
     
     // 🛌 离开朋友圈后：极慢刷新
     if (hasLeftMoments.current) {
-      return 3600000 + Math.random() * 7200000; // 1-3小时
+      return 7200000 + Math.random() * 10800000; // 2-5小时
     }
     
     // 🐌 聊天界面：根据时长调整
     const timeSinceActivation = now - appActivationTime.current;
     
-    if (timeSinceActivation < 5 * 60 * 1000) {
-      // 🐌 前5分钟：2-5分钟
-      return 120000 + Math.random() * 180000;
+    if (timeSinceActivation < 10 * 60 * 1000) {
+      // 🐌 前10分钟：5-10分钟
+      return 300000 + Math.random() * 300000;
     } else {
-      // 🐢 5分钟后：30-60分钟
-      return 1800000 + Math.random() * 1800000;
+      // 🐢 10分钟后：1-2小时
+      return 3600000 + Math.random() * 3600000;
     }
   };
 
@@ -126,8 +127,8 @@ export function AIMomentsInteractionManager({
     if (isInMomentsScreen) {
       momentsScreenEntryTime.current = Date.now();
       hasLeftMoments.current = false;
-      console.log('📱 进入朋友圈界面，切换到快速刷新模式...');
-      console.log('⚡️ 刷新频率：30-60秒/次');
+      console.log('📱 进入朋友圈界面，切换到适度刷新模式...');
+      console.log('⚡️ 刷新频率：3-6分钟/次');
       
       // 🔥 立即触发一次互动，然后开始快速刷新
       triggerSmartInteraction();
@@ -142,7 +143,7 @@ export function AIMomentsInteractionManager({
       // 离开朋友圈
       hasLeftMoments.current = true;
       console.log('🚪 离开朋友圈界面，切换到极慢刷新模式...');
-      console.log('🛌 刷新频率：1-3小时/次');
+      console.log('🛌 刷新频率：2-5小时/次');
       
       // 取消快速刷新定时器
       // @ts-ignore
@@ -158,15 +159,15 @@ export function AIMomentsInteractionManager({
     if (isActive) {
       appActivationTime.current = Date.now();
       hasLeftMoments.current = false;
-      console.log('🚀 进入聊天App，启动AI朋友圈极致节能模式...');
-      console.log('📊 刷新策略：');
-      console.log('  🐌 聊天界面前5分钟：2-5分钟/次');
-      console.log('  🐢 聊天界面5分钟后：30-60分钟/次');
-      console.log('  ⚡️ 朋友圈界面：30-60秒/次');
-      console.log('  🛌 离开朋友圈后：1-3小时/次');
+      console.log('🚀 进入聊天App，启动AI朋友圈超级节能模式...');
+      console.log('📊 刷新策略（大幅降低API请求）：');
+      console.log('  🐌 聊天界面前10分钟：5-10分钟/次');
+      console.log('  🐢 聊天界面10分钟后：1-2小时/次');
+      console.log('  ⚡️ 朋友圈界面：3-6分钟/次');
+      console.log('  🛌 离开朋友圈后：2-5小时/次');
       
-      // 第一次触发：随机延迟3-10秒
-      const initialDelay = 3000 + Math.random() * 7000;
+      // 第一次触发：随机延迟10-30秒（避免启动时立即请求）
+      const initialDelay = 10000 + Math.random() * 20000;
       const initialTimer = setTimeout(() => {
         triggerSmartInteraction();
       }, initialDelay);
