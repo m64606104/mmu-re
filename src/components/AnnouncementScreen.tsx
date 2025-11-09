@@ -67,29 +67,35 @@ export default function AnnouncementScreen({ onBack }: AnnouncementScreenProps) 
             </div>
             <div className="pl-13 space-y-3">
               <div>
-                <h4 className="text-sm font-semibold text-yellow-200 mb-1">💰 红包转账功能上线</h4>
+                <h4 className="text-sm font-semibold text-yellow-200 mb-1">💰 红包转账功能完善</h4>
                 <p className="text-gray-100 text-sm leading-relaxed">
-                  <strong>聊天页多功能栏新增红包、转账功能！</strong>现在可以向AI发送红包或转账了。AI会根据性格和关系智能决定是否接收。同时，AI也能主动发送红包（生日祝福、感谢等场景）和转账（还钱、AA付款等）。
+                  <strong>完善了红包转账内容，更好的AI逻辑、修复转账气泡、收礼物送礼物功能、代付功能、订单以及余额等十多个功能。</strong>现在AI接收/退回红包会以转账气泡形式显示（参考微信样式），支持实时状态更新和Toast提示。AI能智能决定是否接收，并给出自然的回复。
                 </p>
               </div>
               
               <div>
-                <h4 className="text-sm font-semibold text-orange-200 mb-1">📄 文档功能</h4>
+                <h4 className="text-sm font-semibold text-orange-200 mb-1">🎁 商城购物功能</h4>
                 <p className="text-gray-100 text-sm leading-relaxed">
-                  <strong>支持发送和查看文档！</strong>可以发送文本、代码、Markdown等类型的文档。AI也能主动发送文档（写信、分享文章、发送代码等场景）。
+                  <strong>完善了商城相关的一些内容。</strong>支持给AI送礼物、请AI代付、AI主动送礼物给你等功能。购物后自动跳转聊天页，订单状态实时更新。集成了完整的钱包系统，包括用户钱包和AI独立钱包。
                 </p>
               </div>
               
               <div>
-                <h4 className="text-sm font-semibold text-amber-200 mb-1">🛍️ 商城与钱包</h4>
+                <h4 className="text-sm font-semibold text-amber-200 mb-1">📄 文档功能优化</h4>
                 <p className="text-gray-100 text-sm leading-relaxed">
-                  <strong>初步的商城和钱包功能已上线！</strong>在"我"→"钱包"中可以查看余额（初始1000元）和交易记录。包含饿饿吗外卖、电影票、淘淘宝三个商店，支持AI生图搜索商品。后续会继续完善更多功能。
+                  <strong>修复文档内容泄露问题。</strong>AI发送的文档现在只显示文档卡片，内容需要点击查看。文档格式标记不再显示在聊天气泡中，更加美观自然。
                 </p>
               </div>
               
               <div className="bg-white/10 rounded-lg p-3 mt-2">
                 <p className="text-xs text-gray-200 leading-relaxed">
                   💡 <strong>小提示：</strong>如果你没有钱了，可以创造一个专门的AI给你转钱哦～
+                </p>
+              </div>
+              
+              <div className="bg-yellow-500/20 border border-yellow-400/50 rounded-lg p-3 mt-2">
+                <p className="text-xs text-yellow-100 leading-relaxed">
+                  ⚠️ <strong>测试提示：</strong>增加的功能太多了，我测不过来了……可能有bug
                 </p>
               </div>
             </div>
