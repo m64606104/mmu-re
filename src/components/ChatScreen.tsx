@@ -183,6 +183,17 @@ const backgroundTaskManager = {
             }
           });
         }
+
+        // 检测订单响应：[接受礼物] [退回礼物] [同意代付] [拒绝代付]
+        const orderResponseMatch = finalContent.match(/\[(接受礼物|退回礼物|同意代付|拒绝代付)\]/);
+        if (orderResponseMatch) {
+          const responseType = orderResponseMatch[1];
+          finalContent = finalContent.replace(orderResponseMatch[0], '').trim();
+          
+          // 标记需要处理订单响应（在callback中处理）
+          // 这里只是移除标记，实际更新逻辑在processAIOrderResponse中
+          console.log(`🎁 AI订单响应: ${responseType}`);
+        }
         
         // 构建消息对象
         // 如果提取了特殊指令且没有其他内容，不创建文本消息
@@ -928,6 +939,60 @@ ${systemPrompt}
     });
   };
 
+  // 处理AI的订单响应（解析AI回复中的[接受礼物]等标记）
+  const processAIOrderResponse = (aiMessage: Message) => {
+    // 检测AI回复中的订单响应标记
+    const responseMatch = aiMessage.content.match(/\[(接受礼物|退回礼物|同意代付|拒绝代付)\]/);
+    if (!responseMatch) return;
+    
+    const responseType = responseMatch[1];
+    console.log(`🎁 处理AI订单响应: ${responseType}`);
+    
+    // 找到最近的待处理订单消息（用户发送的）
+    const recentOrderMessage = [...conversation.messages]
+      .reverse()
+      .find(msg => 
+        msg.role === 'user' && 
+        msg.order && 
+        msg.order.status === 'pending'
+      );
+    
+    if (!recentOrderMessage || !recentOrderMessage.order) {
+      console.log('⚠️ 未找到待处理的订单消息');
+      return;
+    }
+    
+    // 根据响应类型更新订单状态
+    let newStatus: 'accepted' | 'rejected' | 'paid' = 'rejected';
+    if (responseType === '接受礼物') {
+      newStatus = 'accepted';
+    } else if (responseType === '同意代付') {
+      newStatus = 'paid';
+    } else if (responseType === '退回礼物' || responseType === '拒绝代付') {
+      newStatus = 'rejected';
+    }
+    
+    // 更新订单状态
+    const updatedMessages = conversation.messages.map(msg => {
+      if (msg.id === recentOrderMessage.id && msg.order) {
+        return {
+          ...msg,
+          order: {
+            ...msg.order,
+            status: newStatus
+          }
+        } as Message;
+      }
+      return msg;
+    });
+    
+    onUpdateConversation(conversation.id, {
+      messages: updatedMessages
+    });
+    
+    console.log(`✅ 订单状态已更新: ${newStatus}`);
+  };
+
   // 发送视频消息
   const handleSendVideo = () => {
     if (!pendingVideoFile || !videoDescInput.trim()) {
@@ -1663,6 +1728,11 @@ ${conversation.characterSettings.memoryEvents ? `记忆事件：${conversation.c
                 lastMessageTime: Date.now(),
               });
               
+              // 🎁 处理订单响应（如果AI回复包含订单响应标记）
+              if (newMessages[i].content) {
+                processAIOrderResponse(newMessages[i]);
+              }
+              
               // 短暂停顿再显示下一条
               if (i < newMessages.length - 1) {
                 await new Promise(resolve => setTimeout(resolve, 300));
@@ -1681,6 +1751,13 @@ ${conversation.characterSettings.memoryEvents ? `记忆事件：${conversation.c
             onUpdateConversation(conversationId, {
               messages: currentMessages,
               lastMessageTime: Date.now(),
+            });
+            
+            // 🎁 处理订单响应（用户离开的情况下也要处理）
+            newMessages.forEach(msg => {
+              if (msg.content) {
+                processAIOrderResponse(msg);
+              }
             });
             
             // 显示消息通知（用户已离开页面）
