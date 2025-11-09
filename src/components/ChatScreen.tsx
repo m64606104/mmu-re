@@ -2567,9 +2567,16 @@ ${conversation.characterSettings.memoryEvents ? `记忆事件：${conversation.c
           <p className="text-3xl font-bold text-gray-900 mb-4">
             {Math.floor(recordingTime / 60).toString().padStart(2, '0')}:{(recordingTime % 60).toString().padStart(2, '0')}
           </p>
-          <p className="text-sm text-gray-600 mb-4">
+          <p className="text-sm text-gray-600 mb-2">
             {isTranscribing ? '正在转换为文字，请稍候...' : '请说出您想发送的内容'}
           </p>
+          {!isTranscribing && (
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 mb-4">
+              <p className="text-xs text-blue-700">
+                💡 <span className="font-semibold">温馨提示：</span>录音结束后，您需要手动输入这段语音的文字内容。如需自动识别，请在<span className="font-semibold">设置</span>中开启语音识别功能。
+              </p>
+            </div>
+          )}
           {!isTranscribing && (
             <button
               onClick={() => {

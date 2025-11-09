@@ -111,9 +111,9 @@ function App() {
                 nickname: '测',
                 username: '只要涨薪不要996',
                 systemPrompt: '你是一个上班族，26岁，男，在公司做总裁助理。',
-                personality: '职场精英，工作认真负责，追求工作与生活的平衡',
-                languageStyle: '说话比较职业化，偶尔吐槽工作压力',
-                languageExample: '今天又是加班到深夜，不过项目总算推进了。真希望能涨薪啊！',
+                personality: '',
+                languageStyle: '',
+                languageExample: '',
                 memoryEvents: '',
               },
               enabledFeatures: ['memory-system'], // 默认启用记忆系统
