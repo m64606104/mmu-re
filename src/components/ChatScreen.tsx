@@ -166,9 +166,9 @@ const backgroundTaskManager = {
           });
         }
 
-        // 检测文档：[发文档:标题:类型] 文档内容
+        // 检测文档：[发文档:标题:类型] 或 文档内容\n[发文档:标题:类型]
         // 允许任意类型描述（如"信件"），自动映射到text类型
-        const docMatch = finalContent.match(/\[发文档:([^:]+):([^\]]+)\]([\s\S]*)/);
+        const docMatch = finalContent.match(/\[发文档:([^:]+):([^\]]+)\]/);
         if (docMatch) {
           const docTitle = docMatch[1];
           const docTypeInput = docMatch[2].toLowerCase();
@@ -176,22 +176,26 @@ const backgroundTaskManager = {
           const docType: 'text' | 'markdown' | 'code' = 
             docTypeInput === 'markdown' ? 'markdown' :
             docTypeInput === 'code' ? 'code' : 'text';
-          let docContent = docMatch[3].trim();
           
-          // 移除标记，但保留其他文本（如果有的话）
-          const tagRegex = /\[发文档:[^\]]+\]/;
-          const tagMatch = finalContent.match(tagRegex);
-          if (tagMatch) {
-            const contentAfterTag = finalContent.substring(tagMatch.index! + tagMatch[0].length).trim();
-            // 如果标记后面有内容，那就是文档内容
-            if (contentAfterTag) {
-              docContent = contentAfterTag;
-              // 移除整个文档部分
-              finalContent = finalContent.substring(0, tagMatch.index!).trim();
-            } else {
-              // 如果标记后面没有内容，只移除标记
-              finalContent = finalContent.replace(tagRegex, '').trim();
-            }
+          const tagIndex = docMatch.index!;
+          const tagEndIndex = tagIndex + docMatch[0].length;
+          const contentBefore = finalContent.substring(0, tagIndex).trim();
+          const contentAfter = finalContent.substring(tagEndIndex).trim();
+          
+          // 优先使用标记后的内容，如果没有则使用标记前的内容
+          let docContent = '';
+          if (contentAfter) {
+            // 格式1: [发文档:标题:类型] 内容在后面
+            docContent = contentAfter;
+            finalContent = contentBefore; // 保留标记前的文本
+          } else if (contentBefore) {
+            // 格式2: 内容在前面\n[发文档:标题:类型]
+            docContent = contentBefore;
+            finalContent = ''; // 所有内容都是文档，不保留文本
+          } else {
+            // 格式3: 只有标记，没有内容
+            docContent = '';
+            finalContent = '';
           }
           
           console.log(`📄 AI发送文档: ${docTitle}, 内容长度: ${docContent.length}`);
@@ -209,6 +213,23 @@ const backgroundTaskManager = {
               size: new Blob([docContent]).size
             }
           });
+        }
+
+        // 检测引用消息：[回复 我/你 说的"xxx"]
+        let replyToInfo: { content: string; role: 'user' | 'assistant' } | undefined;
+        const replyMatch = finalContent.match(/\[回复\s+(我|你)\s+说的"([^"]+)"\]/);
+        if (replyMatch) {
+          const quotedRole = replyMatch[1]; // '我' 或 '你'
+          const quotedContent = replyMatch[2];
+          finalContent = finalContent.replace(replyMatch[0], '').trim();
+          
+          // '我' = user, '你' = assistant (AI回复时，'我'指的是用户)
+          replyToInfo = {
+            content: quotedContent,
+            role: quotedRole === '我' ? 'user' : 'assistant'
+          };
+          
+          console.log(`💬 AI引用消息: ${quotedRole}说的"${quotedContent}"`);
         }
 
         // 检测红包/转账接收响应：[接收红包:留言] [退回红包:留言] [接收转账:留言] [退回转账:留言]
@@ -316,6 +337,15 @@ const backgroundTaskManager = {
             content: finalContent || cleanContent || (mediaItems.length > 0 ? '[多媒体消息]' : ''),
             timestamp: Date.now()
           };
+          
+          // 如果有引用消息，添加到消息中
+          if (replyToInfo) {
+            message.replyTo = {
+              id: '', // AI回复时不需要原始ID
+              content: replyToInfo.content,
+              role: replyToInfo.role
+            };
+          }
           
           // 如果有媒体项，添加到消息中
           if (mediaItems.length > 0) {
