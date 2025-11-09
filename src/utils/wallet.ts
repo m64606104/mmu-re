@@ -8,6 +8,13 @@ export interface WalletData {
   transactions: Transaction[]; // 交易记录
 }
 
+export interface AIWalletData {
+  [aiId: string]: {
+    balance: number;
+    transactions: Transaction[];
+  };
+}
+
 export interface Transaction {
   id: string;
   type: 'income' | 'expense'; // 收入或支出
@@ -176,6 +183,160 @@ export const purchaseProduct = (
     return false;
   }
   
-  addTransaction('expense', amount, 'shopping', `${shopName} - ${productName}`);
+  addTransaction('expense', amount, 'shopping', `购买 ${productName} (${shopName})`);
+  return true;
+};
+
+// ==================== AI钱包系统 ====================
+
+/**
+ * 获取AI钱包数据
+ */
+export const getAIWalletData = (): AIWalletData => {
+  try {
+    const data = localStorage.getItem('ai_wallet_data');
+    if (data) {
+      return JSON.parse(data);
+    }
+    return {};
+  } catch (error) {
+    console.error('获取AI钱包数据失败:', error);
+    return {};
+  }
+};
+
+/**
+ * 保存AI钱包数据
+ */
+export const saveAIWalletData = (data: AIWalletData): void => {
+  try {
+    localStorage.setItem('ai_wallet_data', JSON.stringify(data));
+  } catch (error) {
+    console.error('保存AI钱包数据失败:', error);
+  }
+};
+
+/**
+ * 获取指定AI的余额
+ */
+export const getAIBalance = (aiId: string): number => {
+  const aiWallets = getAIWalletData();
+  if (!aiWallets[aiId]) {
+    // 默认每个AI初始有500元
+    return 500;
+  }
+  return aiWallets[aiId].balance;
+};
+
+/**
+ * 初始化AI钱包（如果不存在）
+ */
+const initAIWallet = (aiId: string): void => {
+  const aiWallets = getAIWalletData();
+  if (!aiWallets[aiId]) {
+    aiWallets[aiId] = {
+      balance: 500, // 默认初始余额500元
+      transactions: []
+    };
+    saveAIWalletData(aiWallets);
+  }
+};
+
+/**
+ * AI添加交易记录
+ */
+export const addAITransaction = (
+  aiId: string,
+  type: 'income' | 'expense',
+  amount: number,
+  category: Transaction['category'],
+  description: string,
+  relatedConversationId?: string
+): Transaction => {
+  initAIWallet(aiId);
+  
+  const aiWallets = getAIWalletData();
+  const aiWallet = aiWallets[aiId];
+  
+  const transaction: Transaction = {
+    id: `txn_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+    type,
+    amount,
+    category,
+    description,
+    timestamp: Date.now(),
+    relatedConversationId
+  };
+  
+  // 更新AI余额
+  if (type === 'income') {
+    aiWallet.balance += amount;
+  } else {
+    aiWallet.balance -= amount;
+  }
+  
+  // 添加交易记录
+  aiWallet.transactions.unshift(transaction);
+  
+  // 保留最近1000条记录
+  if (aiWallet.transactions.length > 1000) {
+    aiWallet.transactions = aiWallet.transactions.slice(0, 1000);
+  }
+  
+  saveAIWalletData(aiWallets);
+  
+  console.log(`🤖💰 AI交易记录已添加: ${type === 'income' ? '+' : '-'}¥${amount} ${description}`);
+  
+  return transaction;
+};
+
+/**
+ * 检查AI余额是否足够
+ */
+export const aiHasEnoughBalance = (aiId: string, amount: number): boolean => {
+  const balance = getAIBalance(aiId);
+  return balance >= amount;
+};
+
+/**
+ * AI代付（从AI余额扣款，用户余额增加）
+ */
+export const aiPayForUser = (
+  aiId: string,
+  amount: number,
+  productName: string,
+  conversationId: string
+): boolean => {
+  if (!aiHasEnoughBalance(aiId, amount)) {
+    console.error('AI余额不足');
+    return false;
+  }
+  
+  // AI余额扣款
+  addAITransaction(
+    aiId,
+    'expense',
+    amount,
+    'shopping',
+    `帮用户代付: ${productName}`,
+    conversationId
+  );
+  
+  // 用户余额增加（相当于收到了商品价值）
+  // 注意：这里不增加用户余额，因为代付是AI帮用户买单，用户得到的是商品而不是钱
+  
+  return true;
+};
+
+/**
+ * 退回礼物（从用户余额扣款退回，AI余额不变）
+ */
+export const refundGift = (
+  amount: number,
+  productName: string,
+  conversationId: string
+): boolean => {
+  // 用户余额增加（退款）
+  addTransaction('income', amount, 'shopping', `退回礼物: ${productName}`, conversationId);
   return true;
 };

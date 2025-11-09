@@ -4,7 +4,7 @@ import { Conversation, Message, ApiConfig, UserProfile } from '../types';
 import MoneyTransferModal from './MoneyTransferModal';
 import SendDocumentModal from './SendDocumentModal';
 import DocumentViewModal from './DocumentViewModal';
-import { sendMoney, receiveMoney, getBalance } from '../utils/wallet';
+import { sendMoney, receiveMoney, getBalance, aiPayForUser, refundGift, aiHasEnoughBalance, getAIBalance } from '../utils/wallet';
 import ActivityLogModal from './ActivityLogModal';
 import { 
   getConversationMemories, 
@@ -873,6 +873,28 @@ ${systemPrompt}
   const handleAcceptOrder = (message: Message) => {
     if (!message.order) return;
     
+    // 如果是代付请求，检查用户余额
+    if (message.order.type === 'payRequest') {
+      const userBalance = getBalance();
+      if (userBalance < message.order.totalAmount) {
+        showToast('❌ 余额不足，无法代付', 'error');
+        return;
+      }
+      
+      // 用户代付：用户余额扣款
+      const success = aiPayForUser(
+        conversation.id,
+        message.order.totalAmount,
+        message.order.products.map(p => p.name).join('、'),
+        conversation.id
+      );
+      
+      if (!success) {
+        showToast('❌ 代付失败', 'error');
+        return;
+      }
+    }
+    
     // 更新订单状态
     const updatedMessages = conversation.messages.map(msg => {
       if (msg.id === message.id && msg.order) {
@@ -914,6 +936,15 @@ ${systemPrompt}
   // 拒绝订单（礼物/代付）
   const handleRejectOrder = (message: Message) => {
     if (!message.order) return;
+    
+    // 如果是礼物订单，退款给AI（因为是AI送的礼物）
+    if (message.order.type === 'gift') {
+      refundGift(
+        message.order.totalAmount,
+        message.order.products.map(p => p.name).join('、'),
+        conversation.id
+      );
+    }
     
     // 更新订单状态
     const updatedMessages = conversation.messages.map(msg => {
@@ -1609,6 +1640,29 @@ ${conversation.characterSettings.memoryEvents ? `记忆事件：${conversation.c
               const quotedRole = m.replyTo.role === 'user' ? '我' : '你';
               content = `[回复 ${quotedRole} 说的"${m.replyTo.content}"]\n${m.content}`;
             }
+            
+            // 💰 注入红包/转账信息
+            if (m.moneyTransfer) {
+              const mt = m.moneyTransfer;
+              const typeText = mt.type === 'redPacket' ? '红包' : '转账';
+              const extraInfo = `\n[${m.role === 'user' ? '用户' : '你'}发送了${typeText}]
+金额：¥${mt.amount}${mt.message ? `\n留言：${mt.message}` : ''}
+状态：${mt.status === 'pending' ? '待领取' : mt.status === 'received' ? '已领取' : '已退回'}`;
+              content = content ? content + extraInfo : extraInfo;
+            }
+            
+            // 🎁 注入订单信息
+            if (m.order) {
+              const order = m.order;
+              const typeText = order.type === 'gift' ? '礼物' : '代付请求';
+              const productList = order.products.map(p => `${p.name} ¥${p.price}`).join('、');
+              const extraInfo = `\n[${m.role === 'user' ? '用户' : '你'}发送了${typeText}]
+商品：${productList}
+总金额：¥${order.totalAmount}${order.message ? `\n留言：${order.message}` : ''}
+状态：${order.status === 'pending' ? '待处理' : order.status === 'accepted' ? '已接受' : order.status === 'paid' ? '已支付' : '已拒绝'}`;
+              content = content ? content + extraInfo : extraInfo;
+            }
+            
             return {
               role: m.role,
               content: content,
