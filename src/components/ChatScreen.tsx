@@ -1519,16 +1519,18 @@ ${conversation.characterSettings.memoryEvents ? `记忆事件：${conversation.c
 - 适用场景：生日祝福、还钱、表达感谢、请客吃饭、发工资等
 - 金额建议：根据场景合理设置，红包6.6/8.8/66.6/88.8等吉利数字，转账用整数
 
-【📄 发送文档功能】：
-你可以发送文档给用户，使用以下格式：
-[发文档:标题:类型] 文档内容...
+【📄 发送内容卡片功能】：
+你可以发送各种形式的内容卡片给用户，使用以下格式：
+[发文档:标题:类型] 内容...
 
-类型可以是：text（信件/文章/新闻）、markdown（格式文本）、code（代码）
+类型固定为：text、markdown、code
+但内容形式可以多样化：新闻、八卦、小红书笔记、公众号文章、同人文、信件、策划案、报告等
 
-⚠️ 重要：文档内容只会在用户点击文档卡片后显示，不会泄露到聊天气泡中
+⚠️ 重要：内容只会在用户点击卡片后显示，不会泄露到聊天气泡中
+⚠️ 自动识别：系统会根据标题和内容自动识别显示类型（新闻、小红书、公众号等），显示对应的图标和标签
 
-【文档内容专业规范】：
-根据不同文档类型，内容必须详细、专业、符合真实文体：
+【内容形式与专业规范】：
+根据不同内容形式，必须详细、专业、符合真实文体：
 
 1. 📋 策划案/方案类（500-1500字）：
    - 必须包含：背景分析、目标、策略、执行方案、预算、时间表
@@ -1560,8 +1562,8 @@ ${conversation.characterSettings.memoryEvents ? `记忆事件：${conversation.c
    - 必须符合新闻稿格式：标题、导语、正文、结语
    - 客观专业的媒体语言
    - 包含时间、地点、人物、事件等新闻要素
-   - 段落结构清晰，像真正的公众号文章或新闻报道
-   示例："[发文档:Souvenir品牌升级发布会:text]
+   - 段落结构清晰，像真正的新闻报道
+   示例："[发文档:Souvenir品牌升级发布会新闻:text]
    【导语】2024年11月10日，Souvenir品牌在上海举办新品发布会...
    
    【背景】作为国内领先的轻奢餐饮品牌...
@@ -1569,6 +1571,89 @@ ${conversation.characterSettings.memoryEvents ? `记忆事件：${conversation.c
    【亮点】此次发布会推出...
    
    【影响】业内人士认为..."
+
+3.1 🔥 八卦爆料（200-600字）：
+   - 使用口语化、有热度的语言
+   - 包含爆料点、细节、传闻、反转等元素
+   - 像真实的娱乐八卦或爆料贴
+   示例："[发文档:某明星恋情八卦:text]
+   🔥爆料来了！据说XX和YY在一起了！
+   
+   知情人透露：上周末在某高档餐厅目击...
+   
+   细节曝光：两人行为亲密，男方还...
+   
+   但也有人说：这可能是...（反转）
+   
+   吃瓜群众：坐等官宣/辟谣..."
+
+3.2 📕 小红书笔记（200-500字）：
+   - 使用小红书特有的语言风格和表情
+   - 包含：开头吸引、正文种草、总结推荐
+   - 多用"！""姐妹们""宝子们""绝绝子"等流行词
+   - 分点清晰，标注重点
+   示例："[发文档:Souvenir探店小红书:text]
+   姐妹们！！！这家店我必须安利给你们💕
+   
+   📍地址：上海XX路XX号
+   ⏰营业时间：11:00-22:00
+   💰人均：180元
+   
+   ✨环境✨
+   一进门就被氛围感拉满！！！复古装修绝了...
+   
+   🍰推荐菜品🍰
+   1️⃣招牌甜品：颜值爆表，好吃到流泪😭
+   2️⃣特色套餐：分量足，CP值很高...
+   
+   💡小tips💡
+   - 记得提前预约！现场排队超久
+   - 靠窗位置超级出片📸
+   
+   总之强烈推荐！姐妹们冲冲冲！！！"
+
+3.3 💬 公众号文章（400-1000字）：
+   - 符合公众号文章格式和排版习惯
+   - 标题吸引眼球，正文分段清晰
+   - 可以有引导关注、往期回顾等元素
+   - 语言生动，有故事性或干货价值
+   示例："[发文档:Souvenir的美学哲学公众号:text]
+   在快节奏的都市生活中，我们总是匆匆忙忙...
+   
+   【Souvenir的诞生】
+   2020年，创始人在巴黎的一次旅行中...
+   
+   【时间的窗语】
+   这个系列的灵感来源于四季更迭...
+   
+   【美食即艺术】
+   每一道菜品的呈现都是一次视觉盛宴...
+   
+   ▼ 点击阅读往期精彩 ▼
+   《XX》《YY》
+   
+   ---
+   📍门店地址 | 💬客服微信
+   点击"在看"，分享给更多朋友"
+
+3.4 📖 同人文/小说（500-2000字）：
+   - 要有情节、对话、场景描写
+   - 符合小说的叙事结构和文学性
+   - 人物性格鲜明，情节合理
+   - 适当使用环境描写、心理描写
+   示例："[发文档:XX×YY番外篇同人:text]
+   第一章：重逢
+   
+   秋日的午后，阳光透过梧桐叶洒在石板路上...
+   
+   \"好久不见。\"他的声音依旧温柔。
+   
+   她抬起头，那张熟悉的脸庞...
+   
+   （完整故事情节，800-1500字）
+   
+   ---END---
+   下一章预告：《XX》"
 
 4. 📄 报告/分析类（400-1000字）：
    - 数据详实，分析深入
@@ -2819,42 +2904,103 @@ ${conversation.characterSettings.memoryEvents ? `记忆事件：${conversation.c
                     ) : null}
                     
                     {/* 文档消息卡片 */}
-                    {message.document ? (
-                      <div
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setViewingDocument(message.document);
-                        }}
-                        className="bg-white border border-gray-200 rounded-2xl p-0 overflow-hidden cursor-pointer hover:shadow-md transition-shadow max-w-[280px]"
-                      >
-                        <div className="p-4">
-                          <div className="flex items-start gap-3">
-                            <div className="w-12 h-12 bg-blue-50 rounded-lg flex items-center justify-center flex-shrink-0">
-                              <FileText className="w-6 h-6 text-blue-500" />
-                            </div>
-                            <div className="flex-1 min-w-0">
-                              <div className="font-medium text-gray-900 truncate mb-1">
-                                {message.document.title}
+                    {message.document ? (() => {
+                      // 智能识别文档类型
+                      const getDocumentDisplayType = (title: string, content: string) => {
+                        const lowerTitle = title.toLowerCase();
+                        const lowerContent = content.substring(0, 200).toLowerCase();
+                        
+                        // 新闻类
+                        if (lowerTitle.includes('新闻') || lowerTitle.includes('资讯') || lowerTitle.includes('快讯') ||
+                            lowerContent.includes('【导语】') || lowerContent.includes('记者') || lowerContent.includes('报道')) {
+                          return { icon: '📰', label: '新闻资讯', color: 'bg-red-50 text-red-500' };
+                        }
+                        
+                        // 小红书笔记
+                        if (lowerTitle.includes('小红书') || lowerTitle.includes('种草') || lowerTitle.includes('测评') ||
+                            lowerContent.includes('姐妹们') || lowerContent.includes('宝子们') || lowerContent.includes('！！！')) {
+                          return { icon: '📕', label: '小红书笔记', color: 'bg-pink-50 text-pink-500' };
+                        }
+                        
+                        // 公众号文章
+                        if (lowerTitle.includes('公众号') || lowerTitle.includes('推文') || lowerTitle.includes('文章') ||
+                            lowerContent.includes('点击上方') || lowerContent.includes('关注我们')) {
+                          return { icon: '💬', label: '公众号文章', color: 'bg-green-50 text-green-500' };
+                        }
+                        
+                        // 同人文/小说
+                        if (lowerTitle.includes('同人') || lowerTitle.includes('小说') || lowerTitle.includes('番外') ||
+                            lowerContent.includes('第一章') || lowerContent.includes('完') || lowerContent.match(/[""].*[""]说/)) {
+                          return { icon: '📖', label: '文学作品', color: 'bg-purple-50 text-purple-500' };
+                        }
+                        
+                        // 八卦/爆料
+                        if (lowerTitle.includes('八卦') || lowerTitle.includes('爆料') || lowerTitle.includes('瓜') ||
+                            lowerContent.includes('据说') || lowerContent.includes('传闻') || lowerContent.includes('爆料')) {
+                          return { icon: '🔥', label: '八卦爆料', color: 'bg-orange-50 text-orange-500' };
+                        }
+                        
+                        // 信件
+                        if (lowerTitle.includes('信') || lowerTitle.includes('情书') ||
+                            lowerContent.includes('亲爱的') || lowerContent.includes('提笔') || lowerContent.includes('落款')) {
+                          return { icon: '✉️', label: '私人信件', color: 'bg-amber-50 text-amber-500' };
+                        }
+                        
+                        // 策划案/方案
+                        if (lowerTitle.includes('策划') || lowerTitle.includes('方案') || lowerTitle.includes('计划') ||
+                            lowerContent.includes('一、') || lowerContent.includes('二、') || lowerContent.includes('背景分析')) {
+                          return { icon: '📋', label: '策划方案', color: 'bg-indigo-50 text-indigo-500' };
+                        }
+                        
+                        // 报告/分析
+                        if (lowerTitle.includes('报告') || lowerTitle.includes('分析') || lowerTitle.includes('数据') ||
+                            lowerContent.includes('摘要') || lowerContent.includes('结论') || lowerContent.includes('%')) {
+                          return { icon: '📊', label: '分析报告', color: 'bg-cyan-50 text-cyan-500' };
+                        }
+                        
+                        // 默认：在线文档
+                        return { icon: '📄', label: '在线文档', color: 'bg-blue-50 text-blue-500' };
+                      };
+                      
+                      const docType = getDocumentDisplayType(message.document.title, message.document.content);
+                      
+                      return (
+                        <div
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setViewingDocument(message.document);
+                          }}
+                          className="bg-white border border-gray-200 rounded-2xl p-0 overflow-hidden cursor-pointer hover:shadow-md transition-shadow max-w-[280px]"
+                        >
+                          <div className="p-4">
+                            <div className="flex items-start gap-3">
+                              <div className={`w-12 h-12 rounded-lg flex items-center justify-center flex-shrink-0 ${docType.color}`}>
+                                <span className="text-2xl">{docType.icon}</span>
                               </div>
-                              <div className="text-xs text-gray-500 flex items-center gap-2">
-                                {message.document.greeting && (
-                                  <>
-                                    <span>{message.document.greeting}</span>
-                                    <span>•</span>
-                                  </>
-                                )}
-                                <span className="flex items-center gap-1">
-                                  <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                                  </svg>
-                                  在线文档
-                                </span>
+                              <div className="flex-1 min-w-0">
+                                <div className="font-medium text-gray-900 truncate mb-1">
+                                  {message.document.title}
+                                </div>
+                                <div className="text-xs text-gray-500 flex items-center gap-2">
+                                  {message.document.greeting && (
+                                    <>
+                                      <span>{message.document.greeting}</span>
+                                      <span>•</span>
+                                    </>
+                                  )}
+                                  <span className="flex items-center gap-1">
+                                    <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                                    </svg>
+                                    {docType.label}
+                                  </span>
+                                </div>
                               </div>
                             </div>
                           </div>
                         </div>
-                      </div>
-                    ) : null}
+                      );
+                    })() : null}
                     
                     {/* 订单消息气泡（礼物/代付请求） */}
                     {message.order && (
