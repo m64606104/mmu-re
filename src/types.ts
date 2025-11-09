@@ -41,6 +41,8 @@ export interface Message {
   edited?: boolean; // 是否已编辑
   // 💰 红包/转账支持
   moneyTransfer?: MoneyTransfer;
+  // 📄 文档支持
+  document?: DocumentMessage;
 }
 
 // 💰 红包/转账类型
@@ -50,6 +52,15 @@ export interface MoneyTransfer {
   message?: string; // 红包/转账留言
   status: 'pending' | 'received' | 'returned'; // 待领取、已领取、已退回
   receivedAt?: number; // 领取时间
+}
+
+// 📄 文档消息类型
+export interface DocumentMessage {
+  title: string; // 文档标题
+  content: string; // 文档内容
+  size?: number; // 文档大小（字节）
+  type: 'text' | 'markdown' | 'code'; // 文档类型
+  greeting?: string; // 文档附带的问候语，如"请查收"
 }
 
 export interface CharacterSettings {

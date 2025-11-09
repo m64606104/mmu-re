@@ -2,6 +2,8 @@ import { useState, useEffect, useRef } from 'react';
 import { ChevronLeft, Send, Mic, Sparkles, Smile, BellOff, Bell, Pause, Play, Image as ImageIcon, Video, Phone, MapPin, FileText, Plus } from 'lucide-react';
 import { Conversation, Message, ApiConfig, UserProfile } from '../types';
 import MoneyTransferModal from './MoneyTransferModal';
+import SendDocumentModal from './SendDocumentModal';
+import DocumentViewModal from './DocumentViewModal';
 import { sendMoney, receiveMoney, getBalance } from '../utils/wallet';
 import ActivityLogModal from './ActivityLogModal';
 import { 
@@ -63,7 +65,10 @@ const backgroundTaskManager = {
       const splitMsgs = splitMessages(assistantMessage);
       
       // 将分割后的文本转换为Message对象数组
-      const messages: Message[] = splitMsgs.map((content, index) => {
+      const messages: Message[] = [];
+      const allExtraMessages: Message[] = [];
+      
+      splitMsgs.forEach((content, index) => {
         const baseId = Date.now().toString() + '_' + index;
         
         // 提取所有媒体项（支持多媒体混合）
@@ -111,11 +116,79 @@ const backgroundTaskManager = {
           cleanContent = cleanContent.replace(match[0], '').trim();
         }
         
+        // 🔍 解析特殊指令（红包、转账、文档）
+        let finalContent = cleanContent;
+        
+        // 检测红包：[发红包:金额:留言]
+        const redPacketMatch = finalContent.match(/\[发红包:([\d.]+):([^\]]*)\]/);
+        if (redPacketMatch) {
+          const amount = parseFloat(redPacketMatch[1]);
+          const redPacketMsg = redPacketMatch[2];
+          finalContent = finalContent.replace(redPacketMatch[0], '').trim();
+          
+          allExtraMessages.push({
+            id: `${baseId}_redpacket`,
+            role: 'assistant',
+            content: '发出了一个红包',
+            timestamp: Date.now() + 100 + allExtraMessages.length * 10,
+            moneyTransfer: {
+              type: 'redPacket',
+              amount,
+              message: redPacketMsg,
+              status: 'pending'
+            }
+          });
+        }
+
+        // 检测转账：[转账:金额:备注]
+        const transferMatch = finalContent.match(/\[转账:([\d.]+):([^\]]*)\]/);
+        if (transferMatch) {
+          const amount = parseFloat(transferMatch[1]);
+          const transferMsg = transferMatch[2];
+          finalContent = finalContent.replace(transferMatch[0], '').trim();
+          
+          allExtraMessages.push({
+            id: `${baseId}_transfer`,
+            role: 'assistant',
+            content: '向你转账',
+            timestamp: Date.now() + 100 + allExtraMessages.length * 10,
+            moneyTransfer: {
+              type: 'transfer',
+              amount,
+              message: transferMsg,
+              status: 'pending'
+            }
+          });
+        }
+
+        // 检测文档：[发文档:标题:类型]
+        const docMatch = finalContent.match(/\[发文档:([^:]+):(text|markdown|code)\]\s*([\s\S]*)/);
+        if (docMatch) {
+          const docTitle = docMatch[1];
+          const docType = docMatch[2] as 'text' | 'markdown' | 'code';
+          const docContent = docMatch[3].trim();
+          finalContent = finalContent.replace(/\[发文档:[^\]]+\][\s\S]*/, '').trim();
+          
+          allExtraMessages.push({
+            id: `${baseId}_doc`,
+            role: 'assistant',
+            content: `发送了文档「${docTitle}」`,
+            timestamp: Date.now() + 100 + allExtraMessages.length * 10,
+            document: {
+              title: docTitle,
+              content: docContent,
+              type: docType,
+              greeting: '请查收',
+              size: new Blob([docContent]).size
+            }
+          });
+        }
+        
         // 构建消息对象
         const message: Message = {
           id: baseId,
           role: 'assistant' as const,
-          content: cleanContent || (mediaItems.length > 0 ? '[多媒体消息]' : ''),
+          content: finalContent || cleanContent || (mediaItems.length > 0 ? '[多媒体消息]' : ''),
           timestamp: Date.now()
         };
         
@@ -130,8 +203,11 @@ const backgroundTaskManager = {
           message.isMediaDescriptionOnly = true;
         }
         
-        return message;
+        messages.push(message);
       });
+      
+      // 添加所有额外的特殊消息（红包、转账、文档）
+      messages.push(...allExtraMessages);
       
       callback(messages, conversation.id);
       return "task_" + Date.now();
@@ -169,6 +245,8 @@ export default function ChatScreen({
   const [isGenerating, setIsGenerating] = useState(false);
   const [showToolbar, setShowToolbar] = useState(false);
   const [showMoneyTransferModal, setShowMoneyTransferModal] = useState(false);
+  const [showSendDocumentModal, setShowSendDocumentModal] = useState(false);
+  const [viewingDocument, setViewingDocument] = useState<Message['document'] | null>(null);
   const [showVideoDescModal, setShowVideoDescModal] = useState(false);
   const [videoDescInput, setVideoDescInput] = useState('');
   const [pendingVideoFile, setPendingVideoFile] = useState<File | null>(null);
@@ -1022,7 +1100,37 @@ ${conversation.characterSettings.memoryEvents ? `记忆事件：${conversation.c
 
 你应该：先回复第3条（高优先级），可以跳过1、2条，或者简单带一句
 
-注意：如果所有消息都是低优先级且不感兴趣，可以全部输出"[不回复]"`
+注意：如果所有消息都是低优先级且不感兴趣，可以全部输出"[不回复]"
+
+【💰 红包和转账功能】：
+你可以在适当的场景下发送红包或转账，使用以下格式：
+- 发红包：在回复中包含 [发红包:金额:留言]，例如："生日快乐！[发红包:66.6:生日快乐]"
+- 转账：在回复中包含 [转账:金额:备注]，例如："借你的钱还给你 [转账:100:还钱]"
+- 适用场景：生日祝福、还钱、表达感谢、请客吃饭、发工资等
+- 金额建议：根据场景合理设置，红包6.6/8.8/66.6/88.8等吉利数字，转账用整数
+
+【📄 发送文档功能】：
+你可以发送文档给用户，使用以下格式：
+- 发文档：在回复中包含 [发文档:标题:类型]，然后在下一段写文档内容
+- 文档类型：text（普通文本）/ markdown（格式文档）/ code（代码）
+- 示例格式：
+  "我写了一封信给你 [发文档:给你的一封信:text]
+  
+  亲爱的朋友：
+  
+  这里是文档内容...
+  
+  落款：你的朋友"
+- 适用场景：分享文章、写信、发送代码、整理笔记等
+
+【💰 接收红包转账规则】：
+- 当收到用户红包时，根据你的性格和关系决定是否接收
+- 如果关系亲密、金额合理，可以接收并表示感谢
+- 如果关系疏远、金额过大，可以婉拒退回
+- 接收示例："谢谢！[接收]"
+- 退回示例："不用这么客气 [退回]"
+
+记住：像真人一样使用这些功能，在合适的时机自然地发送红包、转账或文档。`
         : conversation.type === 'group'
         ? '你是一个群聊助手，可以参与多人对话。使用自然口语表达，不要使用斜杠（/）等书面符号。'
         : '你是一个AI助手。使用自然口语表达，不要使用斜杠（/）等书面符号。';
@@ -2135,8 +2243,46 @@ ${conversation.characterSettings.memoryEvents ? `记忆事件：${conversation.c
                       </div>
                     ) : null}
                     
+                    {/* 文档消息卡片 */}
+                    {message.document ? (
+                      <div
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setViewingDocument(message.document);
+                        }}
+                        className="bg-white border border-gray-200 rounded-2xl p-0 overflow-hidden cursor-pointer hover:shadow-md transition-shadow max-w-[280px]"
+                      >
+                        <div className="p-4">
+                          <div className="flex items-start gap-3">
+                            <div className="w-12 h-12 bg-blue-50 rounded-lg flex items-center justify-center flex-shrink-0">
+                              <FileText className="w-6 h-6 text-blue-500" />
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <div className="font-medium text-gray-900 truncate mb-1">
+                                {message.document.title}
+                              </div>
+                              <div className="text-xs text-gray-500 flex items-center gap-2">
+                                {message.document.greeting && (
+                                  <>
+                                    <span>{message.document.greeting}</span>
+                                    <span>•</span>
+                                  </>
+                                )}
+                                <span className="flex items-center gap-1">
+                                  <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                                  </svg>
+                                  在线文档
+                                </span>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    ) : null}
+                    
                     {/* 多媒体混合显示（优先使用新的mediaItems数组） */}
-                    {!message.moneyTransfer && message.mediaItems && message.mediaItems.length > 0 && (
+                    {!message.moneyTransfer && !message.document && message.mediaItems && message.mediaItems.length > 0 && (
                       <div className="space-y-2">
                         {message.mediaItems.map((media, idx) => (
                           <div key={`${message.id}_media_${idx}`}>
@@ -2367,7 +2513,7 @@ ${conversation.characterSettings.memoryEvents ? `记忆事件：${conversation.c
                     )}
                     
                     {/* 纯文字内容 */}
-                    {!message.mediaType && !message.moneyTransfer && (
+                    {!message.mediaType && !message.moneyTransfer && !message.document && (
                       <p className="text-[15px] leading-relaxed whitespace-pre-wrap break-words">{message.content}</p>
                     )}
                     {/* 用户媒体的描述文字（排除语音和表情包） */}
@@ -2564,6 +2710,14 @@ ${conversation.characterSettings.memoryEvents ? `记忆事件：${conversation.c
               >
                 <div className="w-9 h-9 rounded-full bg-white border border-gray-300 flex items-center justify-center hover:border-gray-400 transition-colors">
                   <span className="text-base">💰</span>
+                </div>
+              </button>
+              <button 
+                className="flex-shrink-0"
+                onClick={() => setShowSendDocumentModal(true)}
+              >
+                <div className="w-9 h-9 rounded-full bg-white border border-gray-300 flex items-center justify-center hover:border-gray-400 transition-colors">
+                  <FileText className="w-4 h-4 text-gray-600" />
                 </div>
               </button>
             </div>
@@ -2903,6 +3057,45 @@ ${conversation.characterSettings.memoryEvents ? `记忆事件：${conversation.c
             alert('发送失败');
           }
         }}
+      />
+    )}
+
+    {/* 发送文档弹窗 */}
+    {showSendDocumentModal && (
+      <SendDocumentModal
+        onClose={() => setShowSendDocumentModal(false)}
+        onSend={(title, content, greeting, type) => {
+          const newMessage: Message = {
+            id: `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+            role: 'user',
+            content: `发送了文档「${title}」`,
+            timestamp: Date.now(),
+            document: {
+              title,
+              content,
+              greeting,
+              type,
+              size: new Blob([content]).size
+            }
+          };
+
+          onUpdateConversation(conversation.id, {
+            messages: [...conversation.messages, newMessage],
+            lastMessageTime: Date.now()
+          });
+
+          // 关闭工具栏和弹窗
+          setShowToolbar(false);
+          setShowSendDocumentModal(false);
+        }}
+      />
+    )}
+
+    {/* 文档查看器 */}
+    {viewingDocument && (
+      <DocumentViewModal
+        document={viewingDocument}
+        onClose={() => setViewingDocument(null)}
       />
     )}
     </>
