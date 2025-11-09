@@ -201,12 +201,30 @@ const backgroundTaskManager = {
           });
         }
 
-        // 检测红包/转账接收响应：[接收] [退回]
-        const moneyResponseMatch = finalContent.match(/\[(接收|退回)\]/);
+        // 检测红包/转账接收响应：[接收红包:留言] [退回红包:留言] [接收转账:留言] [退回转账:留言]
+        const moneyResponseMatch = finalContent.match(/\[(接收|退回)(红包|转账):([^\]]*)\]/);
         if (moneyResponseMatch) {
-          const responseType = moneyResponseMatch[1];
+          const action = moneyResponseMatch[1]; // 接收/退回
+          const type = moneyResponseMatch[2]; // 红包/转账
+          const message = moneyResponseMatch[3]; // 留言
           finalContent = finalContent.replace(moneyResponseMatch[0], '').trim();
-          console.log(`💰 AI红包响应: ${responseType}`);
+          
+          console.log(`💰 AI${action}${type}: ${message}`);
+          
+          // 创建转账气泡（AI接收用户的钱时，需要找到原始金额）
+          // 这里暂时用0，实际金额会在processAIMoneyResponse中更新
+          allExtraMessages.push({
+            id: `${baseId}_moneyresponse`,
+            role: 'assistant',
+            content: action === '接收' ? `已收到你的${type}` : `已退回你的${type}`,
+            timestamp: Date.now() + 100 + allExtraMessages.length * 10,
+            moneyTransfer: {
+              type: type === '红包' ? 'redPacket' : 'transfer',
+              amount: 0, // 占位，需要后续更新
+              message: message,
+              status: action === '接收' ? 'received' : 'returned'
+            }
+          });
         }
 
         // 检测订单响应：[接受礼物] [退回礼物] [同意代付] [拒绝代付]
@@ -1106,6 +1124,85 @@ ${systemPrompt}
     showToast(toastMessages[newStatus], newStatus === 'rejected' ? 'warning' : 'success');
   };
 
+  // 处理AI的红包/转账响应（更新金额和状态）
+  const processAIMoneyResponse = (aiMessage: Message) => {
+    // 检查是否是红包/转账响应消息（amount为0）
+    if (!aiMessage.moneyTransfer || aiMessage.moneyTransfer.amount !== 0) {
+      return; // 不是需要处理的响应
+    }
+    
+    console.log(`💰 检测到AI红包响应消息`);
+    
+    // 从localStorage获取最新对话
+    const storedConversations = localStorage.getItem('conversations');
+    if (!storedConversations) return;
+    
+    const allConversations = JSON.parse(storedConversations) as Conversation[];
+    const currentConv = allConversations.find((c: Conversation) => c.id === conversation.id);
+    if (!currentConv) return;
+    
+    // 找到用户最近发送的待处理红包/转账消息
+    const userMoneyMessage = [...currentConv.messages]
+      .reverse()
+      .find(msg => 
+        msg.role === 'user' && 
+        msg.moneyTransfer && 
+        msg.moneyTransfer.status === 'pending' &&
+        msg.moneyTransfer.type === aiMessage.moneyTransfer!.type
+      );
+    
+    if (!userMoneyMessage || !userMoneyMessage.moneyTransfer) {
+      console.log('⚠️ 未找到待处理的红包/转账消息');
+      return;
+    }
+    
+    const originalAmount = userMoneyMessage.moneyTransfer.amount;
+    const responseStatus = aiMessage.moneyTransfer.status; // 'received' 或 'returned'
+    
+    console.log(`💰 处理AI红包响应: ${responseStatus}, 金额: ¥${originalAmount}`);
+    
+    // 更新对话中的两条消息
+    const updatedMessages = currentConv.messages.map(msg => {
+      // 更新AI响应消息的金额
+      if (msg.id === aiMessage.id && msg.moneyTransfer) {
+        return {
+          ...msg,
+          moneyTransfer: {
+            ...msg.moneyTransfer,
+            amount: originalAmount
+          }
+        };
+      }
+      // 更新用户原始消息的状态
+      if (msg.id === userMoneyMessage.id && msg.moneyTransfer) {
+        return {
+          ...msg,
+          moneyTransfer: {
+            ...msg.moneyTransfer,
+            status: responseStatus,
+            receivedAt: responseStatus === 'received' ? Date.now() : undefined
+          }
+        };
+      }
+      return msg;
+    });
+    
+    // 更新localStorage
+    const updatedConversations = allConversations.map(c => 
+      c.id === conversation.id 
+        ? { ...c, messages: updatedMessages }
+        : c
+    );
+    localStorage.setItem('conversations', JSON.stringify(updatedConversations));
+    
+    // 立即更新当前组件状态
+    onUpdateConversation(conversation.id, {
+      messages: updatedMessages
+    });
+    
+    console.log(`✅ 红包状态已更新: ${responseStatus}`);
+  };
+
   // 发送视频消息
   const handleSendVideo = () => {
     if (!pendingVideoFile || !videoDescInput.trim()) {
@@ -1368,24 +1465,31 @@ ${conversation.characterSettings.memoryEvents ? `记忆事件：${conversation.c
 
 【📄 发送文档功能】：
 你可以发送文档给用户，使用以下格式：
-- 发文档：在回复中包含 [发文档:标题:类型]，然后在下一段写文档内容
-- 文档类型：text（普通文本）/ markdown（格式文档）/ code（代码）
-- 示例格式：
-  "我写了一封信给你 [发文档:给你的一封信:text]
-  
-  亲爱的朋友：
-  
-  这里是文档内容...
-  
-  落款：你的朋友"
-- 适用场景：分享文章、写信、发送代码、整理笔记等
+[发文档:标题:类型] 文档内容...
+
+重要规则：
+- 只在需要发送较长内容时使用（如信件、文章、代码）
+- 不要在普通聊天中提及这个功能
+- 文档内容会被自动整理，用户点击查看
+- 适用场景：写信、分享文章、发送代码、整理笔记等
 
 【💰 接收红包转账规则】：
-- 当收到用户红包时，根据你的性格和关系决定是否接收
-- 如果关系亲密、金额合理，可以接收并表示感谢
-- 如果关系疏远、金额过大，可以婉拒退回
-- 接收示例："谢谢！[接收]"
-- 退回示例："不用这么客气 [退回]"
+当收到用户红包/转账时，根据你的性格和关系决定是否接收：
+
+接收格式（会以转账形式返回）：
+- [接收红包:留言] - 接收红包并表达感谢
+- [接收转账:留言] - 接收转账并说明
+示例："太感谢了！[接收红包:谢谢你的心意]"
+
+退回格式（会以转账形式返回）：
+- [退回红包:留言] - 退回红包并说明理由
+- [退回转账:留言] - 退回转账并说明理由  
+示例："不用这么客气 [退回红包:我们这么熟不用红包啦]"
+
+注意：
+- 接收/退回都会以转账气泡的形式显示，不是普通文字
+- 留言要简短自然，10字以内
+- 根据关系和金额合理判断
 
 【🎁 订单/礼物规则】：
 你可能会收到用户送的礼物或代付请求：
@@ -1885,6 +1989,11 @@ ${conversation.characterSettings.memoryEvents ? `记忆事件：${conversation.c
                 processAIOrderResponse(newMessages[i]);
               }
               
+              // 💰 处理红包/转账响应（如果AI回复包含红包响应）
+              if (newMessages[i].moneyTransfer) {
+                processAIMoneyResponse(newMessages[i]);
+              }
+              
               // 短暂停顿再显示下一条
               if (i < newMessages.length - 1) {
                 await new Promise(resolve => setTimeout(resolve, 300));
@@ -1909,6 +2018,10 @@ ${conversation.characterSettings.memoryEvents ? `记忆事件：${conversation.c
             newMessages.forEach(msg => {
               if (msg.content) {
                 processAIOrderResponse(msg);
+              }
+              // 💰 处理红包/转账响应
+              if (msg.moneyTransfer) {
+                processAIMoneyResponse(msg);
               }
             });
             
