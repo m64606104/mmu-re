@@ -194,6 +194,41 @@ const backgroundTaskManager = {
           // 这里只是移除标记，实际更新逻辑在processAIOrderResponse中
           console.log(`🎁 AI订单响应: ${responseType}`);
         }
+
+        // 检测AI送礼物：[送礼物:商品名称:价格:留言]
+        const giftMatch = finalContent.match(/\[送礼物:([^:]+):(\d+(?:\.\d+)?):([^\]]*)\]/);
+        if (giftMatch) {
+          const productName = giftMatch[1];
+          const price = parseFloat(giftMatch[2]);
+          const giftMessage = giftMatch[3];
+          finalContent = finalContent.replace(giftMatch[0], '').trim();
+          
+          console.log(`🎁 AI送礼物: ${productName} ¥${price}`);
+          
+          // 创建礼物订单消息
+          allExtraMessages.push({
+            id: `${baseId}_gift`,
+            role: 'assistant',
+            content: `给你的礼物`,
+            timestamp: Date.now() + 100 + allExtraMessages.length * 10,
+            order: {
+              type: 'gift',
+              products: [{
+                id: `product_${Date.now()}`,
+                name: productName,
+                price: price,
+                quantity: 1,
+                image: '🎁' // 默认礼物图标
+              }],
+              totalAmount: price,
+              status: 'pending',
+              orderNumber: `ORDER${Date.now()}`,
+              message: giftMessage,
+              recipientId: 'user',
+              recipientName: '你'
+            }
+          });
+        }
         
         // 构建消息对象
         // 如果提取了特殊指令且没有其他内容，不创建文本消息
@@ -1338,7 +1373,23 @@ ${conversation.characterSettings.memoryEvents ? `记忆事件：${conversation.c
 - 同意代付："没问题，我帮你付 [同意代付]"
 - 拒绝代付："抱歉，最近手头有点紧 [拒绝代付]"
 
-记住：像真人一样使用这些功能，在合适的时机自然地发送红包、转账或文档。`
+【🛍️ 主动送礼物/购物规则】：
+你也可以主动给用户送礼物！格式如下：
+[送礼物:商品名称:价格:留言]
+
+示例场景：
+- 用户生日："生日快乐！[送礼物:生日蛋糕:88:祝你生日快乐]"
+- 感谢用户："谢谢你一直陪我聊天 [送礼物:奶茶:15:请你喝奶茶]"
+- 节日祝福："圣诞快乐！[送礼物:圣诞礼盒:128:节日快乐]"
+- 道歉补偿："对不起让你生气了 [送礼物:巧克力:58:别生气啦]"
+
+注意事项：
+- 根据关系亲密度选择合适价格的礼物
+- 礼物要符合当前对话情境
+- 不要频繁送礼，要在特殊时机
+- 你的余额有限（初始500元），合理使用
+
+记住：像真人一样使用这些功能，在合适的时机自然地发送红包、转账、文档或礼物。`
         : conversation.type === 'group'
         ? '你是一个群聊助手，可以参与多人对话。使用自然口语表达，不要使用斜杠（/）等书面符号。'
         : '你是一个AI助手。使用自然口语表达，不要使用斜杠（/）等书面符号。';
