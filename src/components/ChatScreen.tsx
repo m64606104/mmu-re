@@ -17,82 +17,8 @@ import { buildTimeAwarePrompt } from '../utils/timeAwareness';
 import { getMomentsData } from '../utils/aiMomentsGenerator';
 import { getAIStatus, analyzeAndUpdateStatusFromAI } from '../utils/aiStatusManager';
 import { getErrorFromResponse, formatErrorMessage } from '../utils/apiErrorHandler';
-
-// 智能分割消息函数 - 更自然的聊天风格
-// @ts-ignore - 函数在handleGenerate中被使用
-const splitMessages = (text: string): string[] => {
-  if (!text || text.trim() === '') return [];
-  
-  const messages: string[] = [];
-  
-  // 先按段落分割（双换行）
-  const paragraphs = text.split(/\n\n+/);
-  
-  for (const para of paragraphs) {
-    let trimmed = para.trim();
-    if (!trimmed) continue;
-    
-    // 处理每个段落
-    while (trimmed.length > 0) {
-      let splitIndex = -1;
-      
-      // 优先在主要标点处分割（。！？!?.）
-      const majorPunctuations = [/[。！？!?.](?=[^""]*(?:""[^""]*""[^""]*)*$)/g];
-      for (const regex of majorPunctuations) {
-        const matches = [...trimmed.matchAll(regex)];
-        if (matches.length > 0) {
-          // 找到第一个标点后至少30字的位置
-          for (const match of matches) {
-            if (match.index! >= 20) {
-              splitIndex = match.index! + 1;
-              break;
-            }
-          }
-          if (splitIndex > 0) break;
-        }
-      }
-      
-      // 如果没找到主要标点且超过50字，在逗号或分号处分割
-      if (splitIndex === -1 && trimmed.length > 50) {
-        const minorPunctuations = [/[，,；;](?=[^""]*(?:""[^""]*""[^""]*)*$)/g];
-        for (const regex of minorPunctuations) {
-          const matches = [...trimmed.matchAll(regex)];
-          if (matches.length > 0) {
-            for (const match of matches) {
-              if (match.index! >= 30 && match.index! <= 60) {
-                splitIndex = match.index! + 1;
-                break;
-              }
-            }
-            if (splitIndex > 0) break;
-          }
-        }
-      }
-      
-      // 分割消息
-      if (splitIndex > 0 && splitIndex < trimmed.length) {
-        let msg = trimmed.substring(0, splitIndex).trim();
-        // 如果末尾是逗号，去掉
-        if (msg.endsWith(',') || msg.endsWith('，')) {
-          msg = msg.slice(0, -1);
-        }
-        messages.push(msg);
-        trimmed = trimmed.substring(splitIndex).trim();
-      } else {
-        // 剩余内容作为最后一条消息
-        let msg = trimmed.trim();
-        if (msg.endsWith(',') || msg.endsWith('，')) {
-          msg = msg.slice(0, -1);
-        }
-        messages.push(msg);
-        break;
-      }
-    }
-  }
-  
-  return messages.length > 0 ? messages : [text];
-};
-
+// @ts-ignore - Functions are used but TS compiler cache may not detect
+import { splitMessages, cleanAIMessage } from '../utils/messageFormatter';
 // import { backgroundTaskManager } from '../utils/backgroundTaskManager';
 // 直接在这里定义一个简化版的backgroundTaskManager作为替代
 const backgroundTaskManager = {
@@ -1369,7 +1295,7 @@ ${conversation.characterSettings.memoryEvents ? `记忆事件：${conversation.c
       const data = await response.json();
       let assistantMessage = data.choices[0]?.message?.content;
       
-      // 清理AI回复中的内部思考内容、引用链接和Markdown格式
+      // 清理AI回复中的内部思考内容、Markdown格式和引用链接
       if (assistantMessage) {
         // 移除常见的内部思考模式
         assistantMessage = assistantMessage
@@ -1385,26 +1311,10 @@ ${conversation.characterSettings.memoryEvents ? `记忆事件：${conversation.c
           .replace(/^\s*\[(?!图片|视频|语音|表情包)[\s\S]*?\]\s*$/gm, '')
           // 移除to understand/to inform等内部说明
           .replace(/^.*?(to understand|to inform|to analyze).*?(?=\n|$)/gmi, '')
-          // 移除Markdown格式标记（列表、加粗、斜体、代码、删除线）
-          .replace(/^[*+-]\s+/gm, '')  // 移除列表标记
-          .replace(/^\d+\.\s+/gm, '')  // 移除数字列表
-          .split('**').join('')  // 移除加粗**
-          .split('*').join('')  // 移除斜体*
-          .replace(/`([^`]+)`/g, '$1')  // 移除代码`
-          .replace(/~{2}([^~]+)~{2}/g, '$1')  // 移除删除线~~
-          .replace(/^#{1,6}\s+/gm, '')  // 移除标题#
-          // 移除引用部分（主要引用:、引用:、参考资料: 等开头的部分及后续链接）
-          .replace(/(?:主要)?引用[:：]\s*[\s\S]*$/gmi, '')
-          .replace(/参考资料[:：]\s*[\s\S]*$/gmi, '')
-          .replace(/来源[:：]\s*[\s\S]*$/gmi, '')
-          // 移除 [数字] 格式的引用标记和紧随的链接
-          .replace(/\[\d+\]\s*\[.*?\]\s*\(https?:\/\/[^\)]+\)/g, '')
-          .replace(/\[\d+\]\s*\(https?:\/\/[^\)]+\)/g, '')
-          // 移除单独的引用链接
-          .replace(/\(https?:\/\/[^\)]+\)/g, '')
-          // 清理多余的空行
-          .replace(/\n{3,}/g, '\n\n')
           .trim();
+        
+        // 使用专门的清理函数移除Markdown格式和引用链接
+        assistantMessage = cleanAIMessage(assistantMessage);
       }
       
       // 检查空回复

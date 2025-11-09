@@ -88,13 +88,6 @@ export default function AnnouncementScreen({ onBack }: AnnouncementScreenProps) 
               </div>
               
               <div>
-                <h4 className="text-sm font-semibold text-yellow-300 mb-1">💬 消息体验优化</h4>
-                <p className="text-gray-200 text-sm leading-relaxed">
-                  修复了更新造成的消息分割问题，AI回复现在会智能分段为多个气泡。同时移除了Markdown格式标记（星号、列表等），让对话更自然流畅，像真人聊天。
-                </p>
-              </div>
-              
-              <div>
                 <h4 className="text-sm font-semibold text-orange-300 mb-1">🔧 其他优化</h4>
                 <p className="text-gray-200 text-sm leading-relaxed">
                   修复了表情包显示问题，移除了AI回复中的引用链接，以及一些零零碎碎的小修复，提升整体使用体验。
