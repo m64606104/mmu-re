@@ -1,16 +1,22 @@
 import React, { useState } from 'react';
-import { X, FileText } from 'lucide-react';
+import { X, FileText, Folder } from 'lucide-react';
 
 interface SendDocumentModalProps {
   onClose: () => void;
   onSend: (title: string, content: string, greeting: string, type: 'text' | 'markdown' | 'code') => void;
+  onOpenLibrary?: () => void;
+  initialDocument?: {
+    title: string;
+    content: string;
+    type: 'text' | 'markdown' | 'code';
+  };
 }
 
-const SendDocumentModal: React.FC<SendDocumentModalProps> = ({ onClose, onSend }) => {
-  const [title, setTitle] = useState('');
-  const [content, setContent] = useState('');
+const SendDocumentModal: React.FC<SendDocumentModalProps> = ({ onClose, onSend, onOpenLibrary, initialDocument }) => {
+  const [title, setTitle] = useState(initialDocument?.title || '');
+  const [content, setContent] = useState(initialDocument?.content || '');
   const [greeting, setGreeting] = useState('请查收');
-  const [docType, setDocType] = useState<'text' | 'markdown' | 'code'>('text');
+  const [docType, setDocType] = useState<'text' | 'markdown' | 'code'>(initialDocument?.type || 'text');
 
   const handleSend = () => {
     if (!title.trim() || !content.trim()) {
@@ -41,6 +47,20 @@ const SendDocumentModal: React.FC<SendDocumentModalProps> = ({ onClose, onSend }
 
         {/* 内容 */}
         <div className="flex-1 overflow-y-auto p-6 space-y-4">
+          {/* 从文档库选择按钮 */}
+          {onOpenLibrary && !initialDocument && (
+            <button
+              onClick={() => {
+                onClose();
+                onOpenLibrary();
+              }}
+              className="w-full flex items-center justify-center gap-2 py-3 px-4 bg-blue-50 text-blue-600 rounded-lg hover:bg-blue-100 transition-colors"
+            >
+              <Folder className="w-5 h-5" />
+              <span>从文档库选择</span>
+            </button>
+          )}
+
           {/* 文档标题 */}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">

@@ -4,6 +4,8 @@ import { Conversation, Message, ApiConfig, UserProfile } from '../types';
 import MoneyTransferModal from './MoneyTransferModal';
 import SendDocumentModal from './SendDocumentModal';
 import DocumentViewModal from './DocumentViewModal';
+import DocumentLibraryModal from './DocumentLibraryModal';
+import { SavedDocument } from '../utils/documentLibrary';
 import { sendMoney, receiveMoney, getBalance, aiPayForUser, refundGift, getAIBalance, addAITransaction } from '../utils/wallet';
 import ActivityLogModal from './ActivityLogModal';
 import { 
@@ -405,7 +407,10 @@ export default function ChatScreen({
   const [showToolbar, setShowToolbar] = useState(false);
   const [showMoneyTransferModal, setShowMoneyTransferModal] = useState(false);
   const [showSendDocumentModal, setShowSendDocumentModal] = useState(false);
+  const [showDocumentLibrary, setShowDocumentLibrary] = useState(false);
   const [viewingDocument, setViewingDocument] = useState<Message['document'] | null>(null);
+  const [selectedLibraryDoc, setSelectedLibraryDoc] = useState<SavedDocument | null>(null);
+  const [shouldEditDoc, setShouldEditDoc] = useState(false);
   const [showVideoDescModal, setShowVideoDescModal] = useState(false);
   const [videoDescInput, setVideoDescInput] = useState('');
   const [pendingVideoFile, setPendingVideoFile] = useState<File | null>(null);
@@ -4076,7 +4081,19 @@ ${conversation.characterSettings.memoryEvents ? `记忆事件：${conversation.c
     {/* 发送文档弹窗 */}
     {showSendDocumentModal && (
       <SendDocumentModal
-        onClose={() => setShowSendDocumentModal(false)}
+        onClose={() => {
+          setShowSendDocumentModal(false);
+          setSelectedLibraryDoc(null);
+          setShouldEditDoc(false);
+        }}
+        onOpenLibrary={() => {
+          setShowDocumentLibrary(true);
+        }}
+        initialDocument={selectedLibraryDoc && shouldEditDoc ? {
+          title: selectedLibraryDoc.title,
+          content: selectedLibraryDoc.content,
+          type: selectedLibraryDoc.type
+        } : undefined}
         onSend={(title, content, greeting, type) => {
           const newMessage: Message = {
             id: `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
@@ -4100,6 +4117,21 @@ ${conversation.characterSettings.memoryEvents ? `记忆事件：${conversation.c
           // 关闭工具栏和弹窗
           setShowToolbar(false);
           setShowSendDocumentModal(false);
+          setSelectedLibraryDoc(null);
+          setShouldEditDoc(false);
+        }}
+      />
+    )}
+
+    {/* 文档库 */}
+    {showDocumentLibrary && (
+      <DocumentLibraryModal
+        onClose={() => setShowDocumentLibrary(false)}
+        onSelectDocument={(doc, shouldEdit) => {
+          setSelectedLibraryDoc(doc);
+          setShouldEditDoc(shouldEdit);
+          setShowDocumentLibrary(false);
+          setShowSendDocumentModal(true);
         }}
       />
     )}
@@ -4109,6 +4141,20 @@ ${conversation.characterSettings.memoryEvents ? `记忆事件：${conversation.c
       <DocumentViewModal
         document={viewingDocument}
         onClose={() => setViewingDocument(null)}
+        onForward={(document) => {
+          // 转发文档：预填充到发送文档弹窗
+          setSelectedLibraryDoc({
+            id: Date.now().toString(),
+            title: document.title,
+            content: document.content,
+            type: document.type,
+            size: document.size || 0,
+            savedAt: Date.now(),
+            source: '转发'
+          });
+          setShouldEditDoc(false);
+          setShowSendDocumentModal(true);
+        }}
       />
     )}
     </>

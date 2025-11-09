@@ -1,27 +1,76 @@
-import React from 'react';
-import { ChevronLeft, FileText } from 'lucide-react';
+import React, { useState } from 'react';
+import { ChevronLeft, FileText, Save, Share2 } from 'lucide-react';
 import { DocumentMessage } from '../types';
+import { saveDocument } from '../utils/documentLibrary';
 
 interface DocumentViewModalProps {
   document: DocumentMessage;
   onClose: () => void;
+  onForward?: (document: DocumentMessage) => void;
 }
 
-const DocumentViewModal: React.FC<DocumentViewModalProps> = ({ document, onClose }) => {
+const DocumentViewModal: React.FC<DocumentViewModalProps> = ({ document, onClose, onForward }) => {
+  const [showSaveToast, setShowSaveToast] = useState(false);
+
+  const handleSave = () => {
+    try {
+      saveDocument(document);
+      setShowSaveToast(true);
+      setTimeout(() => setShowSaveToast(false), 2000);
+    } catch (error) {
+      alert('保存失败：' + (error as Error).message);
+    }
+  };
+
+  const handleForward = () => {
+    if (onForward) {
+      onForward(document);
+    }
+    onClose();
+  };
   return (
     <div className="fixed inset-0 bg-white z-50 flex flex-col">
       {/* 头部 */}
       <div className="bg-white border-b">
-        <div className="flex items-center px-4 py-3">
-          <button
-            onClick={onClose}
-            className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
-          >
-            <ChevronLeft className="w-6 h-6" />
-          </button>
-          <h1 className="text-lg font-semibold ml-2">在线文档</h1>
+        <div className="flex items-center justify-between px-4 py-3">
+          <div className="flex items-center">
+            <button
+              onClick={onClose}
+              className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+            >
+              <ChevronLeft className="w-6 h-6" />
+            </button>
+            <h1 className="text-lg font-semibold ml-2">在线文档</h1>
+          </div>
+          
+          {/* 操作按钮 */}
+          <div className="flex items-center gap-2">
+            <button
+              onClick={handleSave}
+              className="flex items-center gap-1 px-3 py-1.5 text-sm text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+            >
+              <Save className="w-4 h-4" />
+              <span>保存</span>
+            </button>
+            {onForward && (
+              <button
+                onClick={handleForward}
+                className="flex items-center gap-1 px-3 py-1.5 text-sm text-green-600 hover:bg-green-50 rounded-lg transition-colors"
+              >
+                <Share2 className="w-4 h-4" />
+                <span>转发</span>
+              </button>
+            )}
+          </div>
         </div>
       </div>
+      
+      {/* 保存成功提示 */}
+      {showSaveToast && (
+        <div className="fixed top-20 left-1/2 transform -translate-x-1/2 bg-green-500 text-white px-4 py-2 rounded-lg shadow-lg z-50">
+          ✓ 已保存到文档库
+        </div>
+      )}
 
       {/* 文档内容 */}
       <div className="flex-1 overflow-y-auto bg-gray-50">
