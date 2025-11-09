@@ -1672,7 +1672,132 @@ ${conversation.characterSettings.memoryEvents ? `记忆事件：${conversation.c
    
    四、结论与建议..."
 
-5. 💻 代码文档（使用code类型）：
+5. 📄 报告/分析类（400-1000字）：
+   - 数据详实，分析深入
+   - 包含图表描述、结论、建议
+   - 专业术语准确，逻辑严密
+   示例："[发文档:2024年Q3用户行为分析报告:text]
+   摘要：本报告基于...
+   
+   一、数据概览
+   - 活跃用户数：XX万...
+   - 用户留存率：XX%...
+   
+   二、用户画像分析...
+   
+   三、行为特征...
+   
+   四、结论与建议..."
+
+5.1 📝 测试/问卷类（100-500字）：
+   - 趣味性强，有互动性
+   - 题目清晰，选项合理
+   - 可以有结果解析
+   示例："[发文档:高级狗度测试卷:text]
+   【测试说明】
+   本测试用于评估你的"狗度"指数，请如实作答！
+   
+   第1题：朋友找你帮忙，你会？
+   A. 二话不说立刻答应
+   B. 看情况决定
+   C. 委婉拒绝
+   
+   第2题：收到红包后你会？
+   A. 立刻感谢，表达感激
+   B. 简单回复谢谢
+   C. 不说话直接收下
+   
+   ...（5-10题）
+   
+   【结果解析】
+   A选项占多数：你的狗度爆表！
+   B选项占多数：你的狗度适中
+   C选项占多数：你还需要修炼..."
+
+5.2 📚 攻略/教程类（300-800字）：
+   - 步骤清晰，操作明确
+   - 有技巧、注意事项
+   - 实用性强
+   示例："[发文档:Souvenir点餐全攻略:text]
+   【新手必看】Souvenir完整点餐指南
+   
+   一、预约技巧
+   1. 提前3-7天预约最佳...
+   2. 工作日中午相对好订...
+   
+   二、必点菜品TOP5
+   1️⃣ 招牌甜品...（推荐理由）
+   2️⃣ 特色套餐...
+   
+   三、省钱小妙招
+   - 会员日享8折...
+   - 套餐比单点划算...
+   
+   四、拍照攻略
+   最佳机位：靠窗位置..."
+
+5.3 🎭 剧透/解析类（300-800字）：
+   - 剧情详细，有分析
+   - 包含细节、彩蛋、解读
+   - 有观点和评价
+   示例："[发文档:《非情勿入》剧透解析:text]
+   ⚠️ 前方高能剧透预警！！！
+   
+   【剧情概要】
+   林季斯和周子谦被困在密室...
+   
+   【细节分析】
+   1. 开头的暗示：周子谦的眼神...
+   2. 转折点：当林季斯发现...
+   
+   【隐藏彩蛋】
+   - 第3章的对话其实是...
+   - 结局的伏笔在第1章...
+   
+   【个人评价】
+   车速有点快，但情感铺垫到位..."
+
+5.4 🎨 创作灵感/设定集（200-600字）：
+   - 世界观、人物设定详细
+   - 有创意、有细节
+   - 可以是角色介绍、故事大纲等
+   示例："[发文档:《非情勿入》角色设定:text]
+   【林季斯】
+   - 性格：外冷内热...
+   - 特点：理性、克制...
+   - 弱点：对周子谦没有抵抗力
+   
+   【周子谦】
+   - 性格：温柔、细腻...
+   - 特点：善解人意...
+   - 关系：暗恋林季斯多年
+   
+   【故事背景】
+   密室逃脱游戏的设定..."
+
+5.5 📖 书籍/影评推荐（300-600字）：
+   - 简介、评价、推荐理由
+   - 有亮点分析
+   - 客观专业
+   示例："[发文档:《非情勿入》书评推荐:text]
+   【作品信息】
+   作者：XX | 类型：现代都市
+   完结 | 字数：30万字
+   
+   【剧情简介】
+   灵感来自于那个经典的梗...
+   
+   【亮点分析】
+   ⭐ 感情线铺垫自然
+   ⭐ 人物性格鲜明
+   ⭐ 车速适中，不拖沓
+   
+   【适合人群】
+   喜欢都市情感文的读者
+   
+   【推荐指数】★★★★☆"
+
+6. 💻 代码文档（使用code类型）：
    - 包含注释、说明
    - 代码规范，可运行
    示例："[发文档:用户登录模块:code]
@@ -1682,11 +1807,12 @@ ${conversation.characterSettings.memoryEvents ? `记忆事件：${conversation.c
    }"
 
 注意事项：
-- 文档长度要足够（至少200字以上，专业文档建议500字+）
-- 不要敷衍，像真实专业文档一样写
-- 根据文档类型严格遵守对应的格式规范
+- 内容长度要足够（测试类至少100字，其他至少200字，专业文档建议500字+）
+- 不要敷衍，像真实内容一样写
+- 根据内容类型严格遵守对应的格式规范
 - 内容充实，有实际价值，不要只写大纲
-- 适用场景：写信、策划案、新闻稿、分析报告、技术文档等
+- 适用场景：写信、策划案、新闻稿、八卦、小红书、公众号、同人文、报告、测试、攻略、剧透、设定、书评等
+- 卡片会自动识别类型并显示对应的图标和标签
 
 【💰 接收红包转账规则】：
 当收到用户红包/转账时，根据你的性格和关系决定是否接收：
@@ -2956,6 +3082,36 @@ ${conversation.characterSettings.memoryEvents ? `记忆事件：${conversation.c
                         if (lowerTitle.includes('报告') || lowerTitle.includes('分析') || lowerTitle.includes('数据') ||
                             lowerContent.includes('摘要') || lowerContent.includes('结论') || lowerContent.includes('%')) {
                           return { icon: '📊', label: '分析报告', color: 'bg-cyan-50 text-cyan-500' };
+                        }
+                        
+                        // 测试/问卷
+                        if (lowerTitle.includes('测试') || lowerTitle.includes('问卷') || lowerTitle.includes('测评') ||
+                            lowerContent.includes('第1题') || lowerContent.includes('选项') || lowerContent.includes('结果解析')) {
+                          return { icon: '📝', label: '互动测试', color: 'bg-yellow-50 text-yellow-600' };
+                        }
+                        
+                        // 攻略/教程
+                        if (lowerTitle.includes('攻略') || lowerTitle.includes('教程') || lowerTitle.includes('指南') ||
+                            lowerContent.includes('步骤') || lowerContent.includes('技巧') || lowerContent.includes('注意事项')) {
+                          return { icon: '📚', label: '实用攻略', color: 'bg-teal-50 text-teal-500' };
+                        }
+                        
+                        // 剧透/解析
+                        if (lowerTitle.includes('剧透') || lowerTitle.includes('解析') || lowerTitle.includes('彩蛋') ||
+                            lowerContent.includes('剧透预警') || lowerContent.includes('细节分析') || lowerContent.includes('隐藏')) {
+                          return { icon: '🎭', label: '剧透解析', color: 'bg-rose-50 text-rose-500' };
+                        }
+                        
+                        // 设定/创作
+                        if (lowerTitle.includes('设定') || lowerTitle.includes('角色') || lowerTitle.includes('世界观') ||
+                            lowerContent.includes('【角色】') || lowerContent.includes('性格：') || lowerContent.includes('背景设定')) {
+                          return { icon: '🎨', label: '创作设定', color: 'bg-violet-50 text-violet-500' };
+                        }
+                        
+                        // 书评/影评
+                        if (lowerTitle.includes('书评') || lowerTitle.includes('影评') || lowerTitle.includes('推荐') ||
+                            lowerContent.includes('【作品信息】') || lowerContent.includes('推荐指数') || lowerContent.includes('⭐')) {
+                          return { icon: '📖', label: '书影推荐', color: 'bg-emerald-50 text-emerald-500' };
                         }
                         
                         // 默认：在线文档
