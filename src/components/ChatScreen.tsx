@@ -183,6 +183,7 @@ export default function ChatScreen({
   const [quotedMessage, setQuotedMessage] = useState<Message | null>(null);
   const [messageBeingEdited, setMessageBeingEdited] = useState<Message | null>(null);
   const [isDeleting, setIsDeleting] = useState(false); // 标记是否正在删除消息
+  const [isEditing, setIsEditing] = useState(false); // 标记是否正在编辑消息
   
   // 多选删除状态
   const [isMultiSelectMode, setIsMultiSelectMode] = useState(false);
@@ -432,11 +433,11 @@ ${recentMessages}
   }, []);
 
   useEffect(() => {
-    // 删除时不自动滚动，其他情况正常滚动
-    if (!isDeleting) {
+    // 删除或编辑时不自动滚动，其他情况正常滚动
+    if (!isDeleting && !isEditing) {
       scrollToBottom();
     }
-  }, [conversation.messages, isGenerating, isDeleting]);
+  }, [conversation.messages, isGenerating, isDeleting, isEditing]);
 
   // 加载AI状态
   useEffect(() => {
@@ -461,6 +462,7 @@ ${recentMessages}
 
     // 如果是编辑模式,保存编辑
     if (messageBeingEdited) {
+      setIsEditing(true); // 标记正在编辑
       const updatedMessages = conversation.messages.map(msg =>
         msg.id === messageBeingEdited.id 
           ? { ...msg, content: currentInput.trim(), edited: true }
@@ -469,6 +471,9 @@ ${recentMessages}
       onUpdateConversation(conversation.id, { messages: updatedMessages });
       setMessageBeingEdited(null);
       setCurrentInput('');
+      
+      // 编辑后恢复标记
+      setTimeout(() => setIsEditing(false), 100);
       return;
     }
 
@@ -1121,7 +1126,7 @@ ${conversation.characterSettings.memoryEvents ? `记忆事件：${conversation.c
           .filter(m => m.role === 'user')
           .slice(-3); // 🚀 性能优化：从5条减少到3条用户消息
         
-        let contextPrompt = systemPrompt + '\n\n【发送多媒体消息规则】：\n你可以发送多种类型的消息，使用以下格式：\n- 发送图片：[图片:详细的图片内容描述，10-50字，要生动具体]\n- 发送视频：[视频:详细的视频内容描述，10-50字]\n- 发送语音：[语音:语音内容的文字，时长X秒]\n- 发送表情包：[表情包:表情包的详细描述]\n\n使用场景：\n- 想分享美景、照片时发图片\n- 想分享有趣的视频时发视频\n- 想发语音聊天时发语音（控制在3-10秒）\n- 想表达情绪、开玩笑时发表情包\n\n可以在文字消息中添加媒体，也可以单独发送媒体。根据对话情境自然决定是否使用多媒体。';
+        let contextPrompt = systemPrompt + '\n\n【发送多媒体消息规则】：\n你可以发送多种类型的消息，使用以下格式：\n- 发送图片：[图片:详细的图片内容描述，10-50字，要生动具体]\n- 发送视频：[视频:详细的视频内容描述，10-50字]\n- 发送语音：[语音:语音内容的文字，时长X秒]\n- 发送表情包：[表情包:表情包的详细描述]\n\n使用场景：\n- 想分享美景、照片时发图片\n- 想分享有趣的视频时发视频\n- 想发语音聊天时发语音（控制在3-10秒）\n- 想表达情绪、开玩笑时发表情包\n\n可以在文字消息中添加媒体，也可以单独发送媒体。根据对话情境自然决定是否使用多媒体。\n\n【消息引用功能】：\n- 当你看到用户的消息以"[回复 你/我 说的\"...内容...\"]"开头时，说明用户在引用之前的某条消息\n- 你也可以使用引用功能！当需要回应之前的某个话题时，使用格式：[回复 我/你 说的"...之前的内容..."]\n- 引用使用场景：回应之前的话题、澄清误会、继续某个讨论、回应多条消息中的某一条\n- 引用要自然，不要过度使用\n- 例如：用户说"那个电影怎么样？" 你可以回复："[回复 你 说的\"推荐个电影\"]\n哦对，我昨天看了那部电影，超级好看！..."';
         
         // 如果最近有多条用户消息，添加提示
         if (recentUserMessages.length > 1) {
@@ -1145,10 +1150,18 @@ ${conversation.characterSettings.memoryEvents ? `记忆事件：${conversation.c
         
         messages = [
           { role: 'system', content: contextPrompt },
-          ...contextMessages.map(m => ({
-            role: m.role,
-            content: m.content,
-          })),
+          ...contextMessages.map(m => {
+            // 如果消息包含引用，添加引用信息到内容中
+            let content = m.content;
+            if (m.replyTo) {
+              const quotedRole = m.replyTo.role === 'user' ? '我' : '你';
+              content = `[回复 ${quotedRole} 说的"${m.replyTo.content}"]\n${m.content}`;
+            }
+            return {
+              role: m.role,
+              content: content,
+            };
+          }),
         ];
 
         requestBody = {
