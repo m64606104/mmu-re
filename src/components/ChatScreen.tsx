@@ -1,6 +1,8 @@
 import { useState, useEffect, useRef } from 'react';
 import { ChevronLeft, Send, Mic, Sparkles, Smile, BellOff, Bell, Pause, Play, Image as ImageIcon, Video, Phone, MapPin, FileText, Plus } from 'lucide-react';
 import { Conversation, Message, ApiConfig, UserProfile } from '../types';
+import MoneyTransferModal from './MoneyTransferModal';
+import { sendMoney, receiveMoney, getBalance } from '../utils/wallet';
 import ActivityLogModal from './ActivityLogModal';
 import { 
   getConversationMemories, 
@@ -166,6 +168,7 @@ export default function ChatScreen({
   const [currentInput, setCurrentInput] = useState('');
   const [isGenerating, setIsGenerating] = useState(false);
   const [showToolbar, setShowToolbar] = useState(false);
+  const [showMoneyTransferModal, setShowMoneyTransferModal] = useState(false);
   const [showVideoDescModal, setShowVideoDescModal] = useState(false);
   const [videoDescInput, setVideoDescInput] = useState('');
   const [pendingVideoFile, setPendingVideoFile] = useState<File | null>(null);
@@ -556,6 +559,126 @@ ${recentMessages}
       await sendRemainingMessages(pendingMessages);
       setIsGenerating(false);
     }
+  };
+
+  // AI处理红包/转账
+  const handleAIMoneyResponse = async (userMessage: Message) => {
+    if (!userMessage.moneyTransfer || !apiConfig.apiKey || !apiConfig.modelName) {
+      return;
+    }
+
+    const mt = userMessage.moneyTransfer;
+    const isRedPacket = mt.type === 'redPacket';
+
+    try {
+      // 调用AI判断是否接收
+      const characterSettings = conversation.characterSettings;
+      const systemPrompt = characterSettings?.systemPrompt || '';
+      const personality = characterSettings?.personality || '';
+
+      const prompt = `你收到了一个${isRedPacket ? '红包' : '转账'}，金额¥${mt.amount}。
+${mt.message ? `留言：${mt.message}` : ''}
+
+你的性格：${personality}
+${systemPrompt}
+
+请根据你的性格和与对方的关系，决定：
+1. 接收（只回复"接收"）
+2. 礼貌退回（回复"退回"并简短说明原因，不超过20字）
+
+只回复以上两种之一，不要有其他内容。`;
+
+      const response = await fetch(`${apiConfig.baseUrl}/v1/chat/completions`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${apiConfig.apiKey}`
+        },
+        body: JSON.stringify({
+          model: apiConfig.modelName,
+          messages: [{ role: 'user', content: prompt }],
+          temperature: 0.7,
+          max_tokens: 50
+        })
+      });
+
+      if (!response.ok) {
+        console.error('AI决策失败');
+        // 默认接收
+        handleReceiveMoney(userMessage.id, true);
+        return;
+      }
+
+      const data = await response.json();
+      const decision = data.choices[0]?.message?.content?.trim() || '';
+
+      // 判断AI的决定
+      if (decision.includes('接收') || decision.toLowerCase().includes('accept')) {
+        handleReceiveMoney(userMessage.id, true, '谢谢！');
+      } else {
+        handleReceiveMoney(userMessage.id, false, decision.replace(/^退回[：:]\s*/, ''));
+      }
+    } catch (error) {
+      console.error('AI处理红包失败:', error);
+      // 默认接收
+      handleReceiveMoney(userMessage.id, true);
+    }
+  };
+
+  // 处理红包接收/退回
+  const handleReceiveMoney = (messageId: string, accept: boolean, replyText?: string) => {
+    const updatedMessages = conversation.messages.map(msg => {
+      if (msg.id === messageId && msg.moneyTransfer) {
+        if (accept) {
+          // 接收红包
+          receiveMoney(
+            msg.moneyTransfer.amount,
+            msg.moneyTransfer.type,
+            conversation.id,
+            msg.moneyTransfer.message
+          );
+
+          return {
+            ...msg,
+            moneyTransfer: {
+              ...msg.moneyTransfer,
+              status: 'received' as const,
+              receivedAt: Date.now()
+            }
+          };
+        } else {
+          // 退回红包
+          return {
+            ...msg,
+            moneyTransfer: {
+              ...msg.moneyTransfer,
+              status: 'returned' as const
+            }
+          };
+        }
+      }
+      return msg;
+    });
+
+    onUpdateConversation(conversation.id, {
+      messages: updatedMessages,
+      lastMessageTime: Date.now()
+    });
+
+    // AI发送回复消息
+    setTimeout(() => {
+      const replyMessage: Message = {
+        id: `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+        role: 'assistant',
+        content: replyText || (accept ? '谢谢！' : '不好意思，退回给你了'),
+        timestamp: Date.now()
+      };
+
+      onUpdateConversation(conversation.id, {
+        messages: [...updatedMessages, replyMessage],
+        lastMessageTime: Date.now()
+      });
+    }, 500);
   };
 
   // 处理图片上传
@@ -1934,10 +2057,12 @@ ${conversation.characterSettings.memoryEvents ? `记忆事件：${conversation.c
                       }
                     }}
                     className={`rounded-2xl shadow-sm cursor-pointer ${
-                      message.role === 'user'
+                      message.moneyTransfer 
+                        ? 'p-0 overflow-hidden'
+                        : message.role === 'user'
                         ? 'bg-white text-gray-900 border border-gray-200'
                         : 'bg-white text-gray-900 border border-gray-200'
-                    } ${message.mediaType ? 'p-0 overflow-hidden' : 'px-4 py-2.5'} ${
+                    } ${message.mediaType || message.moneyTransfer ? 'p-0 overflow-hidden' : 'px-4 py-2.5'} ${
                       isMultiSelectMode && selectedMessages.includes(message.id) ? 'ring-2 ring-purple-500' : ''
                     }`}
                   >
@@ -1954,8 +2079,64 @@ ${conversation.characterSettings.memoryEvents ? `记忆事件：${conversation.c
                       </div>
                     )}
                     
+                    {/* 红包/转账消息气泡 */}
+                    {message.moneyTransfer ? (
+                      <div className={`p-0 rounded-2xl overflow-hidden ${
+                        message.role === 'user' 
+                          ? 'bg-gradient-to-br from-yellow-400 to-orange-400' 
+                          : 'bg-gradient-to-br from-yellow-500 to-orange-500'
+                      }`}>
+                        <div className="p-4 text-white">
+                          <div className="flex items-center gap-2 mb-2">
+                            <span className="text-2xl">
+                              {message.moneyTransfer.type === 'redPacket' ? '🧧' : '💸'}
+                            </span>
+                            <div className="text-lg font-bold">
+                              {message.moneyTransfer.type === 'redPacket' ? '红包' : '转账'}
+                            </div>
+                          </div>
+                          <div className="text-2xl font-bold mb-2">
+                            ¥{message.moneyTransfer.amount.toFixed(2)}
+                          </div>
+                          {message.moneyTransfer.message && (
+                            <div className="text-sm opacity-90 mb-2">
+                              {message.moneyTransfer.message}
+                            </div>
+                          )}
+                          {message.moneyTransfer.status === 'pending' && message.role === 'user' && (
+                            <div className="text-xs opacity-75">
+                              等待对方领取
+                            </div>
+                          )}
+                          {message.moneyTransfer.status === 'received' && (
+                            <div className="text-xs opacity-75">
+                              已{message.moneyTransfer.type === 'redPacket' ? '领取' : '收款'}
+                            </div>
+                          )}
+                          {message.moneyTransfer.status === 'returned' && (
+                            <div className="text-xs opacity-75">
+                              已退回
+                            </div>
+                          )}
+                        </div>
+                        {message.moneyTransfer.status === 'pending' && message.role === 'assistant' && (
+                          <div className="bg-white/20 backdrop-blur-sm border-t border-white/20">
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleReceiveMoney(message.id, true);
+                              }}
+                              className="w-full py-3 text-white font-medium hover:bg-white/10 transition-colors"
+                            >
+                              {message.moneyTransfer.type === 'redPacket' ? '🎁 领取红包' : '✅ 确认收款'}
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    ) : null}
+                    
                     {/* 多媒体混合显示（优先使用新的mediaItems数组） */}
-                    {message.mediaItems && message.mediaItems.length > 0 && (
+                    {!message.moneyTransfer && message.mediaItems && message.mediaItems.length > 0 && (
                       <div className="space-y-2">
                         {message.mediaItems.map((media, idx) => (
                           <div key={`${message.id}_media_${idx}`}>
@@ -2186,7 +2367,7 @@ ${conversation.characterSettings.memoryEvents ? `记忆事件：${conversation.c
                     )}
                     
                     {/* 纯文字内容 */}
-                    {!message.mediaType && (
+                    {!message.mediaType && !message.moneyTransfer && (
                       <p className="text-[15px] leading-relaxed whitespace-pre-wrap break-words">{message.content}</p>
                     )}
                     {/* 用户媒体的描述文字（排除语音和表情包） */}
@@ -2375,6 +2556,14 @@ ${conversation.characterSettings.memoryEvents ? `记忆事件：${conversation.c
               <button className="flex-shrink-0">
                 <div className="w-9 h-9 rounded-full bg-white border border-gray-300 flex items-center justify-center hover:border-gray-400 transition-colors">
                   <FileText className="w-4 h-4 text-gray-600" />
+                </div>
+              </button>
+              <button 
+                className="flex-shrink-0"
+                onClick={() => setShowMoneyTransferModal(true)}
+              >
+                <div className="w-9 h-9 rounded-full bg-white border border-gray-300 flex items-center justify-center hover:border-gray-400 transition-colors">
+                  <span className="text-base">💰</span>
                 </div>
               </button>
             </div>
@@ -2668,6 +2857,54 @@ ${conversation.characterSettings.memoryEvents ? `记忆事件：${conversation.c
       onMultiSelect={handleEnterMultiSelect}
       onClose={handleCloseMenu}
     />
+
+    {/* 红包转账弹窗 */}
+    {showMoneyTransferModal && (
+      <MoneyTransferModal
+        onClose={() => setShowMoneyTransferModal(false)}
+        onSend={(amount, type, message) => {
+          // 检查余额
+          const balance = getBalance();
+          if (balance < amount) {
+            alert('余额不足，请先充值');
+            return;
+          }
+
+          // 发送红包/转账
+          const success = sendMoney(amount, type, conversation.id, message);
+          if (success) {
+            const newMessage: Message = {
+              id: `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+              role: 'user',
+              content: type === 'redPacket' ? '发出了一个红包' : '向你转账',
+              timestamp: Date.now(),
+              moneyTransfer: {
+                type,
+                amount,
+                message,
+                status: 'pending'
+              }
+            };
+
+            onUpdateConversation(conversation.id, {
+              messages: [...conversation.messages, newMessage],
+              lastMessageTime: Date.now()
+            });
+
+            // 关闭工具栏和弹窗
+            setShowToolbar(false);
+            setShowMoneyTransferModal(false);
+
+            // AI自动决定是否接收
+            setTimeout(() => {
+              handleAIMoneyResponse(newMessage);
+            }, 2000 + Math.random() * 3000); // 2-5秒后AI做出反应
+          } else {
+            alert('发送失败');
+          }
+        }}
+      />
+    )}
     </>
   );
 }
