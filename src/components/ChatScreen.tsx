@@ -57,13 +57,73 @@ const backgroundTaskManager = {
         return;
       }
 
-      // 解析和分割消息
-      let messages: Message[] = [{
-        id: Date.now().toString(),
-        role: 'assistant',
-        content: assistantMessage,
-        timestamp: Date.now()
-      }];
+      // 使用splitMessages分割消息
+      const splitMsgs = splitMessages(assistantMessage);
+      
+      // 将分割后的文本转换为Message对象数组
+      const messages: Message[] = splitMsgs.map((content, index) => {
+        // 检测媒体类型
+        const imageMatch = content.match(/\[图片[:：]([^\]]+)\]/);
+        const videoMatch = content.match(/\[视频[:：]([^\]]+)\]/);
+        const voiceMatch = content.match(/\[语音[:：](.+?)(?:[，,]\s*(?:时长)?(\d+)秒?)?\]/);
+        const stickerMatch = content.match(/\[表情包[:：]([^\]]+)\]/);
+
+        const baseId = Date.now().toString() + '_' + index;
+
+        if (imageMatch) {
+          const cleanContent = content.replace(/\[图片[:：][^\]]+\]/, '').trim();
+          return {
+            id: baseId,
+            role: 'assistant' as const,
+            content: cleanContent || '[图片]',
+            timestamp: Date.now(),
+            mediaType: 'image' as const,
+            mediaDescription: imageMatch[1],
+            isMediaDescriptionOnly: true
+          };
+        } else if (videoMatch) {
+          const cleanContent = content.replace(/\[视频[:：][^\]]+\]/, '').trim();
+          return {
+            id: baseId,
+            role: 'assistant' as const,
+            content: cleanContent || '[视频]',
+            timestamp: Date.now(),
+            mediaType: 'video' as const,
+            mediaDescription: videoMatch[1],
+            isMediaDescriptionOnly: true
+          };
+        } else if (voiceMatch) {
+          const cleanContent = content.replace(/\[语音[:：].+?\]/, '').trim();
+          return {
+            id: baseId,
+            role: 'assistant' as const,
+            content: cleanContent || '[语音]',
+            timestamp: Date.now(),
+            mediaType: 'voice' as const,
+            mediaDescription: voiceMatch[1].trim(),
+            voiceDuration: parseInt(voiceMatch[2]) || 3,
+            isMediaDescriptionOnly: true
+          };
+        } else if (stickerMatch) {
+          const cleanContent = content.replace(/\[表情包[:：][^\]]+\]/, '').trim();
+          return {
+            id: baseId,
+            role: 'assistant' as const,
+            content: cleanContent || '[表情包]',
+            timestamp: Date.now(),
+            mediaType: 'sticker' as const,
+            mediaDescription: stickerMatch[1],
+            isMediaDescriptionOnly: true
+          };
+        } else {
+          return {
+            id: baseId,
+            role: 'assistant' as const,
+            content: content,
+            timestamp: Date.now()
+          };
+        }
+      });
       
       callback(messages, conversation.id);
       return "task_" + Date.now();
