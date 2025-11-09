@@ -16,6 +16,7 @@ import UserGuide from './components/UserGuide';
 import AnnouncementScreen from './components/AnnouncementScreen';
 import WalletScreen from './components/WalletScreen';
 import ShoppingScreen from './components/ShoppingScreen';
+import ToastContainer from './components/ToastContainer';
 import { MomentsAutoGenerator } from './components/MomentsAutoGenerator';
 import { AIMomentsInteractionManager } from './components/AIMomentsInteractionManager';
 import ProactiveMessagingService from './components/ProactiveMessagingService';
@@ -231,7 +232,7 @@ function App() {
   }, [conversations, updateConversation, navigateTo]);
 
   // 请AI代付
-  const handleRequestAIPay = useCallback((product: any, aiId: string, aiName: string) => {
+  const handleRequestAIPay = useCallback((product: any, aiId: string) => {
     const payRequestMessage: Message = {
       id: `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
       role: 'user',
@@ -691,6 +692,9 @@ function App() {
         apiConfig={apiConfig}
         intervalMinutes={90}
       />
+      
+      {/* Toast通知容器 */}
+      <ToastContainer />
     </>
   );
 }

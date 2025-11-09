@@ -31,6 +31,22 @@
   transition: none !important;
 }
 
+/* Toast从顶部滑入动画 */
+@keyframes fadeInDown {
+  0% {
+    opacity: 0;
+    transform: translateY(-20px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-fade-in-down {
+  animation: fadeInDown 0.3s ease-out forwards;
+}
+
 /* 淡入淡出动画 - 用于提示消息 */
 @keyframes fadeInOut {
   0% {

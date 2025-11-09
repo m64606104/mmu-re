@@ -15,7 +15,7 @@ interface PurchaseOptionsModalProps {
   conversations: Conversation[];
   onPurchaseForSelf: (product: Product) => void;
   onPurchaseForAI: (product: Product, recipientId: string, recipientName: string) => void;
-  onRequestAIPay: (product: Product, aiId: string, aiName: string) => void;
+  onRequestAIPay: (product: Product, aiId: string) => void;
 }
 
 export default function PurchaseOptionsModal({
@@ -121,7 +121,7 @@ export default function PurchaseOptionsModal({
                   <button
                     key={conv.id}
                     onClick={() => {
-                      onRequestAIPay(product, conv.id, conv.characterSettings!.nickname);
+                      onRequestAIPay(product, conv.id);
                       onClose();
                     }}
                     className="w-full flex items-center gap-3 p-3 bg-green-50 hover:bg-green-100 rounded-xl transition-colors text-left"

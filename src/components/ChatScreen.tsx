@@ -238,6 +238,7 @@ const backgroundTaskManager = {
 };
 import { showMessageNotification } from './MessageNotification';
 import { MessageActionMenu } from './MessageActionMenu';
+import { useToast } from './Toast';
 // import { transcribeAudio, isValidSpeechConfig } from '../utils/speechToText';
 
 interface ChatScreenProps {
@@ -259,6 +260,7 @@ export default function ChatScreen({
   onOpenCharacterSettings,
   onRequestAIMoment,
 }: ChatScreenProps) {
+  const { showToast } = useToast();
   const [currentInput, setCurrentInput] = useState('');
   const [isGenerating, setIsGenerating] = useState(false);
   const [showToolbar, setShowToolbar] = useState(false);
@@ -901,6 +903,12 @@ ${systemPrompt}
       messages: [...updatedMessages, confirmMessage],
       lastMessageTime: Date.now()
     });
+    
+    // 显示Toast提示
+    showToast(
+      message.order.type === 'gift' ? '🎁 已收下礼物' : '💰 已完成代付',
+      'success'
+    );
   };
 
   // 拒绝订单（礼物/代付）
@@ -937,6 +945,12 @@ ${systemPrompt}
       messages: [...updatedMessages, rejectMessage],
       lastMessageTime: Date.now()
     });
+    
+    // 显示Toast提示
+    showToast(
+      message.order.type === 'gift' ? '❌ 已退回礼物' : '❌ 已拒绝代付',
+      'info'
+    );
   };
 
   // 处理AI的订单响应（解析AI回复中的[接受礼物]等标记）
@@ -991,6 +1005,14 @@ ${systemPrompt}
     });
     
     console.log(`✅ 订单状态已更新: ${newStatus}`);
+    
+    // 显示Toast提示
+    const toastMessages = {
+      'accepted': '🎁 AI已接受你的礼物',
+      'paid': '💰 AI已同意代付',
+      'rejected': '❌ AI已拒绝订单'
+    };
+    showToast(toastMessages[newStatus], newStatus === 'rejected' ? 'warning' : 'success');
   };
 
   // 发送视频消息

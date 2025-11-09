@@ -11,7 +11,7 @@ interface ShoppingScreenProps {
   onPurchase: () => void; // 购买成功后刷新钱包
   conversations: Conversation[]; // AI角色列表
   onSendGiftToAI: (product: Product, recipientId: string, recipientName: string) => void;
-  onRequestAIPay: (product: Product, aiId: string, aiName: string) => void;
+  onRequestAIPay: (product: Product, aiId: string) => void;
 }
 
 interface Product {
@@ -205,8 +205,10 @@ const ShoppingScreen: React.FC<ShoppingScreenProps> = ({
   };
 
   // 请AI代付
-  const handleRequestAIPay = (product: Product, aiId: string, aiName: string) => {
-    onRequestAIPay(product, aiId, aiName);
+  const handleRequestAIPay = (product: Product, aiId: string) => {
+    const aiConv = conversations.find(c => c.id === aiId);
+    const aiName = aiConv?.characterSettings?.nickname || 'AI';
+    onRequestAIPay(product, aiId);
     alert(`已向${aiName}发送代付请求`);
   };
 
