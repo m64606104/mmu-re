@@ -130,6 +130,7 @@ export default function MomentsScreen({
         // 🎯 触发AI智能响应用户的评论
         const aiConversation = conversations.find(c => c.id === aiMoment.authorId);
         if (aiConversation) {
+          // 朋友圈作者可能回复
           setTimeout(() => {
             handleUserInteractionResponse(
               aiConversation,
@@ -139,6 +140,18 @@ export default function MomentsScreen({
               apiConfig
             );
           }, 2000 + Math.random() * 3000); // 2-5秒后响应，模拟真人
+          
+          // 💬 其他AI可能看到评论区有新评论，也来参与讨论（30%概率）
+          if (Math.random() < 0.3) {
+            setTimeout(() => {
+              // @ts-ignore
+              if (window.triggerAICommentSectionInteraction) {
+                console.log('💬 用户评论后，其他AI可能来围观评论区...');
+                // @ts-ignore
+                window.triggerAICommentSectionInteraction();
+              }
+            }, 10000 + Math.random() * 20000); // 10-30秒后，其他AI才看到
+          }
         }
         
         // 重新加载AI朋友圈

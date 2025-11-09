@@ -8,7 +8,7 @@
 
 import { useEffect, useRef } from 'react';
 import { Conversation, ApiConfig } from '../types';
-import { generateAIMomentsInteraction } from '../utils/aiMomentsGenerator';
+import { generateAIMomentsInteraction, generateCommentSectionInteraction } from '../utils/aiMomentsGenerator';
 
 interface AIMomentsInteractionManagerProps {
   conversations: Conversation[];
@@ -57,7 +57,17 @@ export function AIMomentsInteractionManager({
       const currentApiConfig = apiConfigRef.current;
       
       console.log('👀 AI们正在查看朋友圈...');
+      
+      // 1️⃣ 对朋友圈本身互动（点赞、评论）
       await generateAIMomentsInteraction(currentConversations, currentApiConfig);
+      
+      // 2️⃣ 查看评论区并参与讨论（随机50%概率）
+      if (Math.random() < 0.5) {
+        await new Promise(resolve => setTimeout(resolve, 3000 + Math.random() * 3000)); // 延迟3-6秒
+        console.log('💬 AI们正在查看评论区...');
+        await generateCommentSectionInteraction(currentConversations, currentApiConfig);
+      }
+      
       console.log('✅ AI互动完成');
     } catch (error) {
       console.error('❌ AI互动失败:', error);
@@ -112,14 +122,39 @@ export function AIMomentsInteractionManager({
     }
   }, [isActive]);
 
+  // 触发评论区互动（单独的函数）
+  const triggerCommentSectionInteraction = async () => {
+    if (isProcessingRef.current) {
+      return;
+    }
+
+    isProcessingRef.current = true;
+
+    try {
+      const currentConversations = conversationsRef.current;
+      const currentApiConfig = apiConfigRef.current;
+      
+      await generateCommentSectionInteraction(currentConversations, currentApiConfig);
+      console.log('✅ 评论区互动完成');
+    } catch (error) {
+      console.error('❌ 评论区互动失败:', error);
+    } finally {
+      isProcessingRef.current = false;
+    }
+  };
+
   // 暴露触发方法给外部（将来可以在发布朋友圈时调用）
   useEffect(() => {
     // @ts-ignore - 挂载到window供外部调用
     window.triggerAIMomentsInteraction = triggerSmartInteraction;
+    // @ts-ignore - 评论区互动单独触发
+    window.triggerAICommentSectionInteraction = triggerCommentSectionInteraction;
     
     return () => {
       // @ts-ignore
       delete window.triggerAIMomentsInteraction;
+      // @ts-ignore
+      delete window.triggerAICommentSectionInteraction;
     };
   }, []);
 

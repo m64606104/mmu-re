@@ -861,6 +861,267 @@ ${post.imageDescriptions ? `配图：${post.imageDescriptions.join('、')}` : ''
 };
 
 /**
+ * AI评论区互动：查看已有评论并决定是否参与讨论
+ * 模拟真实朋友圈场景，AI会看评论区的对话
+ */
+export const generateCommentSectionInteraction = async (
+  conversations: Conversation[],
+  apiConfig: ApiConfig
+): Promise<void> => {
+  try {
+    const allMomentsData = await getAllMomentsData();
+    if (allMomentsData.length === 0) return;
+
+    const aiConversations = conversations.filter(c => c.type === 'private' && c.characterSettings);
+    if (aiConversations.length < 2) return;
+
+    // 🎯 随机选择几个"在线"的AI
+    const onlineAICount = Math.floor(Math.random() * Math.min(3, aiConversations.length)) + 1;
+    const shuffledAIs = [...aiConversations].sort(() => Math.random() - 0.5);
+    const onlineAIs = shuffledAIs.slice(0, onlineAICount);
+    
+    console.log(`💬 ${onlineAICount} 个AI正在查看评论区...`);
+
+    // 收集有评论的朋友圈（最近7天）
+    const postsWithComments: Array<{ post: MomentPost; author: Conversation; momentsData: any }> = [];
+    
+    for (const momentsData of allMomentsData) {
+      const authorConv = aiConversations.find(c => c.id === momentsData.contactId);
+      if (!authorConv) continue;
+
+      const recentPosts = momentsData.posts.filter(post => {
+        const hoursSincePost = (Date.now() - post.timestamp) / 3600000;
+        // 有评论且是7天内的
+        return post.comments.length > 0 && hoursSincePost < 168;
+      });
+
+      for (const post of recentPosts) {
+        postsWithComments.push({ post, author: authorConv, momentsData });
+      }
+    }
+
+    if (postsWithComments.length === 0) {
+      console.log('📭 没有评论区可以互动');
+      return;
+    }
+
+    console.log(`📬 发现 ${postsWithComments.length} 条有评论的朋友圈`);
+
+    // 随机选择几条来看
+    const postsToCheck = postsWithComments
+      .sort(() => Math.random() - 0.5)
+      .slice(0, Math.min(3, postsWithComments.length));
+
+    for (const { post, author, momentsData } of postsToCheck) {
+      // 只让还没在这条朋友圈评论区出现过的AI参与
+      const commentAuthors = post.comments.map(c => c.authorId || c.userId);
+      const potentialAIs = onlineAIs.filter(ai => 
+        ai.id !== author.id && !commentAuthors.includes(ai.id)
+      );
+
+      if (potentialAIs.length === 0) continue;
+
+      // 随机选1-2个AI查看这个评论区
+      const viewerCount = Math.min(Math.floor(Math.random() * 2) + 1, potentialAIs.length);
+      const viewers = potentialAIs.slice(0, viewerCount);
+
+      for (const viewer of viewers) {
+        console.log(`👀 ${viewer.characterSettings?.nickname || viewer.name} 查看了评论区`);
+
+        // 🎯 让AI决定是否参与评论区讨论
+        const decision = await makeCommentSectionDecision(
+          viewer,
+          author,
+          post,
+          apiConfig
+        );
+
+        if (!decision.shouldComment) {
+          console.log(`😐 ${viewer.characterSettings?.nickname || viewer.name} 决定不参与讨论`);
+          continue;
+        }
+
+        console.log(`💬 ${viewer.characterSettings?.nickname || viewer.name} 决定参与评论区`);
+
+        if (decision.commentContent) {
+          const newComment = {
+            authorId: viewer.id,
+            authorName: viewer.characterSettings?.nickname || viewer.name,
+            authorAvatar: viewer.characterSettings?.avatar || viewer.avatar,
+            content: decision.commentContent,
+            replyTo: decision.replyToCommentId,
+            replyToName: decision.replyToName
+          };
+
+          await commentMomentPost(momentsData.contactId, post.id, newComment);
+          
+          if (decision.replyToName) {
+            console.log(`✅ 回复了 ${decision.replyToName}: ${decision.commentContent.substring(0, 20)}...`);
+          } else {
+            console.log(`✅ 评论: ${decision.commentContent.substring(0, 20)}...`);
+          }
+        }
+
+        // 随机延迟
+        await new Promise(resolve => setTimeout(resolve, 2000 + Math.random() * 3000));
+      }
+    }
+
+    console.log('✅ 评论区互动完成');
+  } catch (error) {
+    console.error('❌ 评论区互动失败:', error);
+  }
+};
+
+/**
+ * AI决策：是否参与评论区讨论
+ */
+interface CommentSectionDecision {
+  shouldComment: boolean;
+  commentContent?: string;
+  replyToCommentId?: string;
+  replyToName?: string;
+  reason?: string;
+}
+
+const makeCommentSectionDecision = async (
+  viewerAI: Conversation,
+  postAuthor: Conversation,
+  post: MomentPost,
+  apiConfig: ApiConfig
+): Promise<CommentSectionDecision> => {
+  try {
+    const { getRelationship, getRelationshipLabel } = await import('./aiRelationships');
+    
+    const viewerSettings = viewerAI.characterSettings;
+    if (!viewerSettings) {
+      return { shouldComment: false };
+    }
+
+    // 获取关系
+    const relationshipWithAuthor = getRelationship(viewerAI.id, postAuthor.id);
+    const relationshipDesc = relationshipWithAuthor ? getRelationshipLabel(relationshipWithAuthor.level) : '普通关系';
+
+    // 构建评论区内容概览
+    let commentsOverview = '';
+    post.comments.forEach((comment, index) => {
+      const commentAuthor = comment.authorName || comment.username || '某人';
+      let commentText = `${commentAuthor}: ${comment.content}`;
+      
+      if (comment.replyTo && comment.replyToName) {
+        commentText = `${commentAuthor} 回复 ${comment.replyToName}: ${comment.content}`;
+      }
+      
+      commentsOverview += `${index + 1}. ${commentText}\n`;
+    });
+
+    const prompt = `你是 ${viewerSettings.nickname || viewerAI.name}。
+
+【你的性格】
+${viewerSettings.personality || ''}
+
+【你的说话风格】
+${viewerSettings.languageStyle || ''}
+
+【你与朋友圈作者的关系】
+${postAuthor.characterSettings?.nickname || postAuthor.name}: ${relationshipDesc}${relationshipWithAuthor?.description ? `（${relationshipWithAuthor.description}）` : ''}
+
+【朋友圈内容】
+${postAuthor.characterSettings?.nickname || postAuthor.name} 发了：${post.content}
+${post.imageDescriptions ? `配图：${post.imageDescriptions.join('、')}` : ''}
+
+【评论区讨论】
+${commentsOverview}
+
+【任务】
+你刷朋友圈时看到了这条动态的评论区，根据：
+1. 你的性格（是否爱参与讨论、是否话多）
+2. 你和朋友圈作者的关系
+3. 评论区的讨论内容是否有趣、是否和你相关
+4. 你是否有话想说
+
+决定是否在评论区发表看法。
+
+【参与规则】
+- 如果评论区讨论很有趣、和你相关、或你有强烈观点，可以参与
+- 如果你性格内向、不爱凑热闹，可以选择不参与
+- 如果评论区已经很热闹（3条以上），再加入要谨慎
+- 如果评论内容无聊、和你无关，可以不参与
+- 可以回复特定评论，也可以直接发表看法
+- 真人朋友圈不是每条都要参与，要自然
+
+【输出格式】
+以JSON格式回复（只输出JSON，不要其他内容）：
+{
+  "shouldComment": true/false,  // 是否参与评论区
+  "commentContent": "评论内容"或null,  // 如果参与，写出评论（1-2句话）
+  "replyToCommentId": "评论ID"或null,  // 如果要回复特定评论，填写评论ID（从1开始计数）
+  "replyToName": "被回复者名字"或null,  // 如果回复特定评论，填写名字
+  "reason": "决策理由"  // 简短说明你的想法
+}
+
+注意：如果要回复特定评论，replyToCommentId填写评论序号（如"1"、"2"），系统会自动转换。`;
+
+    const response = await fetch(`${apiConfig.baseUrl}/v1/chat/completions`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${apiConfig.apiKey}`
+      },
+      body: JSON.stringify({
+        model: apiConfig.modelName,
+        messages: [
+          { role: 'user', content: prompt }
+        ],
+        temperature: 0.8,
+        max_tokens: 300
+      })
+    });
+
+    if (!response.ok) {
+      console.error('评论区决策失败:', response.status);
+      return { shouldComment: false };
+    }
+
+    const data = await response.json();
+    const content = data.choices?.[0]?.message?.content || '';
+    
+    try {
+      const jsonMatch = content.match(/\{[\s\S]*\}/);
+      if (!jsonMatch) {
+        console.error('评论区决策响应格式错误:', content);
+        return { shouldComment: false };
+      }
+      
+      const decision: CommentSectionDecision = JSON.parse(jsonMatch[0]);
+      console.log(`🧠 评论区决策: ${decision.reason}`);
+      
+      // 处理replyToCommentId（转换序号为实际ID）
+      if (decision.replyToCommentId) {
+        const commentIndex = parseInt(decision.replyToCommentId) - 1;
+        if (commentIndex >= 0 && commentIndex < post.comments.length) {
+          const targetComment = post.comments[commentIndex];
+          decision.replyToCommentId = targetComment.id;
+          decision.replyToName = targetComment.authorName || targetComment.username;
+        } else {
+          // 序号无效，清除回复信息
+          decision.replyToCommentId = undefined;
+          decision.replyToName = undefined;
+        }
+      }
+      
+      return decision;
+    } catch (parseError) {
+      console.error('解析评论区决策失败:', content, parseError);
+      return { shouldComment: false };
+    }
+  } catch (error) {
+    console.error('生成评论区决策失败:', error);
+    return { shouldComment: false };
+  }
+};
+
+/**
  * AI智能决策：是否互动以及如何互动
  */
 interface InteractionDecision {
