@@ -54,6 +54,47 @@ export default function AnnouncementScreen({ onBack }: AnnouncementScreenProps) 
 
         {/* 公告列表 */}
         <div className="space-y-4">
+          {/* 11.9 深夜更新 - 重要功能修复与优化 */}
+          <div className="bg-gradient-to-br from-emerald-500/20 to-teal-500/20 border-2 border-emerald-400/50 rounded-xl p-4 shadow-lg mb-4">
+            <div className="flex items-start gap-3 mb-3">
+              <div className="w-10 h-10 rounded-full bg-gradient-to-br from-emerald-500 to-teal-500 flex items-center justify-center flex-shrink-0">
+                <Bell className="w-5 h-5 text-white" />
+              </div>
+              <div className="flex-1">
+                <h3 className="text-lg font-bold text-white mb-1">🔧 重要功能修复与优化</h3>
+                <p className="text-xs text-gray-300">2024年11月9日 深夜更新</p>
+              </div>
+            </div>
+            <div className="pl-13 space-y-3">
+              <div>
+                <h4 className="text-sm font-semibold text-emerald-200 mb-1">🧠 记忆总结功能修复</h4>
+                <p className="text-gray-100 text-sm leading-relaxed">
+                  <strong>修复了新建角色记忆总结不生效的问题！</strong>现在所有AI（包括新建的角色）都能够正常进行记忆总结了。每25条消息自动提取重要信息，让AI记住你们之间的点点滴滴。
+                </p>
+              </div>
+              
+              <div>
+                <h4 className="text-sm font-semibold text-teal-200 mb-1">💬 朋友圈互动优化</h4>
+                <p className="text-gray-100 text-sm leading-relaxed">
+                  <strong>优化了朋友圈互动体验！</strong>现在用户的朋友圈会得到AI的回复，AI评论后立即显示无需等待。同时大幅减少后台刷新次数，<strong>API调用降低90%+</strong>，按界面智能调整刷新频率。
+                </p>
+              </div>
+              
+              <div>
+                <h4 className="text-sm font-semibold text-cyan-200 mb-1">📄 学术论文支持</h4>
+                <p className="text-gray-100 text-sm leading-relaxed">
+                  <strong>资料库新增DOI自动获取功能！</strong>输入论文DOI即可自动获取标题、作者、摘要等信息。同时优化了PDF解析，更好地支持学术论文格式，保留段落结构。
+                </p>
+              </div>
+              
+              <div className="bg-white/10 rounded-lg p-3 mt-2">
+                <p className="text-xs text-gray-200 leading-relaxed">
+                  💡 <strong>使用提示：</strong>角色设置 → 资料库 → 输入DOI或上传PDF，AI会自动提取内容用于对话参考
+                </p>
+              </div>
+            </div>
+          </div>
+
           {/* 11.9 晚间更新 - 消息功能大升级 */}
           <div className="bg-gradient-to-br from-purple-500/20 to-pink-500/20 border-2 border-purple-400/50 rounded-xl p-4 shadow-lg mb-4">
             <div className="flex items-start gap-3 mb-3">
