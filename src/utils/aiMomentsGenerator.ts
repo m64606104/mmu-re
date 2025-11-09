@@ -718,7 +718,7 @@ export const generateAIMomentsInteraction = async (
 
 /**
  * 处理用户对AI朋友圈的互动（评论、点赞）
- * AI会智能响应用户的互动
+ * AI会智能决策是否响应用户的互动
  */
 export const handleUserInteractionResponse = async (
   aiConversation: Conversation,
@@ -730,35 +730,26 @@ export const handleUserInteractionResponse = async (
   try {
     if (!aiConversation.characterSettings || !apiConfig) return;
 
-    // 如果用户点赞，AI有30%的概率回复评论
-    if (userAction === 'like') {
-      const shouldRespond = Math.random() < 0.3;
-      if (!shouldRespond) {
-        console.log(`💭 ${aiConversation.characterSettings.nickname} 看到点赞但选择不回复`);
-        return;
-      }
-    }
+    const { getRelationship, getRelationshipLabel } = await import('./aiRelationships');
+    
+    // 获取AI与用户的关系
+    const relationship = getRelationship(aiConversation.id, 'user');
+    const relationshipDesc = relationship ? getRelationshipLabel(relationship.level) : '普通关系';
 
-    // 如果用户评论，AI有80%的概率回复
-    if (userAction === 'comment') {
-      const shouldRespond = Math.random() < 0.8;
-      if (!shouldRespond) {
-        console.log(`💭 ${aiConversation.characterSettings.nickname} 看到评论但选择不回复`);
-        return;
-      }
-    }
-
-    // 构建AI响应提示词
     const personality = aiConversation.characterSettings.personality || '';
     const languageStyle = aiConversation.characterSettings.languageStyle || '';
     
-    let prompt = `你是 ${aiConversation.characterSettings.nickname}。
+    // 🎯 让AI自己决定是否回复用户的互动
+    let decisionPrompt = `你是 ${aiConversation.characterSettings.nickname}。
 
 【你的性格】
 ${personality}
 
 【你的说话风格】
 ${languageStyle}
+
+【你与用户的关系】
+${relationshipDesc}${relationship?.description ? `（${relationship.description}）` : ''}
 
 【你的朋友圈】
 ${post.content}
@@ -767,25 +758,50 @@ ${post.imageDescriptions ? `配图：${post.imageDescriptions.join('、')}` : ''
 `;
 
     if (userAction === 'comment' && userComment) {
-      prompt += `【用户评论】
+      decisionPrompt += `【用户互动】
 用户对你的朋友圈评论了："${userComment}"
 
 【任务】
-用1-2句话自然地回复用户的评论。要符合你的性格和说话风格，不要太客套，像朋友间的互动一样轻松自然。
+根据你的性格、和用户的关系、用户评论的内容，决定是否回复用户的评论。
 
-直接输出回复内容，不要其他格式。`;
+回复规则：
+- 如果用户评论很有趣、很真诚、或者你们关系很好，应该回复
+- 如果评论很敷衍（如"不错"、"嗯"、"哦"），可以选择不回复
+- 如果你性格比较高冷、不爱搭理人，可以选择不回复
+- 如果关系一般且评论没什么内容，可以不回复
+- 回复内容要符合你的性格和说话风格，1-2句话即可
+
+【输出格式】
+以JSON格式回复（只输出JSON，不要其他内容）：
+{
+  "shouldReply": true/false,  // 是否回复
+  "replyContent": "回复内容"或null,  // 如果回复，写出内容
+  "reason": "决策理由"  // 简短说明你的想法
+}`;
     } else if (userAction === 'like') {
-      prompt += `【用户互动】
+      decisionPrompt += `【用户互动】
 用户给你的朋友圈点赞了。
 
 【任务】
-用1句话自然地表达感谢或开个玩笑，符合你的性格。可以说"谢啦"、"嘿嘿"之类的，不要太正式。
+根据你的性格、和用户的关系，决定是否要回复这个点赞。
 
-直接输出回复内容，不要其他格式。`;
+回复规则：
+- 一般情况下，点赞不需要特别回复（真人也是这样）
+- 如果你性格特别热情、或者和用户关系特别好，可以回复一句
+- 如果你性格高冷、不爱说话，就不用回复
+- 如果要回复，就说一句简单的话，比如"谢啦"、"嘿嘿"之类的
+
+【输出格式】
+以JSON格式回复（只输出JSON，不要其他内容）：
+{
+  "shouldReply": true/false,  // 是否回复
+  "replyContent": "回复内容"或null,  // 如果回复，写出内容
+  "reason": "决策理由"  // 简短说明你的想法
+}`;
     }
 
-    // 调用API生成回复
-    const response = await fetch(`${apiConfig.baseUrl}/v1/chat/completions`, {
+    // 调用API让AI做决策
+    const decisionResponse = await fetch(`${apiConfig.baseUrl}/v1/chat/completions`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -794,30 +810,50 @@ ${post.imageDescriptions ? `配图：${post.imageDescriptions.join('、')}` : ''
       body: JSON.stringify({
         model: apiConfig.modelName,
         messages: [
-          { role: 'user', content: prompt }
+          { role: 'user', content: decisionPrompt }
         ],
         temperature: 0.8,
-        max_tokens: 100
+        max_tokens: 200
       })
     });
 
-    if (!response.ok) {
-      console.error('AI响应生成失败:', response.status);
+    if (!decisionResponse.ok) {
+      console.error('AI决策失败:', decisionResponse.status);
       return;
     }
 
-    const data = await response.json();
-    const replyContent = data.choices?.[0]?.message?.content?.trim() || '';
+    const decisionData = await decisionResponse.json();
+    const decisionContent = decisionData.choices?.[0]?.message?.content || '';
     
-    if (replyContent) {
-      // 回复评论
-      await commentMomentPost(aiConversation.id, post.id, {
-        authorId: aiConversation.id,
-        authorName: aiConversation.characterSettings.nickname || aiConversation.name,
-        authorAvatar: aiConversation.characterSettings.avatar || aiConversation.avatar,
-        content: replyContent
-      });
-      console.log(`✅ ${aiConversation.characterSettings.nickname} 回复: ${replyContent}`);
+    // 解析JSON响应
+    try {
+      const jsonMatch = decisionContent.match(/\{[\s\S]*\}/);
+      if (!jsonMatch) {
+        console.error('AI决策响应格式错误:', decisionContent);
+        return;
+      }
+      
+      const decision: { shouldReply: boolean; replyContent?: string; reason?: string } = JSON.parse(jsonMatch[0]);
+      
+      console.log(`🧠 ${aiConversation.characterSettings.nickname} 的决策: ${decision.reason}`);
+      
+      if (!decision.shouldReply) {
+        console.log(`😐 ${aiConversation.characterSettings.nickname} 决定不回复`);
+        return;
+      }
+      
+      if (decision.replyContent) {
+        // 回复评论
+        await commentMomentPost(aiConversation.id, post.id, {
+          authorId: aiConversation.id,
+          authorName: aiConversation.characterSettings.nickname || aiConversation.name,
+          authorAvatar: aiConversation.characterSettings.avatar || aiConversation.avatar,
+          content: decision.replyContent
+        });
+        console.log(`✅ ${aiConversation.characterSettings.nickname} 回复: ${decision.replyContent}`);
+      }
+    } catch (parseError) {
+      console.error('解析AI决策失败:', decisionContent, parseError);
     }
   } catch (error) {
     console.error('处理用户互动响应失败:', error);
