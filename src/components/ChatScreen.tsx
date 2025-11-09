@@ -1772,10 +1772,7 @@ ${conversation.characterSettings.memoryEvents ? `记忆事件：${conversation.c
       <div 
         className="absolute top-[60px] bottom-[60px] left-0 right-0 overflow-y-auto p-4 space-y-3"
         onClick={(e) => {
-          // 点击空白区域关闭操作栏
-          if (e.target === e.currentTarget || !(e.target as HTMLElement).closest('.message-bubble')) {
-            setClickedMessageId(null);
-          }
+          // 旧代码已移除 - 使用新的消息操作菜单
         }}
       >
         {conversation.messages.map((message, index) => {
@@ -2039,42 +2036,7 @@ ${conversation.characterSettings.memoryEvents ? `记忆事件：${conversation.c
               </div>
               )}
               
-              {/* iMessage风格操作栏 */}
-              {clickedMessageId === message.id && !message.mediaType && (
-                <div className="absolute -top-9 left-0 right-0 flex justify-center z-50">
-                  <div className="bg-gray-100/95 backdrop-blur-sm rounded-full shadow-lg px-2 py-1.5 flex items-center gap-1">
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleReplyMessage(message);
-                      }}
-                      className="message-action-btn px-3 py-1.5 text-xs text-gray-700 hover:bg-gray-200/60 rounded-full transition-colors"
-                    >
-                      引用
-                    </button>
-                    <div className="w-px h-3 bg-gray-300"></div>
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleEditMessage(message);
-                      }}
-                      className="message-action-btn px-3 py-1.5 text-xs text-gray-700 hover:bg-gray-200/60 rounded-full transition-colors"
-                    >
-                      编辑
-                    </button>
-                    <div className="w-px h-3 bg-gray-300"></div>
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleStartDelete(message.id);
-                      }}
-                      className="message-action-btn px-3 py-1.5 text-xs text-gray-700 hover:bg-gray-200/60 rounded-full transition-colors"
-                    >
-                      删除
-                    </button>
-                  </div>
-                </div>
-              )}
+              {/* 旧的操作栏已移除，使用新的MessageActionMenu */}
             </div>
           );
         })}
@@ -2158,7 +2120,7 @@ ${conversation.characterSettings.memoryEvents ? `记忆事件：${conversation.c
           </div>
         )}
         
-        {/* 引用消息提示 */}
+        {/* 引用提示 */}
         {replyingToMessage && (
           <div className="px-4 py-2 bg-gray-50 border-b border-gray-200 flex items-start justify-between gap-2">
             <div className="flex-1 flex items-start gap-2">

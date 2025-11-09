@@ -91,8 +91,8 @@ export const splitMessages = (message: string): string[] => {
     const text = parts[i]?.trim() || '';
     const punctuation = parts[i + 1] || '';
     if (text) {
-      // 换行符转为句号
-      const finalPunc = punctuation.replace(/\n+/g, '。');
+      // 移除换行符，不要替换成句号（避免重复标点）
+      const finalPunc = punctuation.replace(/\n+/g, '');
       segments.push(text + finalPunc);
     }
   }
