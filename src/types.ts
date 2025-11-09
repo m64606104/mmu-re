@@ -43,6 +43,8 @@ export interface Message {
   moneyTransfer?: MoneyTransfer;
   // 📄 文档支持
   document?: DocumentMessage;
+  // 🛍️ 订单/购物支持
+  order?: OrderMessage;
 }
 
 // 💰 红包/转账类型
@@ -61,6 +63,28 @@ export interface DocumentMessage {
   size?: number; // 文档大小（字节）
   type: 'text' | 'markdown' | 'code'; // 文档类型
   greeting?: string; // 文档附带的问候语，如"请查收"
+}
+
+// 🛍️ 订单消息类型
+export interface OrderMessage {
+  type: 'gift' | 'payRequest'; // 礼物（为他人购买）或代付请求
+  products: OrderProduct[]; // 商品列表
+  totalAmount: number; // 总金额
+  recipientId?: string; // 收礼人ID（type为gift时）
+  recipientName?: string; // 收礼人名称
+  message?: string; // 留言
+  status: 'pending' | 'accepted' | 'rejected' | 'paid'; // 待处理、已接受、已拒绝、已支付
+  orderNumber?: string; // 订单号
+  shippingAddress?: string; // 配送地址
+}
+
+// 🛒 订单商品
+export interface OrderProduct {
+  id: string;
+  name: string;
+  price: number;
+  quantity: number;
+  image?: string;
 }
 
 export interface CharacterSettings {
