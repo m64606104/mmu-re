@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { ChevronLeft, Search, Settings, Plus, Star, ShoppingCart } from 'lucide-react';
+import { ChevronLeft, Search, Settings, ShoppingCart } from 'lucide-react';
 import { purchaseProduct, getBalance } from '../utils/wallet';
 
 interface ShoppingScreenProps {

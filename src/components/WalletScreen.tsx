@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { ChevronLeft, Wallet, ShoppingBag, Ticket, Package, Settings } from 'lucide-react';
+import { ChevronLeft, Wallet, Settings } from 'lucide-react';
 import { getWalletData, WalletData } from '../utils/wallet';
 
 interface WalletScreenProps {
