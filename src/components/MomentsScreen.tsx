@@ -480,18 +480,64 @@ export default function MomentsScreen({
                   </button>
                 </div>
 
-                {/* Comments */}
-                {moment.comments.length > 0 && (
-                  <div className="mt-3 pt-3 border-t border-gray-100 space-y-2">
-                    {moment.comments.map((comment) => {
-                      const commentUsername = comment.authorName || comment.username || '未知用户';
-                      return (
-                        <div key={comment.id} className="text-sm">
-                          <span className="font-semibold text-blue-600">{commentUsername}</span>
-                          <span className="text-gray-600">: {comment.content}</span>
+                {/* 点赞和评论区 - 仿微信朋友圈样式 */}
+                {(moment.likes.length > 0 || moment.comments.length > 0) && (
+                  <div className="mt-3 bg-gray-50 rounded-md p-3 space-y-2">
+                    {/* 点赞列表 */}
+                    {moment.likes.length > 0 && (
+                      <div className="flex items-start gap-1.5 text-sm">
+                        <Heart className="w-4 h-4 text-red-500 fill-current flex-shrink-0 mt-0.5" />
+                        <div className="flex-1">
+                          <span className="text-gray-700">
+                            {moment.likes.map((likeId, index) => {
+                              // 获取点赞者名称
+                              let likeName = '';
+                              if (likeId === 'user') {
+                                likeName = userProfile.username;
+                              } else {
+                                const likeConv = conversations.find(c => c.id === likeId);
+                                likeName = likeConv?.characterSettings?.nickname || likeConv?.name || '未知';
+                              }
+                              
+                              return (
+                                <span key={likeId}>
+                                  <span className="text-blue-600 font-medium">{likeName}</span>
+                                  {index < moment.likes.length - 1 && <span className="text-gray-400">、</span>}
+                                </span>
+                              );
+                            })}
+                          </span>
                         </div>
-                      );
-                    })}
+                      </div>
+                    )}
+                    
+                    {/* 分隔线 */}
+                    {moment.likes.length > 0 && moment.comments.length > 0 && (
+                      <div className="border-t border-gray-200" />
+                    )}
+                    
+                    {/* 评论列表 */}
+                    {moment.comments.length > 0 && (
+                      <div className="space-y-1">
+                        {moment.comments.map((comment) => {
+                          const commentUsername = comment.authorName || comment.username || '未知用户';
+                          const replyToName = comment.replyToName || comment.replyToUsername;
+                          
+                          return (
+                            <div key={comment.id} className="text-sm leading-relaxed">
+                              <span className="text-blue-600 font-medium">{commentUsername}</span>
+                              {replyToName && (
+                                <>
+                                  <span className="text-gray-500"> 回复 </span>
+                                  <span className="text-blue-600 font-medium">{replyToName}</span>
+                                </>
+                              )}
+                              <span className="text-gray-700">: {comment.content}</span>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
                   </div>
                 )}
 
