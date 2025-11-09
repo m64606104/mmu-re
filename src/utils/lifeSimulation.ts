@@ -318,9 +318,22 @@ export const generateDailyActivities = (
     22  // 睡前
   ];
   
-  timeSlots.forEach(hour => {
+  timeSlots.forEach((hour, index) => {
     const slotDate = new Date(date);
-    slotDate.setHours(hour, Math.floor(Math.random() * 60), 0, 0);
+    // 为每个时间段设置不同的分钟数，确保时间戳唯一
+    const minutes = Math.floor((index * 13 + Math.random() * 30) % 60);
+    slotDate.setHours(hour, minutes, 0, 0);
+    
+    const timestamp = slotDate.getTime();
+    
+    // 检查是否已有相近时间的活动（避免重复）
+    const hasNearbyActivity = activities.some(a => 
+      Math.abs(a.timestamp - timestamp) < 30 * 60 * 1000 // 30分钟内
+    );
+    
+    if (hasNearbyActivity) {
+      return; // 跳过这个时间段
+    }
     
     // 筛选适合该时段的活动
     const suitableActivities = ACTIVITY_TEMPLATES.filter(template => 
@@ -342,7 +355,7 @@ export const generateDailyActivities = (
         const adjustedActivity = adjustActivityByPersonality(activityText, personality);
         
         activities.push({
-          timestamp: slotDate.getTime(),
+          timestamp: timestamp,
           activity: adjustedActivity,
           status: getStatusFromCategory(selected.category),
           location: getLocationFromCategory(selected.category),
@@ -427,21 +440,34 @@ export const fillMissingActivities = (
   if (todayActivities.length < 3) {
     const dailyActivities = generateDailyActivities(conversation, now);
     
-    // 合并活动，避免重复时间段
-    const mergedActivities = [...todayActivities];
+    // 使用 Map 去重，键为时间戳，确保同一时间只有一个活动
+    const activityMap = new Map<number, ActivityLogEntry>();
     
+    // 先添加已有的活动（优先级更高）
+    todayActivities.forEach(activity => {
+      activityMap.set(activity.timestamp, activity);
+    });
+    
+    // 添加新生成的活动，但要检查时间冲突
     dailyActivities.forEach(newActivity => {
       const hourDiff = 2 * 60 * 60 * 1000; // 2小时
-      const hasNearbyActivity = mergedActivities.some(existing => 
-        Math.abs(existing.timestamp - newActivity.timestamp) < hourDiff
-      );
+      let hasConflict = false;
       
-      if (!hasNearbyActivity) {
-        mergedActivities.push(newActivity);
+      // 检查是否与已有活动时间太接近
+      for (const [existingTimestamp] of activityMap) {
+        if (Math.abs(existingTimestamp - newActivity.timestamp) < hourDiff) {
+          hasConflict = true;
+          break;
+        }
+      }
+      
+      if (!hasConflict) {
+        activityMap.set(newActivity.timestamp, newActivity);
       }
     });
     
-    return mergedActivities.sort((a, b) => a.timestamp - b.timestamp);
+    // 转换为数组并按时间排序
+    return Array.from(activityMap.values()).sort((a, b) => a.timestamp - b.timestamp);
   }
   
   return existingActivities;

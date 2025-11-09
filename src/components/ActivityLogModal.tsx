@@ -49,26 +49,33 @@ const ActivityLogModal: React.FC<ActivityLogModalProps> = ({
         
         // 将补充的活动转换回AIActivityLog格式展示
         if (filledActivities.length > existingActivities.length) {
+          // 使用 Set 记录已存在的时间戳，避免重复
+          const existingTimestamps = new Set(statusInfo.activityLogs.map(log => log.timestamp));
+          
           const updatedLogs = [...statusInfo.activityLogs];
           
-          // 添加新生成的活动
-          const newActivities = filledActivities.slice(existingActivities.length);
-          for (const activity of newActivities) {
-            updatedLogs.push({
-              id: `activity_${activity.timestamp}_${Math.random().toString(36).substr(2, 9)}`,
-              timestamp: activity.timestamp,
-              activity: activity.activity,
-              location: activity.location,
-              status: activity.status === '在线' ? 'online' : 
-                     activity.status === '忙碌' ? 'busy' : 
-                     activity.status === '休息中' ? 'resting' : 
-                     activity.status === '离开' ? 'away' : 'online'
-            });
-          }
+          // 只添加新生成的活动（通过时间戳判断）
+          filledActivities.forEach(activity => {
+            if (!existingTimestamps.has(activity.timestamp)) {
+              updatedLogs.push({
+                id: `activity_${activity.timestamp}_${Math.random().toString(36).substr(2, 9)}`,
+                timestamp: activity.timestamp,
+                activity: activity.activity,
+                location: activity.location,
+                status: activity.status === '在线' ? 'online' : 
+                       activity.status === '忙碌' ? 'busy' : 
+                       activity.status === '休息中' ? 'resting' : 
+                       activity.status === '离开' ? 'away' : 'online'
+              });
+            }
+          });
           
-          // 按时间排序
+          // 按时间倒序排序（最新的在前）
           updatedLogs.sort((a, b) => b.timestamp - a.timestamp);
           setActivityLogs(updatedLogs);
+        } else {
+          // 没有新活动，直接使用原有的
+          setActivityLogs(statusInfo.activityLogs);
         }
       } catch (error) {
         console.error('填充活动轨迹失败:', error);
