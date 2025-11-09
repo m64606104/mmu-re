@@ -144,6 +144,20 @@ export default function CharacterSettingsScreen({
   };
 
   const handleSave = () => {
+    // 🔧 根据记忆系统开关同步更新 enabledFeatures
+    const currentFeatures = conversation.enabledFeatures || [];
+    let updatedFeatures = [...currentFeatures];
+    
+    if (memoryConfigEnabled) {
+      // 如果开启记忆系统，确保 'memory-system' 在列表中
+      if (!updatedFeatures.includes('memory-system')) {
+        updatedFeatures.push('memory-system');
+      }
+    } else {
+      // 如果关闭记忆系统，从列表中移除 'memory-system'
+      updatedFeatures = updatedFeatures.filter(f => f !== 'memory-system');
+    }
+    
     onUpdateConversation(conversation.id, {
       name: nickname || conversation.name,
       characterSettings: {
@@ -175,6 +189,7 @@ export default function CharacterSettingsScreen({
         },
         knowledgeBase: knowledgeBase,
       },
+      enabledFeatures: updatedFeatures, // 同步更新 enabledFeatures
     });
     alert('角色设置已保存');
     onBack();

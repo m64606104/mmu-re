@@ -187,7 +187,7 @@ function App() {
         unreadCount: 0,
         messages: data.messages || [],
         characterSettings: data.character.characterSettings,
-        enabledFeatures: data.character.enabledFeatures || [],
+        enabledFeatures: data.character.enabledFeatures || ['memory-system'], // 默认启用记忆系统
       };
       
       // 添加对话
@@ -326,6 +326,7 @@ function App() {
         languageExample: friendData.languageExample,
         memoryEvents: '',
       },
+      enabledFeatures: ['memory-system'], // 默认启用记忆系统
       lastMessageTime: Date.now(),
       unreadCount: 0,
     };
@@ -367,6 +368,7 @@ function App() {
       groupRemark: groupData.groupRemark,
       members: groupData.members,
       messages: systemMessages,
+      enabledFeatures: ['memory-system'], // 默认启用记忆系统
       lastMessageTime: Date.now(),
       unreadCount: 0,
     };
