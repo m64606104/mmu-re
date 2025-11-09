@@ -49,14 +49,17 @@ const ActivityLogModal: React.FC<ActivityLogModalProps> = ({
         
         // 将补充的活动转换回AIActivityLog格式展示
         if (filledActivities.length > existingActivities.length) {
-          // 使用 Set 记录已存在的时间戳，避免重复
-          const existingTimestamps = new Set(statusInfo.activityLogs.map(log => log.timestamp));
+          // 使用时间戳+活动内容作为唯一标识，避免重复
+          const existingKeys = new Set(
+            statusInfo.activityLogs.map(log => `${log.timestamp}_${log.activity}`)
+          );
           
           const updatedLogs = [...statusInfo.activityLogs];
           
-          // 只添加新生成的活动（通过时间戳判断）
+          // 只添加新生成的活动（通过时间戳+内容判断）
           filledActivities.forEach(activity => {
-            if (!existingTimestamps.has(activity.timestamp)) {
+            const key = `${activity.timestamp}_${activity.activity}`;
+            if (!existingKeys.has(key)) {
               updatedLogs.push({
                 id: `activity_${activity.timestamp}_${Math.random().toString(36).substr(2, 9)}`,
                 timestamp: activity.timestamp,
@@ -67,6 +70,7 @@ const ActivityLogModal: React.FC<ActivityLogModalProps> = ({
                        activity.status === '休息中' ? 'resting' : 
                        activity.status === '离开' ? 'away' : 'online'
               });
+              existingKeys.add(key);
             }
           });
           

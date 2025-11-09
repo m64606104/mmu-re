@@ -182,6 +182,11 @@ export default function ChatScreen({
   const [menuPosition, setMenuPosition] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
   const [quotedMessage, setQuotedMessage] = useState<Message | null>(null);
   const [messageBeingEdited, setMessageBeingEdited] = useState<Message | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false); // 标记是否正在删除消息
+  
+  // 多选删除状态
+  const [isMultiSelectMode, setIsMultiSelectMode] = useState(false);
+  const [selectedMessages, setSelectedMessages] = useState<string[]>([]);
   
   // 生成智能的不回复提示
   const generateContextualHint = async (conversationData: Conversation) => {
@@ -326,17 +331,21 @@ ${recentMessages}
   const handleDeleteMessage = () => {
     if (!selectedMessageId) return;
     
+    setIsDeleting(true); // 标记正在删除
     const updatedMessages = conversation.messages.filter(m => m.id !== selectedMessageId);
     onUpdateConversation(conversation.id, { messages: updatedMessages });
     setSelectedMessageId(null);
+    
+    // 删除后恢复标记
+    setTimeout(() => setIsDeleting(false), 100);
   };
 
-  // 编辑消息
+  // 编辑消息（所有消息都可编辑）
   const handleEditMessage = () => {
     if (!selectedMessageId) return;
     
     const message = conversation.messages.find(m => m.id === selectedMessageId);
-    if (!message || message.role !== 'user') return;
+    if (!message) return;
     
     setMessageBeingEdited(message);
     setCurrentInput(message.content);
@@ -375,6 +384,41 @@ ${recentMessages}
     setCurrentInput('');
   };
 
+  // 进入多选模式
+  const handleEnterMultiSelect = () => {
+    setIsMultiSelectMode(true);
+    setSelectedMessages([selectedMessageId!]); // 把当前选中的消息加入多选
+    setSelectedMessageId(null);
+  };
+
+  // 切换消息选中状态
+  const toggleMessageSelection = (messageId: string) => {
+    setSelectedMessages(prev => 
+      prev.includes(messageId)
+        ? prev.filter(id => id !== messageId)
+        : [...prev, messageId]
+    );
+  };
+
+  // 批量删除消息
+  const handleBatchDelete = () => {
+    if (selectedMessages.length === 0) return;
+    
+    setIsDeleting(true);
+    const updatedMessages = conversation.messages.filter(m => !selectedMessages.includes(m.id));
+    onUpdateConversation(conversation.id, { messages: updatedMessages });
+    setSelectedMessages([]);
+    setIsMultiSelectMode(false);
+    
+    setTimeout(() => setIsDeleting(false), 100);
+  };
+
+  // 取消多选模式
+  const handleCancelMultiSelect = () => {
+    setIsMultiSelectMode(false);
+    setSelectedMessages([]);
+  };
+
   // 旧的消息操作函数已删除，使用新实现
 
   // 追踪组件挂载状态（用户是否还在页面）
@@ -388,8 +432,11 @@ ${recentMessages}
   }, []);
 
   useEffect(() => {
-    scrollToBottom();
-  }, [conversation.messages, isGenerating]);
+    // 删除时不自动滚动，其他情况正常滚动
+    if (!isDeleting) {
+      scrollToBottom();
+    }
+  }, [conversation.messages, isGenerating, isDeleting]);
 
   // 加载AI状态
   useEffect(() => {
@@ -1814,15 +1861,32 @@ ${conversation.characterSettings.memoryEvents ? `记忆事件：${conversation.c
                   </div>
                 )}
                 <div className="relative max-w-[70%]">
-                  {/* 多选模式已移除 */}
+                  {/* 多选模式复选框 */}
+                  {isMultiSelectMode && (
+                    <input
+                      type="checkbox"
+                      checked={selectedMessages.includes(message.id)}
+                      onChange={() => toggleMessageSelection(message.id)}
+                      className="absolute -left-8 top-1/2 -translate-y-1/2 w-5 h-5 rounded border-2 border-gray-300 cursor-pointer"
+                      onClick={(e) => e.stopPropagation()}
+                    />
+                  )}
                   
                   <div
-                    onClick={(e) => handleMessageClick(message.id, e)}
+                    onClick={(e) => {
+                      if (isMultiSelectMode) {
+                        toggleMessageSelection(message.id);
+                      } else {
+                        handleMessageClick(message.id, e);
+                      }
+                    }}
                     className={`rounded-2xl shadow-sm cursor-pointer ${
                       message.role === 'user'
                         ? 'bg-white text-gray-900 border border-gray-200'
                         : 'bg-white text-gray-900 border border-gray-200'
-                    } ${message.mediaType ? 'p-0 overflow-hidden' : 'px-4 py-2.5'}`}
+                    } ${message.mediaType ? 'p-0 overflow-hidden' : 'px-4 py-2.5'} ${
+                      isMultiSelectMode && selectedMessages.includes(message.id) ? 'ring-2 ring-purple-500' : ''
+                    }`}
                   >
                     {/* 引用消息显示 */}
                     {message.replyTo && (
@@ -2080,8 +2144,29 @@ ${conversation.characterSettings.memoryEvents ? `记忆事件：${conversation.c
 
       {/* Input area - 固定在底部 */}
       <div className="absolute bottom-0 left-0 right-0 bg-white/95 backdrop-blur-sm border-t border-gray-200 z-10">
-        {/* 多选模式工具栏 - 已移除，使用新的单消息操作 */}
-        {/* 旧的引用/编辑提示 - 已替换为新UI（在输入框上方） */}
+        {/* 多选模式工具栏 */}
+        {isMultiSelectMode && (
+          <div className="px-4 py-3 bg-purple-50 border-b border-purple-100 flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <button
+                onClick={handleCancelMultiSelect}
+                className="text-sm text-purple-600 hover:text-purple-800 font-medium"
+              >
+                取消
+              </button>
+              <span className="text-sm text-gray-700">
+                已选择 {selectedMessages.length} 条消息
+              </span>
+            </div>
+            <button
+              onClick={handleBatchDelete}
+              disabled={selectedMessages.length === 0}
+              className="px-4 py-2 bg-red-500 text-white text-sm rounded-lg hover:bg-red-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              删除
+            </button>
+          </div>
+        )}
         
         {/* 剩余消息提示 */}
         {pendingMessages.length > 0 && !isGenerating && (
@@ -2435,10 +2520,10 @@ ${conversation.characterSettings.memoryEvents ? `记忆事件：${conversation.c
     <MessageActionMenu
       isVisible={selectedMessageId !== null}
       position={menuPosition}
-      isUserMessage={conversation.messages.find(m => m.id === selectedMessageId)?.role === 'user'}
       onQuote={handleQuoteMessage}
       onEdit={handleEditMessage}
       onDelete={handleDeleteMessage}
+      onMultiSelect={handleEnterMultiSelect}
       onClose={handleCloseMenu}
     />
     </>

@@ -4,25 +4,25 @@
  */
 
 import React from 'react';
-import { Reply, Edit2, Trash2 } from 'lucide-react';
+import { Reply, Edit2, Trash2, CheckSquare } from 'lucide-react';
 
 interface MessageActionMenuProps {
   isVisible: boolean;
   position: { x: number; y: number };
-  isUserMessage: boolean;
   onQuote: () => void;
   onEdit: () => void;
   onDelete: () => void;
+  onMultiSelect: () => void;
   onClose: () => void;
 }
 
 export const MessageActionMenu: React.FC<MessageActionMenuProps> = ({
   isVisible,
   position,
-  isUserMessage,
   onQuote,
   onEdit,
   onDelete,
+  onMultiSelect,
   onClose,
 }) => {
   if (!isVisible) return null;
@@ -56,19 +56,29 @@ export const MessageActionMenu: React.FC<MessageActionMenuProps> = ({
           <span className="text-sm font-medium text-gray-700">引用</span>
         </button>
 
-        {/* 编辑按钮（仅用户消息） */}
-        {isUserMessage && (
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              onEdit();
-            }}
-            className="flex items-center gap-2 px-4 py-3 hover:bg-gray-50 transition-colors border-r border-gray-200"
-          >
-            <Edit2 size={18} className="text-green-500" />
-            <span className="text-sm font-medium text-gray-700">编辑</span>
-          </button>
-        )}
+        {/* 编辑按钮（所有消息都可编辑） */}
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            onEdit();
+          }}
+          className="flex items-center gap-2 px-4 py-3 hover:bg-gray-50 transition-colors border-r border-gray-200"
+        >
+          <Edit2 size={18} className="text-green-500" />
+          <span className="text-sm font-medium text-gray-700">编辑</span>
+        </button>
+
+        {/* 多选按钮 */}
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            onMultiSelect();
+          }}
+          className="flex items-center gap-2 px-4 py-3 hover:bg-gray-50 transition-colors border-r border-gray-200"
+        >
+          <CheckSquare size={18} className="text-purple-500" />
+          <span className="text-sm font-medium text-gray-700">多选</span>
+        </button>
 
         {/* 删除按钮 */}
         <button
