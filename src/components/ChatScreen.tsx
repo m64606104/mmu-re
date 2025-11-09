@@ -856,6 +856,78 @@ ${systemPrompt}
     setStickerDescInput('');
   };
 
+  // 接受订单（礼物/代付）
+  const handleAcceptOrder = (message: Message) => {
+    if (!message.order) return;
+    
+    // 更新订单状态
+    const updatedMessages = conversation.messages.map(msg => {
+      if (msg.id === message.id && msg.order) {
+        return {
+          ...msg,
+          order: {
+            ...msg.order,
+            status: (message.order!.type === 'gift' ? 'accepted' : 'paid') as 'accepted' | 'paid'
+          }
+        } as Message;
+      }
+      return msg;
+    });
+    
+    onUpdateConversation(conversation.id, {
+      messages: updatedMessages
+    });
+    
+    // 发送确认消息
+    const confirmMessage: Message = {
+      id: `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+      role: 'user',
+      content: message.order.type === 'gift' ? '谢谢！我收下了～' : '已帮你付款啦！',
+      timestamp: Date.now()
+    };
+    
+    onUpdateConversation(conversation.id, {
+      messages: [...updatedMessages, confirmMessage],
+      lastMessageTime: Date.now()
+    });
+  };
+
+  // 拒绝订单（礼物/代付）
+  const handleRejectOrder = (message: Message) => {
+    if (!message.order) return;
+    
+    // 更新订单状态
+    const updatedMessages = conversation.messages.map(msg => {
+      if (msg.id === message.id && msg.order) {
+        return {
+          ...msg,
+          order: {
+            ...msg.order,
+            status: 'rejected' as 'rejected'
+          }
+        } as Message;
+      }
+      return msg;
+    });
+    
+    onUpdateConversation(conversation.id, {
+      messages: updatedMessages
+    });
+    
+    // 发送拒绝消息
+    const rejectMessage: Message = {
+      id: `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+      role: 'user',
+      content: message.order.type === 'gift' ? '不好意思，太贵重了' : '抱歉，暂时无法帮忙',
+      timestamp: Date.now()
+    };
+    
+    onUpdateConversation(conversation.id, {
+      messages: [...updatedMessages, rejectMessage],
+      lastMessageTime: Date.now()
+    });
+  };
+
   // 发送视频消息
   const handleSendVideo = () => {
     if (!pendingVideoFile || !videoDescInput.trim()) {
@@ -2378,16 +2450,15 @@ ${conversation.characterSettings.memoryEvents ? `记忆事件：${conversation.c
                             </div>
                           </div>
                           
-                          {/* 操作按钮 */}
-                          {message.role === 'user' && message.order.status === 'pending' && (
+                          {/* 操作按钮 - 只有当AI发送的订单才显示，让用户响应 */}
+                          {message.role === 'assistant' && message.order.status === 'pending' && (
                             <div className="flex gap-2">
                               {message.order.type === 'gift' ? (
                                 <>
                                   <button 
                                     onClick={(e) => {
                                       e.stopPropagation();
-                                      // TODO: 处理收下礼物逻辑
-                                      alert('礼物收下功能待实现');
+                                      handleAcceptOrder(message);
                                     }}
                                     className="flex-1 py-2 bg-gradient-to-r from-blue-500 to-purple-500 text-white rounded-lg font-medium hover:opacity-90 transition-opacity"
                                   >
@@ -2396,8 +2467,7 @@ ${conversation.characterSettings.memoryEvents ? `记忆事件：${conversation.c
                                   <button 
                                     onClick={(e) => {
                                       e.stopPropagation();
-                                      // TODO: 处理退回礼物逻辑
-                                      alert('退回礼物功能待实现');
+                                      handleRejectOrder(message);
                                     }}
                                     className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
                                   >
@@ -2409,8 +2479,7 @@ ${conversation.characterSettings.memoryEvents ? `记忆事件：${conversation.c
                                   <button 
                                     onClick={(e) => {
                                       e.stopPropagation();
-                                      // TODO: 处理帮TA付款逻辑
-                                      alert('代付功能待实现');
+                                      handleAcceptOrder(message);
                                     }}
                                     className="flex-1 py-2 bg-gradient-to-r from-green-500 to-emerald-500 text-white rounded-lg font-medium hover:opacity-90 transition-opacity"
                                   >
@@ -2419,8 +2488,7 @@ ${conversation.characterSettings.memoryEvents ? `记忆事件：${conversation.c
                                   <button 
                                     onClick={(e) => {
                                       e.stopPropagation();
-                                      // TODO: 处理拒绝代付逻辑
-                                      alert('拒绝代付功能待实现');
+                                      handleRejectOrder(message);
                                     }}
                                     className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
                                   >
