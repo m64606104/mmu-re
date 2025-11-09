@@ -184,19 +184,26 @@ export default function ChatScreen({
   const [messageBeingEdited, setMessageBeingEdited] = useState<Message | null>(null);
   
   // 临时兼容变量（用于旧UI，待完全清理）
+  // @ts-ignore - 临时兼容旧代码
   const isMultiSelectMode = false;
+  // @ts-ignore - 临时兼容旧代码
   const selectedMessages: string[] = [];
+  // @ts-ignore - 临时兼容旧代码
   const setIsMultiSelectMode = (_: boolean) => {};
+  // @ts-ignore - 临时兼容旧代码
   const setSelectedMessages = (_: string[]) => {};
-  const clickedMessageId = null;
-  const replyingToMessage: Message | null = null;
-  const editingMessage: Message | null = null;
+  // @ts-ignore - 临时兼容旧代码
+  const replyingToMessage = quotedMessage; // 使用新的quotedMessage
+  // @ts-ignore - 临时兼容旧代码
+  const editingMessage = messageBeingEdited; // 使用新的messageBeingEdited
+  // @ts-ignore - 临时兼容旧代码
   const setEditingMessage = (_: any) => {};
+  // @ts-ignore - 临时兼容旧代码
   const toggleMessageSelection = (_: string) => {};
+  // @ts-ignore - 临时兼容旧代码
   const handleDeleteMessages = () => {};
-  const handleReplyMessage = (_: Message) => {};
-  const handleStartDelete = (_: string) => {};
-  const handleCancelReply = () => {};
+  // @ts-ignore - 临时兼容旧代码
+  const handleCancelReply = handleCancelQuote; // 使用新的handleCancelQuote
   
   // 生成智能的不回复提示
   const generateContextualHint = async (conversationData: Conversation) => {
@@ -1786,9 +1793,6 @@ ${conversation.characterSettings.memoryEvents ? `记忆事件：${conversation.c
       {/* Messages - 固定布局，添加顶部和底部padding */}
       <div 
         className="absolute top-[60px] bottom-[60px] left-0 right-0 overflow-y-auto p-4 space-y-3"
-        onClick={(e) => {
-          // 旧代码已移除 - 使用新的消息操作菜单
-        }}
       >
         {conversation.messages.map((message, index) => {
           // 微信风格：超过5分钟才显示时间
