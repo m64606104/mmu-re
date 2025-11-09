@@ -16,6 +16,7 @@ import UserGuide from './components/UserGuide';
 import AnnouncementScreen from './components/AnnouncementScreen';
 import WalletScreen from './components/WalletScreen';
 import ShoppingScreen from './components/ShoppingScreen';
+import OrderHistoryScreen from './components/OrderHistoryScreen';
 import ToastContainer from './components/ToastContainer';
 import { MomentsAutoGenerator } from './components/MomentsAutoGenerator';
 import { AIMomentsInteractionManager } from './components/AIMomentsInteractionManager';
@@ -639,6 +640,17 @@ function App() {
             conversations={conversations}
             onSendGiftToAI={handleSendGiftToAI}
             onRequestAIPay={handleRequestAIPay}
+          />
+        );
+      case 'order-history':
+        return (
+          <OrderHistoryScreen
+            conversations={conversations}
+            onBack={() => navigateTo('wallet')}
+            onNavigateToChat={(conversationId) => {
+              setCurrentConversationId(conversationId);
+              setCurrentScreen('chat');
+            }}
           />
         );
       default:
