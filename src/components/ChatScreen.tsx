@@ -183,6 +183,21 @@ export default function ChatScreen({
   const [quotedMessage, setQuotedMessage] = useState<Message | null>(null);
   const [messageBeingEdited, setMessageBeingEdited] = useState<Message | null>(null);
   
+  // 临时兼容变量（用于旧UI，待完全清理）
+  const isMultiSelectMode = false;
+  const selectedMessages: string[] = [];
+  const setIsMultiSelectMode = (_: boolean) => {};
+  const setSelectedMessages = (_: string[]) => {};
+  const clickedMessageId = null;
+  const replyingToMessage: Message | null = null;
+  const editingMessage: Message | null = null;
+  const setEditingMessage = (_: any) => {};
+  const toggleMessageSelection = (_: string) => {};
+  const handleDeleteMessages = () => {};
+  const handleReplyMessage = (_: Message) => {};
+  const handleStartDelete = (_: string) => {};
+  const handleCancelReply = () => {};
+  
   // 生成智能的不回复提示
   const generateContextualHint = async (conversationData: Conversation) => {
     try {
@@ -2127,10 +2142,10 @@ ${conversation.characterSettings.memoryEvents ? `记忆事件：${conversation.c
               <div className="w-1 h-full bg-blue-400 rounded-full"></div>
               <div className="flex-1 min-w-0">
                 <div className="text-xs font-medium text-gray-600 mb-0.5">
-                  回复 {replyingToMessage.role === 'user' ? '自己' : conversation.name}
+                  回复 {replyingToMessage?.role === 'user' ? '自己' : conversation.name}
                 </div>
                 <div className="text-sm text-gray-700 truncate">
-                  {replyingToMessage.content}
+                  {replyingToMessage?.content}
                 </div>
               </div>
             </div>
