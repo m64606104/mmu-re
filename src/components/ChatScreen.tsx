@@ -135,6 +135,7 @@ const backgroundTaskManager = {
   }
 };
 import { showMessageNotification } from './MessageNotification';
+import { MessageActionMenu } from './MessageActionMenu';
 // import { transcribeAudio, isValidSpeechConfig } from '../utils/speechToText';
 
 interface ChatScreenProps {
@@ -175,6 +176,12 @@ export default function ChatScreen({
   const [showAllSentHint, setShowAllSentHint] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  
+  // 消息操作相关状态
+  const [selectedMessageId, setSelectedMessageId] = useState<string | null>(null);
+  const [menuPosition, setMenuPosition] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
+  const [quotedMessage, setQuotedMessage] = useState<Message | null>(null);
+  const [messageBeingEdited, setMessageBeingEdited] = useState<Message | null>(null);
   
   // 生成智能的不回复提示
   const generateContextualHint = async (conversationData: Conversation) => {
@@ -263,12 +270,7 @@ ${recentMessages}
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const recordingTimerRef = useRef<NodeJS.Timeout | null>(null);
   
-  // 消息操作相关状态
-  const [clickedMessageId, setClickedMessageId] = useState<string | null>(null);
-  const [selectedMessages, setSelectedMessages] = useState<string[]>([]);
-  const [isMultiSelectMode, setIsMultiSelectMode] = useState(false);
-  const [editingMessage, setEditingMessage] = useState<Message | null>(null);
-  const [replyingToMessage, setReplyingToMessage] = useState<Message | null>(null);
+  // 旧的消息操作状态已移除，使用新的实现（selectedMessageId, menuPosition等）
   
   // 获取用户资料
   const getUserProfile = () => {
@@ -294,7 +296,7 @@ ${recentMessages}
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   };
 
-  // 消息点击处理 - 显示/隐藏操作栏
+  // 消息点击处理 - 显示胶囊菜单
   const handleMessageClick = (messageId: string, event: React.MouseEvent) => {
     // 如果点击的是操作按钮或语音/视频/图片等媒体控件，不处理
     const target = event.target as HTMLElement;
@@ -306,85 +308,74 @@ ${recentMessages}
       return;
     }
     
-    // 如果是多选模式，切换选择
-    if (isMultiSelectMode) {
-      toggleMessageSelection(messageId);
-      return;
-    }
+    // 获取点击位置，显示菜单
+    const rect = (event.currentTarget as HTMLElement).getBoundingClientRect();
+    const x = rect.left + rect.width / 2;
+    const y = rect.top;
     
-    // 切换操作栏显示
-    setClickedMessageId(prev => prev === messageId ? null : messageId);
+    setSelectedMessageId(messageId);
+    setMenuPosition({ x, y });
   };
 
-  // 开始删除模式
-  const handleStartDelete = (messageId: string) => {
-    setIsMultiSelectMode(true);
-    setSelectedMessages([messageId]);
-    setClickedMessageId(null);
+  // 关闭菜单
+  const handleCloseMenu = () => {
+    setSelectedMessageId(null);
   };
 
-  // 切换选择消息
-  const toggleMessageSelection = (messageId: string) => {
-    setSelectedMessages(prev => 
-      prev.includes(messageId) 
-        ? prev.filter(id => id !== messageId)
-        : [...prev, messageId]
-    );
-  };
-
-  // 删除选中的消息
-  const handleDeleteMessages = () => {
-    if (selectedMessages.length === 0) return;
+  // 删除消息
+  const handleDeleteMessage = () => {
+    if (!selectedMessageId) return;
     
-    if (window.confirm(`确定删除选中的 ${selectedMessages.length} 条消息吗？此操作无法撤销。`)) {
-      const updatedMessages = conversation.messages.filter(
-        msg => !selectedMessages.includes(msg.id)
-      );
-      onUpdateConversation(conversation.id, { messages: updatedMessages });
-      
-      // 取消选择模式
-      setIsMultiSelectMode(false);
-      setSelectedMessages([]);
-      
-      alert('✅ 消息已删除');
-    }
+    const updatedMessages = conversation.messages.filter(m => m.id !== selectedMessageId);
+    onUpdateConversation(conversation.id, { messages: updatedMessages });
+    setSelectedMessageId(null);
   };
 
   // 编辑消息
-  const handleEditMessage = (message: Message) => {
-    setEditingMessage(message);
+  const handleEditMessage = () => {
+    if (!selectedMessageId) return;
+    
+    const message = conversation.messages.find(m => m.id === selectedMessageId);
+    if (!message || message.role !== 'user') return;
+    
+    setMessageBeingEdited(message);
     setCurrentInput(message.content);
-    setClickedMessageId(null);
-    inputRef.current?.focus();
-  };
-
-  // 保存编辑
-  const handleSaveEdit = () => {
-    if (!editingMessage || !currentInput.trim()) return;
+    setSelectedMessageId(null);
     
-    const updatedMessages = conversation.messages.map(msg =>
-      msg.id === editingMessage.id 
-        ? { ...msg, content: currentInput.trim() }
-        : msg
-    );
-    
-    onUpdateConversation(conversation.id, { messages: updatedMessages });
-    setEditingMessage(null);
-    setCurrentInput('');
-    alert('✅ 消息已更新');
+    // 聚焦输入框
+    setTimeout(() => {
+      inputRef.current?.focus();
+    }, 100);
   };
 
   // 引用消息
-  const handleReplyMessage = (message: Message) => {
-    setReplyingToMessage(message);
-    setClickedMessageId(null);
-    inputRef.current?.focus();
+  const handleQuoteMessage = () => {
+    if (!selectedMessageId) return;
+    
+    const message = conversation.messages.find(m => m.id === selectedMessageId);
+    if (!message) return;
+    
+    setQuotedMessage(message);
+    setSelectedMessageId(null);
+    
+    // 聚焦输入框
+    setTimeout(() => {
+      inputRef.current?.focus();
+    }, 100);
   };
 
   // 取消引用
-  const handleCancelReply = () => {
-    setReplyingToMessage(null);
+  const handleCancelQuote = () => {
+    setQuotedMessage(null);
   };
+
+  // 取消编辑
+  const handleCancelEdit = () => {
+    setMessageBeingEdited(null);
+    setCurrentInput('');
+  };
+
+  // 旧的消息操作函数已删除，使用新实现
 
   // 追踪组件挂载状态（用户是否还在页面）
   useEffect(() => {
@@ -422,8 +413,15 @@ ${recentMessages}
     if (!currentInput.trim()) return;
 
     // 如果是编辑模式,保存编辑
-    if (editingMessage) {
-      handleSaveEdit();
+    if (messageBeingEdited) {
+      const updatedMessages = conversation.messages.map(msg =>
+        msg.id === messageBeingEdited.id 
+          ? { ...msg, content: currentInput.trim(), edited: true }
+          : msg
+      );
+      onUpdateConversation(conversation.id, { messages: updatedMessages });
+      setMessageBeingEdited(null);
+      setCurrentInput('');
       return;
     }
 
@@ -433,11 +431,11 @@ ${recentMessages}
       content: currentInput.trim(),
       timestamp: Date.now(),
       // 如果有引用消息,添加引用信息
-      ...(replyingToMessage && replyingToMessage.role !== 'system' && {
+      ...(quotedMessage && quotedMessage.role !== 'system' && {
         replyTo: {
-          id: replyingToMessage.id,
-          content: replyingToMessage.content,
-          role: replyingToMessage.role as 'user' | 'assistant'
+          id: quotedMessage.id,
+          content: quotedMessage.content,
+          role: quotedMessage.role as 'user' | 'assistant'
         }
       })
     };
@@ -450,7 +448,7 @@ ${recentMessages}
     setCurrentInput('');
     setPendingMessages([]); // 清除剩余消息
     setShowAllSentHint(false);
-    setReplyingToMessage(null); // 清除引用
+    setQuotedMessage(null); // 清除引用
     inputRef.current?.focus();
   };
 
@@ -2284,6 +2282,50 @@ ${conversation.characterSettings.memoryEvents ? `记忆事件：${conversation.c
           </div>
         )}
 
+        {/* 引用提示 */}
+        {quotedMessage && (
+          <div className="px-3 pt-2 pb-1 bg-gray-50 border-t border-gray-200">
+            <div className="flex items-center justify-between bg-blue-50 rounded-lg px-3 py-2 border-l-3 border-blue-500">
+              <div className="flex-1 mr-2">
+                <div className="text-xs text-blue-600 font-medium mb-1">
+                  引用 {quotedMessage.role === 'user' ? '我' : conversation.name}
+                </div>
+                <div className="text-sm text-gray-700 truncate">
+                  {quotedMessage.content}
+                </div>
+              </div>
+              <button
+                onClick={handleCancelQuote}
+                className="flex-shrink-0 w-6 h-6 flex items-center justify-center rounded-full hover:bg-blue-100 text-blue-600"
+              >
+                ×
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* 编辑提示 */}
+        {messageBeingEdited && (
+          <div className="px-3 pt-2 pb-1 bg-gray-50 border-t border-gray-200">
+            <div className="flex items-center justify-between bg-green-50 rounded-lg px-3 py-2 border-l-3 border-green-500">
+              <div className="flex-1 mr-2">
+                <div className="text-xs text-green-600 font-medium mb-1">
+                  编辑消息
+                </div>
+                <div className="text-sm text-gray-700 truncate">
+                  {messageBeingEdited.content}
+                </div>
+              </div>
+              <button
+                onClick={handleCancelEdit}
+                className="flex-shrink-0 w-6 h-6 flex items-center justify-center rounded-full hover:bg-green-100 text-green-600"
+              >
+                ×
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* Input bar */}
         <div className="px-3 py-3 bg-white">
           <div className="flex items-center gap-2">
@@ -2300,7 +2342,7 @@ ${conversation.characterSettings.memoryEvents ? `记忆事件：${conversation.c
                 value={currentInput}
                 onChange={(e) => setCurrentInput(e.target.value)}
                 onKeyPress={handleKeyPress}
-                placeholder="输入消息..."
+                placeholder={messageBeingEdited ? "编辑消息..." : quotedMessage ? "回复消息..." : "输入消息..."}
                 className="flex-1 outline-none text-[15px] bg-transparent text-gray-900 placeholder-gray-400"
                 disabled={isGenerating}
               />
@@ -2509,6 +2551,17 @@ ${conversation.characterSettings.memoryEvents ? `记忆事件：${conversation.c
         aiAvatar={conversation.characterSettings.avatar || conversation.avatar}
       />
     )}
+
+    {/* 消息操作菜单 */}
+    <MessageActionMenu
+      isVisible={selectedMessageId !== null}
+      position={menuPosition}
+      isUserMessage={conversation.messages.find(m => m.id === selectedMessageId)?.role === 'user'}
+      onQuote={handleQuoteMessage}
+      onEdit={handleEditMessage}
+      onDelete={handleDeleteMessage}
+      onClose={handleCloseMenu}
+    />
     </>
   );
 }
