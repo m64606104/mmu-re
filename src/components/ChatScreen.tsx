@@ -62,67 +62,73 @@ const backgroundTaskManager = {
       
       // 将分割后的文本转换为Message对象数组
       const messages: Message[] = splitMsgs.map((content, index) => {
-        // 检测媒体类型
-        const imageMatch = content.match(/\[图片[:：]([^\]]+)\]/);
-        const videoMatch = content.match(/\[视频[:：]([^\]]+)\]/);
-        const voiceMatch = content.match(/\[语音[:：](.+?)(?:[，,]\s*(?:时长)?(\d+)秒?)?\]/);
-        const stickerMatch = content.match(/\[表情包[:：]([^\]]+)\]/);
-
         const baseId = Date.now().toString() + '_' + index;
-
-        if (imageMatch) {
-          const cleanContent = content.replace(/\[图片[:：][^\]]+\]/, '').trim();
-          return {
-            id: baseId,
-            role: 'assistant' as const,
-            content: cleanContent || '[图片]',
-            timestamp: Date.now(),
-            mediaType: 'image' as const,
-            mediaDescription: imageMatch[1],
-            isMediaDescriptionOnly: true
-          };
-        } else if (videoMatch) {
-          const cleanContent = content.replace(/\[视频[:：][^\]]+\]/, '').trim();
-          return {
-            id: baseId,
-            role: 'assistant' as const,
-            content: cleanContent || '[视频]',
-            timestamp: Date.now(),
-            mediaType: 'video' as const,
-            mediaDescription: videoMatch[1],
-            isMediaDescriptionOnly: true
-          };
-        } else if (voiceMatch) {
-          const cleanContent = content.replace(/\[语音[:：].+?\]/, '').trim();
-          return {
-            id: baseId,
-            role: 'assistant' as const,
-            content: cleanContent || '[语音]',
-            timestamp: Date.now(),
-            mediaType: 'voice' as const,
-            mediaDescription: voiceMatch[1].trim(),
-            voiceDuration: parseInt(voiceMatch[2]) || 3,
-            isMediaDescriptionOnly: true
-          };
-        } else if (stickerMatch) {
-          const cleanContent = content.replace(/\[表情包[:：][^\]]+\]/, '').trim();
-          return {
-            id: baseId,
-            role: 'assistant' as const,
-            content: cleanContent || '[表情包]',
-            timestamp: Date.now(),
-            mediaType: 'sticker' as const,
-            mediaDescription: stickerMatch[1],
-            isMediaDescriptionOnly: true
-          };
-        } else {
-          return {
-            id: baseId,
-            role: 'assistant' as const,
-            content: content,
-            timestamp: Date.now()
-          };
+        
+        // 提取所有媒体项（支持多媒体混合）
+        const mediaItems: any[] = [];
+        let cleanContent = content;
+        
+        // 提取所有图片
+        const imageMatches = content.matchAll(/\[图片[:：]([^\]]+)\]/g);
+        for (const match of imageMatches) {
+          mediaItems.push({
+            type: 'image',
+            description: match[1].trim()
+          });
+          cleanContent = cleanContent.replace(match[0], '').trim();
         }
+        
+        // 提取所有视频
+        const videoMatches = content.matchAll(/\[视频[:：]([^\]]+)\]/g);
+        for (const match of videoMatches) {
+          mediaItems.push({
+            type: 'video',
+            description: match[1].trim()
+          });
+          cleanContent = cleanContent.replace(match[0], '').trim();
+        }
+        
+        // 提取所有语音
+        const voiceMatches = content.matchAll(/\[语音[:：](.+?)(?:[，,]\s*(?:时长)?(\d+)秒?)?\]/g);
+        for (const match of voiceMatches) {
+          mediaItems.push({
+            type: 'voice',
+            description: match[1].trim(),
+            duration: parseInt(match[2]) || 3
+          });
+          cleanContent = cleanContent.replace(match[0], '').trim();
+        }
+        
+        // 提取所有表情包
+        const stickerMatches = content.matchAll(/\[表情包[:：]([^\]]+)\]/g);
+        for (const match of stickerMatches) {
+          mediaItems.push({
+            type: 'sticker',
+            description: match[1].trim()
+          });
+          cleanContent = cleanContent.replace(match[0], '').trim();
+        }
+        
+        // 构建消息对象
+        const message: Message = {
+          id: baseId,
+          role: 'assistant' as const,
+          content: cleanContent || (mediaItems.length > 0 ? '[多媒体消息]' : ''),
+          timestamp: Date.now()
+        };
+        
+        // 如果有媒体项，添加到消息中
+        if (mediaItems.length > 0) {
+          message.mediaItems = mediaItems;
+          // 为了兼容旧的渲染逻辑，也设置第一个媒体的信息
+          const firstMedia = mediaItems[0];
+          message.mediaType = firstMedia.type;
+          message.mediaDescription = firstMedia.description;
+          message.voiceDuration = firstMedia.duration;
+          message.isMediaDescriptionOnly = true;
+        }
+        
+        return message;
       });
       
       callback(messages, conversation.id);
@@ -1126,7 +1132,7 @@ ${conversation.characterSettings.memoryEvents ? `记忆事件：${conversation.c
           .filter(m => m.role === 'user')
           .slice(-3); // 🚀 性能优化：从5条减少到3条用户消息
         
-        let contextPrompt = systemPrompt + '\n\n【发送多媒体消息规则】：\n你可以发送多种类型的消息，使用以下格式：\n- 发送图片：[图片:详细的图片内容描述，10-50字，要生动具体]\n- 发送视频：[视频:详细的视频内容描述，10-50字]\n- 发送语音：[语音:语音内容的文字，时长X秒]\n- 发送表情包：[表情包:表情包的详细描述]\n\n使用场景：\n- 想分享美景、照片时发图片\n- 想分享有趣的视频时发视频\n- 想发语音聊天时发语音（控制在3-10秒）\n- 想表达情绪、开玩笑时发表情包\n\n可以在文字消息中添加媒体，也可以单独发送媒体。根据对话情境自然决定是否使用多媒体。\n\n【消息引用功能】：\n- 当你看到用户的消息以"[回复 你/我 说的\"...内容...\"]"开头时，说明用户在引用之前的某条消息\n- 你也可以使用引用功能！当需要回应之前的某个话题时，使用格式：[回复 我/你 说的"...之前的内容..."]\n- 引用使用场景：回应之前的话题、澄清误会、继续某个讨论、回应多条消息中的某一条\n- 引用要自然，不要过度使用\n- 例如：用户说"那个电影怎么样？" 你可以回复："[回复 你 说的\"推荐个电影\"]\n哦对，我昨天看了那部电影，超级好看！..."';
+        let contextPrompt = systemPrompt + '\n\n【🎨 多媒体消息完整指南】\n\n1️⃣ 基础格式：\n- 图片：[图片:详细描述10-50字]\n- 视频：[视频:详细描述10-50字]\n- 语音：[语音:语音内容文字,时长3-10秒]\n- 表情包：[表情包:详细描述]\n\n2️⃣ 🔥 多图发送（连发多张图）：\n例：[图片:海边日落，金色阳光][图片:远处的灯塔，白色建筑]\n场景：分享多张照片、展示对比、讲故事\n\n3️⃣ 🎯 纯媒体发送（只发媒体，不带文字）：\n- 纯图片：[图片:描述] （不加其他文字）\n- 纯表情包：[表情包:描述]\n- 纯语音：[语音:内容,X秒]\n- 纯视频：[视频:描述]\n\n4️⃣ 🌈 混合发送（媒体+文字或多种媒体）：\n例1：[图片:美食照片] 刚做的，超好吃！\n例2：[图片:风景] 看这个！[表情包:开心的表情] 美爆了\n例3：哈哈哈笑死我了 [表情包:捧腹大笑][语音:哈哈哈哈,3秒]\n例4：[视频:猫咪玩耍][图片:猫咪睡觉] 我家主子的日常～\n\n5️⃣ 🎭 智能使用场景：\n\n📸 图片使用时机（多用图片！）：\n- 分享生活：吃的、玩的、看到的美景\n- 展示成果：做的东西、买的新物品\n- 表达情绪：配合文字增强表现力\n- 讲故事：多图连发，更生动\n- 回应用户图片：用图片回应图片更自然\n❗️ 建议：日常聊天时可以经常配图，让对话更生动有趣\n\n🎬 视频使用时机：\n- 分享有趣/搞笑内容\n- 展示动态过程\n- 分享音乐、舞蹈等需要动态的内容\n\n🎤 语音使用时机：\n- 表达强烈情绪（兴奋、惊讶）\n- 懒得打字的时候\n- 想让对话更亲近\n- 说笑话、讲段子\n❗️ 语音要简短（3-10秒），不要太长\n\n😊 表情包使用时机（多用表情包！）：\n- 开玩笑、搞笑\n- 表达情绪（开心、无语、害羞）\n- 回应好笑的内容\n- 缓和气氛\n- 可以连发多个表情包\n❗️ 建议：聊天中经常用表情包，更有活力\n\n6️⃣ 💡 使用策略：\n- ✅ 主动使用：不要等用户要求，主动配图/发表情包\n- ✅ 自然混搭：文字+图片+表情包，更生动\n- ✅ 多图讲故事：用2-3张图展示完整场景\n- ✅ 看情境：开心时多发表情包，分享时多发图\n- ❌ 避免单调：不要总是纯文字\n- ❌ 不过度：不是每句话都要配媒体\n\n7️⃣ 📝 实战示例：\n\n场景1 - 分享美食：\n"今天做了好吃的！[图片:色香味俱全的红烧肉][图片:摆盘精美的蔬菜沙拉] 超级成功！[表情包:得意的表情]"\n\n场景2 - 纯图片轰炸：\n"[图片:清晨的薄雾笼罩山林][图片:阳光透过树叶的光影][图片:远处的小木屋]"\n\n场景3 - 搞笑回应：\n"哈哈哈哈 [表情包:笑趴了][表情包:捶地笑] [语音:笑死我了哈哈哈,4秒]"\n\n场景4 - 日常闲聊：\n"刚睡醒 [表情包:迷糊的表情] 今天天气好好啊 [图片:窗外的蓝天白云]"\n\n\n【💬 消息引用功能】：\n- 当你看到用户的消息以"[回复 你/我 说的\"...内容...\"]"开头时，说明用户在引用之前的某条消息\n- 你也可以使用引用功能！当需要回应之前的某个话题时，使用格式：[回复 我/你 说的"...之前的内容..."]\n- 引用使用场景：回应之前的话题、澄清误会、继续某个讨论、回应多条消息中的某一条\n- 引用要自然，不要过度使用\n- 例如：用户说"那个电影怎么样？" 你可以回复："[回复 你 说的\"推荐个电影\"]\n哦对，我昨天看了那部电影，超级好看！..."';
         
         // 如果最近有多条用户消息，添加提示
         if (recentUserMessages.length > 1) {
@@ -1913,22 +1919,104 @@ ${conversation.characterSettings.memoryEvents ? `记忆事件：${conversation.c
                         </div>
                       </div>
                     )}
-                    {/* 用户真实媒体内容 */}
-                    {message.role === 'user' && message.mediaType === 'image' && message.mediaUrl && (
+                    
+                    {/* 多媒体混合显示（优先使用新的mediaItems数组） */}
+                    {message.mediaItems && message.mediaItems.length > 0 && (
+                      <div className="space-y-2">
+                        {message.mediaItems.map((media, idx) => (
+                          <div key={`${message.id}_media_${idx}`}>
+                            {/* 图片 */}
+                            {media.type === 'image' && message.role === 'assistant' && (
+                              <div 
+                                onClick={() => alert(media.description)}
+                                className="relative w-[180px] h-[180px] rounded-2xl overflow-hidden bg-white/30 backdrop-blur-sm cursor-pointer hover:bg-white/40 transition-colors border border-gray-200"
+                              >
+                                <div className="absolute inset-0 bg-gradient-to-br from-white/10 to-gray-100/20" />
+                                <div className="absolute inset-0 flex flex-col items-center justify-center p-3 text-center">
+                                  <ImageIcon className="w-12 h-12 text-gray-400 mb-2" strokeWidth={1.5} />
+                                  <p className="text-xs text-gray-600 line-clamp-3">{media.description}</p>
+                                </div>
+                              </div>
+                            )}
+                            {/* 视频 */}
+                            {media.type === 'video' && message.role === 'assistant' && (
+                              <div 
+                                onClick={() => alert(media.description)}
+                                className="relative w-[240px] h-[135px] rounded-2xl overflow-hidden bg-white/30 backdrop-blur-sm cursor-pointer hover:bg-white/40 transition-colors border border-gray-200"
+                              >
+                                <div className="absolute inset-0 bg-gradient-to-br from-white/10 to-gray-100/20" />
+                                <div className="absolute inset-0 flex flex-col items-center justify-center p-3 text-center">
+                                  <Video className="w-12 h-12 text-gray-400 mb-2" strokeWidth={1.5} />
+                                  <p className="text-xs text-gray-600 line-clamp-2">{media.description}</p>
+                                </div>
+                              </div>
+                            )}
+                            {/* 语音 */}
+                            {media.type === 'voice' && message.role === 'assistant' && (
+                              <div>
+                                <div 
+                                  onClick={() => setViewingVoice(prev => 
+                                    prev.includes(`${message.id}_${idx}`) 
+                                      ? prev.filter(id => id !== `${message.id}_${idx}`)
+                                      : [...prev, `${message.id}_${idx}`]
+                                  )}
+                                  className="cursor-pointer flex items-center gap-2 px-3 py-2 bg-gray-50 rounded-xl min-w-[120px] max-w-[200px]"
+                                >
+                                  <Mic className="w-4 h-4 text-gray-600 flex-shrink-0" />
+                                  <div className="flex-1 flex items-center gap-0.5">
+                                    <div className="flex gap-0.5">
+                                      {[...Array(15)].map((_, i) => (
+                                        <div 
+                                          key={i} 
+                                          className="w-0.5 bg-gray-400 rounded-full"
+                                          style={{ height: `${Math.random() * 12 + 4}px` }}
+                                        />
+                                      ))}
+                                    </div>
+                                  </div>
+                                  <span className="text-xs text-gray-600 flex-shrink-0">{media.duration || 3}"</span>
+                                </div>
+                                {viewingVoice.includes(`${message.id}_${idx}`) && (
+                                  <div className="mt-2 px-4 py-2 bg-gray-50 rounded-xl border border-gray-200">
+                                    <p className="text-[13px] text-gray-700">{media.description}</p>
+                                  </div>
+                                )}
+                              </div>
+                            )}
+                            {/* 表情包 */}
+                            {media.type === 'sticker' && message.role === 'assistant' && (
+                              <div className="relative w-[120px] h-[120px] rounded-2xl overflow-hidden bg-blue-100/40 backdrop-blur-sm border border-blue-200">
+                                <div className="absolute inset-0 bg-gradient-to-br from-blue-50/30 to-blue-100/30" />
+                                <div className="absolute inset-0 flex flex-col items-center justify-center p-3 text-center">
+                                  <Smile className="w-8 h-8 text-blue-400 mb-2" strokeWidth={1.5} />
+                                  <p className="text-xs text-gray-700 leading-tight">{media.description}</p>
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        ))}
+                        {/* 文字内容（如果有） */}
+                        {message.content && message.content !== '[多媒体消息]' && (
+                          <p className="text-[15px] leading-relaxed whitespace-pre-wrap break-words px-4 py-2.5">{message.content}</p>
+                        )}
+                      </div>
+                    )}
+                    {/* 用户真实媒体内容（兼容旧格式，无mediaItems时使用） */}
+                    {!message.mediaItems && message.role === 'user' && message.mediaType === 'image' && message.mediaUrl && (
                       <img 
                         src={message.mediaUrl} 
                         alt="图片" 
                         className="w-full max-w-[200px] rounded-2xl"
                       />
                     )}
-                    {message.role === 'user' && message.mediaType === 'video' && message.mediaUrl && (
+                    {!message.mediaItems && message.role === 'user' && message.mediaType === 'video' && message.mediaUrl && (
                       <video 
                         src={message.mediaUrl} 
                         controls 
                         className="w-full max-w-[200px] rounded-2xl"
                       />
                     )}
-                    {message.role === 'user' && message.mediaType === 'voice' && message.mediaUrl && (
+                    {!message.mediaItems && message.role === 'user' && message.mediaType === 'voice' && message.mediaUrl && (
                       <div>
                         <div 
                           onClick={() => setViewingVoice(prev => 
@@ -1986,7 +2074,7 @@ ${conversation.characterSettings.memoryEvents ? `记忆事件：${conversation.c
                       </div>
                     )}
                     {/* 用户表情包（浅蓝色半透明小正方形） */}
-                    {message.role === 'user' && message.mediaType === 'sticker' && (
+                    {!message.mediaItems && message.role === 'user' && message.mediaType === 'sticker' && (
                       <div className="relative w-[120px] h-[120px] rounded-2xl overflow-hidden bg-blue-100/40 backdrop-blur-sm border border-blue-200">
                         <div className="absolute inset-0 bg-gradient-to-br from-blue-50/30 to-blue-100/30" />
                         <div className="absolute inset-0 flex flex-col items-center justify-center p-3 text-center">
@@ -1996,8 +2084,8 @@ ${conversation.characterSettings.memoryEvents ? `记忆事件：${conversation.c
                       </div>
                     )}
                     
-                    {/* AI媒体消息（半透明占位符） */}
-                    {message.role === 'assistant' && message.mediaType === 'image' && message.isMediaDescriptionOnly && (
+                    {/* AI媒体消息（半透明占位符）（兼容旧格式） */}
+                    {!message.mediaItems && message.role === 'assistant' && message.mediaType === 'image' && message.isMediaDescriptionOnly && (
                       <div 
                         onClick={() => alert(message.mediaDescription)}
                         className="relative w-[180px] h-[180px] rounded-2xl overflow-hidden bg-white/30 backdrop-blur-sm cursor-pointer hover:bg-white/40 transition-colors border border-gray-200"
@@ -2009,7 +2097,7 @@ ${conversation.characterSettings.memoryEvents ? `记忆事件：${conversation.c
                         </div>
                       </div>
                     )}
-                    {message.role === 'assistant' && message.mediaType === 'video' && message.isMediaDescriptionOnly && (
+                    {!message.mediaItems && message.role === 'assistant' && message.mediaType === 'video' && message.isMediaDescriptionOnly && (
                       <div 
                         onClick={() => alert(message.mediaDescription)}
                         className="relative w-[240px] h-[135px] rounded-2xl overflow-hidden bg-white/30 backdrop-blur-sm cursor-pointer hover:bg-white/40 transition-colors border border-gray-200"
@@ -2021,7 +2109,7 @@ ${conversation.characterSettings.memoryEvents ? `记忆事件：${conversation.c
                         </div>
                       </div>
                     )}
-                    {message.role === 'assistant' && message.mediaType === 'voice' && message.isMediaDescriptionOnly && (
+                    {!message.mediaItems && message.role === 'assistant' && message.mediaType === 'voice' && message.isMediaDescriptionOnly && (
                       <div>
                         <div 
                           onClick={() => setViewingVoice(prev => 
@@ -2053,7 +2141,7 @@ ${conversation.characterSettings.memoryEvents ? `记忆事件：${conversation.c
                         )}
                       </div>
                     )}
-                    {message.role === 'assistant' && message.mediaType === 'sticker' && message.isMediaDescriptionOnly && (
+                    {!message.mediaItems && message.role === 'assistant' && message.mediaType === 'sticker' && message.isMediaDescriptionOnly && (
                       <div className="relative w-[120px] h-[120px] rounded-2xl overflow-hidden bg-blue-100/40 backdrop-blur-sm border border-blue-200">
                         <div className="absolute inset-0 bg-gradient-to-br from-blue-50/30 to-blue-100/30" />
                         <div className="absolute inset-0 flex flex-col items-center justify-center p-3 text-center">

@@ -11,22 +11,34 @@ export interface ApiConfig {
   };
 }
 
+export interface MediaItem {
+  type: 'image' | 'video' | 'voice' | 'sticker';
+  description: string; // 媒体描述
+  url?: string; // 用户上传的真实URL
+  duration?: number; // 语音/视频时长（秒）
+  isPlayed?: boolean; // 是否已播放（用于语音）
+}
+
 export interface Message {
   id: string;
   role: 'user' | 'assistant' | 'system';
   content: string;
   timestamp: number;
-  mediaType?: 'image' | 'video' | 'voice' | 'sticker'; // 媒体类型（新增sticker表情包）
-  mediaDescription?: string; // AI的文字描述或用户的内容描述
-  mediaUrl?: string; // 用户上传的真实媒体URL
-  isMediaDescriptionOnly?: boolean; // 是否仅为文字描述（AI发送）
-  voiceDuration?: number; // 语音时长（秒）
-  isVoicePlayed?: boolean; // 语音是否已播放
+  // 新的多媒体支持
+  mediaItems?: MediaItem[]; // 多媒体数组，支持混合发送
+  // 旧的单媒体字段（保留兼容性）
+  mediaType?: 'image' | 'video' | 'voice' | 'sticker';
+  mediaDescription?: string;
+  mediaUrl?: string;
+  isMediaDescriptionOnly?: boolean;
+  voiceDuration?: number;
+  isVoicePlayed?: boolean;
   replyTo?: {
     id: string;
     content: string;
     role: 'user' | 'assistant';
   }; // 引用的消息
+  edited?: boolean; // 是否已编辑
 }
 
 export interface CharacterSettings {
