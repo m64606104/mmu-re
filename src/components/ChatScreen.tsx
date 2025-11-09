@@ -17,6 +17,7 @@ import { buildTimeAwarePrompt } from '../utils/timeAwareness';
 import { getMomentsData } from '../utils/aiMomentsGenerator';
 import { getAIStatus, analyzeAndUpdateStatusFromAI } from '../utils/aiStatusManager';
 import { getErrorFromResponse, formatErrorMessage } from '../utils/apiErrorHandler';
+// @ts-ignore - 函数在backgroundTaskManager内部使用，TS静态分析无法识别
 import { splitMessages, cleanAIMessage } from '../utils/messageFormatter';
 // import { backgroundTaskManager } from '../utils/backgroundTaskManager';
 // 直接在这里定义一个简化版的backgroundTaskManager作为替代
