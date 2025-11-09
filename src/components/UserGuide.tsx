@@ -21,6 +21,7 @@ export default function UserGuide({ onBack }: UserGuideProps) {
 
   const sections = [
     { id: 'quick-start', name: '快速上手' },
+    { id: 'advanced-settings', name: '高级设置' },
     { id: 'settings-app', name: '设置App' },
     { id: 'chat-app', name: '聊天App' },
     { id: 'theme-app', name: '主题App' },
@@ -113,6 +114,170 @@ export default function UserGuide({ onBack }: UserGuideProps) {
           </div>
         </div>
 
+        {/* 角色高级设置 */}
+        <div id="advanced-settings" className="bg-white rounded-2xl p-5 shadow-sm border border-slate-200">
+          <h2 className="text-lg font-bold text-slate-900 mb-4 flex items-center gap-2">
+            <span className="text-2xl">⚙️</span>
+            角色高级设置详解
+          </h2>
+          <p className="text-sm text-slate-600 mb-4">
+            这些设置在<strong>聊天界面右上角头像 → 角色设置</strong>中，直接影响AI的行为和聊天体验。建议新手了解！
+          </p>
+          
+          <div className="space-y-4">
+            {/* AI主动发消息 */}
+            <div className="bg-gradient-to-r from-purple-50 to-pink-50 rounded-xl p-4 border border-purple-200">
+              <h3 className="font-semibold text-slate-800 mb-2 flex items-center gap-2">
+                <span className="text-lg">📬</span>
+                AI主动发消息功能
+              </h3>
+              <div className="space-y-2 text-sm text-slate-600 ml-2">
+                <p><strong>功能说明：</strong>AI会像真实朋友一样，主动找你聊天！</p>
+                <div>
+                  <p className="font-semibold text-slate-700 mt-2">设置项：</p>
+                  <ul className="list-disc list-inside ml-2 space-y-1">
+                    <li><strong>开启/关闭：</strong>控制AI是否会主动发消息</li>
+                    <li><strong>最短间隔：</strong>AI主动发消息的最短等待时间（分钟）</li>
+                    <li><strong>最长间隔：</strong>AI主动发消息的最长等待时间（分钟）</li>
+                    <li><strong>活跃时段：</strong>AI会在这个时间段内主动发消息（如9:00-23:00）</li>
+                  </ul>
+                </div>
+                <div className="bg-white/60 rounded-lg p-3 mt-2">
+                  <p className="text-xs text-purple-800">
+                    <strong>💡 使用建议：</strong>间隔设置30-180分钟比较合理，太短会频繁打扰，太长则失去真实感。活跃时段建议设置为你常用手机的时间。
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {/* 记忆系统 */}
+            <div className="bg-gradient-to-r from-blue-50 to-cyan-50 rounded-xl p-4 border border-blue-200">
+              <h3 className="font-semibold text-slate-800 mb-2 flex items-center gap-2">
+                <span className="text-lg">🧠</span>
+                完整记忆系统
+              </h3>
+              <div className="space-y-2 text-sm text-slate-600 ml-2">
+                <p><strong>功能说明：</strong>AI会自动提取和记住对话中的重要信息！</p>
+                <div>
+                  <p className="font-semibold text-slate-700 mt-2">工作原理：</p>
+                  <ul className="list-disc list-inside ml-2 space-y-1">
+                    <li>每25条消息自动触发一次记忆总结</li>
+                    <li>AI会提取重要信息（如你的喜好、约定、重要事件）</li>
+                    <li>记忆会在后续对话中被引用</li>
+                    <li>支持手动查看和管理记忆库</li>
+                  </ul>
+                </div>
+                <div>
+                  <p className="font-semibold text-slate-700 mt-2">查看记忆：</p>
+                  <p className="ml-2">角色设置 → 记忆管理 → 查看所有提取的记忆</p>
+                </div>
+                <div className="bg-white/60 rounded-lg p-3 mt-2">
+                  <p className="text-xs text-blue-800">
+                    <strong>💡 使用建议：</strong>建议开启！让AI记住你们的对话，形成长期关系。你可以告诉AI重要的事情，它会记住并在合适时提起。
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {/* 朋友圈记忆 */}
+            <div className="bg-gradient-to-r from-green-50 to-emerald-50 rounded-xl p-4 border border-green-200">
+              <h3 className="font-semibold text-slate-800 mb-2 flex items-center gap-2">
+                <span className="text-lg">📱</span>
+                朋友圈记忆功能
+              </h3>
+              <div className="space-y-2 text-sm text-slate-600 ml-2">
+                <p><strong>功能说明：</strong>AI会记住在朋友圈看到的内容，并在聊天中提及！</p>
+                <div>
+                  <p className="font-semibold text-slate-700 mt-2">效果：</p>
+                  <ul className="list-disc list-inside ml-2 space-y-1">
+                    <li>AI会记住你发的朋友圈</li>
+                    <li>AI会记住其他AI的朋友圈</li>
+                    <li>在聊天时可能提到朋友圈内容</li>
+                    <li>"我看到你发的朋友圈..."</li>
+                  </ul>
+                </div>
+                <div className="bg-white/60 rounded-lg p-3 mt-2">
+                  <p className="text-xs text-green-800">
+                    <strong>💡 使用建议：</strong>配合完整记忆系统使用效果更好，让AI的社交体验更真实。
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {/* 自定义上下文 */}
+            <div className="bg-gradient-to-r from-orange-50 to-amber-50 rounded-xl p-4 border border-orange-200">
+              <h3 className="font-semibold text-slate-800 mb-2 flex items-center gap-2">
+                <span className="text-lg">📝</span>
+                自定义上下文数量
+              </h3>
+              <div className="space-y-2 text-sm text-slate-600 ml-2">
+                <p><strong>功能说明：</strong>控制AI回复时参考多少条历史消息。</p>
+                <div>
+                  <p className="font-semibold text-slate-700 mt-2">参数说明：</p>
+                  <ul className="list-disc list-inside ml-2 space-y-1">
+                    <li><strong>默认：20条</strong> - 平衡性能和连贯性</li>
+                    <li><strong>较少（5-10条）：</strong>回复快，费用低，但可能忘记前面说的</li>
+                    <li><strong>较多（30-50条）：</strong>记忆更好，但API调用成本更高</li>
+                    <li><strong>配合记忆系统：</strong>即使上下文少，AI也能记住重要信息</li>
+                  </ul>
+                </div>
+                <div className="bg-white/60 rounded-lg p-3 mt-2">
+                  <p className="text-xs text-orange-800">
+                    <strong>💡 使用建议：</strong>新手保持默认20条即可。如果对话经常很长，可以增加到30-40条。开启记忆系统后，即使上下文少也能保持连贯。
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {/* 资料库（新增） */}
+            <div className="bg-gradient-to-r from-indigo-50 to-purple-50 rounded-xl p-4 border border-indigo-200">
+              <h3 className="font-semibold text-slate-800 mb-2 flex items-center gap-2">
+                <span className="text-lg">📚</span>
+                知识库/资料库
+              </h3>
+              <div className="space-y-2 text-sm text-slate-600 ml-2">
+                <p><strong>功能说明：</strong>为AI提供专属知识和背景资料！</p>
+                <div>
+                  <p className="font-semibold text-slate-700 mt-2">支持三种方式：</p>
+                  <ul className="list-disc list-inside ml-2 space-y-1">
+                    <li><strong>手动输入：</strong>直接填写文本内容</li>
+                    <li><strong>上传文档：</strong>支持PDF、Word(.docx)、TXT</li>
+                    <li><strong>DOI获取：</strong>输入论文DOI自动获取摘要（适合学术AI）</li>
+                  </ul>
+                </div>
+                <div>
+                  <p className="font-semibold text-slate-700 mt-2">使用场景：</p>
+                  <ul className="list-disc list-inside ml-2 space-y-1">
+                    <li>给AI提供专业知识（如医学、法律资料）</li>
+                    <li>上传故事背景设定</li>
+                    <li>提供角色相关的信息</li>
+                    <li>学术论文助手</li>
+                  </ul>
+                </div>
+                <div className="bg-white/60 rounded-lg p-3 mt-2">
+                  <p className="text-xs text-indigo-800">
+                    <strong>💡 使用建议：</strong>资料会在每次对话中被引用，让AI更专业。DOI功能适合创建学术助手角色。
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {/* 重要提示 */}
+            <div className="bg-gradient-to-r from-red-50 to-pink-50 rounded-xl p-4 border-2 border-red-200">
+              <h3 className="font-semibold text-red-700 mb-2 flex items-center gap-2">
+                <span className="text-lg">⚠️</span>
+                重要提示
+              </h3>
+              <ul className="list-disc list-inside space-y-1 text-sm text-red-600 ml-2">
+                <li>所有设置修改后需要点击<strong>「保存」</strong>按钮</li>
+                <li>开启记忆系统和主动消息会增加API调用次数</li>
+                <li>建议先配置好再开始长期使用</li>
+                <li>预设角色已经配置好这些功能，可以直接使用</li>
+              </ul>
+            </div>
+          </div>
+        </div>
+
         {/* 设置App */}
         <div id="settings-app" className="bg-white rounded-2xl p-5 shadow-sm border border-slate-200">
           <h2 className="text-lg font-bold text-slate-900 mb-4 flex items-center gap-2">
@@ -183,6 +348,7 @@ export default function UserGuide({ onBack }: UserGuideProps) {
                     <li>发送图片/视频/语音</li>
                     <li>引用回复消息</li>
                     <li>编辑已发送消息</li>
+                    <li>多选删除消息</li>
                   </ul>
                 </div>
                 <div>
@@ -192,6 +358,14 @@ export default function UserGuide({ onBack }: UserGuideProps) {
                     <li>🎥 视频：AI理解视频场景</li>
                     <li>🎤 语音：自动转文字理解</li>
                     <li>😊 表情包：发送和识别表情</li>
+                  </ul>
+                </div>
+                <div>
+                  <p className="font-semibold">消息操作：</p>
+                  <ul className="list-disc list-inside ml-2 mt-1">
+                    <li>长按消息：引用、编辑、删除</li>
+                    <li>多选模式：批量删除不满意的回复</li>
+                    <li>引用回复：让对话更清晰</li>
                   </ul>
                 </div>
               </div>
@@ -246,11 +420,22 @@ export default function UserGuide({ onBack }: UserGuideProps) {
                   <ul className="list-disc list-inside ml-2 mt-1">
                     <li>点赞❤️</li>
                     <li>评论💬</li>
+                    <li><strong>点击评论：</strong>回复或删除评论</li>
+                    <li><strong>@回复：</strong>点击评论后选择回复</li>
                     <li>查看AI自动生成的朋友圈</li>
                   </ul>
                 </div>
+                <div>
+                  <p className="font-semibold">AI互动：</p>
+                  <ul className="list-disc list-inside ml-2 mt-1">
+                    <li>AI会根据性格和关系智能互动</li>
+                    <li>你评论AI朋友圈，AI会回复你</li>
+                    <li>AI之间也会互相评论形成对话</li>
+                    <li>朋友圈作者会回复评论区</li>
+                  </ul>
+                </div>
               </div>
-              <p className="text-xs text-slate-500 mt-2">💡 AI会自动发布朋友圈，每1-3天更新</p>
+              <p className="text-xs text-slate-500 mt-2">💡 AI会自动发布朋友圈，每1-3天更新。评论区会形成真实的社交对话！</p>
             </div>
 
             {/* 我的资料 */}
@@ -405,6 +590,34 @@ export default function UserGuide({ onBack }: UserGuideProps) {
               <h4 className="font-semibold text-slate-800 mb-1">Q: 如何使用群聊功能？</h4>
               <p className="text-slate-600">
                 创建对话时选择"创建群聊"，可添加多个成员。群聊中的 AI 会根据各自的角色设定回复。
+              </p>
+            </div>
+
+            <div>
+              <h4 className="font-semibold text-slate-800 mb-1">Q: AI主动消息功能消耗API吗？</h4>
+              <p className="text-slate-600">
+                是的。AI主动发消息和记忆总结都会调用API。建议根据实际需求和预算合理设置间隔时间。
+              </p>
+            </div>
+
+            <div>
+              <h4 className="font-semibold text-slate-800 mb-1">Q: 记忆系统如何工作？</h4>
+              <p className="text-slate-600">
+                每25条消息自动触发一次总结。AI会提取重要信息存入记忆库，之后的对话会引用这些记忆。可在角色设置中查看和管理。
+              </p>
+            </div>
+
+            <div>
+              <h4 className="font-semibold text-slate-800 mb-1">Q: DOI获取论文功能如何使用？</h4>
+              <p className="text-slate-600">
+                在角色设置 → 资料库中，输入论文DOI（如10.1038/nature12345），系统会自动获取标题、作者、摘要等信息。适合创建学术助手。
+              </p>
+            </div>
+
+            <div>
+              <h4 className="font-semibold text-slate-800 mb-1">Q: 如何回复朋友圈评论？</h4>
+              <p className="text-slate-600">
+                点击评论即可弹出操作菜单，选择"回复"可以@该评论作者。AI作者也会自动回复评论区，形成真实对话。
               </p>
             </div>
 
