@@ -35,6 +35,20 @@ export default function MomentsScreen({
   const [showMenuForMoment, setShowMenuForMoment] = useState<string | null>(null);
   const [viewingImage, setViewingImage] = useState<{ url: string; index: number } | null>(null);
   const [imageLoadErrors, setImageLoadErrors] = useState<Set<string>>(new Set());
+  const [selectedComment, setSelectedComment] = useState<{ momentId: string; commentId: string } | null>(null);
+  const [replyToComment, setReplyToComment] = useState<{ id: string; authorName: string } | null>(null);
+
+  // 点击其他地方关闭评论菜单
+  useEffect(() => {
+    const handleClickOutside = () => {
+      if (selectedComment) {
+        setSelectedComment(null);
+      }
+    };
+    
+    document.addEventListener('click', handleClickOutside);
+    return () => document.removeEventListener('click', handleClickOutside);
+  }, [selectedComment]);
 
   // 加载AI朋友圈并触发智能互动
   useEffect(() => {
@@ -146,7 +160,9 @@ export default function MomentsScreen({
           authorId: 'user',
           authorName: userProfile.username,
           authorAvatar: userProfile.avatar,
-          content: commentContent
+          content: commentContent,
+          replyTo: replyToComment?.id,
+          replyToName: replyToComment?.authorName
         });
         
         // 🔄 立即刷新朋友圈显示
@@ -188,7 +204,55 @@ export default function MomentsScreen({
       }
       setCommentContent('');
       setCommentingMomentId(null);
+      setReplyToComment(null);
     }
+  };
+
+  // 点击评论显示菜单
+  const handleCommentClick = (e: React.MouseEvent, momentId: string, commentId: string) => {
+    e.stopPropagation(); // 阻止事件冒泡
+    setSelectedComment({ momentId, commentId });
+  };
+
+  // 删除评论
+  const handleDeleteComment = async (momentId: string, commentId: string) => {
+    const aiMoment = aiMoments.find(m => m.id === momentId);
+    if (aiMoment && aiMoment.authorId) {
+      try {
+        // 从 localStorage 删除评论
+        const momentsKey = `moments_data`;
+        const stored = localStorage.getItem(momentsKey);
+        if (stored) {
+          const allMomentsData = JSON.parse(stored);
+          const momentData = allMomentsData.find((d: any) => d.contactId === aiMoment.authorId);
+          if (momentData) {
+            const post = momentData.posts.find((p: any) => p.id === momentId);
+            if (post) {
+              post.comments = post.comments.filter((c: any) => c.id !== commentId);
+              localStorage.setItem(momentsKey, JSON.stringify(allMomentsData));
+              
+              // 刷新显示
+              const updatedPosts = await getAllMomentPosts();
+              setAiMoments(updatedPosts);
+              console.log('✅ 评论已删除');
+            }
+          }
+        }
+      } catch (error) {
+        console.error('删除评论失败:', error);
+      }
+    }
+    setSelectedComment(null);
+  };
+
+  // 回复评论
+  const handleReplyComment = (momentId: string, comment: any) => {
+    setReplyToComment({
+      id: comment.id,
+      authorName: comment.authorName || comment.username
+    });
+    setCommentingMomentId(momentId);
+    setSelectedComment(null);
   };
 
   const handleLike = async (momentId: string) => {
@@ -548,17 +612,41 @@ export default function MomentsScreen({
                         {moment.comments.map((comment) => {
                           const commentUsername = comment.authorName || comment.username || '未知用户';
                           const replyToName = comment.replyToName || comment.replyToUsername;
+                          const isSelected = selectedComment?.momentId === moment.id && selectedComment?.commentId === comment.id;
                           
                           return (
-                            <div key={comment.id} className="text-sm leading-relaxed">
-                              <span className="text-blue-600 font-medium">{commentUsername}</span>
-                              {replyToName && (
-                                <>
-                                  <span className="text-gray-500"> 回复 </span>
-                                  <span className="text-blue-600 font-medium">{replyToName}</span>
-                                </>
+                            <div key={comment.id} className="relative">
+                              <div 
+                                onClick={(e) => handleCommentClick(e, moment.id, comment.id)}
+                                className="text-sm leading-relaxed cursor-pointer hover:bg-gray-50 rounded px-1 py-0.5 transition-colors"
+                              >
+                                <span className="text-blue-600 font-medium">{commentUsername}</span>
+                                {replyToName && (
+                                  <>
+                                    <span className="text-gray-500"> 回复 </span>
+                                    <span className="text-blue-600 font-medium">{replyToName}</span>
+                                  </>
+                                )}
+                                <span className="text-gray-700">: {comment.content}</span>
+                              </div>
+                              
+                              {/* 评论操作菜单 */}
+                              {isSelected && (
+                                <div className="absolute top-full left-0 mt-1 bg-white rounded-lg shadow-lg border border-gray-200 z-10 min-w-[120px]">
+                                  <button
+                                    onClick={() => handleReplyComment(moment.id, comment)}
+                                    className="w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-50 rounded-t-lg"
+                                  >
+                                    💬 回复
+                                  </button>
+                                  <button
+                                    onClick={() => handleDeleteComment(moment.id, comment.id)}
+                                    className="w-full px-4 py-2 text-left text-sm text-red-600 hover:bg-red-50 rounded-b-lg"
+                                  >
+                                    🗑️ 删除
+                                  </button>
+                                </div>
                               )}
-                              <span className="text-gray-700">: {comment.content}</span>
                             </div>
                           );
                         })}
@@ -569,21 +657,36 @@ export default function MomentsScreen({
 
                 {/* Comment Input */}
                 {commentingMomentId === moment.id && (
-                  <div className="mt-3 pt-3 border-t border-gray-100 flex gap-2">
-                    <input
-                      type="text"
-                      value={commentContent}
-                      onChange={(e) => setCommentContent(e.target.value)}
-                      placeholder="写评论..."
-                      className="flex-1 px-3 py-2 bg-gray-50 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      autoFocus
-                    />
-                    <button
-                      onClick={() => handleComment(moment.id)}
-                      className="px-4 py-2 bg-blue-500 text-white rounded-lg text-sm font-medium"
-                    >
-                      <Send className="w-4 h-4" />
-                    </button>
+                  <div className="mt-3 pt-3 border-t border-gray-100">
+                    {replyToComment && (
+                      <div className="flex items-center justify-between bg-blue-50 px-3 py-2 rounded-t-lg text-sm">
+                        <span className="text-blue-700">
+                          回复 <span className="font-medium">{replyToComment.authorName}</span>
+                        </span>
+                        <button
+                          onClick={() => setReplyToComment(null)}
+                          className="text-blue-500 hover:text-blue-700"
+                        >
+                          ✕
+                        </button>
+                      </div>
+                    )}
+                    <div className="flex gap-2">
+                      <input
+                        type="text"
+                        value={commentContent}
+                        onChange={(e) => setCommentContent(e.target.value)}
+                        placeholder={replyToComment ? `回复 ${replyToComment.authorName}...` : "写评论..."}
+                        className="flex-1 px-3 py-2 bg-gray-50 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        autoFocus
+                      />
+                      <button
+                        onClick={() => handleComment(moment.id)}
+                        className="px-4 py-2 bg-blue-500 text-white rounded-lg text-sm font-medium"
+                      >
+                        <Send className="w-4 h-4" />
+                      </button>
+                    </div>
                   </div>
                 )}
               </div>

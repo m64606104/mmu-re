@@ -774,6 +774,21 @@ export const generateAIMomentsInteraction = async (
               content: decision.commentContent
             });
             console.log(`✅ 评论成功: ${decision.commentContent.substring(0, 20)}...`);
+            
+            // 🎯 AI评论其他AI的朋友圈后，通知朋友圈作者
+            if (author !== 'user' && typeof author !== 'string') {
+              // 延迟2-5秒，让朋友圈作者"看到"评论并回复
+              setTimeout(() => {
+                console.log(`📢 通知 ${author.characterSettings?.nickname || author.name} 有新评论`);
+                handleUserInteractionResponse(
+                  author,
+                  post,
+                  'comment',
+                  decision.commentContent,
+                  apiConfig
+                ).catch(err => console.error('朋友圈作者回复失败:', err));
+              }, 2000 + Math.random() * 3000);
+            }
           }
         } else if (decision.action === 'like') {
           if (hasLiked) {
