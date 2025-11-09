@@ -1290,7 +1290,6 @@ ${conversation.characterSettings.memoryEvents ? `记忆事件：${conversation.c
       if (!response.ok) {
         const errorInfo = await getErrorFromResponse(response);
         throw new Error(formatErrorMessage(errorInfo));
-      }
 
       const data = await response.json();
       let assistantMessage = data.choices[0]?.message?.content;
@@ -1299,15 +1298,19 @@ ${conversation.characterSettings.memoryEvents ? `记忆事件：${conversation.c
       if (assistantMessage) {
         // 移除常见的内部思考模式
         assistantMessage = assistantMessage
-          // 移除"silently..."开头的内部思考
-          .replace(/^silently\s+.*?(?=\n|$)/gmi, '')
-          // 移除"[thinking]"或类似的标记
-          .replace(/\[thinking\].*?\[\/thinking\]/gs, '')
-          .replace(/\[internal.*?\].*?(?=\n|$)/gmi, '')
-          // 移除JSON格式的数据块（如搜索查询等）
-          .replace(/\{[\s\S]*?"box_id"[\s\S]*?\}/g, '')
-          .replace(/\{[\s\S]*?"search_query"[\s\S]*?\}/g, '')
-          // 移除独立的JSON数组（但保护媒体标记：图片、视频、语音、表情包）
+          // 移除【思考】【回答】等内部标记
+          .replace(/【[^】]+】[\s\S]*?(?=【|$)/g, '')
+          // 移除思考过程中的markdown标记
+          .replace(/```[\s\S]*?```/g, '')
+          // 移除I should/I need to等内部思考
+          .replace(/^\s*I\s+(?:should|need to|will|am going to|want to)\s+[\s\S]*?(?=\n|$)/gmi, '')
+          // 移除let me/let's开头的内部思考
+          .replace(/^\s*let(?:'s| me)\s+[\s\S]*?(?=\n|$)/gmi, '')
+          // 移除First/Next等步骤引导
+          .replace(/^\s*(?:first|second|third|next|then|finally)\s*[:,]\s*[\s\S]*?(?=\n|$)/gmi, '')
+          // 移除内部评论 [comment: ...]
+          .replace(/\s*\[(?!图片|视频|语音|表情包)[\s\S]*?\]\s*/g, '')
+          // 移除独立的[标记]
           .replace(/^\s*\[(?!图片|视频|语音|表情包)[\s\S]*?\]\s*$/gm, '')
           // 移除to understand/to inform等内部说明
           .replace(/^.*?(to understand|to inform|to analyze).*?(?=\n|$)/gmi, '')
@@ -1338,28 +1341,6 @@ ${conversation.characterSettings.memoryEvents ? `记忆事件：${conversation.c
         return;
       }
       
-      // 检查AI是否选择不回复
-      if (assistantMessage.trim() === '[不回复]' || assistantMessage.includes('[不回复]')) {
-        console.log('💬 AI选择不回复此消息');
-        setShowSendingHint(false);
-        setShowTyping(false);
-        setIsGenerating(false);
-        
-        // 异步生成并显示提示（用户在页面时显示浮动提示框）
-        generateContextualHint(conversation).then(contextualHint => {
-          setTimeout(() => {
-            const hint = document.createElement('div');
-            hint.textContent = contextualHint;
-            hint.style.cssText = `
-              position: fixed;
-              top: 50%;
-              left: 50%;
-              transform: translate(-50%, -50%);
-              background: rgba(0, 0, 0, 0.75);
-              color: white;
-              padding: 12px 24px;
-              border-radius: 8px;
-              font-size: 14px;
               z-index: 10000;
               animation: fadeInOut 2.5s ease-in-out;
               max-width: 80%;
