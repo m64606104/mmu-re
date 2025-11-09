@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect } from 'react';
-import { Screen, Conversation, ApiConfig, UserProfile, MomentPost, Message, ThemeSettings } from './types';
+import { Screen, Conversation, ApiConfig, UserProfile, MomentPost, Message, ThemeSettings, ShopType } from './types';
 import HomeScreen from './components/HomeScreen';
 import SettingsScreen from './components/SettingsScreen';
 import SocialScreen from './components/SocialScreen';
@@ -14,6 +14,8 @@ import CreateGroupScreen from './components/CreateGroupScreen';
 import ThemeScreen from './components/ThemeScreen';
 import UserGuide from './components/UserGuide';
 import AnnouncementScreen from './components/AnnouncementScreen';
+import WalletScreen from './components/WalletScreen';
+import ShoppingScreen from './components/ShoppingScreen';
 import { MomentsAutoGenerator } from './components/MomentsAutoGenerator';
 import { AIMomentsInteractionManager } from './components/AIMomentsInteractionManager';
 import ProactiveMessagingService from './components/ProactiveMessagingService';
@@ -42,6 +44,7 @@ function App() {
     const saved = localStorage.getItem('theme');
     return saved ? JSON.parse(saved) : { wallpaper: 'gradient-5' };
   });
+  const [currentShopType, setCurrentShopType] = useState<ShopType>('food');
 
   // 桌面布局重置函数
   const resetDesktopLayout = useCallback(() => {
@@ -539,6 +542,26 @@ function App() {
         return <UserGuide onBack={() => navigateTo('home')} />;
       case 'announcement':
         return <AnnouncementScreen onBack={() => navigateTo('home')} />;
+      case 'wallet':
+        return (
+          <WalletScreen 
+            onBack={() => navigateTo('profile')}
+            onNavigateToShop={(shopType) => {
+              setCurrentShopType(shopType);
+              navigateTo('shopping');
+            }}
+          />
+        );
+      case 'shopping':
+        return (
+          <ShoppingScreen 
+            shopType={currentShopType}
+            onBack={() => navigateTo('wallet')}
+            onPurchase={() => {
+              // 购买后刷新，可以触发钱包页面重新加载
+            }}
+          />
+        );
       default:
         return <HomeScreen onNavigate={navigateTo} theme={theme} />;
     }

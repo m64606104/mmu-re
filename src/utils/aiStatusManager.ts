@@ -117,19 +117,33 @@ export const updateAIStatus = async (
       lastUpdateTime: Date.now()
     };
     
+    const now = Date.now();
+    
+    // 🔥 修复bug：检查最近的活动时间，防止短时间内重复生成
+    if (initialStatus.activityLogs && initialStatus.activityLogs.length > 0) {
+      const lastLog = initialStatus.activityLogs[0];
+      const timeSinceLastLog = now - lastLog.timestamp;
+      
+      // 如果距离上次活动不到10分钟，不添加新活动
+      if (timeSinceLastLog < 10 * 60 * 1000) {
+        console.log(`⏸️ 跳过活动生成：距离上次活动仅${Math.floor(timeSinceLastLog / 1000 / 60)}分钟`);
+        return;
+      }
+    }
+    
     // 更新状态
     const updatedStatus: AIStatusInfo = {
       ...initialStatus,
       status,
       statusText: STATUS_MAP[status],
       currentActivity: activity,
-      lastUpdateTime: Date.now()
+      lastUpdateTime: now
     };
     
     // 添加新的活动日志
     const newLog: AIActivityLog = {
-      id: `activity_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-      timestamp: Date.now(),
+      id: `activity_${now}_${Math.random().toString(36).substr(2, 9)}`,
+      timestamp: now,
       activity,
       location,
       status

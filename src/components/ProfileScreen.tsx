@@ -354,6 +354,17 @@ export default function ProfileScreen({
             <span className="text-gray-900 font-medium">相册</span>
             <ChevronRight className="w-5 h-5 text-gray-400" />
           </button>
+          <div className="h-px bg-gray-100 mx-6"></div>
+          <button
+            onClick={() => onNavigate('wallet')}
+            className="w-full px-6 py-4 flex items-center justify-between hover:bg-gray-50 active:bg-gray-100 transition-colors"
+          >
+            <div className="flex items-center gap-2">
+              <span className="text-xl">💰</span>
+              <span className="text-gray-900 font-medium">钱包</span>
+            </div>
+            <ChevronRight className="w-5 h-5 text-gray-400" />
+          </button>
         </div>
       </div>
     </div>

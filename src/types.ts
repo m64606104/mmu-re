@@ -39,6 +39,17 @@ export interface Message {
     role: 'user' | 'assistant';
   }; // 引用的消息
   edited?: boolean; // 是否已编辑
+  // 💰 红包/转账支持
+  moneyTransfer?: MoneyTransfer;
+}
+
+// 💰 红包/转账类型
+export interface MoneyTransfer {
+  type: 'redPacket' | 'transfer'; // 红包或转账
+  amount: number; // 金额
+  message?: string; // 红包/转账留言
+  status: 'pending' | 'received' | 'returned'; // 待领取、已领取、已退回
+  receivedAt?: number; // 领取时间
 }
 
 export interface CharacterSettings {
@@ -250,7 +261,10 @@ export interface MemoryBank {
   };
 }
 
-export type Screen = 'home' | 'settings' | 'social' | 'chat' | 'character-settings' | 'new-conversation' | 'profile' | 'moments' | 'contacts' | 'add-friend' | 'create-group' | 'theme' | 'guide' | 'relationships' | 'announcement';
+export type Screen = 'home' | 'settings' | 'social' | 'chat' | 'character-settings' | 'new-conversation' | 'profile' | 'moments' | 'contacts' | 'add-friend' | 'create-group' | 'theme' | 'guide' | 'relationships' | 'announcement' | 'wallet' | 'shopping';
+
+// 购物类型
+export type ShopType = 'food' | 'movie' | 'shopping';
 
 export interface ThemeSettings {
   wallpaper: string;
