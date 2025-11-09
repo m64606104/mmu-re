@@ -132,21 +132,21 @@ export default function RelationshipManager({
   return (
     <div className="space-y-4">
       {/* 标题和统计 */}
-      <div className="bg-gradient-to-r from-purple-500/10 to-pink-500/10 rounded-2xl p-6 border border-purple-500/20">
+      <div className="bg-white rounded-2xl p-6 border border-gray-200 shadow-sm">
         <div className="flex items-start justify-between mb-4">
           <div>
-            <h2 className="text-2xl font-bold text-white flex items-center gap-2 mb-2">
-              <Users className="w-6 h-6" />
+            <h2 className="text-2xl font-bold text-gray-900 flex items-center gap-2 mb-2">
+              <Users className="w-6 h-6 text-blue-600" />
               人际关系
             </h2>
-            <p className="text-gray-400 text-sm">
+            <p className="text-gray-600 text-sm">
               管理 {characterName} 的社交网络
             </p>
           </div>
           
           <button
             onClick={handleAddRelationship}
-            className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 text-white rounded-xl font-medium transition-all shadow-lg hover:shadow-purple-500/50"
+            className="flex items-center gap-2 px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-xl font-medium transition-all shadow-sm"
           >
             <Plus className="w-5 h-5" />
             <span>添加关系</span>
@@ -155,21 +155,21 @@ export default function RelationshipManager({
 
         {/* 统计卡片 */}
         <div className="grid grid-cols-4 gap-3">
-          <div className="bg-white/5 rounded-xl p-3 border border-white/10">
-            <div className="text-3xl font-bold text-white mb-1">{stats.total}</div>
-            <div className="text-xs text-gray-400">全部关系</div>
+          <div className="bg-gray-50 rounded-xl p-3 border border-gray-200">
+            <div className="text-3xl font-bold text-gray-900 mb-1">{stats.total}</div>
+            <div className="text-xs text-gray-600">全部关系</div>
           </div>
-          <div className="bg-blue-500/10 rounded-xl p-3 border border-blue-500/20">
-            <div className="text-3xl font-bold text-blue-400 mb-1">{stats.contacts}</div>
-            <div className="text-xs text-blue-300">已知联系人</div>
+          <div className="bg-blue-50 rounded-xl p-3 border border-blue-200">
+            <div className="text-3xl font-bold text-blue-600 mb-1">{stats.contacts}</div>
+            <div className="text-xs text-blue-600">已知联系人</div>
           </div>
-          <div className="bg-orange-500/10 rounded-xl p-3 border border-orange-500/20">
-            <div className="text-3xl font-bold text-orange-400 mb-1">{stats.virtuals}</div>
-            <div className="text-xs text-orange-300">虚拟角色</div>
+          <div className="bg-orange-50 rounded-xl p-3 border border-orange-200">
+            <div className="text-3xl font-bold text-orange-600 mb-1">{stats.virtuals}</div>
+            <div className="text-xs text-orange-600">虚拟角色</div>
           </div>
-          <div className="bg-pink-500/10 rounded-xl p-3 border border-pink-500/20">
-            <div className="text-3xl font-bold text-pink-400 mb-1">{stats.avgAffection}</div>
-            <div className="text-xs text-pink-300">平均好感度</div>
+          <div className="bg-pink-50 rounded-xl p-3 border border-pink-200">
+            <div className="text-3xl font-bold text-pink-600 mb-1">{stats.avgAffection}</div>
+            <div className="text-xs text-pink-600">平均好感度</div>
           </div>
         </div>
       </div>
@@ -181,8 +181,8 @@ export default function RelationshipManager({
             onClick={() => setViewMode('list')}
             className={`flex items-center gap-2 px-4 py-2 rounded-xl transition-all ${
               viewMode === 'list'
-                ? 'bg-white/10 text-white border border-white/20'
-                : 'bg-white/5 text-gray-400 hover:bg-white/10'
+                ? 'bg-blue-500 text-white border border-blue-500'
+                : 'bg-white text-gray-600 border border-gray-300 hover:bg-gray-50'
             }`}
           >
             <Users className="w-4 h-4" />
@@ -192,8 +192,8 @@ export default function RelationshipManager({
             onClick={() => setViewMode('graph')}
             className={`flex items-center gap-2 px-4 py-2 rounded-xl transition-all ${
               viewMode === 'graph'
-                ? 'bg-white/10 text-white border border-white/20'
-                : 'bg-white/5 text-gray-400 hover:bg-white/10'
+                ? 'bg-blue-500 text-white border border-blue-500'
+                : 'bg-white text-gray-600 border border-gray-300 hover:bg-gray-50'
             }`}
           >
             <Network className="w-4 h-4" />
@@ -209,8 +209,8 @@ export default function RelationshipManager({
               onClick={() => setActiveFilter(filter)}
               className={`px-3 py-1.5 rounded-lg text-sm transition-all ${
                 activeFilter === filter
-                  ? 'bg-purple-500 text-white'
-                  : 'bg-white/5 text-gray-400 hover:bg-white/10'
+                  ? 'bg-blue-500 text-white'
+                  : 'bg-white text-gray-600 border border-gray-300 hover:bg-gray-50'
               }`}
             >
               {filter === 'all' && '全部'}
@@ -242,19 +242,19 @@ export default function RelationshipManager({
       ) : (
         <div className="space-y-3">
           {filteredRelationships.length === 0 ? (
-            <div className="bg-white/5 rounded-2xl p-12 text-center border border-white/10">
-              <div className="w-20 h-20 rounded-full bg-white/5 flex items-center justify-center mx-auto mb-4">
-                <Users className="w-10 h-10 text-gray-500" />
+            <div className="bg-white rounded-2xl p-12 text-center border border-gray-200 shadow-sm">
+              <div className="w-20 h-20 rounded-full bg-gray-100 flex items-center justify-center mx-auto mb-4">
+                <Users className="w-10 h-10 text-gray-400" />
               </div>
-              <h3 className="text-white font-semibold mb-2">
+              <h3 className="text-gray-900 font-semibold mb-2">
                 还没有{activeFilter === 'virtual' ? '虚拟角色' : activeFilter === 'contact' ? '联系人关系' : '任何关系'}
               </h3>
-              <p className="text-gray-400 text-sm mb-4">
-                点击上方"添加关系"按钮开始建立社交网络
+              <p className="text-gray-600 text-sm mb-4">
+                点击上方“添加关系”按钮开始建立社交网络
               </p>
               <button
                 onClick={handleAddRelationship}
-                className="inline-flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 text-white rounded-xl font-medium transition-all"
+                className="inline-flex items-center gap-2 px-6 py-3 bg-blue-500 hover:bg-blue-600 text-white rounded-xl font-medium transition-all shadow-sm"
               >
                 <Plus className="w-5 h-5" />
                 <span>添加第一个关系</span>

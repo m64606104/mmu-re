@@ -26,33 +26,33 @@ export default function RelationshipManagementScreen({
   );
 
   return (
-    <div className="h-full flex flex-col bg-gradient-to-br from-slate-900 via-purple-900/20 to-slate-900">
+    <div className="h-full flex flex-col bg-slate-50">
       {/* Header */}
-      <div className="bg-black/30 backdrop-blur-sm border-b border-white/10 px-4 py-3">
+      <div className="bg-white border-b border-gray-200 px-4 py-3 shadow-sm">
         <div className="flex items-center gap-3">
           <button 
             onClick={onBack}
-            className="p-2 -ml-2 rounded-lg hover:bg-white/10 transition-colors active:scale-95"
+            className="p-2 -ml-2 rounded-lg hover:bg-gray-100 transition-colors active:scale-95"
           >
-            <ChevronLeft className="w-6 h-6 text-white" />
+            <ChevronLeft className="w-6 h-6 text-gray-700" />
           </button>
           <div className="flex items-center gap-3">
             {conversation.characterSettings?.avatar ? (
               <img
                 src={conversation.characterSettings.avatar}
                 alt={conversation.name}
-                className="w-10 h-10 rounded-full object-cover border-2 border-white/20"
+                className="w-10 h-10 rounded-full object-cover border-2 border-gray-200"
               />
             ) : (
-              <div className="w-10 h-10 rounded-full bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center border-2 border-white/20">
+              <div className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-500 to-purple-500 flex items-center justify-center border-2 border-gray-200">
                 <Users className="w-5 h-5 text-white" />
               </div>
             )}
             <div>
-              <h1 className="text-lg font-semibold text-white">
+              <h1 className="text-lg font-semibold text-gray-900">
                 {conversation.characterSettings?.nickname || conversation.name} 的关系网络
               </h1>
-              <p className="text-xs text-gray-400">
+              <p className="text-xs text-gray-500">
                 社交关系管理
               </p>
             </div>
@@ -61,7 +61,7 @@ export default function RelationshipManagementScreen({
       </div>
 
       {/* Content */}
-      <div className="flex-1 overflow-y-auto p-4">
+      <div className="flex-1 overflow-y-auto p-4 pb-safe">
         <RelationshipManager
           characterId={conversation.id}
           characterName={conversation.characterSettings?.nickname || conversation.name}
