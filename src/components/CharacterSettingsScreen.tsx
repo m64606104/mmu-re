@@ -69,6 +69,8 @@ export default function CharacterSettingsScreen({
   const [knowledgeTitle, setKnowledgeTitle] = useState('');
   const [knowledgeContent, setKnowledgeContent] = useState('');
   const [isParsingFile, setIsParsingFile] = useState(false);
+  const [doiInput, setDoiInput] = useState('');
+  const [isFetchingDOI, setIsFetchingDOI] = useState(false);
   const documentInputRef = useRef<HTMLInputElement>(null);
 
   const handleAvatarUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -237,6 +239,46 @@ export default function CharacterSettingsScreen({
   const handleDeleteKnowledge = (id: string) => {
     if (window.confirm('确定要删除这条资料吗？')) {
       setKnowledgeBase(knowledgeBase.filter(item => item.id !== id));
+    }
+  };
+
+  // 处理DOI获取
+  const handleFetchDOI = async () => {
+    if (!doiInput.trim()) {
+      alert('请输入DOI');
+      return;
+    }
+
+    setIsFetchingDOI(true);
+    
+    try {
+      const { fetchPaperByDOI, formatPaperToKnowledge, isValidDOI } = await import('../utils/doiParser');
+      
+      // 验证DOI格式
+      if (!isValidDOI(doiInput)) {
+        alert('DOI格式不正确\n\n✅ 正确格式示例：\n  10.1038/nature12373\n  https://doi.org/10.1126/science.123456');
+        return;
+      }
+      
+      // 获取论文元数据
+      const paper = await fetchPaperByDOI(doiInput);
+      
+      // 格式化为知识库内容
+      const formattedContent = formatPaperToKnowledge(paper);
+      
+      // 自动填充
+      setKnowledgeTitle(paper.title);
+      setKnowledgeContent(formattedContent);
+      
+      alert(`✅ 成功获取论文信息！\n\n📄 标题: ${paper.title}\n✍️ 作者: ${paper.authors.slice(0, 3).join(', ')}${paper.authors.length > 3 ? ' 等' : ''}\n📅 年份: ${paper.year}`);
+      
+      // 清空DOI输入
+      setDoiInput('');
+    } catch (error: any) {
+      alert(`获取论文信息失败\n\n${error.message || '未知错误'}\n\n💡 提示：\n1. 检查DOI是否正确\n2. 检查网络连接\n3. 部分论文可能无法获取完整信息`);
+      console.error('DOI获取失败:', error);
+    } finally {
+      setIsFetchingDOI(false);
     }
   };
 
@@ -1227,6 +1269,35 @@ export default function CharacterSettingsScreen({
                 />
               </div>
 
+              {/* DOI输入区域 */}
+              <div className="mb-4 p-4 bg-blue-50 rounded-lg border border-blue-200">
+                <label className="block text-sm font-medium text-blue-900 mb-2">
+                  📚 学术论文DOI（推荐）
+                </label>
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={doiInput}
+                    onChange={(e) => setDoiInput(e.target.value)}
+                    onKeyPress={(e) => e.key === 'Enter' && handleFetchDOI()}
+                    placeholder="例如: 10.1038/nature12373 或 https://doi.org/10.xxx"
+                    className="flex-1 px-3 py-2 border border-blue-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
+                    disabled={isFetchingDOI}
+                  />
+                  <button
+                    type="button"
+                    onClick={handleFetchDOI}
+                    disabled={isFetchingDOI || !doiInput.trim()}
+                    className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed text-sm font-medium whitespace-nowrap"
+                  >
+                    {isFetchingDOI ? '获取中...' : '获取论文'}
+                  </button>
+                </div>
+                <p className="text-xs text-blue-700 mt-2">
+                  🎓 输入DOI自动获取论文标题、作者、摘要等信息
+                </p>
+              </div>
+
               <div>
                 <div className="flex items-center justify-between mb-2">
                   <label className="block text-sm font-medium text-gray-700">
@@ -1252,13 +1323,18 @@ export default function CharacterSettingsScreen({
                 <textarea
                   value={knowledgeContent}
                   onChange={(e) => setKnowledgeContent(e.target.value)}
-                  placeholder="输入详细的资料内容，AI会在对话中参考这些信息...&#10;&#10;或点击上方上传文档按钮，支持PDF、Word、TXT格式"
+                  placeholder="输入详细的资料内容，AI会在对话中参考这些信息...&#10;&#10;或使用上方DOI获取论文信息，或点击右上角上传PDF、Word、TXT文档"
                   rows={12}
                   className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent resize-none"
                 />
-                <p className="text-xs text-gray-500 mt-1">
-                  💡 支持上传PDF、Word(.docx)、TXT文档，AI会自动解析文本内容
-                </p>
+                <div className="flex items-start gap-2 mt-2">
+                  <div className="text-xs text-gray-500 flex-1">
+                    <p className="font-medium text-gray-700 mb-1">📖 支持三种方式添加资料：</p>
+                    <p>• 🎓 <strong>DOI获取</strong>：自动获取论文元数据（推荐学术论文）</p>
+                    <p>• 📄 <strong>上传文档</strong>：PDF、Word、TXT自动解析</p>
+                    <p>• ✍️ <strong>手动输入</strong>：直接编辑文本内容</p>
+                  </div>
+                </div>
               </div>
             </div>
 
