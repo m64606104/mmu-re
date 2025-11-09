@@ -4,7 +4,7 @@ import { Conversation, Message, ApiConfig, UserProfile } from '../types';
 import MoneyTransferModal from './MoneyTransferModal';
 import SendDocumentModal from './SendDocumentModal';
 import DocumentViewModal from './DocumentViewModal';
-import { sendMoney, receiveMoney, getBalance, aiPayForUser, refundGift } from '../utils/wallet';
+import { sendMoney, receiveMoney, getBalance, aiPayForUser, refundGift, getAIBalance, addAITransaction } from '../utils/wallet';
 import ActivityLogModal from './ActivityLogModal';
 import { 
   getConversationMemories, 
@@ -248,29 +248,50 @@ const backgroundTaskManager = {
           
           console.log(`🎁 AI送礼物: ${productName} ¥${price}`);
           
-          // 创建礼物订单消息
-          allExtraMessages.push({
-            id: `${baseId}_gift`,
-            role: 'assistant',
-            content: `给你的礼物`,
-            timestamp: Date.now() + 100 + allExtraMessages.length * 10,
-            order: {
-              type: 'gift',
-              products: [{
-                id: `product_${Date.now()}`,
-                name: productName,
-                price: price,
-                quantity: 1,
-                image: '🎁' // 默认礼物图标
-              }],
-              totalAmount: price,
-              status: 'pending',
-              orderNumber: `ORDER${Date.now()}`,
-              message: giftMessage,
-              recipientId: 'user',
-              recipientName: '你'
-            }
-          });
+          // 💰 检查AI余额
+          const aiBalance = getAIBalance(conversation.id);
+          if (aiBalance >= price) {
+            // 余额足够，扣款并创建订单
+            addAITransaction(
+              conversation.id,
+              'expense',
+              price,
+              'shopping',
+              `送礼物给用户: ${productName}`,
+              conversation.id
+            );
+            
+            console.log(`✅ AI余额扣款成功: ¥${price}, 剩余: ¥${aiBalance - price}`);
+            
+            // 创建礼物订单消息
+            allExtraMessages.push({
+              id: `${baseId}_gift`,
+              role: 'assistant',
+              content: `给你的礼物`,
+              timestamp: Date.now() + 100 + allExtraMessages.length * 10,
+              order: {
+                type: 'gift',
+                products: [{
+                  id: `product_${Date.now()}`,
+                  name: productName,
+                  price: price,
+                  quantity: 1,
+                  image: '🎁' // 默认礼物图标
+                }],
+                totalAmount: price,
+                status: 'pending',
+                orderNumber: `ORDER${Date.now()}`,
+                message: giftMessage,
+                recipientId: 'user',
+                recipientName: '你'
+              }
+            });
+          } else {
+            // 余额不足，创建提示消息而不是订单
+            console.log(`❌ AI余额不足: 需要¥${price}, 仅有¥${aiBalance}`);
+            // AI会在回复中说明余额不足，不创建订单
+            // 标记已被移除，不会显示[送礼物:xxx]
+          }
         }
         
         // 构建消息对象
@@ -1030,7 +1051,28 @@ ${recentMessages}
     if (responseType === '接受礼物') {
       newStatus = 'accepted';
     } else if (responseType === '同意代付') {
-      newStatus = 'paid';
+      // 💰 检查AI余额是否足够代付
+      const aiBalance = getAIBalance(conversation.id);
+      const orderAmount = recentOrderMessage.order.totalAmount;
+      
+      if (aiBalance >= orderAmount) {
+        // AI余额足够，扣款并同意代付
+        addAITransaction(
+          conversation.id,
+          'expense',
+          orderAmount,
+          'shopping',
+          `帮用户代付: ${recentOrderMessage.order.products.map(p => p.name).join('、')}`,
+          conversation.id
+        );
+        newStatus = 'paid';
+        console.log(`✅ AI代付成功: ¥${orderAmount}, 剩余: ¥${aiBalance - orderAmount}`);
+      } else {
+        // AI余额不足，拒绝代付
+        newStatus = 'rejected';
+        console.log(`❌ AI余额不足无法代付: 需要¥${orderAmount}, 仅有¥${aiBalance}`);
+        showToast(`AI余额不足无法代付（需要¥${orderAmount}，仅有¥${aiBalance}）`, 'error');
+      }
     } else if (responseType === '退回礼物' || responseType === '拒绝代付') {
       newStatus = 'rejected';
     }
