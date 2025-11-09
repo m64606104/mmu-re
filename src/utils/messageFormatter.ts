@@ -50,9 +50,8 @@ export const cleanAIMessage = (message: string): string => {
 /**
  * 智能分割消息
  * - 按标点符号自然断句
- * - 保持引号内容完整
- * - 每个气泡不超过30字符时继续按逗号分割
- * - 移除末尾逗号
+ * - 保护URL、引号内容、数字序号不被错误分割
+ * - 提升单气泡字数，更符合人类聊天习惯
  */
 export const splitMessages = (message: string): string[] => {
   if (!message || message.trim() === '') {
@@ -62,16 +61,22 @@ export const splitMessages = (message: string): string[] => {
   // 先清理消息
   const cleaned = cleanAIMessage(message);
   
-  // 主要分割符：句号、问号、感叹号
-  const primaryDelimiters = /([。！？!?.]+)/g;
+  // 检测并保护URL
+  const urlPattern = /https?:\/\/[^\s]+/g;
+  const urls: string[] = [];
+  const urlPlaceholder = '___URL_PLACEHOLDER___';
+  let textWithPlaceholders = cleaned.replace(urlPattern, (url) => {
+    urls.push(url);
+    return urlPlaceholder;
+  });
   
-  // 次要分割符：逗号、分号（仅用于长句）
-  const secondaryDelimiters = /([，,；;]+)/g;
+  // 主要分割符：句号、问号、感叹号、换行
+  const primaryDelimiters = /([。！？!?.\n]+)/g;
   
   const messages: string[] = [];
   
-  // 第一步：按主要标点符号分割
-  let parts = cleaned.split(primaryDelimiters);
+  // 第一步：按主要标点符号和换行分割
+  let parts = textWithPlaceholders.split(primaryDelimiters);
   
   // 重新组合标点符号
   const segments: string[] = [];
@@ -79,7 +84,9 @@ export const splitMessages = (message: string): string[] => {
     const text = parts[i]?.trim() || '';
     const punctuation = parts[i + 1] || '';
     if (text) {
-      segments.push(text + punctuation);
+      // 换行符转为句号
+      const finalPunc = punctuation.replace(/\n+/g, '。');
+      segments.push(text + finalPunc);
     }
   }
   
@@ -88,22 +95,35 @@ export const splitMessages = (message: string): string[] => {
     segment = segment.trim();
     if (!segment) continue;
     
-    // 检查是否包含引号（中文或英文）
-    const hasQuotes = /["「『【].*?["」』】]/g.test(segment);
+    // 检查是否包含未闭合的引号
+    const openQuotes = (segment.match(/[""「『【]/g) || []).length;
+    const closeQuotes = (segment.match(/[""」』】]/g) || []).length;
+    const hasUnclosedQuotes = openQuotes !== closeQuotes;
     
-    // 如果包含引号，保持完整性，不再分割
-    if (hasQuotes) {
+    // 检查是否包含URL占位符
+    const hasURL = segment.includes(urlPlaceholder);
+    
+    // 如果有未闭合引号或URL，保持完整性，不分割
+    if (hasUnclosedQuotes || hasURL) {
       messages.push(segment);
       continue;
     }
     
-    // 如果段落较短（<=30字符），直接添加
-    if (segment.length <= 30) {
+    // 检查是否包含完整配对的引号内容
+    const hasCompleteQuotes = /[""「『【].*?[""」』】]/.test(segment);
+    if (hasCompleteQuotes) {
+      messages.push(segment);
+      continue;
+    }
+    
+    // 如果段落较短（<=60字符），直接添加
+    if (segment.length <= 60) {
       messages.push(segment);
       continue;
     }
     
     // 段落较长，尝试按逗号、分号分割
+    const secondaryDelimiters = /([，,；;]+)/g;
     const subParts = segment.split(secondaryDelimiters);
     let currentChunk = '';
     
@@ -119,8 +139,8 @@ export const splitMessages = (message: string): string[] => {
       if (!currentChunk) {
         currentChunk = piece;
       }
-      // 如果加上这块后还不太长（<=50字符），继续累积
-      else if ((currentChunk + piece).length <= 50) {
+      // 如果加上这块后还不太长（<=80字符），继续累积
+      else if ((currentChunk + piece).length <= 80) {
         currentChunk += piece;
       }
       // 否则，保存当前块，开始新块
@@ -140,8 +160,34 @@ export const splitMessages = (message: string): string[] => {
     }
   }
   
+  // 第三步：合并数字序号与内容
+  const finalMessages: string[] = [];
+  for (let i = 0; i < messages.length; i++) {
+    const msg = messages[i].trim();
+    
+    // 检查是否是单独的数字序号（1. 2. 3. 等）
+    if (/^\d+[.。]$/.test(msg) && i + 1 < messages.length) {
+      // 与下一条消息合并
+      const nextMsg = messages[i + 1];
+      finalMessages.push(msg + ' ' + nextMsg);
+      i++; // 跳过下一条
+    } else {
+      finalMessages.push(msg);
+    }
+  }
+  
+  // 第四步：恢复URL占位符
+  let urlIndex = 0;
+  const restoredMessages = finalMessages.map(msg => {
+    return msg.replace(new RegExp(urlPlaceholder, 'g'), () => {
+      const url = urls[urlIndex];
+      urlIndex++;
+      return url || '';
+    });
+  });
+  
   // 过滤掉空消息和只有标点的消息
-  return messages
+  return restoredMessages
     .map(msg => msg.trim())
     .filter(msg => msg && msg.length > 0 && !/^[。！？!?.,，；;]+$/.test(msg));
 };
