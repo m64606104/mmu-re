@@ -913,27 +913,85 @@ export const generateCommentSectionInteraction = async (
       .slice(0, Math.min(3, postsWithComments.length));
 
     for (const { post, author, momentsData } of postsToCheck) {
-      // 只让还没在这条朋友圈评论区出现过的AI参与
+      // 🔄 改进：不是简单排除已评论的AI，而是让AI决定是否继续参与
+      // 考虑因素：
+      // 1. 是否有人回复了这个AI的评论
+      // 2. 是否有新的评论出现（可以回复新评论）
+      // 3. 避免同一个AI在短时间内反复出现
+      
       const commentAuthors = post.comments.map(c => c.authorId || c.userId);
-      const potentialAIs = onlineAIs.filter(ai => 
-        ai.id !== author.id && !commentAuthors.includes(ai.id)
-      );
+      
+      // 为每个在线AI计算参与优先级
+      const aiWithPriority = onlineAIs
+        .filter(ai => ai.id !== author.id) // 排除朋友圈作者
+        .map(ai => {
+          const hasCommented = commentAuthors.includes(ai.id);
+          
+          // 检查是否有人回复了这个AI
+          const hasBeenReplied = post.comments.some(comment => 
+            comment.replyTo && 
+            post.comments.find(c => c.id === comment.replyTo)?.authorId === ai.id
+          );
+          
+          // 计算这个AI最后评论的时间
+          const lastCommentTime = post.comments
+            .filter(c => (c.authorId || c.userId) === ai.id)
+            .sort((a, b) => b.timestamp - a.timestamp)[0]?.timestamp || 0;
+          
+          const minutesSinceLastComment = (Date.now() - lastCommentTime) / (1000 * 60);
+          
+          // 优先级计算
+          let priority = 0;
+          
+          if (!hasCommented) {
+            // 从未评论过，中等优先级
+            priority = 50;
+          } else if (hasBeenReplied && minutesSinceLastComment > 10) {
+            // 被回复了且距离上次评论超过10分钟，高优先级
+            priority = 80;
+          } else if (minutesSinceLastComment > 60) {
+            // 评论过但已经1小时以上，可以再次参与，中低优先级
+            priority = 40;
+          } else if (minutesSinceLastComment < 10) {
+            // 刚评论过不到10分钟，低优先级（避免刷屏）
+            priority = 10;
+          } else {
+            // 10-60分钟，低优先级
+            priority = 20;
+          }
+          
+          return { ai, priority, hasCommented, hasBeenReplied };
+        })
+        .filter(item => item.priority > 15) // 过滤掉优先级太低的
+        .sort((a, b) => b.priority - a.priority); // 按优先级排序
 
-      if (potentialAIs.length === 0) continue;
+      if (aiWithPriority.length === 0) continue;
 
-      // 随机选1-2个AI查看这个评论区
-      const viewerCount = Math.min(Math.floor(Math.random() * 2) + 1, potentialAIs.length);
-      const viewers = potentialAIs.slice(0, viewerCount);
+      // 根据优先级随机选择1-2个AI
+      const viewerCount = Math.min(Math.floor(Math.random() * 2) + 1, aiWithPriority.length);
+      const viewersWithInfo = aiWithPriority.slice(0, viewerCount);
 
-      for (const viewer of viewers) {
-        console.log(`👀 ${viewer.characterSettings?.nickname || viewer.name} 查看了评论区`);
+      for (const viewerInfo of viewersWithInfo) {
+        const viewer = viewerInfo.ai;
+        const hasCommented = viewerInfo.hasCommented;
+        const hasBeenReplied = viewerInfo.hasBeenReplied;
+        
+        if (hasCommented && hasBeenReplied) {
+          console.log(`👀 ${viewer.characterSettings?.nickname || viewer.name} 看到有人回复了TA的评论`);
+        } else if (hasCommented) {
+          console.log(`👀 ${viewer.characterSettings?.nickname || viewer.name} 再次查看了评论区（已评论过）`);
+        } else {
+          console.log(`👀 ${viewer.characterSettings?.nickname || viewer.name} 首次查看评论区`);
+        }
 
-        // 🎯 让AI决定是否参与评论区讨论
+        // 🎯 让AI决定是否参与评论区讨论，传递额外信息
         const decision = await makeCommentSectionDecision(
           viewer,
           author,
           post,
-          apiConfig
+          apiConfig,
+          hasCommented,
+          hasBeenReplied
         );
 
         if (!decision.shouldComment) {
@@ -988,7 +1046,9 @@ const makeCommentSectionDecision = async (
   viewerAI: Conversation,
   postAuthor: Conversation,
   post: MomentPost,
-  apiConfig: ApiConfig
+  apiConfig: ApiConfig,
+  hasCommented: boolean = false,
+  hasBeenReplied: boolean = false
 ): Promise<CommentSectionDecision> => {
   try {
     const { getRelationship, getRelationshipLabel } = await import('./aiRelationships');
@@ -1002,18 +1062,48 @@ const makeCommentSectionDecision = async (
     const relationshipWithAuthor = getRelationship(viewerAI.id, postAuthor.id);
     const relationshipDesc = relationshipWithAuthor ? getRelationshipLabel(relationshipWithAuthor.level) : '普通关系';
 
-    // 构建评论区内容概览
+    // 构建评论区内容概览，并标注哪些是回复这个AI的
     let commentsOverview = '';
+    const myCommentIds: string[] = [];
+    
     post.comments.forEach((comment, index) => {
       const commentAuthor = comment.authorName || comment.username || '某人';
-      let commentText = `${commentAuthor}: ${comment.content}`;
+      const commentAuthorId = comment.authorId || comment.userId;
+      
+      // 标记是否是这个AI自己的评论
+      if (commentAuthorId === viewerAI.id) {
+        myCommentIds.push(comment.id);
+      }
+      
+      let commentText = '';
       
       if (comment.replyTo && comment.replyToName) {
         commentText = `${commentAuthor} 回复 ${comment.replyToName}: ${comment.content}`;
+        
+        // 🎯 特别标注：如果是回复这个AI的
+        if (myCommentIds.includes(comment.replyTo)) {
+          commentText += ` ⭐【回复了你】`;
+        }
+      } else {
+        commentText = `${commentAuthor}: ${comment.content}`;
+      }
+      
+      // 标注这是AI自己的评论
+      if (commentAuthorId === viewerAI.id) {
+        commentText += ` 💭【你的评论】`;
       }
       
       commentsOverview += `${index + 1}. ${commentText}\n`;
     });
+
+    // 🎯 构建特殊情况说明
+    let specialContext = '';
+    if (hasBeenReplied) {
+      specialContext += '\n【⭐ 重要】有人回复了你之前的评论！你可以决定是否回复对方。\n';
+    }
+    if (hasCommented && !hasBeenReplied) {
+      specialContext += '\n【提示】你之前已经在这个评论区发表过看法了。如果有新的有趣评论，或者你有新的想法，可以继续参与。但避免重复说相同的内容。\n';
+    }
 
     const prompt = `你是 ${viewerSettings.nickname || viewerAI.name}。
 
@@ -1031,22 +1121,26 @@ ${postAuthor.characterSettings?.nickname || postAuthor.name} 发了：${post.con
 ${post.imageDescriptions ? `配图：${post.imageDescriptions.join('、')}` : ''}
 
 【评论区讨论】
-${commentsOverview}
+${commentsOverview}${specialContext}
 
 【任务】
 你刷朋友圈时看到了这条动态的评论区，根据：
 1. 你的性格（是否爱参与讨论、是否话多）
 2. 你和朋友圈作者的关系
 3. 评论区的讨论内容是否有趣、是否和你相关
-4. 你是否有话想说
+4. 是否有人回复了你（如果有，应该回复）
+5. 是否有新的有趣评论出现
 
-决定是否在评论区发表看法。
+决定是否在评论区发表看法或回复。
 
 【参与规则】
+- ⭐ 如果有人回复了你的评论，通常应该回复对方（除非对方说的很无聊）
+- 如果看到新的有趣评论，可以回复这些新评论
+- 如果你之前评论过但没人理你，现在又没新内容，可以不继续参与
 - 如果评论区讨论很有趣、和你相关、或你有强烈观点，可以参与
 - 如果你性格内向、不爱凑热闹，可以选择不参与
-- 如果评论区已经很热闹（3条以上），再加入要谨慎
-- 如果评论内容无聊、和你无关，可以不参与
+- 如果评论区已经很热闹（5条以上），再加入要谨慎
+- 避免重复说之前说过的话
 - 可以回复特定评论，也可以直接发表看法
 - 真人朋友圈不是每条都要参与，要自然
 
