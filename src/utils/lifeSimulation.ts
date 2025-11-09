@@ -1,9 +1,15 @@
 /**
  * 🌟 智能生活模拟系统
  * 让AI角色拥有真实的生活轨迹，即使用户不聊天也能看到AI的日常
+ * 
+ * 双模式设计：
+ * 1. LLM生成模式（默认）：调用AI动态生成个性化活动
+ * 2. 模板匹配模式（降级）：API失败时使用固定模板
  */
 
-import { Conversation, ActivityLogEntry } from '../types';
+import { Conversation, ActivityLogEntry, ApiConfig } from '../types';
+import { getMemoryBank } from './memorySystem';
+import { getErrorFromResponse, formatErrorMessage } from './apiErrorHandler';
 
 // 日常活动类型
 type ActivityCategory = 'meal' | 'work' | 'entertainment' | 'social' | 'rest' | 'travel' | 'personal';
@@ -227,7 +233,200 @@ const adjustActivityByPersonality = (
 };
 
 /**
- * 生成当前时间的活动
+ * 🤖 使用LLM生成个性化活动（新模式）
+ */
+export const generateActivityWithAI = async (
+  conversation: Conversation,
+  apiConfig: ApiConfig
+): Promise<ActivityLogEntry | null> => {
+  try {
+    const prompt = buildActivityPrompt(conversation);
+    
+    const requestBody = {
+      model: 'gpt-3.5-turbo',
+      messages: [
+        {
+          role: 'system',
+          content: 'You are a life activity generator. Generate realistic daily activities based on character settings and context.'
+        },
+        {
+          role: 'user',
+          content: prompt
+        }
+      ],
+      temperature: 0.9,
+      max_tokens: 300
+    };
+
+    const response = await fetch(`${apiConfig.baseUrl}/v1/chat/completions`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${apiConfig.apiKey}`,
+      },
+      body: JSON.stringify(requestBody),
+    });
+
+    if (!response.ok) {
+      const errorInfo = await getErrorFromResponse(response);
+      throw new Error(formatErrorMessage(errorInfo));
+    }
+
+    const data = await response.json();
+    const content = data.choices[0]?.message?.content;
+
+    if (!content) {
+      throw new Error('AI返回空内容');
+    }
+
+    // 解析AI返回的活动
+    return parseActivityResponse(content);
+  } catch (error) {
+    console.error('AI生成活动失败，使用模板降级:', error);
+    return null;
+  }
+};
+
+/**
+ * 构建活动生成的提示词
+ */
+const buildActivityPrompt = (conversation: Conversation): string => {
+  const now = new Date();
+  const hour = now.getHours();
+  const dayOfWeek = now.toLocaleDateString('zh-CN', { weekday: 'long' });
+  const dateStr = now.toLocaleDateString('zh-CN');
+  
+  const characterSettings = conversation.characterSettings;
+  const nickname = characterSettings?.nickname || '未知';
+  
+  // 获取记忆库
+  const memoryBank = getMemoryBank(conversation.id);
+  const recentMemories = memoryBank.memories.slice(0, 5);
+  
+  // 获取最近的聊天
+  const recentMessages = conversation.messages
+    .filter(m => m.role === 'user')
+    .slice(-3)
+    .map(m => m.content)
+    .join('；');
+  
+  // 时间上下文
+  let timeContext = '';
+  if (hour >= 0 && hour < 6) {
+    timeContext = '现在是深夜/凌晨，可能在睡觉、失眠、加班等';
+  } else if (hour >= 6 && hour < 9) {
+    timeContext = '现在是早上，可能在起床、洗漱、吃早餐、上班路上等';
+  } else if (hour >= 9 && hour < 12) {
+    timeContext = '现在是上午，可能在工作、学习、开会、处理事务等';
+  } else if (hour >= 12 && hour < 14) {
+    timeContext = '现在是中午，可能在吃午饭、午休等';
+  } else if (hour >= 14 && hour < 18) {
+    timeContext = '现在是下午，可能在工作、学习、开会、喝下午茶等';
+  } else if (hour >= 18 && hour < 21) {
+    timeContext = '现在是傍晚，可能在吃晚饭、下班、散步、购物等';
+  } else if (hour >= 21 && hour < 24) {
+    timeContext = '现在是晚上，可能在娱乐、看剧、运动、准备睡觉等';
+  }
+  
+  // 构建角色信息
+  let characterInfo = `你是 ${nickname}。\n`;
+  if (characterSettings?.personality) {
+    characterInfo += `性格：${characterSettings.personality}\n`;
+  }
+  if (characterSettings?.systemPrompt) {
+    characterInfo += `背景：${characterSettings.systemPrompt.substring(0, 100)}\n`;
+  }
+  
+  // 记忆上下文
+  let memoryContext = '';
+  if (recentMemories.length > 0) {
+    memoryContext = '\n最近的记忆：\n' + recentMemories.slice(0, 3).map(m => `- ${m.content}`).join('\n');
+  }
+  
+  // 聊天上下文
+  let chatContext = '';
+  if (recentMessages) {
+    chatContext = `\n\n最近和用户聊到：${recentMessages}`;
+  }
+  
+  const prompt = `${characterInfo}
+当前时间：${dateStr} ${dayOfWeek} ${hour}:${now.getMinutes()}
+${timeContext}
+${memoryContext}${chatContext}
+
+【任务】
+根据你的角色设定和当前时间，生成一条真实自然的生活活动记录。
+
+【要求】
+1. 活动要符合当前时间情境
+2. 活动要符合你的角色身份和性格
+3. 可以结合最近的聊天或记忆内容
+4. 描述要自然、口语化，10-20字以内
+5. 不要过于正式或刻板
+
+【输出格式】
+严格按照以下格式输出（每个字段占一行）：
+
+活动：活动描述文本
+地点：地点名称
+状态：在线/忙碌/休息中/离开
+
+示例：
+活动：刚起床，洗漱中
+地点：家
+状态：在线
+
+或：
+活动：在咖啡厅赶论文，快疯了
+地点：咖啡厅
+状态：忙碌
+
+现在请生成：`;
+  
+  return prompt;
+};
+
+/**
+ * 解析AI返回的活动内容
+ */
+const parseActivityResponse = (content: string): ActivityLogEntry | null => {
+  try {
+    const lines = content.trim().split('\n').filter(line => line.trim());
+    
+    let activity = '';
+    let location = '';
+    let status = '在线';
+    
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (trimmed.startsWith('活动：') || trimmed.startsWith('活动:')) {
+        activity = trimmed.replace(/^活动[：:]/, '').trim();
+      } else if (trimmed.startsWith('地点：') || trimmed.startsWith('地点:')) {
+        location = trimmed.replace(/^地点[：:]/, '').trim();
+      } else if (trimmed.startsWith('状态：') || trimmed.startsWith('状态:')) {
+        status = trimmed.replace(/^状态[：:]/, '').trim();
+      }
+    }
+    
+    if (!activity) {
+      return null;
+    }
+    
+    return {
+      timestamp: Date.now(),
+      activity: activity,
+      status: status,
+      location: location || '未知',
+      mood: '平常'
+    };
+  } catch (error) {
+    console.error('解析AI活动失败:', error);
+    return null;
+  }
+};
+
+/**
+ * 生成当前时间的活动（模板降级模式）
  */
 export const generateCurrentActivity = (
   conversation: Conversation

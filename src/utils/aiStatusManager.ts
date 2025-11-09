@@ -1,5 +1,5 @@
-import { AIStatus, AIStatusInfo, AIActivityLog, Conversation } from '../types';
-import { generateCurrentActivity } from './lifeSimulation';
+import { AIStatus, AIStatusInfo, AIActivityLog, Conversation, ApiConfig } from '../types';
+import { generateCurrentActivity, generateActivityWithAI } from './lifeSimulation';
 
 /**
  * 状态映射
@@ -14,8 +14,9 @@ const STATUS_MAP: Record<AIStatus, string> = {
 
 /**
  * 获取AI状态信息
+ * 支持传入apiConfig来使用AI生成模式
  */
-export const getAIStatus = async (conversationId: string): Promise<AIStatusInfo | null> => {
+export const getAIStatus = async (conversationId: string, apiConfig?: ApiConfig): Promise<AIStatusInfo | null> => {
   try {
     const key = `ai_status_${conversationId}`;
     const data = localStorage.getItem(key);
@@ -35,7 +36,19 @@ export const getAIStatus = async (conversationId: string): Promise<AIStatusInfo 
           const conversation = conversations.find(c => c.id === conversationId);
           
           if (conversation) {
-            const newActivity = generateCurrentActivity(conversation);
+            // 🤖 优先使用AI生成（如果提供了apiConfig）
+            let newActivity = null;
+            if (apiConfig) {
+              console.log('🤖 尝试使用AI生成活动...');
+              newActivity = await generateActivityWithAI(conversation, apiConfig);
+            }
+            
+            // 降级：如果AI生成失败，使用模板匹配
+            if (!newActivity) {
+              console.log('📋 使用模板生成活动（降级模式）');
+              newActivity = generateCurrentActivity(conversation);
+            }
+            
             if (newActivity) {
               // 转换为AIActivityLog格式
               const aiActivity: AIActivityLog = {
@@ -56,6 +69,8 @@ export const getAIStatus = async (conversationId: string): Promise<AIStatusInfo 
               
               // 保存更新
               localStorage.setItem(key, JSON.stringify(status));
+              
+              console.log(`✅ 成功生成活动: ${newActivity.activity}`);
             }
           }
         }
