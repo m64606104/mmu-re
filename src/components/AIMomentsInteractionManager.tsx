@@ -66,17 +66,49 @@ export function AIMomentsInteractionManager({
     }
   };
 
-  // 当进入聊天App时，触发一次互动（模拟AI们在线）
+  // 🔄 当聊天App激活时，启动持续的后台刷新机制
   useEffect(() => {
     if (isActive) {
-      console.log('🚀 进入聊天App，AI们可能会互动...');
-      // 随机延迟3-10秒后触发（模拟AI不是立即看到）
-      const randomDelay = 3000 + Math.random() * 7000;
-      const timer = setTimeout(() => {
+      console.log('🚀 进入聊天App，启动AI朋友圈后台刷新机制...');
+      
+      // 第一次触发：随机延迟3-10秒
+      const initialDelay = 3000 + Math.random() * 7000;
+      const initialTimer = setTimeout(() => {
         triggerSmartInteraction();
-      }, randomDelay);
+      }, initialDelay);
 
-      return () => clearTimeout(timer);
+      // 🔄 持续刷新：每60-120秒随机触发一次
+      const setupNextCheck = () => {
+        const nextDelay = 60000 + Math.random() * 60000; // 1-2分钟
+        return setTimeout(() => {
+          triggerSmartInteraction().then(() => {
+            // 递归设置下一次检查
+            if (isActive) {
+              const nextTimer = setupNextCheck();
+              // 保存timer ID以便清理
+              // @ts-ignore
+              window._aiMomentsInteractionTimer = nextTimer;
+            }
+          });
+        }, nextDelay);
+      };
+
+      // 等待第一次触发完成后，启动周期性刷新
+      const continuousTimer = setTimeout(() => {
+        const timer = setupNextCheck();
+        // @ts-ignore
+        window._aiMomentsInteractionTimer = timer;
+      }, initialDelay + 10000); // 第一次触发后10秒开始周期
+
+      return () => {
+        clearTimeout(initialTimer);
+        clearTimeout(continuousTimer);
+        // @ts-ignore
+        if (window._aiMomentsInteractionTimer) {
+          // @ts-ignore
+          clearTimeout(window._aiMomentsInteractionTimer);
+        }
+      };
     }
   }, [isActive]);
 

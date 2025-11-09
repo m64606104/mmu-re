@@ -1,12 +1,13 @@
 import { useState, useRef, useEffect } from 'react';
 import { ChevronLeft, Camera, Heart, MessageCircle, Send, Image as ImageIcon, MoreHorizontal, Trash2 } from 'lucide-react';
-import { MomentPost, UserProfile, Conversation } from '../types';
-import { getAllMomentPosts, likeMomentPost, commentMomentPost, deleteMomentPost } from '../utils/aiMomentsGenerator';
+import { MomentPost, UserProfile, Conversation, ApiConfig } from '../types';
+import { getAllMomentPosts, likeMomentPost, commentMomentPost, deleteMomentPost, handleUserInteractionResponse } from '../utils/aiMomentsGenerator';
 
 interface MomentsScreenProps {
   moments: MomentPost[];
   conversations: Conversation[];
   userProfile: UserProfile;
+  apiConfig: ApiConfig;
   onAddMoment: (content: string, images: string[]) => void;
   onLikeMoment: (momentId: string) => void;
   onCommentMoment: (momentId: string, content: string) => void;
@@ -17,6 +18,7 @@ export default function MomentsScreen({
   moments,
   conversations,
   userProfile,
+  apiConfig,
   onAddMoment,
   onLikeMoment,
   onCommentMoment,
@@ -31,6 +33,8 @@ export default function MomentsScreen({
   const imageInputRef = useRef<HTMLInputElement>(null);
   const [viewingImageDesc, setViewingImageDesc] = useState<{ desc: string; index: number } | null>(null);
   const [showMenuForMoment, setShowMenuForMoment] = useState<string | null>(null);
+  const [viewingImage, setViewingImage] = useState<{ url: string; index: number } | null>(null);
+  const [imageLoadErrors, setImageLoadErrors] = useState<Set<string>>(new Set());
 
   // 加载AI朋友圈并触发智能互动
   useEffect(() => {
@@ -73,16 +77,31 @@ export default function MomentsScreen({
     const files = e.target.files;
     if (files) {
       const readers = Array.from(files).map(file => {
-        return new Promise<string>((resolve) => {
+        return new Promise<string>((resolve, reject) => {
+          // 检查文件大小（限制5MB）
+          if (file.size > 5 * 1024 * 1024) {
+            alert(`图片 "${file.name}" 超过5MB，请选择更小的图片`);
+            reject(new Error('File too large'));
+            return;
+          }
+          
           const reader = new FileReader();
           reader.onloadend = () => resolve(reader.result as string);
+          reader.onerror = () => {
+            alert(`图片 "${file.name}" 加载失败`);
+            reject(new Error('Failed to read file'));
+          };
           reader.readAsDataURL(file);
         });
       });
 
-      Promise.all(readers).then(images => {
-        setNewPostImages([...newPostImages, ...images].slice(0, 9));
-      });
+      Promise.all(readers)
+        .then(images => {
+          setNewPostImages([...newPostImages, ...images].slice(0, 9));
+        })
+        .catch(error => {
+          console.error('图片上传错误:', error);
+        });
     }
   };
 
@@ -107,6 +126,21 @@ export default function MomentsScreen({
           authorAvatar: userProfile.avatar,
           content: commentContent
         });
+        
+        // 🎯 触发AI智能响应用户的评论
+        const aiConversation = conversations.find(c => c.id === aiMoment.authorId);
+        if (aiConversation) {
+          setTimeout(() => {
+            handleUserInteractionResponse(
+              aiConversation,
+              aiMoment,
+              'comment',
+              commentContent,
+              apiConfig
+            );
+          }, 2000 + Math.random() * 3000); // 2-5秒后响应，模拟真人
+        }
+        
         // 重新加载AI朋友圈
         const posts = await getAllMomentPosts();
         setAiMoments(posts);
@@ -125,6 +159,21 @@ export default function MomentsScreen({
     if (aiMoment && aiMoment.authorId) {
       // AI朋友圈点赞
       await likeMomentPost(aiMoment.authorId, momentId, 'user');
+      
+      // 🎯 触发AI智能响应用户的点赞
+      const aiConversation = conversations.find(c => c.id === aiMoment.authorId);
+      if (aiConversation) {
+        setTimeout(() => {
+          handleUserInteractionResponse(
+            aiConversation,
+            aiMoment,
+            'like',
+            undefined,
+            apiConfig
+          );
+        }, 3000 + Math.random() * 5000); // 3-8秒后响应，模拟真人
+      }
+      
       // 重新加载AI朋友圈
       const posts = await getAllMomentPosts();
       setAiMoments(posts);
@@ -342,9 +391,28 @@ export default function MomentsScreen({
                     {moment.images.map((image, index) => (
                       <div 
                         key={index} 
-                        className={`rounded-lg overflow-hidden bg-gray-100 ${getImageItemClass(moment.images!.length)}`}
+                        onClick={() => setViewingImage({ url: image, index })}
+                        className={`rounded-lg overflow-hidden bg-gray-100 cursor-pointer hover:opacity-90 transition-opacity ${getImageItemClass(moment.images!.length)}`}
                       >
-                        <img src={image} alt="" className="w-full h-full object-cover" />
+                        {!imageLoadErrors.has(`${moment.id}-${index}`) ? (
+                          <img 
+                            src={image} 
+                            alt="" 
+                            className="w-full h-full object-cover"
+                            onError={() => {
+                              console.error('图片加载失败:', image);
+                              setImageLoadErrors(prev => new Set(prev).add(`${moment.id}-${index}`));
+                            }}
+                            loading="lazy"
+                          />
+                        ) : (
+                          <div className="w-full h-full flex items-center justify-center bg-gray-200">
+                            <div className="text-center text-gray-400">
+                              <ImageIcon className="w-8 h-8 mx-auto mb-1" />
+                              <p className="text-xs">加载失败</p>
+                            </div>
+                          </div>
+                        )}
                       </div>
                     ))}
                   </div>
@@ -511,7 +579,7 @@ export default function MomentsScreen({
         </div>
       )}
 
-      {/* Image Description Viewer Modal */}
+      {/* Image Description Viewer Modal (AI图片描述) */}
       {viewingImageDesc && (
         <div 
           className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4"
@@ -547,6 +615,29 @@ export default function MomentsScreen({
               </button>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* Image Viewer Modal (用户真实图片大图查看) */}
+      {viewingImage && (
+        <div 
+          className="fixed inset-0 bg-black/95 flex items-center justify-center z-50"
+          onClick={() => setViewingImage(null)}
+        >
+          <button
+            onClick={() => setViewingImage(null)}
+            className="absolute top-4 right-4 text-white/80 hover:text-white p-2 z-10"
+          >
+            <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+          <img 
+            src={viewingImage.url} 
+            alt="" 
+            className="max-w-[90%] max-h-[90%] object-contain"
+            onClick={(e) => e.stopPropagation()}
+          />
         </div>
       )}
     </div>

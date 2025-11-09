@@ -620,38 +620,51 @@ export const generateAIMomentsInteraction = async (
     
     console.log(`👥 当前有 ${onlineAICount} 个AI在线查看朋友圈`);
 
-    // 收集所有未读的朋友圈
-    const unreadPosts: Array<{ post: MomentPost; author: Conversation; momentsData: any }> = [];
+    // 🔄 收集所有可互动的朋友圈（不再使用isRead标记）
+    const interactablePosts: Array<{ post: MomentPost; author: Conversation; momentsData: any }> = [];
     
     for (const momentsData of allMomentsData) {
       const authorConv = aiConversations.find(c => c.id === momentsData.contactId);
       if (!authorConv) continue;
 
+      // 筛选最近发布的朋友圈（7天内），不再依赖isRead标记
       const recentPosts = momentsData.posts.filter(post => {
         const hoursSincePost = (Date.now() - post.timestamp) / 3600000;
-        return hoursSincePost < 24 && !post.isRead;
+        // 只处理7天内的朋友圈
+        return hoursSincePost < 168; // 7天 = 168小时
       });
 
       for (const post of recentPosts) {
-        unreadPosts.push({ post, author: authorConv, momentsData });
+        interactablePosts.push({ post, author: authorConv, momentsData });
       }
     }
 
-    if (unreadPosts.length === 0) {
-      console.log('📭 没有未读的朋友圈');
+    if (interactablePosts.length === 0) {
+      console.log('📭 没有可互动的朋友圈');
       return;
     }
 
-    console.log(`📬 发现 ${unreadPosts.length} 条未读朋友圈`);
+    console.log(`📬 发现 ${interactablePosts.length} 条可互动的朋友圈`);
 
-    // 只处理部分朋友圈
-    const postsToProcess = unreadPosts.slice(0, Math.min(5, unreadPosts.length));
+    // 只处理部分朋友圈，优先处理最新的
+    const sortedPosts = interactablePosts.sort((a, b) => b.post.timestamp - a.post.timestamp);
+    const postsToProcess = sortedPosts.slice(0, Math.min(5, sortedPosts.length));
 
     // 让AI智能决策是否互动
     for (const { post, author, momentsData } of postsToProcess) {
       const otherOnlineAIs = onlineAIs.filter(ai => ai.id !== author.id);
       
       for (const ai of otherOnlineAIs) {
+        // ✅ 检查该AI是否已经对这条朋友圈互动过
+        const hasLiked = post.likes.includes(ai.id);
+        const hasCommented = post.comments.some(c => c.authorId === ai.id);
+        
+        if (hasLiked && hasCommented) {
+          // 已经点赞和评论过，跳过
+          console.log(`⏭️ ${ai.characterSettings?.nickname || ai.name} 已经互动过这条朋友圈`);
+          continue;
+        }
+        
         console.log(`👀 ${ai.characterSettings?.nickname || ai.name} 看到了 ${author.characterSettings?.nickname || author.name} 的朋友圈`);
 
         // 🎯 让AI自己决定是否互动
@@ -664,8 +677,10 @@ export const generateAIMomentsInteraction = async (
 
         // 根据AI的决定执行互动
         if (decision.action === 'comment') {
-          const hasCommented = post.comments.some(c => c.authorId === ai.id);
-          if (hasCommented) continue;
+          if (hasCommented) {
+            console.log(`⏭️ ${ai.characterSettings?.nickname || ai.name} 已经评论过了`);
+            continue;
+          }
 
           console.log(`💬 ${ai.characterSettings?.nickname || ai.name} 决定评论...`);
           
@@ -679,27 +694,133 @@ export const generateAIMomentsInteraction = async (
             console.log(`✅ 评论成功: ${decision.commentContent.substring(0, 20)}...`);
           }
         } else if (decision.action === 'like') {
-          if (!post.likes.includes(ai.id)) {
-            await likeMomentPost(momentsData.contactId, post.id, ai.id);
-            console.log(`❤️ ${ai.characterSettings?.nickname || ai.name} 点赞了`);
+          if (hasLiked) {
+            console.log(`⏭️ ${ai.characterSettings?.nickname || ai.name} 已经点赞过了`);
+            continue;
           }
+          
+          await likeMomentPost(momentsData.contactId, post.id, ai.id);
+          console.log(`❤️ ${ai.characterSettings?.nickname || ai.name} 点赞了`);
         }
 
         // 随机延迟
         await new Promise(resolve => setTimeout(resolve, Math.random() * 2000));
       }
-
-      post.isRead = true;
     }
 
-    // 保存所有更新
-    for (const momentsData of allMomentsData) {
-      await saveMomentsData(momentsData);
-    }
+    // 🔄 不再需要保存isRead标记，因为我们通过检查likes和comments来判断是否已互动
 
     console.log('✅ AI互动完成');
   } catch (error) {
     console.error('❌ AI朋友圈互动失败:', error);
+  }
+};
+
+/**
+ * 处理用户对AI朋友圈的互动（评论、点赞）
+ * AI会智能响应用户的互动
+ */
+export const handleUserInteractionResponse = async (
+  aiConversation: Conversation,
+  post: MomentPost,
+  userAction: 'comment' | 'like',
+  userComment?: string,
+  apiConfig?: ApiConfig
+): Promise<void> => {
+  try {
+    if (!aiConversation.characterSettings || !apiConfig) return;
+
+    // 如果用户点赞，AI有30%的概率回复评论
+    if (userAction === 'like') {
+      const shouldRespond = Math.random() < 0.3;
+      if (!shouldRespond) {
+        console.log(`💭 ${aiConversation.characterSettings.nickname} 看到点赞但选择不回复`);
+        return;
+      }
+    }
+
+    // 如果用户评论，AI有80%的概率回复
+    if (userAction === 'comment') {
+      const shouldRespond = Math.random() < 0.8;
+      if (!shouldRespond) {
+        console.log(`💭 ${aiConversation.characterSettings.nickname} 看到评论但选择不回复`);
+        return;
+      }
+    }
+
+    // 构建AI响应提示词
+    const personality = aiConversation.characterSettings.personality || '';
+    const languageStyle = aiConversation.characterSettings.languageStyle || '';
+    
+    let prompt = `你是 ${aiConversation.characterSettings.nickname}。
+
+【你的性格】
+${personality}
+
+【你的说话风格】
+${languageStyle}
+
+【你的朋友圈】
+${post.content}
+${post.imageDescriptions ? `配图：${post.imageDescriptions.join('、')}` : ''}
+
+`;
+
+    if (userAction === 'comment' && userComment) {
+      prompt += `【用户评论】
+用户对你的朋友圈评论了："${userComment}"
+
+【任务】
+用1-2句话自然地回复用户的评论。要符合你的性格和说话风格，不要太客套，像朋友间的互动一样轻松自然。
+
+直接输出回复内容，不要其他格式。`;
+    } else if (userAction === 'like') {
+      prompt += `【用户互动】
+用户给你的朋友圈点赞了。
+
+【任务】
+用1句话自然地表达感谢或开个玩笑，符合你的性格。可以说"谢啦"、"嘿嘿"之类的，不要太正式。
+
+直接输出回复内容，不要其他格式。`;
+    }
+
+    // 调用API生成回复
+    const response = await fetch(`${apiConfig.baseUrl}/v1/chat/completions`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${apiConfig.apiKey}`
+      },
+      body: JSON.stringify({
+        model: apiConfig.modelName,
+        messages: [
+          { role: 'user', content: prompt }
+        ],
+        temperature: 0.8,
+        max_tokens: 100
+      })
+    });
+
+    if (!response.ok) {
+      console.error('AI响应生成失败:', response.status);
+      return;
+    }
+
+    const data = await response.json();
+    const replyContent = data.choices?.[0]?.message?.content?.trim() || '';
+    
+    if (replyContent) {
+      // 回复评论
+      await commentMomentPost(aiConversation.id, post.id, {
+        authorId: aiConversation.id,
+        authorName: aiConversation.characterSettings.nickname || aiConversation.name,
+        authorAvatar: aiConversation.characterSettings.avatar || aiConversation.avatar,
+        content: replyContent
+      });
+      console.log(`✅ ${aiConversation.characterSettings.nickname} 回复: ${replyContent}`);
+    }
+  } catch (error) {
+    console.error('处理用户互动响应失败:', error);
   }
 };
 
