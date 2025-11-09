@@ -17,7 +17,7 @@ export async function analyzeRelationshipAffection(
   }
 
   try {
-    const response = await fetch(`${apiConfig.baseUrl}/chat/completions`, {
+    const response = await fetch(`${apiConfig.baseUrl}/v1/chat/completions`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
