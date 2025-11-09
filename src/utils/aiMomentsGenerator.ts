@@ -27,6 +27,49 @@ export const getAllMomentsData = async (): Promise<MomentsData[]> => {
  * 获取指定联系人的朋友圈数据
  */
 export const getMomentsData = async (contactId: string): Promise<MomentsData> => {
+  // 🎯 特殊处理：如果是用户的朋友圈
+  if (contactId === 'user') {
+    try {
+      const userMomentsStr = localStorage.getItem('moments');
+      const userMoments: MomentPost[] = userMomentsStr ? JSON.parse(userMomentsStr) : [];
+      
+      return {
+        contactId: 'user',
+        posts: userMoments,
+        lastGeneratedTime: 0,
+        lastGenerationDate: '',
+        todayTargetCount: 0,
+        todayGeneratedCount: 0,
+        todayPlans: [],
+        settings: {
+          autoGenerate: false,
+          minInterval: 0,
+          maxInterval: 0,
+          minPostsPerDay: 0,
+          maxPostsPerDay: 0
+        }
+      };
+    } catch (error) {
+      console.error('读取用户朋友圈失败:', error);
+      return {
+        contactId: 'user',
+        posts: [],
+        lastGeneratedTime: 0,
+        lastGenerationDate: '',
+        todayTargetCount: 0,
+        todayGeneratedCount: 0,
+        todayPlans: [],
+        settings: {
+          autoGenerate: false,
+          minInterval: 0,
+          maxInterval: 0,
+          minPostsPerDay: 0,
+          maxPostsPerDay: 0
+        }
+      };
+    }
+  }
+  
   const allData = await getAllMomentsData();
   const existing = allData.find(d => d.contactId === contactId);
   
@@ -61,6 +104,17 @@ export const getMomentsData = async (contactId: string): Promise<MomentsData> =>
  */
 export const saveMomentsData = async (data: MomentsData): Promise<void> => {
   try {
+    // 🎯 特殊处理：如果是用户的朋友圈
+    if (data.contactId === 'user') {
+      try {
+        localStorage.setItem('moments', JSON.stringify(data.posts));
+        console.log('✅ 用户朋友圈数据已更新');
+      } catch (error) {
+        console.error('保存用户朋友圈失败:', error);
+      }
+      return;
+    }
+    
     const allData = await getAllMomentsData();
     const index = allData.findIndex(d => d.contactId === data.contactId);
     
@@ -621,8 +675,33 @@ export const generateAIMomentsInteraction = async (
     console.log(`👥 当前有 ${onlineAICount} 个AI在线查看朋友圈`);
 
     // 🔄 收集所有可互动的朋友圈（不再使用isRead标记）
-    const interactablePosts: Array<{ post: MomentPost; author: Conversation; momentsData: any }> = [];
+    const interactablePosts: Array<{ post: MomentPost; author: Conversation | 'user'; momentsData: any }> = [];
     
+    // 1️⃣ 添加用户的朋友圈
+    try {
+      const userMomentsStr = localStorage.getItem('moments');
+      if (userMomentsStr) {
+        const userMoments: MomentPost[] = JSON.parse(userMomentsStr);
+        const recentUserPosts = userMoments.filter(post => {
+          const hoursSincePost = (Date.now() - post.timestamp) / 3600000;
+          return hoursSincePost < 168; // 7天内
+        });
+        
+        for (const post of recentUserPosts) {
+          interactablePosts.push({ 
+            post, 
+            author: 'user', 
+            momentsData: { contactId: 'user', posts: userMoments } 
+          });
+        }
+        
+        console.log(`📱 发现 ${recentUserPosts.length} 条用户朋友圈`);
+      }
+    } catch (error) {
+      console.error('读取用户朋友圈失败:', error);
+    }
+    
+    // 2️⃣ 添加AI的朋友圈
     for (const momentsData of allMomentsData) {
       const authorConv = aiConversations.find(c => c.id === momentsData.contactId);
       if (!authorConv) continue;
@@ -652,7 +731,8 @@ export const generateAIMomentsInteraction = async (
 
     // 让AI智能决策是否互动
     for (const { post, author, momentsData } of postsToProcess) {
-      const otherOnlineAIs = onlineAIs.filter(ai => ai.id !== author.id);
+      // 对于用户朋友圈，所有在线AI都可以互动
+      const otherOnlineAIs = author === 'user' ? onlineAIs : onlineAIs.filter(ai => ai.id !== (author as Conversation).id);
       
       for (const ai of otherOnlineAIs) {
         // ✅ 检查该AI是否已经对这条朋友圈互动过
@@ -665,7 +745,8 @@ export const generateAIMomentsInteraction = async (
           continue;
         }
         
-        console.log(`👀 ${ai.characterSettings?.nickname || ai.name} 看到了 ${author.characterSettings?.nickname || author.name} 的朋友圈`);
+        const authorName = author === 'user' ? '用户' : (author.characterSettings?.nickname || author.name);
+        console.log(`👀 ${ai.characterSettings?.nickname || ai.name} 看到了 ${authorName} 的朋友圈`);
 
         // 🎯 让AI自己决定是否互动
         const decision = await makeInteractionDecision(ai, author, post, apiConfig);
@@ -685,7 +766,8 @@ export const generateAIMomentsInteraction = async (
           console.log(`💬 ${ai.characterSettings?.nickname || ai.name} 决定评论...`);
           
           if (decision.commentContent) {
-            await commentMomentPost(momentsData.contactId, post.id, {
+            const targetId = author === 'user' ? 'user' : momentsData.contactId;
+            await commentMomentPost(targetId, post.id, {
               authorId: ai.id,
               authorName: ai.characterSettings?.nickname || ai.name,
               authorAvatar: ai.characterSettings?.avatar || ai.avatar,
@@ -699,7 +781,8 @@ export const generateAIMomentsInteraction = async (
             continue;
           }
           
-          await likeMomentPost(momentsData.contactId, post.id, ai.id);
+          const targetId = author === 'user' ? 'user' : momentsData.contactId;
+          await likeMomentPost(targetId, post.id, ai.id);
           console.log(`❤️ ${ai.characterSettings?.nickname || ai.name} 点赞了`);
         }
 
@@ -883,8 +966,33 @@ export const generateCommentSectionInteraction = async (
     console.log(`💬 ${onlineAICount} 个AI正在查看评论区...`);
 
     // 收集有评论的朋友圈（最近7天）
-    const postsWithComments: Array<{ post: MomentPost; author: Conversation; momentsData: any }> = [];
+    const postsWithComments: Array<{ post: MomentPost; author: Conversation | 'user'; momentsData: any }> = [];
     
+    // 1️⃣ 添加用户朋友圈的评论区
+    try {
+      const userMomentsStr = localStorage.getItem('moments');
+      if (userMomentsStr) {
+        const userMoments: MomentPost[] = JSON.parse(userMomentsStr);
+        const recentUserPostsWithComments = userMoments.filter(post => {
+          const hoursSincePost = (Date.now() - post.timestamp) / 3600000;
+          return post.comments.length > 0 && hoursSincePost < 168;
+        });
+        
+        for (const post of recentUserPostsWithComments) {
+          postsWithComments.push({ 
+            post, 
+            author: 'user', 
+            momentsData: { contactId: 'user', posts: userMoments } 
+          });
+        }
+        
+        console.log(`📱 发现 ${recentUserPostsWithComments.length} 条有评论的用户朋友圈`);
+      }
+    } catch (error) {
+      console.error('读取用户朋友圈失败:', error);
+    }
+    
+    // 2️⃣ 添加AI朋友圈的评论区
     for (const momentsData of allMomentsData) {
       const authorConv = aiConversations.find(c => c.id === momentsData.contactId);
       if (!authorConv) continue;
@@ -920,10 +1028,11 @@ export const generateCommentSectionInteraction = async (
       // 3. 避免同一个AI在短时间内反复出现
       
       const commentAuthors = post.comments.map(c => c.authorId || c.userId);
+      const authorId = author === 'user' ? 'user' : author.id;
       
       // 为每个在线AI计算参与优先级
       const aiWithPriority = onlineAIs
-        .filter(ai => ai.id !== author.id) // 排除朋友圈作者
+        .filter(ai => ai.id !== authorId) // 排除朋友圈作者
         .map(ai => {
           const hasCommented = commentAuthors.includes(ai.id);
           
@@ -1002,6 +1111,7 @@ export const generateCommentSectionInteraction = async (
         console.log(`💬 ${viewer.characterSettings?.nickname || viewer.name} 决定参与评论区`);
 
         if (decision.commentContent) {
+          const targetId = author === 'user' ? 'user' : momentsData.contactId;
           const newComment = {
             authorId: viewer.id,
             authorName: viewer.characterSettings?.nickname || viewer.name,
@@ -1011,7 +1121,7 @@ export const generateCommentSectionInteraction = async (
             replyToName: decision.replyToName
           };
 
-          await commentMomentPost(momentsData.contactId, post.id, newComment);
+          await commentMomentPost(targetId, post.id, newComment);
           
           if (decision.replyToName) {
             console.log(`✅ 回复了 ${decision.replyToName}: ${decision.commentContent.substring(0, 20)}...`);
@@ -1044,7 +1154,7 @@ interface CommentSectionDecision {
 
 const makeCommentSectionDecision = async (
   viewerAI: Conversation,
-  postAuthor: Conversation,
+  postAuthor: Conversation | 'user',
   post: MomentPost,
   apiConfig: ApiConfig,
   hasCommented: boolean = false,
@@ -1058,9 +1168,13 @@ const makeCommentSectionDecision = async (
       return { shouldComment: false };
     }
 
-    // 获取关系
-    const relationshipWithAuthor = getRelationship(viewerAI.id, postAuthor.id);
-    const relationshipDesc = relationshipWithAuthor ? getRelationshipLabel(relationshipWithAuthor.level) : '普通关系';
+    // 获取作者信息和关系
+    const authorName = postAuthor === 'user' ? '用户' : (postAuthor.characterSettings?.nickname || postAuthor.name);
+    const authorId = postAuthor === 'user' ? 'user' : postAuthor.id;
+    
+    // 获取关系（如果是用户，则查询与用户的关系）
+    const relationshipWithAuthor = getRelationship(viewerAI.id, authorId);
+    const relationshipDesc = relationshipWithAuthor ? getRelationshipLabel(relationshipWithAuthor.level) : (postAuthor === 'user' ? '你的主人' : '普通关系');
 
     // 构建评论区内容概览，并标注哪些是回复这个AI的
     let commentsOverview = '';
@@ -1114,10 +1228,10 @@ ${viewerSettings.personality || ''}
 ${viewerSettings.languageStyle || ''}
 
 【你与朋友圈作者的关系】
-${postAuthor.characterSettings?.nickname || postAuthor.name}: ${relationshipDesc}${relationshipWithAuthor?.description ? `（${relationshipWithAuthor.description}）` : ''}
+${authorName}: ${relationshipDesc}${relationshipWithAuthor?.description ? `（${relationshipWithAuthor.description}）` : ''}
 
 【朋友圈内容】
-${postAuthor.characterSettings?.nickname || postAuthor.name} 发了：${post.content}
+${authorName} 发了：${post.content}
 ${post.imageDescriptions ? `配图：${post.imageDescriptions.join('、')}` : ''}
 
 【评论区讨论】
@@ -1227,7 +1341,7 @@ interface InteractionDecision {
 
 const makeInteractionDecision = async (
   viewerAI: Conversation,
-  authorAI: Conversation,
+  authorAI: Conversation | 'user',
   post: MomentPost,
   apiConfig: ApiConfig
 ): Promise<InteractionDecision> => {
@@ -1239,9 +1353,13 @@ const makeInteractionDecision = async (
       return { shouldInteract: false };
     }
 
-    // 获取关系
-    const relationship = getRelationship(viewerAI.id, authorAI.id);
-    const relationshipDesc = relationship ? getRelationshipLabel(relationship.level) : '普通关系';
+    // 获取作者信息和关系
+    const authorName = authorAI === 'user' ? '用户' : (authorAI.characterSettings?.nickname || authorAI.name);
+    const authorId = authorAI === 'user' ? 'user' : authorAI.id;
+    
+    // 获取关系（如果是用户，则查询与用户的关系）
+    const relationship = getRelationship(viewerAI.id, authorId);
+    const relationshipDesc = relationship ? getRelationshipLabel(relationship.level) : (authorAI === 'user' ? '你的主人' : '普通关系');
 
     // 构建决策提示词
     const prompt = `你是 ${viewerSettings.nickname || viewerAI.name}。
@@ -1252,11 +1370,11 @@ ${viewerSettings.personality || ''}
 【你的说话风格】
 ${viewerSettings.languageStyle || ''}
 
-【你对${authorAI.characterSettings?.nickname || authorAI.name}的关系】
+【你对${authorName}的关系】
 ${relationshipDesc}${relationship?.description ? `（${relationship.description}）` : ''}
 
 【朋友圈内容】
-${authorAI.characterSettings?.nickname || authorAI.name} 发了一条朋友圈：
+${authorName} 发了一条朋友圈：
 ${post.content}
 ${post.imageDescriptions ? `配图：${post.imageDescriptions.join('、')}` : ''}
 
