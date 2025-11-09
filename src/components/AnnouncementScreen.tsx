@@ -54,6 +54,40 @@ export default function AnnouncementScreen({ onBack }: AnnouncementScreenProps) 
 
         {/* 公告列表 */}
         <div className="space-y-4">
+          {/* 11.9 晚间更新 - 消息功能大升级 */}
+          <div className="bg-gradient-to-br from-purple-500/20 to-pink-500/20 border-2 border-purple-400/50 rounded-xl p-4 shadow-lg mb-4">
+            <div className="flex items-start gap-3 mb-3">
+              <div className="w-10 h-10 rounded-full bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center flex-shrink-0">
+                <Bell className="w-5 h-5 text-white" />
+              </div>
+              <div className="flex-1">
+                <h3 className="text-lg font-bold text-white mb-1">✨ 消息功能大升级</h3>
+                <p className="text-xs text-gray-300">2024年11月9日 晚间更新</p>
+              </div>
+            </div>
+            <div className="pl-13 space-y-3">
+              <div>
+                <h4 className="text-sm font-semibold text-purple-200 mb-1">💬 消息操作全面升级</h4>
+                <p className="text-gray-100 text-sm leading-relaxed">
+                  <strong>修复了消息分割的问题</strong>，实现了<strong>消息引用、多选删除、编辑功能</strong>。现在当AI回复不满意可以删除啦！眼不见为净～以及更好的编辑功能，可以修复AI语句中的小错误。
+                </p>
+              </div>
+              
+              <div>
+                <h4 className="text-sm font-semibold text-pink-200 mb-1">🎭 行为轨迹优化</h4>
+                <p className="text-gray-100 text-sm leading-relaxed">
+                  <strong>修复了行为轨迹重复问题</strong>，更好更生动的显示AI的日常活动，让角色更加真实立体。
+                </p>
+              </div>
+              
+              <div className="bg-white/10 rounded-lg p-3 mt-2">
+                <p className="text-xs text-gray-200 leading-relaxed">
+                  💡 <strong>使用提示：</strong>长按或点击消息即可看到操作菜单，支持引用、编辑、多选删除等功能
+                </p>
+              </div>
+            </div>
+          </div>
+
           {/* 11.9 版本更新 */}
           <div className="bg-white/10 backdrop-blur-sm border border-white/20 rounded-xl p-4 shadow-lg">
             <div className="flex items-start gap-3 mb-3">
@@ -84,27 +118,6 @@ export default function AnnouncementScreen({ onBack }: AnnouncementScreenProps) 
                 <h4 className="text-sm font-semibold text-pink-300 mb-1">💡 朋友圈智能互动</h4>
                 <p className="text-gray-200 text-sm leading-relaxed">
                   修复了朋友圈互动相关功能，现在更加智能了。AI会根据性格、内容和关系智能决定是否点赞或评论，不再是固定概率。
-                </p>
-              </div>
-              
-              <div>
-                <h4 className="text-sm font-semibold text-green-300 mb-1">✨ 消息操作功能</h4>
-                <p className="text-gray-200 text-sm leading-relaxed">
-                  实现了消息引用、多选删除、编辑功能！现在当AI回复不满意可以删除啦！眼不见为净～以及更好的编辑功能，可以修复AI语句中的小错误。支持编辑所有消息（包括AI的回复）。
-                </p>
-              </div>
-              
-              <div>
-                <h4 className="text-sm font-semibold text-cyan-300 mb-1">💬 消息分割优化</h4>
-                <p className="text-gray-200 text-sm leading-relaxed">
-                  修复了消息分割的问题，AI回复不再出现重复标点符号，消息气泡显示更自然流畅。
-                </p>
-              </div>
-              
-              <div>
-                <h4 className="text-sm font-semibold text-yellow-300 mb-1">📍 行为轨迹改进</h4>
-                <p className="text-gray-200 text-sm leading-relaxed">
-                  修复了行为轨迹重复问题，现在显示更准确、更生动，让你更好地了解AI的日常活动。
                 </p>
               </div>
               
