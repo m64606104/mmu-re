@@ -548,6 +548,7 @@ function App() {
         conversations={conversations}
         apiConfig={apiConfig}
         isActive={['social', 'chat', 'contacts', 'moments', 'profile'].includes(currentScreen)}
+        isInMomentsScreen={currentScreen === 'moments'}
       />
       
       {/* AI主动发消息服务 - 后台运行 */}

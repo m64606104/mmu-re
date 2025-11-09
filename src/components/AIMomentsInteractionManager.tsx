@@ -1,21 +1,26 @@
 /**
  * AI朋友圈智能互动管理器
  * 
- * 🎯 设计理念：
- * 1. 分阶段刷新策略（节省API调用）
- *    - 🔥 活跃期（前5分钟）：30-60秒/次
- *    - 🌤️ 过渡期（5-15分钟）：1-2分钟/次
- *    - 😴 节能期（15分钟后）：2-5分钟/次
+ * 🎯 极致节能策略：
  * 
- * 2. 事件驱动触发（即时响应）
+ * 1. 聊天界面（慢速刷新）
+ *    - 🐌 前5分钟：2-5分钟/次
+ *    - 🐢 5分钟后：30-60分钟/次
+ *    - 目的：极大降低API调用，仅保持基本活跃
+ * 
+ * 2. 朋友圈界面（快速刷新）
+ *    - ⚡️ 30-60秒/次
+ *    - 退出立即停止
+ *    - 目的：用户关注朋友圈时保持高互动
+ * 
+ * 3. 退出朋友圈后
+ *    - 🛌 1-3小时内随机刷新一次
+ *    - 直到重新进入聊天或朋友圈
+ *    - 目的：完全节能模式
+ * 
+ * 4. 事件驱动触发（即时响应）
  *    - 用户发布朋友圈 → 5-15秒后AI看到
  *    - 用户点赞/评论 → 2-5秒后AI响应
- *    - 其他AI互动 → 5-15秒后查看评论区
- * 
- * 3. AI自主决策
- *    - 完全基于AI性格和提示词决定
- *    - 无硬编码概率限制
- *    - 模拟真实人类行为
  */
 
 import { useEffect, useRef } from 'react';
@@ -25,20 +30,23 @@ import { generateAIMomentsInteraction, generateCommentSectionInteraction } from 
 interface AIMomentsInteractionManagerProps {
   conversations: Conversation[];
   apiConfig: ApiConfig;
-  isActive: boolean;
-  onMomentViewed?: () => void; // 当用户查看朋友圈时调用
+  isActive: boolean; // 聊天App是否激活
+  isInMomentsScreen?: boolean; // 是否在朋友圈界面
 }
 
 export function AIMomentsInteractionManager({ 
   conversations, 
   apiConfig, 
-  isActive 
+  isActive,
+  isInMomentsScreen = false
 }: AIMomentsInteractionManagerProps) {
   const isProcessingRef = useRef(false);
   const conversationsRef = useRef(conversations);
   const apiConfigRef = useRef(apiConfig);
   const lastInteractionTime = useRef<number>(0);
   const appActivationTime = useRef<number>(0);
+  const momentsScreenEntryTime = useRef<number>(0);
+  const hasLeftMoments = useRef<boolean>(false); // 是否离开过朋友圈
 
   // 更新refs以保持最新值
   useEffect(() => {
@@ -87,33 +95,75 @@ export function AIMomentsInteractionManager({
     }
   };
 
-  // 🎯 智能计算刷新间隔（分阶段策略）
+  // 🎯 智能计算刷新间隔（根据界面和时长）
   const getRefreshInterval = () => {
     const now = Date.now();
+    
+    // ⚡️ 朋友圈界面：快速刷新
+    if (isInMomentsScreen) {
+      return 30000 + Math.random() * 30000; // 30-60秒
+    }
+    
+    // 🛌 离开朋友圈后：极慢刷新
+    if (hasLeftMoments.current) {
+      return 3600000 + Math.random() * 7200000; // 1-3小时
+    }
+    
+    // 🐌 聊天界面：根据时长调整
     const timeSinceActivation = now - appActivationTime.current;
     
-    // 📊 分阶段刷新策略
     if (timeSinceActivation < 5 * 60 * 1000) {
-      // 🔥 活跃期（前5分钟）：30-60秒
-      return 30000 + Math.random() * 30000;
-    } else if (timeSinceActivation < 15 * 60 * 1000) {
-      // 🌤️ 过渡期（5-15分钟）：1-2分钟
-      return 60000 + Math.random() * 60000;
-    } else {
-      // 😴 节能期（15分钟后）：2-5分钟
+      // 🐌 前5分钟：2-5分钟
       return 120000 + Math.random() * 180000;
+    } else {
+      // 🐢 5分钟后：30-60分钟
+      return 1800000 + Math.random() * 1800000;
     }
   };
+
+  // 📍 监听朋友圈界面状态变化，立即重新调度刷新
+  useEffect(() => {
+    if (isInMomentsScreen) {
+      momentsScreenEntryTime.current = Date.now();
+      hasLeftMoments.current = false;
+      console.log('📱 进入朋友圈界面，切换到快速刷新模式...');
+      console.log('⚡️ 刷新频率：30-60秒/次');
+      
+      // 🔥 立即触发一次互动，然后开始快速刷新
+      triggerSmartInteraction();
+      
+      // 取消现有的定时器并重新设置快速刷新
+      // @ts-ignore
+      if (window._aiMomentsInteractionTimer) {
+        // @ts-ignore
+        clearTimeout(window._aiMomentsInteractionTimer);
+      }
+    } else if (momentsScreenEntryTime.current > 0) {
+      // 离开朋友圈
+      hasLeftMoments.current = true;
+      console.log('🚪 离开朋友圈界面，切换到极慢刷新模式...');
+      console.log('🛌 刷新频率：1-3小时/次');
+      
+      // 取消快速刷新定时器
+      // @ts-ignore
+      if (window._aiMomentsInteractionTimer) {
+        // @ts-ignore
+        clearTimeout(window._aiMomentsInteractionTimer);
+      }
+    }
+  }, [isInMomentsScreen]);
 
   // 🔄 当聊天App激活时，启动智能后台刷新机制
   useEffect(() => {
     if (isActive) {
       appActivationTime.current = Date.now();
-      console.log('🚀 进入聊天App，启动AI朋友圈智能刷新机制...');
+      hasLeftMoments.current = false;
+      console.log('🚀 进入聊天App，启动AI朋友圈极致节能模式...');
       console.log('📊 刷新策略：');
-      console.log('  🔥 前5分钟（活跃期）：30-60秒/次');
-      console.log('  🌤️ 5-15分钟（过渡期）：1-2分钟/次');
-      console.log('  😴 15分钟后（节能期）：2-5分钟/次');
+      console.log('  🐌 聊天界面前5分钟：2-5分钟/次');
+      console.log('  🐢 聊天界面5分钟后：30-60分钟/次');
+      console.log('  ⚡️ 朋友圈界面：30-60秒/次');
+      console.log('  🛌 离开朋友圈后：1-3小时/次');
       
       // 第一次触发：随机延迟3-10秒
       const initialDelay = 3000 + Math.random() * 7000;
@@ -124,8 +174,21 @@ export function AIMomentsInteractionManager({
       // 🔄 持续刷新：动态调整间隔
       const setupNextCheck = () => {
         const nextDelay = getRefreshInterval();
-        const phase = nextDelay < 61000 ? '🔥 活跃期' : nextDelay < 121000 ? '🌤️ 过渡期' : '😴 节能期';
-        console.log(`⏰ 下次刷新：${Math.round(nextDelay / 1000)}秒后（${phase}）`);
+        let phase = '';
+        if (isInMomentsScreen) {
+          phase = '⚡️ 朋友圈模式';
+        } else if (hasLeftMoments.current) {
+          phase = '🛌 休眠模式';
+        } else if (nextDelay < 300000) {
+          phase = '🐌 聊天模式-初期';
+        } else {
+          phase = '🐢 聊天模式-稳定';
+        }
+        
+        const minutes = Math.round(nextDelay / 60000);
+        const seconds = Math.round(nextDelay / 1000);
+        const timeStr = minutes > 0 ? `${minutes}分钟` : `${seconds}秒`;
+        console.log(`⏰ 下次刷新：${timeStr}后（${phase}）`);
         
         return setTimeout(() => {
           triggerSmartInteraction().then(() => {
