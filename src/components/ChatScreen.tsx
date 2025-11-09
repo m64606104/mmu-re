@@ -118,6 +118,7 @@ const backgroundTaskManager = {
         
         // 🔍 解析特殊指令（红包、转账、文档）
         let finalContent = cleanContent;
+        console.log(`📖 开始解析AI消息: ${finalContent.substring(0, 100)}...`);
         
         // 检测红包：[发红包:金额:留言]
         const redPacketMatch = finalContent.match(/\[发红包:([\d.]+):([^\]]*)\]/);
