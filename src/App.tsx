@@ -191,6 +191,81 @@ function App() {
     }
   }, [currentConversationId, navigateTo]);
 
+  // 送礼物给AI
+  const handleSendGiftToAI = useCallback((product: any, recipientId: string, recipientName: string) => {
+    const giftMessage: Message = {
+      id: `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+      role: 'user',
+      content: `给你的礼物`,
+      timestamp: Date.now(),
+      order: {
+        type: 'gift',
+        products: [{
+          id: product.id,
+          name: product.name,
+          price: product.price,
+          quantity: 1,
+          image: product.image
+        }],
+        totalAmount: product.price,
+        recipientId,
+        recipientName,
+        message: '给你买的小礼物～',
+        status: 'pending',
+        orderNumber: `ORDER${Date.now()}`
+      }
+    };
+    
+    // 添加到对话中
+    const conversation = conversations.find(c => c.id === recipientId);
+    if (conversation) {
+      updateConversation(recipientId, {
+        messages: [...conversation.messages, giftMessage],
+        lastMessageTime: Date.now()
+      });
+      
+      // 切换到聊天页面
+      setCurrentConversationId(recipientId);
+      navigateTo('chat');
+    }
+  }, [conversations, updateConversation, navigateTo]);
+
+  // 请AI代付
+  const handleRequestAIPay = useCallback((product: any, aiId: string, aiName: string) => {
+    const payRequestMessage: Message = {
+      id: `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+      role: 'user',
+      content: `请你帮我代付`,
+      timestamp: Date.now(),
+      order: {
+        type: 'payRequest',
+        products: [{
+          id: product.id,
+          name: product.name,
+          price: product.price,
+          quantity: 1,
+          image: product.image
+        }],
+        totalAmount: product.price,
+        message: '帮我付一下～',
+        status: 'pending',
+        orderNumber: `PAY${Date.now()}`
+      }
+    };
+    
+    const conversation = conversations.find(c => c.id === aiId);
+    if (conversation) {
+      updateConversation(aiId, {
+        messages: [...conversation.messages, payRequestMessage],
+        lastMessageTime: Date.now()
+      });
+      
+      // 切换到聊天页面
+      setCurrentConversationId(aiId);
+      navigateTo('chat');
+    }
+  }, [conversations, updateConversation, navigateTo]);
+
   // 添加消息到指定对话（用于AI主动发消息）
   const addMessageToConversation = useCallback((conversationId: string, message: Message) => {
     setConversations(prev => prev.map(conv => {
@@ -560,6 +635,9 @@ function App() {
             onPurchase={() => {
               // 购买后刷新，可以触发钱包页面重新加载
             }}
+            conversations={conversations}
+            onSendGiftToAI={handleSendGiftToAI}
+            onRequestAIPay={handleRequestAIPay}
           />
         );
       default:

@@ -1137,6 +1137,17 @@ ${conversation.characterSettings.memoryEvents ? `记忆事件：${conversation.c
 - 接收示例："谢谢！[接收]"
 - 退回示例："不用这么客气 [退回]"
 
+【🎁 订单/礼物规则】：
+你可能会收到用户送的礼物或代付请求：
+- 礼物订单：用户给你买了礼物，根据关系和商品价值决定是否接受
+- 代付请求：用户请你帮忙付款，根据关系、金额和理由决定是否同意
+
+收到订单后的回复格式：
+- 接受礼物："好喜欢！谢谢你 [接受礼物]"
+- 退回礼物："太贵重了，我不能收 [退回礼物]"
+- 同意代付："没问题，我帮你付 [同意代付]"
+- 拒绝代付："抱歉，最近手头有点紧 [拒绝代付]"
+
 记住：像真人一样使用这些功能，在合适的时机自然地发送红包、转账或文档。`
         : conversation.type === 'group'
         ? '你是一个群聊助手，可以参与多人对话。使用自然口语表达，不要使用斜杠（/）等书面符号。'
@@ -2288,8 +2299,152 @@ ${conversation.characterSettings.memoryEvents ? `记忆事件：${conversation.c
                       </div>
                     ) : null}
                     
+                    {/* 订单消息气泡（礼物/代付请求） */}
+                    {message.order && (
+                      <div className={`rounded-2xl overflow-hidden max-w-[300px] ${
+                        message.order.type === 'gift' 
+                          ? 'bg-gradient-to-br from-blue-500 to-purple-500' 
+                          : 'bg-gradient-to-br from-green-500 to-emerald-500'
+                      }`}>
+                        {/* 顶部标题 */}
+                        <div className="text-white text-center py-3 px-4">
+                          <div className="font-semibold text-base">
+                            {message.order.type === 'gift' ? '🎁 给你的礼物' : '🛒 购物车代付请求'}
+                          </div>
+                          {message.order.recipientName && (
+                            <div className="text-xs opacity-90 mt-1">
+                              {message.order.type === 'gift' 
+                                ? `送给 ${message.order.recipientName}` 
+                                : '对方已为你买单'
+                              }
+                            </div>
+                          )}
+                        </div>
+                        
+                        {/* 白色内容区 */}
+                        <div className="bg-white p-4 space-y-3">
+                          {/* 留言 */}
+                          {message.order.message && (
+                            <div className="bg-blue-50 rounded-lg p-3">
+                              <div className="text-sm font-medium text-blue-900 mb-1">
+                                📝 下单留言
+                              </div>
+                              <div className="text-sm text-gray-700">
+                                {message.order.message}
+                              </div>
+                            </div>
+                          )}
+                          
+                          {/* 商品列表 */}
+                          <div className="space-y-2">
+                            <div className="text-sm font-semibold text-gray-800">商品明细</div>
+                            {message.order.products.map((product, idx) => (
+                              <div key={idx} className="flex items-center gap-2">
+                                {product.image && (
+                                  <img 
+                                    src={product.image} 
+                                    alt={product.name}
+                                    className="w-12 h-12 rounded object-cover"
+                                    onError={(e) => {
+                                      e.currentTarget.src = 'https://via.placeholder.com/100?text=商品';
+                                    }}
+                                  />
+                                )}
+                                <div className="flex-1 text-sm">
+                                  <div className="text-gray-800 line-clamp-1">{product.name}</div>
+                                  <div className="text-gray-500">×{product.quantity}</div>
+                                </div>
+                                <div className="text-red-600 font-semibold text-sm">
+                                  ¥{product.price.toFixed(2)}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                          
+                          {/* 订单号 */}
+                          {message.order.orderNumber && (
+                            <div className="text-xs text-gray-400">
+                              订单号：{message.order.orderNumber}
+                            </div>
+                          )}
+                          
+                          {/* 总价 */}
+                          <div className="pt-2 border-t border-gray-200">
+                            <div className="flex justify-between items-center">
+                              <span className="text-sm text-gray-600">共 {message.order.products.length} 件商品，合计</span>
+                              <span className="text-xl font-bold text-red-600">
+                                ¥{message.order.totalAmount.toFixed(2)}
+                              </span>
+                            </div>
+                          </div>
+                          
+                          {/* 操作按钮 */}
+                          {message.role === 'user' && message.order.status === 'pending' && (
+                            <div className="flex gap-2">
+                              {message.order.type === 'gift' ? (
+                                <>
+                                  <button 
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      // TODO: 处理收下礼物逻辑
+                                      alert('礼物收下功能待实现');
+                                    }}
+                                    className="flex-1 py-2 bg-gradient-to-r from-blue-500 to-purple-500 text-white rounded-lg font-medium hover:opacity-90 transition-opacity"
+                                  >
+                                    收下礼物
+                                  </button>
+                                  <button 
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      // TODO: 处理退回礼物逻辑
+                                      alert('退回礼物功能待实现');
+                                    }}
+                                    className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
+                                  >
+                                    退回
+                                  </button>
+                                </>
+                              ) : (
+                                <>
+                                  <button 
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      // TODO: 处理帮TA付款逻辑
+                                      alert('代付功能待实现');
+                                    }}
+                                    className="flex-1 py-2 bg-gradient-to-r from-green-500 to-emerald-500 text-white rounded-lg font-medium hover:opacity-90 transition-opacity"
+                                  >
+                                    帮TA付款
+                                  </button>
+                                  <button 
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      // TODO: 处理拒绝代付逻辑
+                                      alert('拒绝代付功能待实现');
+                                    }}
+                                    className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
+                                  >
+                                    拒绝
+                                  </button>
+                                </>
+                              )}
+                            </div>
+                          )}
+                          
+                          {/* 状态显示 */}
+                          {message.order.status !== 'pending' && (
+                            <div className="text-center py-2 text-sm font-medium">
+                              {message.order.status === 'accepted' && '✅ 已接收'}
+                              {message.order.status === 'rejected' && '❌ 已拒绝'}
+                              {message.order.status === 'paid' && '💰 已支付'}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    )}
+                    
                     {/* 多媒体混合显示（优先使用新的mediaItems数组） */}
-                    {!message.moneyTransfer && !message.document && message.mediaItems && message.mediaItems.length > 0 && (
+                    {!message.moneyTransfer && !message.document && !message.order && message.mediaItems && message.mediaItems.length > 0 && (
                       <div className="space-y-2">
                         {message.mediaItems.map((media, idx) => (
                           <div key={`${message.id}_media_${idx}`}>
@@ -2520,7 +2675,7 @@ ${conversation.characterSettings.memoryEvents ? `记忆事件：${conversation.c
                     )}
                     
                     {/* 纯文字内容 */}
-                    {!message.mediaType && !message.moneyTransfer && !message.document && (
+                    {!message.mediaType && !message.moneyTransfer && !message.document && !message.order && (
                       <p className="text-[15px] leading-relaxed whitespace-pre-wrap break-words">{message.content}</p>
                     )}
                     {/* 用户媒体的描述文字（排除语音和表情包） */}
