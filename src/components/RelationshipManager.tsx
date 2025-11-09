@@ -3,7 +3,7 @@
  * 集成关系图谱、卡片列表和编辑器
  */
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { Users, Plus, Network } from 'lucide-react';
 import {
   CharacterRelationship,
@@ -43,6 +43,43 @@ export default function RelationshipManager({
   const [activeFilter, setActiveFilter] = useState<'all' | 'contact' | 'virtual'>('all');
   const [isLinkModalOpen, setIsLinkModalOpen] = useState(false);
   const [linkingVirtualRelationship, setLinkingVirtualRelationship] = useState<CharacterRelationship | null>(null);
+
+  // 初始化所有联系人为陌生人关系
+  useEffect(() => {
+    const existingRelationships = loadCharacterRelationships(characterId);
+    const existingContactIds = new Set(existingRelationships.map(r => r.contactId).filter(Boolean));
+    
+    let needsSave = false;
+    const newRelationships = [...existingRelationships];
+    
+    // 为所有未设置关系的联系人创建陌生人关系
+    availableContacts.forEach(contact => {
+      if (!existingContactIds.has(contact.id)) {
+        needsSave = true;
+        const strangerRelationship: CharacterRelationship = {
+          id: generateRelationshipId(),
+          type: 'contact',
+          contactId: contact.id,
+          contactName: contact.characterSettings?.nickname || contact.name,
+          contactAvatar: contact.characterSettings?.avatar || contact.avatar,
+          relationshipDesc: '还不太了解',
+          affectionLevel: 0,
+          status: 'stranger',
+          aiSuggestedAffection: 0,
+          notes: '',
+          tags: [],
+          createdAt: Date.now(),
+          updatedAt: Date.now()
+        };
+        newRelationships.push(strangerRelationship);
+        saveCharacterRelationship(characterId, strangerRelationship);
+      }
+    });
+    
+    if (needsSave) {
+      setRelationships(loadCharacterRelationships(characterId));
+    }
+  }, [characterId, availableContacts]);
 
   // 过滤关系
   const filteredRelationships = useMemo(() => {

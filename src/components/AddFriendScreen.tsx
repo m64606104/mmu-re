@@ -188,6 +188,13 @@ export default function AddFriendScreen({ onAddFriend, onBack }: AddFriendScreen
           </p>
         </div>
 
+        {/* 人际关系提示 */}
+        <div className="bg-purple-50 border border-purple-100 rounded-lg p-4">
+          <p className="text-sm text-purple-700 leading-relaxed">
+            👥 <span className="font-semibold">人际关系提示：</span>新建的AI角色会默认与现有的所有AI角色设定为<span className="font-semibold">陌生人</span>关系。您可以稍后在<span className="font-semibold">角色设置</span>中进入<span className="font-semibold">人际关系管理</span>自行调整他们之间的关系。
+          </p>
+        </div>
+
         {/* Add Friend Button */}
         <button
           onClick={handleAddFriend}

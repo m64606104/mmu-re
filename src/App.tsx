@@ -13,7 +13,6 @@ import AddFriendScreen from './components/AddFriendScreen';
 import CreateGroupScreen from './components/CreateGroupScreen';
 import ThemeScreen from './components/ThemeScreen';
 import UserGuide from './components/UserGuide';
-import RelationshipsScreen from './components/RelationshipsScreen';
 import AnnouncementScreen from './components/AnnouncementScreen';
 import { MomentsAutoGenerator } from './components/MomentsAutoGenerator';
 import { AIMomentsInteractionManager } from './components/AIMomentsInteractionManager';
@@ -531,13 +530,6 @@ function App() {
         );
       case 'guide':
         return <UserGuide onBack={() => navigateTo('home')} />;
-      case 'relationships':
-        return (
-          <RelationshipsScreen 
-            conversations={conversations}
-            onBack={() => navigateTo('home')}
-          />
-        );
       case 'announcement':
         return <AnnouncementScreen onBack={() => navigateTo('home')} />;
       default:
