@@ -61,12 +61,10 @@ export function AIMomentsInteractionManager({
       // 1️⃣ 对朋友圈本身互动（点赞、评论）
       await generateAIMomentsInteraction(currentConversations, currentApiConfig);
       
-      // 2️⃣ 查看评论区并参与讨论（随机50%概率）
-      if (Math.random() < 0.5) {
-        await new Promise(resolve => setTimeout(resolve, 3000 + Math.random() * 3000)); // 延迟3-6秒
-        console.log('💬 AI们正在查看评论区...');
-        await generateCommentSectionInteraction(currentConversations, currentApiConfig);
-      }
+      // 2️⃣ 查看评论区并参与讨论（AI自主决定是否参与）
+      await new Promise(resolve => setTimeout(resolve, 3000 + Math.random() * 3000)); // 延迟3-6秒
+      console.log('💬 AI们正在查看评论区...');
+      await generateCommentSectionInteraction(currentConversations, currentApiConfig);
       
       console.log('✅ AI互动完成');
     } catch (error) {
@@ -87,9 +85,9 @@ export function AIMomentsInteractionManager({
         triggerSmartInteraction();
       }, initialDelay);
 
-      // 🔄 持续刷新：每60-120秒随机触发一次
+      // 🔄 持续刷新：每30-60秒随机触发一次（加快频率以便及时查看评论区）
       const setupNextCheck = () => {
-        const nextDelay = 60000 + Math.random() * 60000; // 1-2分钟
+        const nextDelay = 30000 + Math.random() * 30000; // 30秒-1分钟
         return setTimeout(() => {
           triggerSmartInteraction().then(() => {
             // 递归设置下一次检查

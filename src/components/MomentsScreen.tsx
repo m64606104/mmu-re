@@ -141,17 +141,15 @@ export default function MomentsScreen({
             );
           }, 2000 + Math.random() * 3000); // 2-5秒后响应，模拟真人
           
-          // 💬 其他AI可能看到评论区有新评论，也来参与讨论（30%概率）
-          if (Math.random() < 0.3) {
-            setTimeout(() => {
+          // 💬 其他AI看到评论区有新评论，自主决定是否参与讨论
+          setTimeout(() => {
+            // @ts-ignore
+            if (window.triggerAICommentSectionInteraction) {
+              console.log('💬 用户评论后，其他AI正在查看评论区...');
               // @ts-ignore
-              if (window.triggerAICommentSectionInteraction) {
-                console.log('💬 用户评论后，其他AI可能来围观评论区...');
-                // @ts-ignore
-                window.triggerAICommentSectionInteraction();
-              }
-            }, 10000 + Math.random() * 20000); // 10-30秒后，其他AI才看到
-          }
+              window.triggerAICommentSectionInteraction();
+            }
+          }, 5000 + Math.random() * 10000); // 5-15秒后，其他AI看到
         }
         
         // 重新加载AI朋友圈
