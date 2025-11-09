@@ -65,8 +65,34 @@ export const splitMessages = (message: string): string[] => {
     return [];
   }
   
-  // 先清理消息
-  const cleaned = cleanAIMessage(message);
+  // 🔒 保护文档内容：提取文档标记和内容，避免被拆分
+  const documentPattern = /\[发文档:([^:]+):([^\]]+)\]/;
+  const docMatch = message.match(documentPattern);
+  let documentPart = '';
+  let messageWithoutDoc = message;
+  
+  if (docMatch) {
+    const tagIndex = docMatch.index!;
+    const tagEndIndex = tagIndex + docMatch[0].length;
+    
+    // 提取文档标记后的所有内容作为文档内容
+    const contentAfter = message.substring(tagEndIndex).trim();
+    
+    if (contentAfter) {
+      // 格式：[发文档:xxx] 内容在后面
+      // 将整个文档（标记+内容）作为一个整体保护
+      documentPart = message.substring(tagIndex).trim(); // 从标记开始到结尾的所有内容
+      messageWithoutDoc = message.substring(0, tagIndex).trim(); // 只保留标记前的内容
+    } else {
+      // 格式：内容在前面 [发文档:xxx]
+      // 将整个文档（内容+标记）作为一个整体保护
+      documentPart = message; // 整个消息都是文档
+      messageWithoutDoc = ''; // 没有其他内容
+    }
+  }
+  
+  // 先清理消息（只清理非文档部分）
+  const cleaned = cleanAIMessage(messageWithoutDoc);
   
   // 检测并保护URL
   const urlPattern = /https?:\/\/[^\s]+/g;
@@ -194,7 +220,7 @@ export const splitMessages = (message: string): string[] => {
   });
   
   // 过滤掉空消息、只有标点的消息、以及纯URL的消息
-  return restoredMessages
+  const filteredMessages = restoredMessages
     .map(msg => msg.trim())
     .filter(msg => {
       if (!msg || msg.length === 0) return false;
@@ -208,4 +234,12 @@ export const splitMessages = (message: string): string[] => {
       if (/^\d+\.$/.test(msg) && msg.length < 10) return false;
       return true;
     });
+  
+  // 🔒 将文档部分添加回去（如果有的话）
+  if (documentPart) {
+    // 文档始终作为单独的一条消息，放在最后
+    return [...filteredMessages, documentPart];
+  }
+  
+  return filteredMessages;
 };
