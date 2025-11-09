@@ -1,11 +1,17 @@
 import React, { useState } from 'react';
-import { ChevronLeft, Search, Settings, ShoppingCart } from 'lucide-react';
+import { ChevronLeft, Search, ShoppingCart, Settings } from 'lucide-react';
 import { purchaseProduct, getBalance } from '../utils/wallet';
+import ImageGenConfigModal from './ImageGenConfigModal';
+import PurchaseOptionsModal from './PurchaseOptionsModal';
+import { Conversation } from '../types';
 
 interface ShoppingScreenProps {
   shopType: 'food' | 'movie' | 'shopping';
   onBack: () => void;
   onPurchase: () => void; // 购买成功后刷新钱包
+  conversations: Conversation[]; // AI角色列表
+  onSendGiftToAI: (product: Product, recipientId: string, recipientName: string) => void;
+  onRequestAIPay: (product: Product, aiId: string, aiName: string) => void;
 }
 
 interface Product {
@@ -16,12 +22,22 @@ interface Product {
   isAIGenerated?: boolean; // 是否是AI生成的图片
 }
 
-const ShoppingScreen: React.FC<ShoppingScreenProps> = ({ shopType, onBack, onPurchase }) => {
+const ShoppingScreen: React.FC<ShoppingScreenProps> = ({ 
+  shopType, 
+  onBack, 
+  onPurchase,
+  conversations,
+  onSendGiftToAI,
+  onRequestAIPay
+}) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [showSettings, setShowSettings] = useState(false);
+  const [showPurchaseOptions, setShowPurchaseOptions] = useState(false);
+  const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [imageGenConfig, setImageGenConfig] = useState({
     apiUrl: localStorage.getItem('image_gen_api_url') || '',
-    apiKey: localStorage.getItem('image_gen_api_key') || ''
+    apiKey: localStorage.getItem('image_gen_api_key') || '',
+    model: localStorage.getItem('image_gen_model') || ''
   });
   const [generatingImages, setGeneratingImages] = useState<Set<string>>(new Set());
 
@@ -31,32 +47,32 @@ const ShoppingScreen: React.FC<ShoppingScreenProps> = ({ shopType, onBack, onPur
       name: '😋 饿饿吗',
       color: 'from-blue-500 to-cyan-500',
       products: [
-        { id: '1', name: '锅贴超级肥牛饭', price: 28.80, image: 'https://via.placeholder.com/300x200?text=肥牛饭' },
-        { id: '2', name: '金汤酸菜鱼鱼线', price: 35.00, image: 'https://via.placeholder.com/300x200?text=酸菜鱼' },
-        { id: '3', name: '黄金酥皮虾仁排', price: 18.00, image: 'https://via.placeholder.com/300x200?text=虾仁排' },
-        { id: '4', name: '招牌麻酱汁花肉串', price: 15.00, image: 'https://via.placeholder.com/300x200?text=肉串' },
-        { id: '5', name: '云朵牛乳芝士蛋筒', price: 32.00, image: 'https://via.placeholder.com/300x200?text=蛋筒' },
-        { id: '6', name: '杨枝甘露蜜蛋糕', price: 45.00, image: 'https://via.placeholder.com/300x200?text=蛋糕' },
+        { id: '1', name: '锅贴超级肥牛饭', price: 28.80, image: 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=400' },
+        { id: '2', name: '金汤酸菜鱼鱼线', price: 35.00, image: 'https://images.unsplash.com/photo-1534422298391-e4f8c172dddb?w=400' },
+        { id: '3', name: '黄金酥皮虾仁排', price: 18.00, image: 'https://images.unsplash.com/photo-1565557623262-b51c2513a641?w=400' },
+        { id: '4', name: '招牌麻酱汁花肉串', price: 15.00, image: 'https://images.unsplash.com/photo-1603360946369-dc9bb6258143?w=400' },
+        { id: '5', name: '云朵牛乳芝士蛋筒', price: 32.00, image: 'https://images.unsplash.com/photo-1488900128323-21503983a07d?w=400' },
+        { id: '6', name: '杨枝甘露蜜蛋糕', price: 45.00, image: 'https://images.unsplash.com/photo-1578985545062-69928b1d9587?w=400' },
       ]
     },
     movie: {
       name: '🎬 电影票',
       color: 'from-purple-500 to-pink-500',
       products: [
-        { id: '1', name: '《流浪地球3》', price: 58.00, image: 'https://via.placeholder.com/300x400?text=电影海报' },
-        { id: '2', name: '《龙马精神》', price: 48.00, image: 'https://via.placeholder.com/300x400?text=电影海报' },
-        { id: '3', name: '《满江红》', price: 52.00, image: 'https://via.placeholder.com/300x400?text=电影海报' },
-        { id: '4', name: '《熊出没》', price: 38.00, image: 'https://via.placeholder.com/300x400?text=电影海报' },
+        { id: '1', name: '《流浪地球3》', price: 58.00, image: 'https://images.unsplash.com/photo-1536440136628-849c177e76a1?w=400' },
+        { id: '2', name: '《龙马精神》', price: 48.00, image: 'https://images.unsplash.com/photo-1594908900066-3f47337549d8?w=400' },
+        { id: '3', name: '《满江红》', price: 52.00, image: 'https://images.unsplash.com/photo-1517604931442-7e0c8ed2963c?w=400' },
+        { id: '4', name: '《熊出没》', price: 38.00, image: 'https://images.unsplash.com/photo-1611162617474-5b21e879e113?w=400' },
       ]
     },
     shopping: {
       name: '🛍️ 淘淘宝',
       color: 'from-orange-500 to-red-500',
       products: [
-        { id: '1', name: '无线蓝牙耳机', price: 199.00, image: 'https://via.placeholder.com/300x300?text=耳机' },
-        { id: '2', name: '智能手环', price: 299.00, image: 'https://via.placeholder.com/300x300?text=手环' },
-        { id: '3', name: '保温杯', price: 89.00, image: 'https://via.placeholder.com/300x300?text=保温杯' },
-        { id: '4', name: '便携充电宝', price: 128.00, image: 'https://via.placeholder.com/300x300?text=充电宝' },
+        { id: '1', name: '无线蓝牙耳机', price: 199.00, image: 'https://images.unsplash.com/photo-1590658268037-6bf12165a8df?w=400' },
+        { id: '2', name: '智能手环', price: 299.00, image: 'https://images.unsplash.com/photo-1575311373937-040b8e1fd5b6?w=400' },
+        { id: '3', name: '保温杯', price: 89.00, image: 'https://images.unsplash.com/photo-1602143407151-7111542de6e8?w=400' },
+        { id: '4', name: '便携充电宝', price: 128.00, image: 'https://images.unsplash.com/photo-1609091839311-d5365f9ff1c5?w=400' },
       ]
     }
   };
@@ -65,10 +81,11 @@ const ShoppingScreen: React.FC<ShoppingScreenProps> = ({ shopType, onBack, onPur
   const [products, setProducts] = useState<Product[]>(currentShop.products);
 
   // 保存AI生图配置
-  const saveImageGenConfig = () => {
-    localStorage.setItem('image_gen_api_url', imageGenConfig.apiUrl);
-    localStorage.setItem('image_gen_api_key', imageGenConfig.apiKey);
-    setShowSettings(false);
+  const saveImageGenConfig = (config: { apiUrl: string; apiKey: string; model: string }) => {
+    localStorage.setItem('image_gen_api_url', config.apiUrl);
+    localStorage.setItem('image_gen_api_key', config.apiKey);
+    localStorage.setItem('image_gen_model', config.model);
+    setImageGenConfig(config);
     alert('配置已保存');
   };
 
@@ -94,7 +111,7 @@ const ShoppingScreen: React.FC<ShoppingScreenProps> = ({ shopType, onBack, onPur
         },
         body: JSON.stringify({
           prompt: `${searchTerm}, product photography, high quality, professional lighting`,
-          model: 'dall-e-3', // 或其他模型
+          model: imageGenConfig.model || 'dall-e-3', // 使用配置的模型
           size: '1024x1024',
           n: 1
         })
@@ -148,8 +165,14 @@ const ShoppingScreen: React.FC<ShoppingScreenProps> = ({ shopType, onBack, onPur
     setSearchQuery('');
   };
 
-  // 购买商品
-  const handlePurchase = (product: Product) => {
+  // 点击购买，打开购买选项
+  const handleClickPurchase = (product: Product) => {
+    setSelectedProduct(product);
+    setShowPurchaseOptions(true);
+  };
+
+  // 为自己购买
+  const handlePurchaseForSelf = (product: Product) => {
     const balance = getBalance();
     
     if (balance < product.price) {
@@ -157,13 +180,34 @@ const ShoppingScreen: React.FC<ShoppingScreenProps> = ({ shopType, onBack, onPur
       return;
     }
 
-    if (confirm(`确认购买 ${product.name}，金额 ¥${product.price}？`)) {
-      const success = purchaseProduct(product.price, product.name, currentShop.name);
-      if (success) {
-        alert('购买成功！');
-        onPurchase(); // 刷新钱包
-      }
+    const success = purchaseProduct(product.price, product.name, currentShop.name);
+    if (success) {
+      alert('购买成功！');
+      onPurchase();
     }
+  };
+
+  // 为AI购买（送礼）
+  const handlePurchaseForAI = (product: Product, recipientId: string, recipientName: string) => {
+    const balance = getBalance();
+    
+    if (balance < product.price) {
+      alert('余额不足，请充值');
+      return;
+    }
+
+    const success = purchaseProduct(product.price, `送给${recipientName}的礼物：${product.name}`, currentShop.name);
+    if (success) {
+      onSendGiftToAI(product, recipientId, recipientName);
+      onPurchase();
+      alert(`礼物已送给${recipientName}`);
+    }
+  };
+
+  // 请AI代付
+  const handleRequestAIPay = (product: Product, aiId: string, aiName: string) => {
+    onRequestAIPay(product, aiId, aiName);
+    alert(`已向${aiName}发送代付请求`);
   };
 
   return (
@@ -247,7 +291,7 @@ const ShoppingScreen: React.FC<ShoppingScreenProps> = ({ shopType, onBack, onPur
                     ¥{product.price.toFixed(2)}
                   </div>
                   <button
-                    onClick={() => handlePurchase(product)}
+                    onClick={() => handleClickPurchase(product)}
                     className="p-2 bg-gradient-to-r from-orange-500 to-red-500 text-white rounded-lg hover:opacity-90 transition-opacity"
                   >
                     <ShoppingCart className="w-4 h-4" />
@@ -260,62 +304,23 @@ const ShoppingScreen: React.FC<ShoppingScreenProps> = ({ shopType, onBack, onPur
       </div>
 
       {/* AI生图设置弹窗 */}
-      {showSettings && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-xl w-full max-w-md p-6">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-lg font-semibold">AI生图设置</h3>
-              <button
-                onClick={() => setShowSettings(false)}
-                className="p-2 hover:bg-gray-100 rounded-lg"
-              >
-                ×
-              </button>
-            </div>
+      <ImageGenConfigModal
+        isOpen={showSettings}
+        onClose={() => setShowSettings(false)}
+        onSave={saveImageGenConfig}
+        initialConfig={imageGenConfig}
+      />
 
-            <div className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  API地址
-                </label>
-                <input
-                  type="text"
-                  value={imageGenConfig.apiUrl}
-                  onChange={(e) => setImageGenConfig({ ...imageGenConfig, apiUrl: e.target.value })}
-                  placeholder="https://api.openai.com/v1/images/generations"
-                  className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:border-blue-500 focus:outline-none"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  API Key
-                </label>
-                <input
-                  type="password"
-                  value={imageGenConfig.apiKey}
-                  onChange={(e) => setImageGenConfig({ ...imageGenConfig, apiKey: e.target.value })}
-                  placeholder="sk-..."
-                  className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:border-blue-500 focus:outline-none"
-                />
-              </div>
-
-              <div className="bg-blue-50 border border-blue-100 rounded-lg p-3">
-                <p className="text-sm text-blue-700">
-                  💡 配置AI生图API后，搜索商品时将自动生成商品图片
-                </p>
-              </div>
-
-              <button
-                onClick={saveImageGenConfig}
-                className="w-full py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-lg font-medium transition-colors"
-              >
-                保存配置
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      {/* 购买选项弹窗 */}
+      <PurchaseOptionsModal
+        isOpen={showPurchaseOptions}
+        onClose={() => setShowPurchaseOptions(false)}
+        product={selectedProduct}
+        conversations={conversations}
+        onPurchaseForSelf={handlePurchaseForSelf}
+        onPurchaseForAI={handlePurchaseForAI}
+        onRequestAIPay={handleRequestAIPay}
+      />
     </div>
   );
 };
