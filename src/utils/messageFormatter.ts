@@ -26,19 +26,26 @@ export const cleanAIMessage = (message: string): string => {
   // 3. 移除引用标记和引用链接
   // 移除 [1][2] 这种引用标记
   cleaned = cleaned.replace(/\[\d+\]/g, '');
-  // 移除引用说明文字
+  // 移除引用说明文字（从"引用："开始到文末的所有内容）
   cleaned = cleaned.replace(/(?:主要)?引用[:：]\s*[\s\S]*$/gmi, '');
   cleaned = cleaned.replace(/参考资料[:：]\s*[\s\S]*$/gmi, '');
   cleaned = cleaned.replace(/来源[:：]\s*[\s\S]*$/gmi, '');
+  cleaned = cleaned.replace(/资料来源[:：]\s*[\s\S]*$/gmi, '');
   
-  // 4. 移除独立的Markdown链接（但保留URL本身）
-  // [链接文字](url) -> url
-  cleaned = cleaned.replace(/\[([^\]]+)\]\((https?:\/\/[^\)]+)\)/g, '$2');
+  // 4. 移除Markdown链接格式
+  // [链接文字](url) -> 完全移除
+  cleaned = cleaned.replace(/\[([^\]]+)\]\((https?:\/\/[^\)]+)\)/g, '');
   
-  // 5. 移除独立的URL括号 (https://...)
-  cleaned = cleaned.replace(/\((https?:\/\/[^\)]+)\)/g, '$1');
+  // 5. 移除独立成行的完整URL
+  cleaned = cleaned.replace(/^\s*\[?\]?https?:\/\/[^\s]+\s*$/gm, '');
   
-  // 6. 清理多余的空行（超过2个连续换行）
+  // 6. 移除URL括号 (https://...)
+  cleaned = cleaned.replace(/\((https?:\/\/[^\)]+)\)/g, '');
+  
+  // 7. 移除残留的[]空括号
+  cleaned = cleaned.replace(/\[\s*\]/g, '');
+  
+  // 8. 清理多余的空行（超过2个连续换行）
   cleaned = cleaned.replace(/\n{3,}/g, '\n\n');
   
   // 7. 清理行首行尾的空格
@@ -186,8 +193,19 @@ export const splitMessages = (message: string): string[] => {
     });
   });
   
-  // 过滤掉空消息和只有标点的消息
+  // 过滤掉空消息、只有标点的消息、以及纯URL的消息
   return restoredMessages
     .map(msg => msg.trim())
-    .filter(msg => msg && msg.length > 0 && !/^[。！？!?.,，；;]+$/.test(msg));
+    .filter(msg => {
+      if (!msg || msg.length === 0) return false;
+      // 过滤纯标点
+      if (/^[。！？!?.,，；;]+$/.test(msg)) return false;
+      // 过滤纯URL（包括可能的[]前缀）
+      if (/^\[?\]?https?:\/\/[^\s]+$/.test(msg)) return false;
+      // 过滤只有.html、.com等扩展名结尾的片段
+      if (/^[a-z0-9\-]+\.(html?|com|net|org|cn|edu)\.?$/i.test(msg)) return false;
+      // 过滤纯数字+点（可能是URL的一部分）
+      if (/^\d+\.$/.test(msg) && msg.length < 10) return false;
+      return true;
+    });
 };

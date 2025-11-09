@@ -1375,11 +1375,19 @@ ${conversation.characterSettings.memoryEvents ? `记忆事件：${conversation.c
           .replace(/(?:主要)?引用[:：]\s*[\s\S]*$/gmi, '')
           .replace(/参考资料[:：]\s*[\s\S]*$/gmi, '')
           .replace(/来源[:：]\s*[\s\S]*$/gmi, '')
+          .replace(/资料来源[:：]\s*[\s\S]*$/gmi, '')
           // 移除 [数字] 格式的引用标记和紧随的链接
           .replace(/\[\d+\]\s*\[.*?\]\s*\(https?:\/\/[^\)]+\)/g, '')
           .replace(/\[\d+\]\s*\(https?:\/\/[^\)]+\)/g, '')
+          .replace(/\[\d+\]/g, '')
+          // 移除Markdown链接格式 [text](url)
+          .replace(/\[([^\]]+)\]\((https?:\/\/[^\)]+)\)/g, '')
           // 移除单独的引用链接
           .replace(/\(https?:\/\/[^\)]+\)/g, '')
+          // 移除独立成行的完整URL
+          .replace(/^\s*\[?\]?https?:\/\/[^\s]+\s*$/gm, '')
+          // 移除残留的[]空括号
+          .replace(/\[\s*\]/g, '')
           // 清理多余的空行
           .replace(/\n{3,}/g, '\n\n')
           .trim();
