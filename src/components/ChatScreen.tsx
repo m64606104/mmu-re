@@ -127,6 +127,8 @@ const backgroundTaskManager = {
           const redPacketMsg = redPacketMatch[2];
           finalContent = finalContent.replace(redPacketMatch[0], '').trim();
           
+          console.log(`🧧 AI发红包: ¥${amount}, 留言: ${redPacketMsg}`);
+          
           allExtraMessages.push({
             id: `${baseId}_redpacket`,
             role: 'assistant',
@@ -147,6 +149,8 @@ const backgroundTaskManager = {
           const amount = parseFloat(transferMatch[1]);
           const transferMsg = transferMatch[2];
           finalContent = finalContent.replace(transferMatch[0], '').trim();
+          
+          console.log(`💸 AI转账: ¥${amount}, 备注: ${transferMsg}`);
           
           allExtraMessages.push({
             id: `${baseId}_transfer`,
@@ -769,7 +773,7 @@ ${recentMessages}
   // 处理逻辑在 processAIMoneyResponse 函数中（line 1127）
 
   // 处理红包接收/退回
-  const handleReceiveMoney = (messageId: string, accept: boolean, replyText?: string) => {
+  const handleReceiveMoney = (messageId: string, accept: boolean) => {
     const updatedMessages = conversation.messages.map(msg => {
       if (msg.id === messageId && msg.moneyTransfer) {
         if (accept) {
@@ -808,20 +812,9 @@ ${recentMessages}
       lastMessageTime: Date.now()
     });
 
-    // AI发送回复消息
-    setTimeout(() => {
-      const replyMessage: Message = {
-        id: `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-        role: 'assistant',
-        content: replyText || (accept ? '谢谢！' : '不好意思，退回给你了'),
-        timestamp: Date.now()
-      };
-
-      onUpdateConversation(conversation.id, {
-        messages: [...updatedMessages, replyMessage],
-        lastMessageTime: Date.now()
-      });
-    }, 500);
+    // 🔧 修复：用户领取AI红包时，不应该有AI的自动回复
+    // AI接收/退回用户红包的回复通过 [接收红包:留言] 标记处理
+    // 所以这里不需要自动回复了
   };
 
   // 处理图片上传
