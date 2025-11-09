@@ -442,6 +442,8 @@ function App() {
         return currentConversation ? (
           <CharacterSettingsScreen 
             conversation={currentConversation}
+            allConversations={conversations}
+            apiConfig={apiConfig}
             onUpdateConversation={updateConversation}
             onDeleteConversation={deleteConversation}
             onBack={() => navigateTo('chat')}

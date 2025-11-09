@@ -9,13 +9,15 @@ import {
   CharacterRelationship,
   loadCharacterRelationships,
   saveCharacterRelationship,
-  deleteCharacterRelationship
+  deleteCharacterRelationship,
+  generateRelationshipId
 } from '../utils/aiRelationships';
 import { Conversation, ApiConfig } from '../types';
 import { analyzeRelationshipAffection } from '../utils/relationshipAnalyzer';
 import RelationshipGraph from './RelationshipGraph';
 import RelationshipCard from './RelationshipCard';
 import RelationshipEditor from './RelationshipEditor';
+import LinkVirtualToContactModal from './LinkVirtualToContactModal';
 
 interface RelationshipManagerProps {
   characterId: string;
@@ -39,6 +41,8 @@ export default function RelationshipManager({
   const [isEditorOpen, setIsEditorOpen] = useState(false);
   const [editingRelationship, setEditingRelationship] = useState<CharacterRelationship | null>(null);
   const [activeFilter, setActiveFilter] = useState<'all' | 'contact' | 'virtual'>('all');
+  const [isLinkModalOpen, setIsLinkModalOpen] = useState(false);
+  const [linkingVirtualRelationship, setLinkingVirtualRelationship] = useState<CharacterRelationship | null>(null);
 
   // 过滤关系
   const filteredRelationships = useMemo(() => {
@@ -87,9 +91,42 @@ export default function RelationshipManager({
   };
 
   const handleLinkVirtualToContact = (relationship: CharacterRelationship) => {
-    // TODO: 实现虚拟角色关联到联系人的逻辑
-    console.log('关联虚拟角色到联系人:', relationship);
-    alert('关联功能开发中...');
+    setLinkingVirtualRelationship(relationship);
+    setIsLinkModalOpen(true);
+  };
+
+  const handleConfirmLink = (virtualRelationship: CharacterRelationship, contactId: string) => {
+    // 找到选中的联系人
+    const selectedContact = availableContacts.find(c => c.id === contactId);
+    if (!selectedContact) return;
+
+    // 创建新的联系人关系（基于虚拟角色的数据）
+    const newRelationship: CharacterRelationship = {
+      ...virtualRelationship,
+      id: generateRelationshipId(),
+      type: 'contact',
+      contactId: selectedContact.id,
+      contactName: selectedContact.characterSettings?.nickname || selectedContact.name,
+      contactAvatar: selectedContact.characterSettings?.avatar || selectedContact.avatar,
+      virtualName: undefined,
+      virtualDescription: undefined,
+      updatedAt: Date.now()
+    };
+
+    // 保存新关系
+    saveCharacterRelationship(characterId, newRelationship);
+
+    // 删除原虚拟角色关系
+    deleteCharacterRelationship(characterId, virtualRelationship.id);
+
+    // 刷新列表
+    setRelationships(loadCharacterRelationships(characterId));
+
+    // 关闭弹窗
+    setIsLinkModalOpen(false);
+    setLinkingVirtualRelationship(null);
+
+    alert('✅ 成功关联虚拟角色到联系人！');
   };
 
   return (
@@ -251,6 +288,20 @@ export default function RelationshipManager({
         availableContacts={availableContacts}
         onAnalyzeAffection={handleAnalyzeAffection}
       />
+
+      {/* 关联虚拟角色到联系人弹窗 */}
+      {linkingVirtualRelationship && (
+        <LinkVirtualToContactModal
+          isOpen={isLinkModalOpen}
+          onClose={() => {
+            setIsLinkModalOpen(false);
+            setLinkingVirtualRelationship(null);
+          }}
+          onLink={handleConfirmLink}
+          virtualRelationship={linkingVirtualRelationship}
+          availableContacts={availableContacts}
+        />
+      )}
     </div>
   );
 }

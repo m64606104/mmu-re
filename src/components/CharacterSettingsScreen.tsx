@@ -1,11 +1,15 @@
 import { useState, useRef } from 'react';
-import { ChevronLeft, Upload, Brain, Trash2, Download, FileUp, Zap, X, Camera, RefreshCw, BookOpen, Plus, Edit, FileText } from 'lucide-react';
+import { ChevronLeft, Upload, Brain, Trash2, Download, FileUp, Zap, X, Camera, RefreshCw, BookOpen, Plus, Edit, FileText, Users } from 'lucide-react';
 import { Conversation, ApiConfig, KnowledgeBaseItem } from '../types';
 import MemoryManager from './MemoryManager';
+import RelationshipManagementScreen from './RelationshipManagementScreen';
 import { addMomentPost } from '../utils/aiMomentsGenerator';
+import '../styles/relationshipAnimations.css';
 
 interface CharacterSettingsScreenProps {
   conversation: Conversation;
+  allConversations: Conversation[];
+  apiConfig: ApiConfig;
   onUpdateConversation: (id: string, updates: Partial<Conversation>) => void;
   onDeleteConversation?: (id: string) => void;
   onBack: () => void;
@@ -13,6 +17,8 @@ interface CharacterSettingsScreenProps {
 
 export default function CharacterSettingsScreen({
   conversation,
+  allConversations,
+  apiConfig,
   onUpdateConversation,
   onDeleteConversation,
   onBack,
@@ -35,6 +41,7 @@ export default function CharacterSettingsScreen({
   const [languageExample, setLanguageExample] = useState(settings.languageExample);
   const [memoryEvents, setMemoryEvents] = useState(settings.memoryEvents);
   const [showMemoryManager, setShowMemoryManager] = useState(false);
+  const [showRelationshipManager, setShowRelationshipManager] = useState(false);
   const [showImportModal, setShowImportModal] = useState(false);
   const [importData, setImportData] = useState<{messages: any[], count: number} | null>(null);
   const [showMomentsTest, setShowMomentsTest] = useState(false);
@@ -651,6 +658,20 @@ export default function CharacterSettingsScreen({
           </p>
         </div>
 
+        {/* 人际关系管理按钮 */}
+        <div className="bg-white rounded-lg shadow-sm p-4">
+          <button
+            onClick={() => setShowRelationshipManager(true)}
+            className="w-full py-3 border-2 border-blue-200 hover:border-blue-400 hover:bg-blue-50 rounded-lg transition-colors flex items-center justify-center gap-2 text-blue-700"
+          >
+            <Users className="w-5 h-5" />
+            <span className="font-medium">人际关系管理</span>
+          </button>
+          <p className="text-xs text-gray-500 mt-2 text-center">
+            👥 管理角色的社交网络和关系
+          </p>
+        </div>
+
         {/* AI主动发消息 */}
         <div className="bg-white rounded-lg shadow-sm p-4">
           <div className="flex items-center justify-between mb-3">
@@ -1012,6 +1033,16 @@ export default function CharacterSettingsScreen({
           conversationId={conversation.id}
           conversationName={conversation.name}
           onClose={() => setShowMemoryManager(false)}
+        />
+      )}
+
+      {/* 关系管理屏幕 */}
+      {showRelationshipManager && (
+        <RelationshipManagementScreen
+          conversation={conversation}
+          allConversations={allConversations}
+          apiConfig={apiConfig}
+          onBack={() => setShowRelationshipManager(false)}
         />
       )}
 
