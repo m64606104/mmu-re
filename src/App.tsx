@@ -79,27 +79,49 @@ function App() {
           await smartSave('conversations', parsed);
         } else {
           // 添加预设联系人
-          const presetContact: Conversation = {
-            id: 'preset-aa-' + Date.now(),
-            type: 'private',
-            name: 'aa',
-            avatar: '👩',
-            messages: [],
-            characterSettings: {
+          const presetContacts: Conversation[] = [
+            {
+              id: 'preset-aa-' + Date.now(),
+              type: 'private',
+              name: 'aa',
               avatar: '👩',
-              nickname: 'aa',
-              username: 'aa不是研究生',
-              systemPrompt: '你叫aa，女生，是我的网友，和我关系很好，在上海读研。',
-              personality: '喜欢网上冲浪、刷小红书、分享生活',
-              languageStyle: '偶尔会使用网络用语，语气轻松活泼',
-              languageExample: '哈哈哈太好笑了吧！今天又在小红书上刷到好多有趣的东西～',
-              memoryEvents: '',
+              messages: [],
+              characterSettings: {
+                avatar: '👩',
+                nickname: 'aa',
+                username: 'aa不是研究生',
+                systemPrompt: '你叫aa，女生，是我的网友，和我关系很好，在上海读研。',
+                personality: '喜欢网上冲浪、刷小红书、分享生活',
+                languageStyle: '偶尔会使用网络用语，语气轻松活泼',
+                languageExample: '哈哈哈太好笑了吧！今天又在小红书上刷到好多有趣的东西～',
+                memoryEvents: '',
+              },
+              enabledFeatures: ['memory-system'], // 默认启用记忆系统
+              lastMessageTime: Date.now(),
+              unreadCount: 0,
             },
-            enabledFeatures: ['memory-system'], // 默认启用记忆系统
-            lastMessageTime: Date.now(),
-            unreadCount: 0,
-          };
-          setConversations([presetContact]);
+            {
+              id: 'preset-worker-' + Date.now(),
+              type: 'private',
+              name: '测',
+              avatar: '👨‍💼',
+              messages: [],
+              characterSettings: {
+                avatar: '👨‍💼',
+                nickname: '测',
+                username: '只要涨薪不要996',
+                systemPrompt: '你是一个上班族，26岁，男，在公司做总裁助理。',
+                personality: '职场精英，工作认真负责，追求工作与生活的平衡',
+                languageStyle: '说话比较职业化，偶尔吐槽工作压力',
+                languageExample: '今天又是加班到深夜，不过项目总算推进了。真希望能涨薪啊！',
+                memoryEvents: '',
+              },
+              enabledFeatures: ['memory-system'], // 默认启用记忆系统
+              lastMessageTime: Date.now(),
+              unreadCount: 0,
+            },
+          ];
+          setConversations(presetContacts);
         }
       }
     };

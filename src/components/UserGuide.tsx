@@ -111,6 +111,12 @@ export default function UserGuide({ onBack }: UserGuideProps) {
                 <span className="font-semibold">💡 小提示：</span>发送后点击“生成”按钮才会有回复哦！
               </p>
             </div>
+
+            <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 mt-4">
+              <p className="text-sm text-blue-800">
+                <span className="font-semibold">👤 个性化设置：</span>你可以在<span className="font-semibold">「聊天」→「我」</span>里设置你的用户信息，包括名字、头像、个性签名等，让AI更了解你！
+              </p>
+            </div>
           </div>
         </div>
 
