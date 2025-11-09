@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { ChevronLeft, Send, Mic, Sparkles, Smile, BellOff, Bell, Pause, Play, Image as ImageIcon, Video, Phone, MapPin, FileText, Plus } from 'lucide-react';
+import { ChevronLeft, Send, Mic, Sparkles, Smile, BellOff, Bell, Pause, Play, Image as ImageIcon, Video, Phone, MapPin, FileText, Plus, CreditCard } from 'lucide-react';
 import { Conversation, Message, ApiConfig, UserProfile } from '../types';
 import MoneyTransferModal from './MoneyTransferModal';
 import SendDocumentModal from './SendDocumentModal';
@@ -185,25 +185,32 @@ const backgroundTaskManager = {
         }
         
         // 构建消息对象
-        const message: Message = {
-          id: baseId,
-          role: 'assistant' as const,
-          content: finalContent || cleanContent || (mediaItems.length > 0 ? '[多媒体消息]' : ''),
-          timestamp: Date.now()
-        };
+        // 如果提取了特殊指令且没有其他内容，不创建文本消息
+        const hasSpecialContent = allExtraMessages.some(msg => msg.id.startsWith(baseId));
+        const shouldCreateTextMessage = finalContent || (!hasSpecialContent && (cleanContent || mediaItems.length > 0));
         
-        // 如果有媒体项，添加到消息中
-        if (mediaItems.length > 0) {
-          message.mediaItems = mediaItems;
-          // 为了兼容旧的渲染逻辑，也设置第一个媒体的信息
-          const firstMedia = mediaItems[0];
-          message.mediaType = firstMedia.type;
-          message.mediaDescription = firstMedia.description;
-          message.voiceDuration = firstMedia.duration;
-          message.isMediaDescriptionOnly = true;
+        if (shouldCreateTextMessage) {
+          const message: Message = {
+            id: baseId,
+            role: 'assistant' as const,
+            content: finalContent || cleanContent || (mediaItems.length > 0 ? '[多媒体消息]' : ''),
+            timestamp: Date.now()
+          };
+          
+          // 如果有媒体项，添加到消息中
+          if (mediaItems.length > 0) {
+            message.mediaItems = mediaItems;
+            // 为了兼容旧的渲染逻辑，也设置第一个媒体的信息
+            const firstMedia = mediaItems[0];
+            message.mediaType = firstMedia.type;
+            message.mediaDescription = firstMedia.description;
+            message.voiceDuration = firstMedia.duration;
+            message.isMediaDescriptionOnly = true;
+          }
+          
+          messages.push(message);
         }
         
-        messages.push(message);
       });
       
       // 添加所有额外的特殊消息（红包、转账、文档）
@@ -2699,17 +2706,12 @@ ${conversation.characterSettings.memoryEvents ? `记忆事件：${conversation.c
                   <MapPin className="w-4 h-4 text-gray-600" />
                 </div>
               </button>
-              <button className="flex-shrink-0">
-                <div className="w-9 h-9 rounded-full bg-white border border-gray-300 flex items-center justify-center hover:border-gray-400 transition-colors">
-                  <FileText className="w-4 h-4 text-gray-600" />
-                </div>
-              </button>
               <button 
                 className="flex-shrink-0"
                 onClick={() => setShowMoneyTransferModal(true)}
               >
                 <div className="w-9 h-9 rounded-full bg-white border border-gray-300 flex items-center justify-center hover:border-gray-400 transition-colors">
-                  <span className="text-base">💰</span>
+                  <CreditCard className="w-4 h-4 text-gray-600" />
                 </div>
               </button>
               <button 

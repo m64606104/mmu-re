@@ -28,8 +28,13 @@ export const getAIStatus = async (conversationId: string, apiConfig?: ApiConfig)
       const lastUpdate = status.lastUpdateTime || 0;
       const hoursSinceUpdate = (now - lastUpdate) / (1000 * 60 * 60);
       
-      // 如果距离上次更新超过3小时，才生成新活动（降低频率）
-      if (hoursSinceUpdate > 3) {
+      // 🔥 修复：检查活动日志，如果最近有活动记录，不重新生成
+      // 只有当距离最近一条活动超过3小时，或者活动日志为空时，才生成新活动
+      const hasRecentActivity = status.activityLogs && status.activityLogs.length > 0 && 
+        (now - status.activityLogs[0].timestamp) < 3 * 60 * 60 * 1000;
+      
+      // 如果距离上次更新超过3小时且没有近期活动，才生成新活动（降低频率）
+      if (hoursSinceUpdate > 3 && !hasRecentActivity) {
         const conversationsData = localStorage.getItem('conversations');
         if (conversationsData) {
           const conversations = JSON.parse(conversationsData) as Conversation[];
