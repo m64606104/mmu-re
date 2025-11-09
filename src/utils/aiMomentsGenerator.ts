@@ -794,6 +794,16 @@ export const generateAIMomentsInteraction = async (
     // 🔄 不再需要保存isRead标记，因为我们通过检查likes和comments来判断是否已互动
 
     console.log('✅ AI互动完成');
+    
+    // 📲 触发朋友圈界面刷新
+    if (typeof window !== 'undefined') {
+      // @ts-ignore
+      if (window.refreshMomentsScreen) {
+        console.log('🔄 通知朋友圈界面刷新...');
+        // @ts-ignore
+        window.refreshMomentsScreen();
+      }
+    }
   } catch (error) {
     console.error('❌ AI朋友圈互动失败:', error);
   }
@@ -1136,6 +1146,16 @@ export const generateCommentSectionInteraction = async (
     }
 
     console.log('✅ 评论区互动完成');
+    
+    // 📲 触发朋友圈界面刷新
+    if (typeof window !== 'undefined') {
+      // @ts-ignore
+      if (window.refreshMomentsScreen) {
+        console.log('🔄 通知朋友圈界面刷新...');
+        // @ts-ignore
+        window.refreshMomentsScreen();
+      }
+    }
   } catch (error) {
     console.error('❌ 评论区互动失败:', error);
   }

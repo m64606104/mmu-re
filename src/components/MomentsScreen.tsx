@@ -42,6 +42,7 @@ export default function MomentsScreen({
       try {
         const posts = await getAllMomentPosts();
         setAiMoments(posts);
+        console.log(`🔄 朋友圈数据已更新，共${posts.length}条`);
       } catch (error) {
         console.error('加载AI朋友圈失败:', error);
       }
@@ -49,6 +50,13 @@ export default function MomentsScreen({
     
     // 首次加载
     loadAiMoments();
+    
+    // 🎯 将刷新函数暴露到window，供AI互动后调用
+    // @ts-ignore
+    window.refreshMomentsScreen = () => {
+      console.log('📲 收到刷新请求，重新加载朋友圈...');
+      loadAiMoments();
+    };
     
     // 🎯 触发AI智能互动（模拟用户打开朋友圈，AI们也在看）
     // @ts-ignore
@@ -67,7 +75,11 @@ export default function MomentsScreen({
     // 每30秒刷新一次以显示最新内容
     const interval = setInterval(loadAiMoments, 30 * 1000);
     
-    return () => clearInterval(interval);
+    return () => {
+      clearInterval(interval);
+      // @ts-ignore
+      delete window.refreshMomentsScreen;
+    };
   }, []);
 
   // 合并用户朋友圈和AI朋友圈
@@ -137,6 +149,11 @@ export default function MomentsScreen({
           content: commentContent
         });
         
+        // 🔄 立即刷新朋友圈显示
+        const updatedPosts = await getAllMomentPosts();
+        setAiMoments(updatedPosts);
+        console.log('💬 用户评论后刷新朋友圈');
+        
         // 🎯 触发AI智能响应用户的评论
         const aiConversation = conversations.find(c => c.id === aiMoment.authorId);
         if (aiConversation) {
@@ -195,9 +212,10 @@ export default function MomentsScreen({
         }, 3000 + Math.random() * 5000); // 3-8秒后响应，模拟真人
       }
       
-      // 重新加载AI朋友圈
-      const posts = await getAllMomentPosts();
-      setAiMoments(posts);
+      // 🔄 立即刷新朋友圈显示
+      const updatedPosts2 = await getAllMomentPosts();
+      setAiMoments(updatedPosts2);
+      console.log('❤️ 用户点赞后刷新朋友圈');
     } else {
       // 用户朋友圈点赞
       onLikeMoment(momentId);
