@@ -4,7 +4,7 @@ import { Conversation, Message, ApiConfig, UserProfile } from '../types';
 import MoneyTransferModal from './MoneyTransferModal';
 import SendDocumentModal from './SendDocumentModal';
 import DocumentViewModal from './DocumentViewModal';
-import { sendMoney, receiveMoney, getBalance, aiPayForUser, refundGift, aiHasEnoughBalance, getAIBalance } from '../utils/wallet';
+import { sendMoney, receiveMoney, getBalance, aiPayForUser, refundGift } from '../utils/wallet';
 import ActivityLogModal from './ActivityLogModal';
 import { 
   getConversationMemories, 
@@ -737,71 +737,9 @@ ${recentMessages}
     }
   };
 
-  // AI处理红包/转账（已废弃，保留作为备用）
-  // 现在使用System Prompt机制，AI直接在回复中使用[接收红包:xxx]或[退回红包:xxx]格式
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const handleAIMoneyResponse = async (userMessage: Message) => {
-    if (!userMessage.moneyTransfer || !apiConfig.apiKey || !apiConfig.modelName) {
-      return;
-    }
-
-    const mt = userMessage.moneyTransfer;
-    const isRedPacket = mt.type === 'redPacket';
-
-    try {
-      // 调用AI判断是否接收
-      const characterSettings = conversation.characterSettings;
-      const systemPrompt = characterSettings?.systemPrompt || '';
-      const personality = characterSettings?.personality || '';
-
-      const prompt = `你收到了一个${isRedPacket ? '红包' : '转账'}，金额¥${mt.amount}。
-${mt.message ? `留言：${mt.message}` : ''}
-
-你的性格：${personality}
-${systemPrompt}
-
-请根据你的性格和与对方的关系，决定：
-1. 接收（只回复"接收"）
-2. 礼貌退回（回复"退回"并简短说明原因，不超过20字）
-
-只回复以上两种之一，不要有其他内容。`;
-
-      const response = await fetch(`${apiConfig.baseUrl}/v1/chat/completions`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${apiConfig.apiKey}`
-        },
-        body: JSON.stringify({
-          model: apiConfig.modelName,
-          messages: [{ role: 'user', content: prompt }],
-          temperature: 0.7,
-          max_tokens: 50
-        })
-      });
-
-      if (!response.ok) {
-        console.error('AI决策失败');
-        // 默认接收
-        handleReceiveMoney(userMessage.id, true);
-        return;
-      }
-
-      const data = await response.json();
-      const decision = data.choices[0]?.message?.content?.trim() || '';
-
-      // 判断AI的决定
-      if (decision.includes('接收') || decision.toLowerCase().includes('accept')) {
-        handleReceiveMoney(userMessage.id, true, '谢谢！');
-      } else {
-        handleReceiveMoney(userMessage.id, false, decision.replace(/^退回[：:]\s*/, ''));
-      }
-    } catch (error) {
-      console.error('AI处理红包失败:', error);
-      // 默认接收
-      handleReceiveMoney(userMessage.id, true);
-    }
-  };
+  // 注意：旧的 handleAIMoneyResponse 函数已删除
+  // 现在使用 System Prompt 机制，AI直接在回复中使用 [接收红包:xxx] 或 [退回红包:xxx] 格式
+  // 处理逻辑在 processAIMoneyResponse 函数中（line 1127）
 
   // 处理红包接收/退回
   const handleReceiveMoney = (messageId: string, accept: boolean, replyText?: string) => {
