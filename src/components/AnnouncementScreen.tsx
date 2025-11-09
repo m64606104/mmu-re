@@ -88,6 +88,27 @@ export default function AnnouncementScreen({ onBack }: AnnouncementScreenProps) 
               </div>
               
               <div>
+                <h4 className="text-sm font-semibold text-green-300 mb-1">✨ 消息操作功能</h4>
+                <p className="text-gray-200 text-sm leading-relaxed">
+                  实现了消息引用、多选删除、编辑功能！现在当AI回复不满意可以删除啦！眼不见为净～以及更好的编辑功能，可以修复AI语句中的小错误。支持编辑所有消息（包括AI的回复）。
+                </p>
+              </div>
+              
+              <div>
+                <h4 className="text-sm font-semibold text-cyan-300 mb-1">💬 消息分割优化</h4>
+                <p className="text-gray-200 text-sm leading-relaxed">
+                  修复了消息分割的问题，AI回复不再出现重复标点符号，消息气泡显示更自然流畅。
+                </p>
+              </div>
+              
+              <div>
+                <h4 className="text-sm font-semibold text-yellow-300 mb-1">📍 行为轨迹改进</h4>
+                <p className="text-gray-200 text-sm leading-relaxed">
+                  修复了行为轨迹重复问题，现在显示更准确、更生动，让你更好地了解AI的日常活动。
+                </p>
+              </div>
+              
+              <div>
                 <h4 className="text-sm font-semibold text-orange-300 mb-1">🔧 其他优化</h4>
                 <p className="text-gray-200 text-sm leading-relaxed">
                   修复了表情包显示问题，移除了AI回复中的引用链接，以及一些零零碎碎的小修复，提升整体使用体验。
