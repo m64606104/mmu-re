@@ -817,6 +817,11 @@ ${recentMessages}
         ? conversation.messages.slice(lastAssistantIndex + 1).filter(m => m.role === 'user')
         : userMessages.slice(-5); // 如果没有AI回复，取最近5条
       
+      // 🕐 计算最早未回复消息的时间戳（用于时间跨度分析）
+      const oldestUnrepliedTimestamp = unhandledUserMessages.length > 0 
+        ? Math.min(...unhandledUserMessages.map(m => m.timestamp))
+        : undefined;
+      
       // 检查未处理的消息中是否包含各种媒体类型
       const hasImage = unhandledUserMessages.some(m => m.mediaType === 'image' && m.mediaUrl);
       const hasVideo = unhandledUserMessages.some(m => m.mediaType === 'video' && m.mediaDescription);
@@ -828,8 +833,12 @@ ${recentMessages}
       // 获取纯文字消息
       const textMessages = unhandledUserMessages.filter(m => !m.mediaType);
       
-      // 生成时间感知提示词
-      const timeAwarePrompt = buildTimeAwarePrompt(lastUserTimestamp, lastUserMsgForTime?.content);
+      // 🕐 生成增强的时间感知提示词（包含时间跨度分析）
+      const timeAwarePrompt = buildTimeAwarePrompt(
+        lastUserTimestamp, 
+        lastUserMsgForTime?.content,
+        oldestUnrepliedTimestamp
+      );
       
       // 构建用户资料提示
       let userInfoPrompt = '';
@@ -950,19 +959,48 @@ ${conversation.characterSettings.memoryEvents ? `记忆事件：${conversation.c
           try {
             const momentsData = await getMomentsData(conversation.id);
             if (momentsData.posts && momentsData.posts.length > 0) {
+              const now = Date.now();
               const recentPosts = momentsData.posts.slice(0, 3); // 开启记忆时加载更多条
-              let momentsContext = '\n\n【你最近发的朋友圈】\n';
+              let momentsContext = '\n\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n';
+              momentsContext += '【📱 你最近发的朋友圈】\n';
+              momentsContext += '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n';
               
               recentPosts.forEach((post, index) => {
-                const daysDiff = Math.floor((Date.now() - post.timestamp) / 86400000);
-                const timeDesc = daysDiff === 0 ? '今天' : daysDiff === 1 ? '昨天' : `${daysDiff}天前`;
+                const timeDiff = now - post.timestamp;
+                const daysDiff = Math.floor(timeDiff / 86400000);
+                const hoursDiff = Math.floor(timeDiff / 3600000);
                 
-                momentsContext += `${index + 1}. [${timeDesc}] ${post.content}`;
+                // 更精确的时间描述
+                let timeDesc: string;
+                if (daysDiff === 0) {
+                  if (hoursDiff === 0) {
+                    timeDesc = '刚刚';
+                  } else if (hoursDiff < 2) {
+                    timeDesc = '1小时前';
+                  } else {
+                    timeDesc = `今天 ${hoursDiff}小时前`;
+                  }
+                } else if (daysDiff === 1) {
+                  timeDesc = '昨天';
+                } else if (daysDiff === 2) {
+                  timeDesc = '前天';
+                } else if (daysDiff < 7) {
+                  timeDesc = `${daysDiff}天前`;
+                } else {
+                  const weeksDiff = Math.floor(daysDiff / 7);
+                  timeDesc = `${weeksDiff}周前`;
+                }
+                
+                momentsContext += `${index + 1}. 【${timeDesc}】${post.content}`;
                 if (post.imageDescriptions && post.imageDescriptions.length > 0) {
                   momentsContext += ` (配图${post.imageDescriptions.length}张)`;
                 }
                 momentsContext += '\n';
               });
+              
+              momentsContext += '\n⚠️ 注意：以上是你的朋友圈历史记录，请准确使用时间描述（如"昨天"、"3天前"），不要把过去的事说成"今天"或"刚才"。\n';
+              momentsContext += '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n';
+              
               systemPrompt += momentsContext;
             }
           } catch (error) {

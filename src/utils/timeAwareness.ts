@@ -344,48 +344,109 @@ export const buildTimeContext = (lastUserMessageTimestamp?: number, lastUserMess
 };
 
 /**
- * 生成时间感知的系统提示词
+ * 生成时间感知的系统提示词（增强版）
+ * @param lastUserMessageTimestamp 最后一条用户消息的时间戳
+ * @param lastUserMessageContent 最后一条用户消息的内容
+ * @param oldestUnrepliedTimestamp 最早未回复消息的时间戳（可选）
  */
-export const buildTimeAwarePrompt = (lastUserMessageTimestamp?: number, lastUserMessageContent?: string): string => {
+export const buildTimeAwarePrompt = (
+  lastUserMessageTimestamp?: number, 
+  lastUserMessageContent?: string,
+  oldestUnrepliedTimestamp?: number
+): string => {
   const context = buildTimeContext(lastUserMessageTimestamp, lastUserMessageContent);
   
-  let prompt = `\n【时间感知】\n`;
-  prompt += `当前时间: ${context.currentTime}\n`;
+  let prompt = `\n\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`;
+  prompt += `【🕐 时间感知系统】\n`;
+  prompt += `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n`;
+  
+  prompt += `📅 当前时间: ${context.currentTime}\n`;
   
   if (context.lastMessageTime && context.timeGap) {
-    prompt += `对方上一条消息时间: ${context.lastMessageTime}（${context.timeGap}）\n`;
+    prompt += `📨 对方最新消息时间: ${context.lastMessageTime}（${context.timeGap}）\n`;
+  }
+  
+  // 如果有更早的未回复消息，标注时间跨度
+  if (oldestUnrepliedTimestamp && lastUserMessageTimestamp && oldestUnrepliedTimestamp < lastUserMessageTimestamp) {
+    const oldestDate = new Date(oldestUnrepliedTimestamp);
+    const now = new Date();
+    const spanMinutes = (lastUserMessageTimestamp - oldestUnrepliedTimestamp) / (1000 * 60);
+    const isSameDay = oldestDate.toDateString() === now.toDateString();
+    
+    let oldestTimeStr: string;
+    if (isSameDay) {
+      const oldestHour = oldestDate.getHours();
+      const oldestMinute = oldestDate.getMinutes();
+      const oldestTimePeriod = getTimePeriod(oldestHour);
+      oldestTimeStr = `今天${oldestTimePeriod} ${String(oldestHour).padStart(2, '0')}:${String(oldestMinute).padStart(2, '0')}`;
+    } else {
+      const oldestMonth = oldestDate.getMonth() + 1;
+      const oldestDateNum = oldestDate.getDate();
+      oldestTimeStr = `${oldestMonth}月${oldestDateNum}日 ${String(oldestDate.getHours()).padStart(2, '0')}:${String(oldestDate.getMinutes()).padStart(2, '0')}`;
+    }
+    
+    prompt += `⏱️ 待回复消息时间跨度: ${oldestTimeStr} ~ ${context.lastMessageTime}（跨越${formatTimeGap(spanMinutes)}）\n`;
+    
+    if (spanMinutes > 1440) { // 超过1天
+      const days = Math.floor(spanMinutes / 1440);
+      prompt += `\n🚨 **警告**: 这些消息跨越了${days}天多的时间！\n`;
+      prompt += `最早的消息已经是很久之前的事了，现在回复那些内容会非常奇怪。\n`;
+      prompt += `**你应该**: 忽略最早的消息，只关注最新的消息或开启新话题。\n`;
+    } else if (spanMinutes > 360) { // 超过6小时
+      const hours = Math.floor(spanMinutes / 60);
+      prompt += `\n⚠️ **注意**: 这些消息跨越了${hours}小时，话题可能已经过时。\n`;
+      prompt += `**建议**: 优先回复最新的消息，或者自然地开启新话题。\n`;
+    }
   }
   
   // 添加行为分析（如果有）
   if (context.actionAnalysis) {
-    prompt += `\n【⚠️ 重要：对话时间分析】\n`;
+    prompt += `\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`;
+    prompt += `【⚠️ 对话时间分析】\n`;
+    prompt += `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n`;
     prompt += context.actionAnalysis + `\n`;
   }
   
-  prompt += `\n【对话建议】\n`;
+  prompt += `\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`;
+  prompt += `【💡 对话建议】\n`;
+  prompt += `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n`;
   prompt += context.suggestions;
   
-  prompt += `\n\n【⚠️ 核心原则：保持真实人类对话的自然性】\n`;
-  prompt += `1. **时间感知，但不刻意**：\n`;
-  prompt += `   - 了解时间间隔，但不要每次都"打卡式"地回应之前的话题\n`;
-  prompt += `   - 时间过去很久（超过1天）时，像真人一样开启新话题，不要追问旧事\n`;
-  prompt += `   - 例如：3天前对方说"要吃火锅"，现在不要问"火锅吃得怎么样"，这太奇怪了\n`;
-  prompt += `\n`;
-  prompt += `2. **随意而非模板化**：\n`;
-  prompt += `   - 不要每次都问"吃饭了吗"、"睡得好吗"，真人不会这么规律\n`;
-  prompt += `   - 有时候直接聊新话题，有时候简单问候，有时候等对方引导\n`;
-  prompt += `   - 保持对话的多样性和不可预测性\n`;
-  prompt += `\n`;
-  prompt += `3. **选择性回应**：\n`;
-  prompt += `   - 时间间隔短（几分钟到1小时）：可以延续之前的话题\n`;
-  prompt += `   - 时间间隔中（几小时）：可提可不提，看情况\n`;
-  prompt += `   - 时间间隔长（超过半天）：优先选择新话题或简单问候\n`;
-  prompt += `   - 时间间隔很长（超过1天）：完全不要提之前的具体内容\n`;
-  prompt += `\n`;
-  prompt += `4. **语气要自然**：\n`;
-  prompt += `   - 不要显得在"履行义务"地回复\n`;
-  prompt += `   - 不要像客服一样关心每个细节\n`;
-  prompt += `   - 像朋友一样轻松随意，有时甚至可以"忘记"之前说了什么\n`;
+  prompt += `\n\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`;
+  prompt += `【🎯 核心原则：真实人类对话的自然性】\n`;
+  prompt += `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n`;
+  
+  prompt += `1️⃣ **时间感知，但不刻意**：\n`;
+  prompt += `   ❌ 不要: 时间过去很久还追问之前的话题（如3天前说"要吃火锅"，现在问"火锅好吃吗"）\n`;
+  prompt += `   ✅ 应该: 像真人一样，时间久了就自然忘记，开启新话题\n`;
+  prompt += `   📌 例子: "最近怎么样呀"、"今天干嘛呢"，而不是追问3天前的事\n\n`;
+  
+  prompt += `2️⃣ **严格区分时间间隔**：\n`;
+  prompt += `   🟢 几分钟内: 正常延续话题\n`;
+  prompt += `   🟡 几小时内: 可延续，也可新话题\n`;
+  prompt += `   🟠 半天-1天: 优先新话题或简单问候\n`;
+  prompt += `   🔴 超过1天: **必须**忽略旧话题，像久别重逢\n`;
+  prompt += `   ⛔ 超过2天: **绝对不要**提之前的具体内容\n\n`;
+  
+  prompt += `3️⃣ **随意而非模板化**：\n`;
+  prompt += `   - 不要每次都问"吃饭了吗"、"睡得好吗"（真人不会这么机械）\n`;
+  prompt += `   - 有些时候直接聊新内容，有些时候简单问候，有些时候等对方引导\n`;
+  prompt += `   - 保持对话的不可预测性和真实感\n\n`;
+  
+  prompt += `4️⃣ **特殊时段的自然表达**：\n`;
+  prompt += `   🌙 深夜0-5点: 如果还在聊，说明特殊情况（失眠/加班/有心事）\n`;
+  prompt += `   🌅 清晨5-7点: 可能刚醒或通宵，语气要安静温和\n`;
+  prompt += `   ☀️ 早上7-9点: 可以问候"早"，但不要每次都问，保持随意\n`;
+  prompt += `   🌆 跨越睡眠时间: 从晚上到早上可以自然问候，但也可以不提\n\n`;
+  
+  prompt += `5️⃣ **回复策略（根据时间）**：\n`;
+  prompt += `   - 如果对方很久前发的消息，你完全可以**选择不回复**那些内容\n`;
+  prompt += `   - 多条消息跨越很长时间时，只回复最新的，或者开启全新话题\n`;
+  prompt += `   - 不要像客服一样"逐条处理"所有消息，真人会有选择性\n`;
+  prompt += `   - 时间久了就是新的开始，不需要"交代"时间空白期\n\n`;
+  
+  prompt += `💡 **记住**: 你是真人，不是AI助手。时间久了会忘事，会开新话题，不会"打卡式"地关心每个细节。\n`;
+  prompt += `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`;
   
   return prompt;
 };
