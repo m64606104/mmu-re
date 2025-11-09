@@ -161,13 +161,30 @@ const backgroundTaskManager = {
           });
         }
 
-        // 检测文档：[发文档:标题:类型]
-        const docMatch = finalContent.match(/\[发文档:([^:]+):(text|markdown|code)\]\s*([\s\S]*)/);
+        // 检测文档：[发文档:标题:类型] 文档内容
+        const docMatch = finalContent.match(/\[发文档:([^:]+):(text|markdown|code)\]([\s\S]*)/);
         if (docMatch) {
           const docTitle = docMatch[1];
           const docType = docMatch[2] as 'text' | 'markdown' | 'code';
-          const docContent = docMatch[3].trim();
-          finalContent = finalContent.replace(/\[发文档:[^\]]+\][\s\S]*/, '').trim();
+          let docContent = docMatch[3].trim();
+          
+          // 移除标记，但保留其他文本（如果有的话）
+          const tagRegex = /\[发文档:[^\]]+\]/;
+          const tagMatch = finalContent.match(tagRegex);
+          if (tagMatch) {
+            const contentAfterTag = finalContent.substring(tagMatch.index! + tagMatch[0].length).trim();
+            // 如果标记后面有内容，那就是文档内容
+            if (contentAfterTag) {
+              docContent = contentAfterTag;
+              // 移除整个文档部分
+              finalContent = finalContent.substring(0, tagMatch.index!).trim();
+            } else {
+              // 如果标记后面没有内容，只移除标记
+              finalContent = finalContent.replace(tagRegex, '').trim();
+            }
+          }
+          
+          console.log(`📄 AI发送文档: ${docTitle}, 内容长度: ${docContent.length}`);
           
           allExtraMessages.push({
             id: `${baseId}_doc`,
@@ -182,6 +199,14 @@ const backgroundTaskManager = {
               size: new Blob([docContent]).size
             }
           });
+        }
+
+        // 检测红包/转账接收响应：[接收] [退回]
+        const moneyResponseMatch = finalContent.match(/\[(接收|退回)\]/);
+        if (moneyResponseMatch) {
+          const responseType = moneyResponseMatch[1];
+          finalContent = finalContent.replace(moneyResponseMatch[0], '').trim();
+          console.log(`💰 AI红包响应: ${responseType}`);
         }
 
         // 检测订单响应：[接受礼物] [退回礼物] [同意代付] [拒绝代付]
