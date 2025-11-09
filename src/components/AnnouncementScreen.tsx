@@ -54,6 +54,47 @@ export default function AnnouncementScreen({ onBack }: AnnouncementScreenProps) 
 
         {/* 公告列表 */}
         <div className="space-y-4">
+          {/* 11.10 凌晨更新 - 红包转账与商城功能 */}
+          <div className="bg-gradient-to-br from-yellow-500/20 to-orange-500/20 border-2 border-yellow-400/50 rounded-xl p-4 shadow-lg mb-4">
+            <div className="flex items-start gap-3 mb-3">
+              <div className="w-10 h-10 rounded-full bg-gradient-to-br from-yellow-500 to-orange-500 flex items-center justify-center flex-shrink-0">
+                <Bell className="w-5 h-5 text-white" />
+              </div>
+              <div className="flex-1">
+                <h3 className="text-lg font-bold text-white mb-1">💰 红包转账与商城功能</h3>
+                <p className="text-xs text-gray-300">2024年11月10日 凌晨更新</p>
+              </div>
+            </div>
+            <div className="pl-13 space-y-3">
+              <div>
+                <h4 className="text-sm font-semibold text-yellow-200 mb-1">💰 红包转账功能上线</h4>
+                <p className="text-gray-100 text-sm leading-relaxed">
+                  <strong>聊天页多功能栏新增红包、转账功能！</strong>现在可以向AI发送红包或转账了。AI会根据性格和关系智能决定是否接收。同时，AI也能主动发送红包（生日祝福、感谢等场景）和转账（还钱、AA付款等）。
+                </p>
+              </div>
+              
+              <div>
+                <h4 className="text-sm font-semibold text-orange-200 mb-1">📄 文档功能</h4>
+                <p className="text-gray-100 text-sm leading-relaxed">
+                  <strong>支持发送和查看文档！</strong>可以发送文本、代码、Markdown等类型的文档。AI也能主动发送文档（写信、分享文章、发送代码等场景）。
+                </p>
+              </div>
+              
+              <div>
+                <h4 className="text-sm font-semibold text-amber-200 mb-1">🛍️ 商城与钱包</h4>
+                <p className="text-gray-100 text-sm leading-relaxed">
+                  <strong>初步的商城和钱包功能已上线！</strong>在"我"→"钱包"中可以查看余额（初始1000元）和交易记录。包含饿饿吗外卖、电影票、淘淘宝三个商店，支持AI生图搜索商品。后续会继续完善更多功能。
+                </p>
+              </div>
+              
+              <div className="bg-white/10 rounded-lg p-3 mt-2">
+                <p className="text-xs text-gray-200 leading-relaxed">
+                  💡 <strong>小提示：</strong>如果你没有钱了，可以创造一个专门的AI给你转钱哦～
+                </p>
+              </div>
+            </div>
+          </div>
+
           {/* 11.9 深夜更新 - 重要功能修复与优化 */}
           <div className="bg-gradient-to-br from-emerald-500/20 to-teal-500/20 border-2 border-emerald-400/50 rounded-xl p-4 shadow-lg mb-4">
             <div className="flex items-start gap-3 mb-3">
