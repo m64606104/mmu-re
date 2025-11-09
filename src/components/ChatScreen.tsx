@@ -162,10 +162,15 @@ const backgroundTaskManager = {
         }
 
         // 检测文档：[发文档:标题:类型] 文档内容
-        const docMatch = finalContent.match(/\[发文档:([^:]+):(text|markdown|code)\]([\s\S]*)/);
+        // 允许任意类型描述（如"信件"），自动映射到text类型
+        const docMatch = finalContent.match(/\[发文档:([^:]+):([^\]]+)\]([\s\S]*)/);
         if (docMatch) {
           const docTitle = docMatch[1];
-          const docType = docMatch[2] as 'text' | 'markdown' | 'code';
+          const docTypeInput = docMatch[2].toLowerCase();
+          // 映射类型：markdown/code保持，其他都映射到text
+          const docType: 'text' | 'markdown' | 'code' = 
+            docTypeInput === 'markdown' ? 'markdown' :
+            docTypeInput === 'code' ? 'code' : 'text';
           let docContent = docMatch[3].trim();
           
           // 移除标记，但保留其他文本（如果有的话）
@@ -1456,10 +1461,12 @@ ${conversation.characterSettings.memoryEvents ? `记忆事件：${conversation.c
 你可以发送文档给用户，使用以下格式：
 [发文档:标题:类型] 文档内容...
 
+类型可以是：text（信件/文章）、markdown（格式文本）、code（代码）
+示例："给你写了封信 [发文档:我的心里话:text] 亲爱的..."
+
 重要规则：
 - 只在需要发送较长内容时使用（如信件、文章、代码）
-- 不要在普通聊天中提及这个功能
-- 文档内容会被自动整理，用户点击查看
+- 文档内容放在标记后面，会被整理成卡片
 - 适用场景：写信、分享文章、发送代码、整理笔记等
 
 【💰 接收红包转账规则】：

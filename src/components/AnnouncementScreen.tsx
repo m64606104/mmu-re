@@ -69,21 +69,21 @@ export default function AnnouncementScreen({ onBack }: AnnouncementScreenProps) 
               <div>
                 <h4 className="text-sm font-semibold text-yellow-200 mb-1">💰 红包转账功能完善</h4>
                 <p className="text-gray-100 text-sm leading-relaxed">
-                  <strong>完善了红包转账内容，更好的AI逻辑、修复转账气泡、收礼物送礼物功能、代付功能、订单以及余额等十多个功能。</strong>现在AI接收/退回红包会以转账气泡形式显示（参考微信样式），支持实时状态更新和Toast提示。AI能智能决定是否接收，并给出自然的回复。
+                  <strong>完善了红包转账内容，更好的AI逻辑、修复转账气泡、收礼物送礼物功能、代付功能、订单以及余额等十多个功能。</strong>
                 </p>
               </div>
               
               <div>
                 <h4 className="text-sm font-semibold text-orange-200 mb-1">🎁 商城购物功能</h4>
                 <p className="text-gray-100 text-sm leading-relaxed">
-                  <strong>完善了商城相关的一些内容。</strong>支持给AI送礼物、请AI代付、AI主动送礼物给你等功能。购物后自动跳转聊天页，订单状态实时更新。集成了完整的钱包系统，包括用户钱包和AI独立钱包。
+                  <strong>完善了商城相关的一些内容。</strong>支持给AI送礼物、请AI代付、AI主动送礼物给你等功能。
                 </p>
               </div>
               
               <div>
                 <h4 className="text-sm font-semibold text-amber-200 mb-1">📄 文档功能优化</h4>
                 <p className="text-gray-100 text-sm leading-relaxed">
-                  <strong>修复文档内容泄露问题。</strong>AI发送的文档现在只显示文档卡片，内容需要点击查看。文档格式标记不再显示在聊天气泡中，更加美观自然。
+                  <strong>修复文档内容泄露问题。</strong>
                 </p>
               </div>
               

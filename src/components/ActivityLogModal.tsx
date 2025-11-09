@@ -257,7 +257,7 @@ const ActivityLogModal: React.FC<ActivityLogModalProps> = ({
                           }`} />
                         </div>
                         <div className="flex-1">
-                          <p className="text-sm text-gray-900 leading-relaxed">
+                          <p className="text-sm text-gray-900 leading-relaxed break-words whitespace-pre-wrap">
                             {log.activity}
                           </p>
                           {log.location && (
