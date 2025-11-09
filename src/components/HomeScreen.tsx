@@ -51,7 +51,7 @@ export default function HomeScreen({ onNavigate, theme }: HomeScreenProps) {
   // 应用布局状态
   const [appLayout, setAppLayout] = useState<string[]>(() => {
     const saved = localStorage.getItem('appLayout');
-    return saved ? JSON.parse(saved) : ['settings', 'social', 'theme', 'music', 'phone', 'bell', 'mail'];
+    return saved ? JSON.parse(saved) : ['settings', 'social', 'theme', 'relationships', 'music', 'phone', 'bell', 'mail'];
   });
   const [quickLayout, setQuickLayout] = useState<string[]>(() => {
     const saved = localStorage.getItem('quickLayout');

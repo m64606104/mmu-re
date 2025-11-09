@@ -772,7 +772,7 @@ ${post.imageDescriptions ? `配图：${post.imageDescriptions.join('、')}` : ''
 - 评论要真诚、自然，符合你的性格和说话风格`;
 
     // 调用API
-    const response = await fetch(`${apiConfig.baseUrl}/chat/completions`, {
+    const response = await fetch(`${apiConfig.baseUrl}/v1/chat/completions`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
