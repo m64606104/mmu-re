@@ -1472,8 +1472,16 @@ ${post.imageDescriptions ? `配图：${post.imageDescriptions.join('、')}` : ''
     
     // 解析JSON响应
     try {
-      // 提取JSON内容（可能被包裹在代码块中）
-      const jsonMatch = content.match(/\{[\s\S]*\}/);
+      // 清理内容：移除markdown代码块标记、多余的引号等
+      let cleanContent = content
+        .replace(/```json\s*/gi, '')  // 移除 ```json
+        .replace(/```\s*/g, '')        // 移除 ```
+        .replace(/^["\s-]*/, '')       // 移除开头的引号、空格、破折号
+        .replace(/["\s]*$/, '')        // 移除结尾的引号、空格
+        .trim();
+      
+      // 提取JSON内容（可能被包裹在其他文本中）
+      const jsonMatch = cleanContent.match(/\{[\s\S]*\}/);
       if (!jsonMatch) {
         console.error('AI决策响应格式错误:', content);
         return { shouldInteract: false };
