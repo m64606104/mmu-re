@@ -3351,10 +3351,11 @@ ${conversation.characterSettings.memoryEvents ? `记忆事件：${conversation.c
             setShowToolbar(false);
             setShowMoneyTransferModal(false);
 
-            // AI自动决定是否接收
-            setTimeout(() => {
-              handleAIMoneyResponse(newMessage);
-            }, 2000 + Math.random() * 3000); // 2-5秒后AI做出反应
+            // 🔧 已禁用旧的自动处理机制，改用system prompt驱动
+            // AI现在通过正常对话流程响应，使用[接收]或[退回]标记
+            // setTimeout(() => {
+            //   handleAIMoneyResponse(newMessage);
+            // }, 2000 + Math.random() * 3000);
           } else {
             alert('发送失败');
           }
