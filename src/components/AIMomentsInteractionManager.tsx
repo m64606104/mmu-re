@@ -1,9 +1,21 @@
 /**
  * AI朋友圈智能互动管理器
- * 模拟真实的人类行为：
- * - 不是定时触发，而是基于事件
- * - AI自己决定是否互动
- * - 随机延迟，更自然
+ * 
+ * 🎯 设计理念：
+ * 1. 分阶段刷新策略（节省API调用）
+ *    - 🔥 活跃期（前5分钟）：30-60秒/次
+ *    - 🌤️ 过渡期（5-15分钟）：1-2分钟/次
+ *    - 😴 节能期（15分钟后）：2-5分钟/次
+ * 
+ * 2. 事件驱动触发（即时响应）
+ *    - 用户发布朋友圈 → 5-15秒后AI看到
+ *    - 用户点赞/评论 → 2-5秒后AI响应
+ *    - 其他AI互动 → 5-15秒后查看评论区
+ * 
+ * 3. AI自主决策
+ *    - 完全基于AI性格和提示词决定
+ *    - 无硬编码概率限制
+ *    - 模拟真实人类行为
  */
 
 import { useEffect, useRef } from 'react';
@@ -26,6 +38,7 @@ export function AIMomentsInteractionManager({
   const conversationsRef = useRef(conversations);
   const apiConfigRef = useRef(apiConfig);
   const lastInteractionTime = useRef<number>(0);
+  const appActivationTime = useRef<number>(0);
 
   // 更新refs以保持最新值
   useEffect(() => {
@@ -74,10 +87,33 @@ export function AIMomentsInteractionManager({
     }
   };
 
-  // 🔄 当聊天App激活时，启动持续的后台刷新机制
+  // 🎯 智能计算刷新间隔（分阶段策略）
+  const getRefreshInterval = () => {
+    const now = Date.now();
+    const timeSinceActivation = now - appActivationTime.current;
+    
+    // 📊 分阶段刷新策略
+    if (timeSinceActivation < 5 * 60 * 1000) {
+      // 🔥 活跃期（前5分钟）：30-60秒
+      return 30000 + Math.random() * 30000;
+    } else if (timeSinceActivation < 15 * 60 * 1000) {
+      // 🌤️ 过渡期（5-15分钟）：1-2分钟
+      return 60000 + Math.random() * 60000;
+    } else {
+      // 😴 节能期（15分钟后）：2-5分钟
+      return 120000 + Math.random() * 180000;
+    }
+  };
+
+  // 🔄 当聊天App激活时，启动智能后台刷新机制
   useEffect(() => {
     if (isActive) {
-      console.log('🚀 进入聊天App，启动AI朋友圈后台刷新机制...');
+      appActivationTime.current = Date.now();
+      console.log('🚀 进入聊天App，启动AI朋友圈智能刷新机制...');
+      console.log('📊 刷新策略：');
+      console.log('  🔥 前5分钟（活跃期）：30-60秒/次');
+      console.log('  🌤️ 5-15分钟（过渡期）：1-2分钟/次');
+      console.log('  😴 15分钟后（节能期）：2-5分钟/次');
       
       // 第一次触发：随机延迟3-10秒
       const initialDelay = 3000 + Math.random() * 7000;
@@ -85,15 +121,17 @@ export function AIMomentsInteractionManager({
         triggerSmartInteraction();
       }, initialDelay);
 
-      // 🔄 持续刷新：每30-60秒随机触发一次（加快频率以便及时查看评论区）
+      // 🔄 持续刷新：动态调整间隔
       const setupNextCheck = () => {
-        const nextDelay = 30000 + Math.random() * 30000; // 30秒-1分钟
+        const nextDelay = getRefreshInterval();
+        const phase = nextDelay < 61000 ? '🔥 活跃期' : nextDelay < 121000 ? '🌤️ 过渡期' : '😴 节能期';
+        console.log(`⏰ 下次刷新：${Math.round(nextDelay / 1000)}秒后（${phase}）`);
+        
         return setTimeout(() => {
           triggerSmartInteraction().then(() => {
             // 递归设置下一次检查
             if (isActive) {
               const nextTimer = setupNextCheck();
-              // 保存timer ID以便清理
               // @ts-ignore
               window._aiMomentsInteractionTimer = nextTimer;
             }

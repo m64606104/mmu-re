@@ -111,6 +111,16 @@ export default function MomentsScreen({
       setNewPostContent('');
       setNewPostImages([]);
       setShowNewPost(false);
+      
+      // 🎯 用户发布朋友圈后，触发AI互动（事件驱动）
+      setTimeout(() => {
+        // @ts-ignore
+        if (window.triggerAIMomentsInteraction) {
+          console.log('📢 用户发布了新朋友圈，AI们正在查看...');
+          // @ts-ignore
+          window.triggerAIMomentsInteraction();
+        }
+      }, 5000 + Math.random() * 10000); // 5-15秒后AI看到
     }
   };
 
