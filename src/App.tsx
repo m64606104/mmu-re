@@ -130,12 +130,14 @@ function App() {
 
   // 保存数据到智能存储
   useEffect(() => {
-    const saveData = async () => {
+    // 🚀 性能优化：使用防抖延迟保存，避免频繁写入localStorage阻塞主线程
+    const timeoutId = setTimeout(async () => {
       if (conversations.length > 0) {
         await smartSave('conversations', conversations);
       }
-    };
-    saveData();
+    }, 300); // 300ms防抖，合并连续的更新
+    
+    return () => clearTimeout(timeoutId);
   }, [conversations]);
 
   useEffect(() => {
@@ -147,7 +149,12 @@ function App() {
   }, [userProfile]);
 
   useEffect(() => {
-    localStorage.setItem('moments', JSON.stringify(moments));
+    // 🚀 性能优化：朋友圈数据也使用防抖保存
+    const timeoutId = setTimeout(() => {
+      localStorage.setItem('moments', JSON.stringify(moments));
+    }, 500); // 500ms防抖，朋友圈更新频率较低
+    
+    return () => clearTimeout(timeoutId);
   }, [moments]);
 
   // 处理页面切换

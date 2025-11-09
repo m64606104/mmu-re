@@ -1369,59 +1369,55 @@ ${conversation.characterSettings.memoryEvents ? `记忆事件：${conversation.c
           // 使用最终的消息列表（确保同步）
           const updatedMessages = currentMessages;
           
-          // 🚀 性能优化：后台异步处理，不阻塞UI
-          // 分析AI消息更新状态（不等待结果）
-          if (conversation.type === 'private' && conversation.characterSettings && newMessages.length > 0) {
-            const firstMessageContent = newMessages[0].content;
-            // 只在重要消息时更新AI状态
-            const shouldUpdateStatus = 
-              firstMessageContent.includes('在哪') ||
-              firstMessageContent.includes('去了') ||
-              firstMessageContent.includes('到了') ||
-              firstMessageContent.includes('回家') ||
-              firstMessageContent.includes('出门');
-              
-            if (shouldUpdateStatus) {
-              // 异步处理，不阻塞主流程
-              Promise.resolve().then(async () => {
-                try {
-                  await analyzeAndUpdateStatusFromAI(conversation.id, firstMessageContent);
-                  const status = await getAIStatus(conversation.id);
-                  if (status && isComponentMountedRef.current) setAIStatus(status);
-                } catch (err) {
-                  console.error('后台更新AI状态失败:', err);
-                }
-              });
+          // 🚀 性能优化：完全后台异步处理，不阻塞主流程
+          // 使用setTimeout确保在下一个事件循环中执行，不影响用户体验
+          setTimeout(() => {
+            // 分析AI消息更新状态
+            if (conversation.type === 'private' && conversation.characterSettings && newMessages.length > 0) {
+              const firstMessageContent = newMessages[0].content;
+              // 只在重要消息时更新AI状态
+              const shouldUpdateStatus = 
+                firstMessageContent.includes('在哪') ||
+                firstMessageContent.includes('去了') ||
+                firstMessageContent.includes('到了') ||
+                firstMessageContent.includes('回家') ||
+                firstMessageContent.includes('出门');
+                
+              if (shouldUpdateStatus) {
+                analyzeAndUpdateStatusFromAI(conversation.id, firstMessageContent)
+                  .then(() => getAIStatus(conversation.id))
+                  .then(status => {
+                    if (status && isComponentMountedRef.current) setAIStatus(status);
+                  })
+                  .catch(err => console.error('后台更新AI状态失败:', err));
+              }
             }
-          }
-          
-          // 🧠 记忆总结也改为完全异步，不阻塞主流程
-          if (conversation.enabledFeatures?.includes('memory-system')) {
-            if (shouldTriggerAutoSummary(conversation.id, updatedMessages.length)) {
-              console.log('🧠 触发自动记忆总结（后台异步）');
-              // 异步处理，不阻塞
-              Promise.resolve().then(() => {
+            
+            // 🧠 记忆总结完全后台处理
+            if (conversation.enabledFeatures?.includes('memory-system')) {
+              if (shouldTriggerAutoSummary(conversation.id, updatedMessages.length)) {
+                console.log('🧠 触发自动记忆总结（完全后台）');
                 performMemorySummary(updatedMessages).catch(err => {
                   console.error('记忆总结失败:', err);
                   updateSummaryCounter(conversation.id, updatedMessages.length);
                 });
-              });
+              }
             }
-          }
-          
-          // 📸 检测是否请求AI发朋友圈
-          const lastUserMessage = updatedMessages
-            .filter(m => m.role === 'user')
-            .slice(-1)[0];
-          
-          if (lastUserMessage && onRequestAIMoment) {
-            const content = lastUserMessage.content.toLowerCase();
-            if (content.includes('发朋友圈') || content.includes('发个朋友圈') || 
-                content.includes('发条朋友圈') || content.includes('发动态')) {
-              console.log('检测到用户请求AI发朋友圈');
-              onRequestAIMoment().catch(err => console.error('手动触发AI朋友圈失败:', err));
+            
+            // 📸 检测是否请求AI发朋友圈
+            const lastUserMessage = updatedMessages
+              .filter(m => m.role === 'user')
+              .slice(-1)[0];
+            
+            if (lastUserMessage && onRequestAIMoment) {
+              const content = lastUserMessage.content.toLowerCase();
+              if (content.includes('发朋友圈') || content.includes('发个朋友圈') || 
+                  content.includes('发条朋友圈') || content.includes('发动态')) {
+                console.log('检测到用户请求AI发朋友圈');
+                onRequestAIMoment().catch(err => console.error('手动触发AI朋友圈失败:', err));
+              }
             }
-          }
+          }, 0); // 延迟到下一个事件循环，确保不阻塞UI
           
           // 🔥 热梗系统已删除
         }
