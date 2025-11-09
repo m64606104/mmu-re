@@ -1497,16 +1497,20 @@ ${conversation.characterSettings.memoryEvents ? `记忆事件：${conversation.c
 【混合发送规则】：
 - ✅ 可以同时发送多种类型：文字+图片、语音+表情包、视频+文字等
 - ✅ 多个同类型：可以连发多张图片、多个表情包等
+- ✅ 与引用消息组合：引用可以和任何类型组合使用
 - ✅ 组合示例：
   * "今天去爬山了！[图片:山顶风景] [图片:我的自拍] 累死我了 [表情包:累瘫]"
   * "[语音:我跟你说个事,3秒] [图片:聊天记录截图] 你看看这个人！"
   * "生日快乐！[图片:蛋糕] [发红包:88.8:生日快乐] [表情包:庆祝]"
+  * "[回复 你 说的\"要去旅游\"] 好啊！[图片:机票] [表情包:开心] 我订好票了"
+  * "[回复 我 说的\"谢谢红包\"] 不客气！[表情包:比心]"
 
 注意事项：
 - 根据对话情境自然使用，不要刻意堆砌
 - 描述要具体生动，让对方能想象内容
 - 语音消息的内容要口语化，像真的在说话
 - 表情包描述要准确传达情绪
+- 引用消息会自动显示在气泡上方或内部，不影响其他内容
 
 【💰 红包和转账功能】：
 你可以在适当的场景下发送红包或转账，使用以下格式：
@@ -2642,6 +2646,19 @@ ${conversation.characterSettings.memoryEvents ? `记忆事件：${conversation.c
                     />
                   )}
                   
+                  {/* 引用消息（在气泡外部显示，适用于特殊消息） */}
+                  {message.replyTo && (message.moneyTransfer || message.document || message.order) && (
+                    <div className="mb-1.5 bg-gray-50 rounded-lg p-2 border border-gray-200">
+                      <div className="text-xs text-gray-500 flex items-start gap-1">
+                        <div className="w-0.5 h-full bg-blue-400 mr-1 rounded"></div>
+                        <div className="flex-1">
+                          <div className="font-medium text-gray-700">{message.replyTo.role === 'user' ? '我' : conversation.name}</div>
+                          <div className="line-clamp-2 text-gray-600">{message.replyTo.content}</div>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                  
                   <div
                     onClick={(e) => {
                       if (isMultiSelectMode) {
@@ -2660,9 +2677,9 @@ ${conversation.characterSettings.memoryEvents ? `记忆事件：${conversation.c
                       isMultiSelectMode && selectedMessages.includes(message.id) ? 'ring-2 ring-purple-500' : ''
                     }`}
                   >
-                    {/* 引用消息显示 */}
-                    {message.replyTo && (
-                      <div className="mb-2 pb-2 border-b border-gray-200">
+                    {/* 引用消息显示（只在非特殊消息时显示在这里） */}
+                    {message.replyTo && !message.moneyTransfer && !message.document && !message.order && (
+                      <div className="mb-2 pb-2 border-b border-gray-200 px-4 pt-2.5">
                         <div className="text-xs text-gray-500 flex items-start gap-1">
                           <div className="w-0.5 h-full bg-blue-400 mr-1"></div>
                           <div>
