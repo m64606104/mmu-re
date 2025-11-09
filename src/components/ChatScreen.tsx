@@ -183,28 +183,6 @@ export default function ChatScreen({
   const [quotedMessage, setQuotedMessage] = useState<Message | null>(null);
   const [messageBeingEdited, setMessageBeingEdited] = useState<Message | null>(null);
   
-  // 临时兼容变量（用于旧UI，待完全清理）
-  // @ts-ignore - 临时兼容旧代码
-  const isMultiSelectMode = false;
-  // @ts-ignore - 临时兼容旧代码
-  const selectedMessages: string[] = [];
-  // @ts-ignore - 临时兼容旧代码
-  const setIsMultiSelectMode = (_: boolean) => {};
-  // @ts-ignore - 临时兼容旧代码
-  const setSelectedMessages = (_: string[]) => {};
-  // @ts-ignore - 临时兼容旧代码
-  const replyingToMessage = quotedMessage; // 使用新的quotedMessage
-  // @ts-ignore - 临时兼容旧代码
-  const editingMessage = messageBeingEdited; // 使用新的messageBeingEdited
-  // @ts-ignore - 临时兼容旧代码
-  const setEditingMessage = (_: any) => {};
-  // @ts-ignore - 临时兼容旧代码
-  const toggleMessageSelection = (_: string) => {};
-  // @ts-ignore - 临时兼容旧代码
-  const handleDeleteMessages = () => {};
-  // @ts-ignore - 临时兼容旧代码
-  const handleCancelReply = handleCancelQuote; // 使用新的handleCancelQuote
-  
   // 生成智能的不回复提示
   const generateContextualHint = async (conversationData: Conversation) => {
     try {
@@ -1836,15 +1814,7 @@ ${conversation.characterSettings.memoryEvents ? `记忆事件：${conversation.c
                   </div>
                 )}
                 <div className="relative max-w-[70%]">
-                  {/* 多选模式复选框 */}
-                  {isMultiSelectMode && (
-                    <input
-                      type="checkbox"
-                      checked={selectedMessages.includes(message.id)}
-                      onChange={() => toggleMessageSelection(message.id)}
-                      className="absolute -left-8 top-1/2 -translate-y-1/2 w-5 h-5 rounded border-2 border-gray-300 cursor-pointer"
-                    />
-                  )}
+                  {/* 多选模式已移除 */}
                   
                   <div
                     onClick={(e) => handleMessageClick(message.id, e)}
@@ -1852,9 +1822,7 @@ ${conversation.characterSettings.memoryEvents ? `记忆事件：${conversation.c
                       message.role === 'user'
                         ? 'bg-white text-gray-900 border border-gray-200'
                         : 'bg-white text-gray-900 border border-gray-200'
-                    } ${message.mediaType ? 'p-0 overflow-hidden' : 'px-4 py-2.5'} ${
-                      isMultiSelectMode ? 'cursor-pointer' : ''
-                    } ${selectedMessages.includes(message.id) ? 'ring-2 ring-blue-500' : ''}`}
+                    } ${message.mediaType ? 'p-0 overflow-hidden' : 'px-4 py-2.5'}`}
                   >
                     {/* 引用消息显示 */}
                     {message.replyTo && (
@@ -2112,78 +2080,8 @@ ${conversation.characterSettings.memoryEvents ? `记忆事件：${conversation.c
 
       {/* Input area - 固定在底部 */}
       <div className="absolute bottom-0 left-0 right-0 bg-white/95 backdrop-blur-sm border-t border-gray-200 z-10">
-        {/* 多选模式工具栏 */}
-        {isMultiSelectMode && (
-          <div className="px-4 py-3 bg-blue-50 border-b border-blue-100 flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <button
-                onClick={() => {
-                  setIsMultiSelectMode(false);
-                  setSelectedMessages([]);
-                }}
-                className="text-sm text-gray-600 hover:text-gray-800"
-              >
-                取消
-              </button>
-              <span className="text-sm text-gray-700">
-                已选择 {selectedMessages.length} 条消息
-              </span>
-            </div>
-            <button
-              onClick={handleDeleteMessages}
-              disabled={selectedMessages.length === 0}
-              className="px-4 py-2 bg-red-500 text-white text-sm rounded-lg hover:bg-red-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              删除
-            </button>
-          </div>
-        )}
-        
-        {/* 引用提示 */}
-        {replyingToMessage && (
-          <div className="px-4 py-2 bg-gray-50 border-b border-gray-200 flex items-start justify-between gap-2">
-            <div className="flex-1 flex items-start gap-2">
-              <div className="w-1 h-full bg-blue-400 rounded-full"></div>
-              <div className="flex-1 min-w-0">
-                <div className="text-xs font-medium text-gray-600 mb-0.5">
-                  回复 {replyingToMessage?.role === 'user' ? '自己' : conversation.name}
-                </div>
-                <div className="text-sm text-gray-700 truncate">
-                  {replyingToMessage?.content}
-                </div>
-              </div>
-            </div>
-            <button
-              onClick={handleCancelReply}
-              className="flex-shrink-0 p-1 hover:bg-gray-200 rounded-full transition-colors"
-            >
-              <svg className="w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-              </svg>
-            </button>
-          </div>
-        )}
-        
-        {/* 编辑模式提示 */}
-        {editingMessage && (
-          <div className="px-4 py-2 bg-amber-50 border-b border-amber-200 flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <svg className="w-4 h-4 text-amber-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-              </svg>
-              <span className="text-sm text-amber-700">编辑消息</span>
-            </div>
-            <button
-              onClick={() => {
-                setEditingMessage(null);
-                setCurrentInput('');
-              }}
-              className="text-sm text-amber-600 hover:text-amber-800"
-            >
-              取消
-            </button>
-          </div>
-        )}
+        {/* 多选模式工具栏 - 已移除，使用新的单消息操作 */}
+        {/* 旧的引用/编辑提示 - 已替换为新UI（在输入框上方） */}
         
         {/* 剩余消息提示 */}
         {pendingMessages.length > 0 && !isGenerating && (
