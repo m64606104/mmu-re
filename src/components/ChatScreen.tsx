@@ -737,7 +737,9 @@ ${recentMessages}
     }
   };
 
-  // AI处理红包/转账
+  // AI处理红包/转账（已废弃，保留作为备用）
+  // 现在使用System Prompt机制，AI直接在回复中使用[接收红包:xxx]或[退回红包:xxx]格式
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const handleAIMoneyResponse = async (userMessage: Message) => {
     if (!userMessage.moneyTransfer || !apiConfig.apiKey || !apiConfig.modelName) {
       return;
@@ -1201,6 +1203,13 @@ ${systemPrompt}
     });
     
     console.log(`✅ 红包状态已更新: ${responseStatus}`);
+    
+    // 显示Toast提示
+    const toastMessages: Record<string, string> = {
+      'received': `💰 AI已${aiMessage.moneyTransfer.type === 'redPacket' ? '领取红包' : '收到转账'} ¥${originalAmount}`,
+      'returned': `↩️ AI已退回${aiMessage.moneyTransfer.type === 'redPacket' ? '红包' : '转账'} ¥${originalAmount}`
+    };
+    showToast(toastMessages[responseStatus] || '💰 红包状态已更新', 'success');
   };
 
   // 发送视频消息
