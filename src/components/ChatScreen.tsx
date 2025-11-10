@@ -2259,6 +2259,17 @@ ${conversation.characterSettings.memoryEvents ? `记忆事件：${conversation.c
         };
       } else {
         // 普通文本消息
+        // 获取最近的用户消息，让AI能看到多条消息的上下文
+        const recentUserMessages = conversation.messages
+          .filter(m => m.role === 'user')
+          .slice(-3);
+        
+        let contextPrompt = systemPrompt + '\n\n【多媒体消息使用指南】\n- 可以发送图片、视频、语音、表情包等\n- 使用格式：[图片:描述]、[视频:描述]、[语音:内容,时长]、[表情包:描述]\n\n⚠️ 视频和图片描述要求：\n- 禁止使用第一人称视角（"我"、"我的"等）\n- 使用第三人称或客观视角描述（"画面中"、"视频里"、"他/她"）\n- 自拍/出镜视频也要用第三人称（如"一个穿着...的女孩"）\n- 描述要详细生动，包含场景、人物、动作、环境等细节';
+        
+        // 如果最近有多条用户消息，添加提示
+        if (recentUserMessages.length > 1) {
+          contextPrompt += '\n\n【当前对话情境】：\n用户最近发了多条消息，请根据优先级判断标准，优先回复重要的、有趣的话题。可以合并回复，也可以选择性跳过某些消息。';
+        }
         
         // 📝 自定义上下文数量（根据配置开关）
         const contextConfigEnabled = conversation.characterSettings?.contextConfig?.enabled || false;
@@ -3926,12 +3937,13 @@ ${doc.content}`;
         <div className="bg-white rounded-2xl p-6 w-full max-w-sm shadow-2xl">
           <h3 className="text-lg font-semibold text-gray-900 mb-4">视频内容描述</h3>
           <p className="text-sm text-gray-600 mb-4">
-            请填写视频内容的文字描述，以便AI更好地理解视频内容并做出回复。
+            请填写视频内容的文字描述，以便AI更好地理解视频内容并做出回复。<br/>
+            <span className="text-red-500 font-medium">⚠️ 请使用第三人称描述（如"画面中..."、"视频里..."），不要使用"我"。</span>
           </p>
           <textarea
             value={videoDescInput}
             onChange={(e) => setVideoDescInput(e.target.value)}
-            placeholder="例如：在海边散步的风景视频"
+            placeholder="例如：视频中一个女孩在海边散步，夕阳洒在海面上，海浪轻轻拍打着沙滩"
             rows={4}
             className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none text-sm"
             autoFocus
