@@ -7,6 +7,7 @@ import DocumentViewModal from './DocumentViewModal';
 import DocumentLibraryModal from './DocumentLibraryModal';
 import DocumentCard from './DocumentCard';
 import XiaohongshuView from './XiaohongshuView';
+import SelectContactModal from './SelectContactModal';
 import { SavedDocument } from '../utils/documentLibrary';
 import { sendMoney, receiveMoney, getBalance, aiPayForUser, refundGift, getAIBalance, addAITransaction } from '../utils/wallet';
 import ActivityLogModal from './ActivityLogModal';
@@ -442,6 +443,7 @@ interface ChatScreenProps {
   conversation: Conversation;
   apiConfig: ApiConfig;
   currentUserProfile?: UserProfile; // 当前用户资料（用于AI参考）
+  conversations: Conversation[]; // 所有对话列表（用于转发）
   onUpdateConversation: (id: string, updates: Partial<Conversation>) => void;
   onBack: () => void;
   onOpenCharacterSettings: () => void;
@@ -452,6 +454,7 @@ export default function ChatScreen({
   conversation,
   apiConfig,
   currentUserProfile,
+  conversations,
   onUpdateConversation,
   onBack,
   onOpenCharacterSettings,
@@ -466,6 +469,8 @@ export default function ChatScreen({
   const [showDocumentLibrary, setShowDocumentLibrary] = useState(false);
   const [viewingDocument, setViewingDocument] = useState<Message['document'] | null>(null);
   const [selectedLibraryDoc, setSelectedLibraryDoc] = useState<SavedDocument | null>(null);
+  const [showSelectContact, setShowSelectContact] = useState(false);
+  const [forwardingDocument, setForwardingDocument] = useState<Message['document'] | null>(null);
   const [shouldEditDoc, setShouldEditDoc] = useState(false);
   const [showVideoDescModal, setShowVideoDescModal] = useState(false);
   const [videoDescInput, setVideoDescInput] = useState('');
@@ -4161,10 +4166,35 @@ ${doc.content}`;
       <DocumentLibraryModal
         onClose={() => setShowDocumentLibrary(false)}
         onSelectDocument={(doc, shouldEdit) => {
-          setSelectedLibraryDoc(doc);
-          setShouldEditDoc(shouldEdit);
-          setShowDocumentLibrary(false);
-          setShowSendDocumentModal(true);
+          if (shouldEdit) {
+            // 编辑发送：打开编辑弹窗
+            setSelectedLibraryDoc(doc);
+            setShouldEditDoc(true);
+            setShowDocumentLibrary(false);
+            setShowSendDocumentModal(true);
+          } else {
+            // 原文发送：直接发送文档
+            const newMessage: Message = {
+              id: `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+              role: 'user',
+              content: `发送了文档「${doc.title}」`,
+              timestamp: Date.now(),
+              document: {
+                title: doc.title,
+                content: doc.content,
+                type: doc.type,
+                greeting: '请查收',
+                size: doc.size
+              }
+            };
+            
+            onUpdateConversation(conversation.id, {
+              messages: [...conversation.messages, newMessage],
+              lastMessageTime: Date.now()
+            });
+            
+            setShowDocumentLibrary(false);
+          }
         }}
       />
     )}
@@ -4175,19 +4205,53 @@ ${doc.content}`;
         document={viewingDocument}
         onClose={() => setViewingDocument(null)}
         onForward={(document) => {
-          // 转发文档：预填充到发送文档弹窗
-          setSelectedLibraryDoc({
-            id: Date.now().toString(),
-            title: document.title,
-            content: document.content,
-            type: document.type,
-            size: document.size || 0,
-            savedAt: Date.now(),
-            source: '转发'
-          });
-          setShouldEditDoc(false);
-          setShowSendDocumentModal(true);
+          // 转发文档：打开选择联系人弹窗
+          setForwardingDocument(document);
+          setViewingDocument(null);
+          setShowSelectContact(true);
         }}
+      />
+    )}
+
+    {/* 选择联系人弹窗（用于转发文档） */}
+    {showSelectContact && forwardingDocument && (
+      <SelectContactModal
+        onClose={() => {
+          setShowSelectContact(false);
+          setForwardingDocument(null);
+        }}
+        onSelect={(conversationId) => {
+          // 转发文档到选中的联系人
+          const newMessage: Message = {
+            id: `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+            role: 'user',
+            content: `发送了文档「${forwardingDocument.title}」`,
+            timestamp: Date.now(),
+            document: {
+              title: forwardingDocument.title,
+              content: forwardingDocument.content,
+              type: forwardingDocument.type,
+              greeting: '转发',
+              size: forwardingDocument.size
+            }
+          };
+          
+          // 获取目标对话
+          const targetConversation = conversations.find(c => c.id === conversationId);
+          if (targetConversation) {
+            onUpdateConversation(conversationId, {
+              messages: [...targetConversation.messages, newMessage],
+              lastMessageTime: Date.now()
+            });
+            
+            showToast(`文档已转发到「${targetConversation.characterSettings?.nickname || targetConversation.name}」`, 'success');
+          }
+          
+          setShowSelectContact(false);
+          setForwardingDocument(null);
+        }}
+        conversations={conversations}
+        currentConversationId={conversation.id}
       />
     )}
     </>
