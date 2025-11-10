@@ -19,8 +19,8 @@ const DocumentCard: React.FC<DocumentCardProps> = ({ title, content, greeting, o
         <div className="p-4">
           <div className="flex items-start gap-3">
             {/* 图标 */}
-            <div className={`w-12 h-12 rounded-lg bg-gradient-to-br ${docInfo.bgColor} flex items-center justify-center flex-shrink-0 text-white`}>
-              <span className="text-2xl">{docInfo.icon}</span>
+            <div className={`w-12 h-12 rounded-xl bg-gradient-to-br ${docInfo.bgColor} flex items-center justify-center flex-shrink-0`}>
+              <span className="text-3xl opacity-60">{docInfo.icon}</span>
             </div>
             {/* 内容 */}
             <div className="flex-1 min-w-0">

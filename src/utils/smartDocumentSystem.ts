@@ -38,9 +38,9 @@ export class SmartDocumentAnalyzer {
     // 1. 待办事项/工作计划（最高优先级）
     if (this.isWorkPlan(lowerTitle, lowerContent)) {
       return {
-        icon: '✅',
-        label: '工作计划',
-        bgColor: 'from-blue-400 to-blue-500',
+        icon: '📄',
+        label: '在线文档',
+        bgColor: 'from-blue-50 to-gray-100',
         confidence: 0.95
       };
     }
@@ -48,9 +48,9 @@ export class SmartDocumentAnalyzer {
     // 2. 会议记录/会议纪要
     if (this.isMeetingNotes(lowerTitle, lowerContent)) {
       return {
-        icon: '📋',
-        label: '会议纪要',
-        bgColor: 'from-indigo-400 to-indigo-500',
+        icon: '📄',
+        label: '在线文档',
+        bgColor: 'from-blue-50 to-gray-100',
         confidence: 0.95
       };
     }
@@ -58,9 +58,9 @@ export class SmartDocumentAnalyzer {
     // 3. 个人信件/情书
     if (this.isPersonalLetter(lowerTitle, lowerContent)) {
       return {
-        icon: '✉️',
-        label: '私人信件',
-        bgColor: 'from-amber-400 to-yellow-500',
+        icon: '📄',
+        label: '在线文档',
+        bgColor: 'from-blue-50 to-gray-100',
         confidence: 0.95
       };
     }
@@ -68,9 +68,9 @@ export class SmartDocumentAnalyzer {
     // 4. 日记/日志
     if (this.isDiary(lowerTitle, lowerContent)) {
       return {
-        icon: '📖',
-        label: '个人日记',
-        bgColor: 'from-amber-400 to-orange-500',
+        icon: '📄',
+        label: '在线文档',
+        bgColor: 'from-blue-50 to-gray-100',
         confidence: 0.90
       };
     }
@@ -82,9 +82,9 @@ export class SmartDocumentAnalyzer {
     // 5. 新闻报道（降低优先级，避免误判）
     if (this.isNewsArticle(lowerTitle, lowerContent)) {
       return {
-        icon: '📰',
-        label: '新闻报道',
-        bgColor: 'from-blue-500 to-blue-600',
+        icon: '📄',
+        label: '在线文档',
+        bgColor: 'from-blue-50 to-gray-100',
         confidence: 0.85
       };
     }
@@ -92,9 +92,9 @@ export class SmartDocumentAnalyzer {
     // 6. 小说/文学作品
     if (this.isLiterature(lowerTitle, lowerContent)) {
       return {
-        icon: '📚',
-        label: '文学作品',
-        bgColor: 'from-purple-400 to-pink-500',
+        icon: '📄',
+        label: '在线文档',
+        bgColor: 'from-blue-50 to-gray-100',
         confidence: 0.85
       };
     }
@@ -102,9 +102,9 @@ export class SmartDocumentAnalyzer {
     // 7. 数据报告/分析
     if (this.isDataReport(lowerTitle, lowerContent)) {
       return {
-        icon: '📊',
-        label: '数据报告',
-        bgColor: 'from-cyan-400 to-blue-500',
+        icon: '📄',
+        label: '在线文档',
+        bgColor: 'from-blue-50 to-gray-100',
         confidence: 0.85
       };
     }
@@ -112,9 +112,9 @@ export class SmartDocumentAnalyzer {
     // 8. 技术文档/教程
     if (this.isTechDoc(lowerTitle, lowerContent)) {
       return {
-        icon: '💻',
-        label: '技术文档',
-        bgColor: 'from-green-400 to-teal-500',
+        icon: '📄',
+        label: '在线文档',
+        bgColor: 'from-blue-50 to-gray-100',
         confidence: 0.85
       };
     }
@@ -126,9 +126,9 @@ export class SmartDocumentAnalyzer {
     // 9. 微信公众号
     if (lowerTitle.includes('公众号') || lowerTitle.includes('推文')) {
       return {
-        icon: '📱',
-        label: '微信公众号',
-        bgColor: 'from-green-400 to-green-500',
+        icon: '📄',
+        label: '在线文档',
+        bgColor: 'from-blue-50 to-gray-100',
         confidence: 0.90
       };
     }
@@ -137,9 +137,9 @@ export class SmartDocumentAnalyzer {
     if (lowerTitle.includes('微博') || lowerTitle.includes('动态') || 
         lowerContent.includes('#') && lowerContent.split('#').length > 2) {
       return {
-        icon: '🎭',
-        label: '微博热搜',
-        bgColor: 'from-orange-400 to-red-500',
+        icon: '📄',
+        label: '在线文档',
+        bgColor: 'from-blue-50 to-gray-100',
         confidence: 0.85
       };
     }
@@ -148,9 +148,9 @@ export class SmartDocumentAnalyzer {
     if (lowerTitle.includes('知乎') || lowerTitle.includes('问答') || 
         (lowerTitle.includes('如何') || lowerTitle.includes('为什么'))) {
       return {
-        icon: '💡',
-        label: '知乎问答',
-        bgColor: 'from-blue-400 to-blue-600',
+        icon: '📄',
+        label: '在线文档',
+        bgColor: 'from-blue-50 to-gray-100',
         confidence: 0.80
       };
     }
@@ -161,7 +161,7 @@ export class SmartDocumentAnalyzer {
     return {
       icon: '📄',
       label: '在线文档',
-      bgColor: 'from-gray-400 to-gray-500',
+      bgColor: 'from-gray-300 to-gray-400',
       confidence: 0.50
     };
   }
