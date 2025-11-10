@@ -51,13 +51,23 @@ const backgroundTaskManager = {
       }
 
       const data = await response.json();
+      
+      // 🔥 先检查API返回格式是否正常
+      if (!data.choices || data.choices.length === 0) {
+        throw new Error('API返回格式错误：choices为空');
+      }
+      
+      if (data.error) {
+        throw new Error(data.error.message || 'API返回错误');
+      }
+      
       const assistantMessage = data.choices[0]?.message?.content;
 
-      // 检查是否选择不回复或返回空内容
+      // 🔥 到这里说明API调用成功且返回格式正常
+      // 如果content为空或[不回复]，这是AI主动选择不回复（不是错误）
       if (!assistantMessage || assistantMessage.trim() === '' || 
           assistantMessage.trim() === '[不回复]' || assistantMessage.includes('[不回复]')) {
-        // 这是AI选择不回复，不是API错误
-        console.log('💭 AI选择不回复此消息');
+        console.log('💭 AI选择不回复此消息（API调用成功，但AI决定不回复）');
         callback([], conversation.id);
         return;
       }
