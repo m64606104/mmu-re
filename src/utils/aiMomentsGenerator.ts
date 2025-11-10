@@ -209,7 +209,10 @@ export const shouldGenerateMoment = async (contactId: string): Promise<{shouldGe
  * ⚠️ 此函数已被SmartMomentsGenerator.buildSmartPrompt替代
  * 优势：token节省80%（3000→600），智能利用行为时间线
  * 保留此函数仅用于回退和参考
+ * 
+ * @deprecated 使用 SmartMomentsGenerator.buildSmartPrompt 代替
  */
+// @ts-expect-error - 保留用于紧急回退，暂时未使用
 const buildMomentPrompt = (conversation: Conversation, todayPosts: MomentPost[]): string => {
   const now = new Date();
   const hour = now.getHours();

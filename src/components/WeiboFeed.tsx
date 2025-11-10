@@ -254,7 +254,7 @@ const DetailPopup: React.FC<{ detail: WeiboDetail; onClose: () => void }> = ({ d
           </button>
           <button className="flex flex-col items-center gap-1 text-gray-600">
             <span>💬</span>
-            <span className="text-[12px]">{detail.comments}</span>
+            <span className="text-[12px]">{detail.commentCount}</span>
           </button>
           <button className="flex flex-col items-center gap-1 text-gray-600">
             <span>❤️</span>
