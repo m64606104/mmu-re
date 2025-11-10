@@ -275,15 +275,26 @@ export const splitMessages = (message: string): string[] => {
       return true;
     });
   
-  // 🔥 移除订单响应标记（这些标记用于程序识别，不应显示给用户）
+  // 🔥 移除所有系统标记（这些标记用于程序识别，不应显示给用户）
   const cleanedMessages = filteredMessages.map(msg => {
-    // 移除所有订单响应标记
-    return msg
+    // 移除订单响应标记
+    let cleaned = msg
       .replace(/\[接受礼物\]/g, '')
       .replace(/\[退回礼物\]/g, '')
       .replace(/\[同意代付\]/g, '')
-      .replace(/\[拒绝代付\]/g, '')
-      .trim();
+      .replace(/\[拒绝代付\]/g, '');
+    
+    // 🔥 移除多媒体相关标记（防止泄露）
+    cleaned = cleaned
+      .replace(/\[多媒体消息\]/g, '')
+      .replace(/\[图片\d*\]/g, '')
+      .replace(/\[照片\d*\]/g, '')
+      .replace(/\[视频\]/g, '')
+      .replace(/\[语音\]/g, '')
+      .replace(/\[表情包\]/g, '')
+      .replace(/\[表情\]/g, '');
+    
+    return cleaned.trim();
   }).filter(msg => msg.length > 0); // 移除可能变成空的消息
   
   // 🔒 将文档部分添加回去（如果有的话）
