@@ -141,7 +141,8 @@ export type AIStatus = 'online' | 'offline' | 'busy' | 'resting' | 'away';
 export interface AIActivityLog {
   id: string;
   timestamp: number; // 时间戳
-  activity: string; // 行为描述
+  activity: string; // 行为详细描述
+  summary?: string; // 行为简短摘要
   location?: string; // 地点
   status?: AIStatus; // 对应的状态
 }
@@ -149,7 +150,8 @@ export interface AIActivityLog {
 // 活动日志条目（用于生活模拟）
 export interface ActivityLogEntry {
   timestamp: number; // 时间戳
-  activity: string; // 活动描述
+  activity: string; // 活动详细描述
+  summary?: string; // 活动简短摘要（显示在头像旁）
   status: string; // 状态
   location: string; // 地点
   mood?: string; // 心情
@@ -159,7 +161,8 @@ export interface ActivityLogEntry {
 export interface AIStatusInfo {
   status: AIStatus; // 当前状态
   statusText: string; // 状态显示文字（如"在线"、"休息中"）
-  currentActivity?: string; // 当前行为（如"查看Ta的行为轨迹"）
+  currentActivity?: string; // 当前行为详细描述
+  currentActivitySummary?: string; // 当前行为简短摘要（显示在头像旁）
   activityLogs: AIActivityLog[]; // 行为轨迹列表
   lastUpdateTime: number; // 最后更新时间
 }

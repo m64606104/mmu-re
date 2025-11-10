@@ -2908,7 +2908,7 @@ ${doc.content}`;
                   'bg-gray-300'
                 }`}></div>
                 <span className="text-xs text-gray-500 truncate">
-                  {aiStatus?.statusText || '在线'}
+                  {aiStatus?.currentActivitySummary || aiStatus?.statusText || '在线'}
                 </span>
               </button>
             ) : (

@@ -399,23 +399,37 @@ ${chatContext}
 【输出格式】
 严格按照以下格式输出（每个字段占一行）：
 
-活动：[活动描述，15-30字，要自然真实]
+摘要：[简短摘要，2-6字，概括活动]
+活动：[活动详细描述，15-30字，要自然真实]
 地点：[地点名称，可以具体一点]
 状态：在线/忙碌/休息中/离开
 
+⚠️ 摘要和活动的区别：
+- 摘要：显示在头像旁边，要简短精炼，如"上班路上"、"开会中"、"吃午饭"
+- 活动：显示在详情列表，可以详细描述，带情绪和细节
+
 示例1（上班族下午）：
+摘要：摸鱼喝咖啡
 活动：下午会议开了两小时，累趴了，现在摸鱼喝咖啡
 地点：公司茶水间
 状态：在线
 
 示例2（学生晚上）：
+摘要：图书馆复习
 活动：图书馆复习到现在，脑子已经转不动了
 地点：学校图书馆
 状态：忙碌
 
 示例3（周末）：
+摘要：刚起床
 活动：睡到中午才起，正在纠结中午吃什么
 地点：家
+状态：在线
+
+示例4（上班路上）：
+摘要：上班路上
+活动：早高峰地铁挤爆了，耳机听着歌发呆，还有20分钟到公司
+地点：地铁10号线
 状态：在线
 
 现在请生成：`;
@@ -430,13 +444,16 @@ const parseActivityResponse = (content: string): ActivityLogEntry | null => {
   try {
     const lines = content.trim().split('\n').filter(line => line.trim());
     
+    let summary = '';
     let activity = '';
     let location = '';
     let status = '在线';
     
     for (const line of lines) {
       const trimmed = line.trim();
-      if (trimmed.startsWith('活动：') || trimmed.startsWith('活动:')) {
+      if (trimmed.startsWith('摘要：') || trimmed.startsWith('摘要:')) {
+        summary = trimmed.replace(/^摘要[：:]/, '').trim();
+      } else if (trimmed.startsWith('活动：') || trimmed.startsWith('活动:')) {
         activity = trimmed.replace(/^活动[：:]/, '').trim();
       } else if (trimmed.startsWith('地点：') || trimmed.startsWith('地点:')) {
         location = trimmed.replace(/^地点[：:]/, '').trim();
@@ -449,8 +466,14 @@ const parseActivityResponse = (content: string): ActivityLogEntry | null => {
       return null;
     }
     
+    // 如果没有摘要，从活动中提取简短版本
+    if (!summary) {
+      summary = activity.length > 8 ? activity.substring(0, 8) : activity;
+    }
+    
     return {
       timestamp: Date.now(),
+      summary: summary,
       activity: activity,
       status: status,
       location: location || '未知',

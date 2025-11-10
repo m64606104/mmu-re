@@ -60,6 +60,7 @@ export const getAIStatus = async (conversationId: string, apiConfig?: ApiConfig)
                 id: `activity_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
                 timestamp: newActivity.timestamp,
                 activity: newActivity.activity,
+                summary: newActivity.summary,
                 location: newActivity.location,
                 status: getStatusFromActivity(newActivity.status)
               };
@@ -68,8 +69,9 @@ export const getAIStatus = async (conversationId: string, apiConfig?: ApiConfig)
               status.activityLogs = status.activityLogs || [];
               status.activityLogs.push(aiActivity);
               
-              // 更新当前活动
+              // 更新当前活动和摘要
               status.currentActivity = newActivity.activity;
+              status.currentActivitySummary = newActivity.summary;
               status.lastUpdateTime = now;
               
               // 保存更新
@@ -176,16 +178,21 @@ export const updateAIStatus = async (
 export const addActivityLog = async (
   conversationId: string,
   activity: string,
-  location?: string
+  location?: string,
+  summary?: string
 ): Promise<void> => {
   try {
     const currentStatus = await getAIStatus(conversationId);
     if (!currentStatus) return;
     
+    // 如果没有提供摘要，从activity中截取前8个字符
+    const activitySummary = summary || (activity.length > 8 ? activity.substring(0, 8) : activity);
+    
     const newLog: AIActivityLog = {
       id: `activity_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
       timestamp: Date.now(),
       activity,
+      summary: activitySummary,
       location,
       status: currentStatus.status
     };
@@ -202,14 +209,15 @@ export const addActivityLog = async (
       currentStatus.activityLogs = currentStatus.activityLogs.slice(0, 100);
     }
     
-    // 更新当前活动
+    // 更新当前活动和摘要
     currentStatus.currentActivity = activity;
+    currentStatus.currentActivitySummary = activitySummary;
     currentStatus.lastUpdateTime = Date.now();
     
     const key = `ai_status_${conversationId}`;
     localStorage.setItem(key, JSON.stringify(currentStatus));
     
-    console.log(`添加行为轨迹: ${activity}`);
+    console.log(`添加行为轨迹: ${activitySummary} - ${activity}`);
   } catch (error) {
     console.error('Failed to add activity log:', error);
   }
