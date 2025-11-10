@@ -548,13 +548,18 @@ const backgroundTaskManager = {
           }
         }
         
-        // 检测头像更换：[换头像]
+        // 检测头像更换：[换头像] 或 [换回原头像]
         // 注意：实际的头像更新会在callback外部处理
         const hasAvatarChange = finalContent.includes('[换头像]');
+        const hasRestoreAvatar = finalContent.includes('[换回原头像]');
+        
         if (hasAvatarChange) {
-          console.log('🎭 [头像更换] 检测到换头像指令，将在消息中标记');
-          // 移除标记，但保留信息供外部处理
+          console.log('🎭 [头像更换] 检测到换头像指令');
           finalContent = finalContent.replace(/\[换头像\]/g, '').trim();
+        }
+        if (hasRestoreAvatar) {
+          console.log('🎭 [头像更换] 检测到换回原头像指令');
+          finalContent = finalContent.replace(/\[换回原头像\]/g, '').trim();
         }
         
         // 构建消息对象
@@ -960,6 +965,11 @@ ${recentMessages}
       setMessageBeingEdited(null);
       setCurrentInput('');
       
+      // 重置textarea高度
+      if (inputRef.current) {
+        (inputRef.current as unknown as HTMLTextAreaElement).style.height = '24px';
+      }
+      
       // 编辑后恢复标记
       setTimeout(() => setIsEditing(false), 100);
       return;
@@ -989,6 +999,11 @@ ${recentMessages}
     setPendingMessages([]); // 清除剩余消息
     setShowAllSentHint(false);
     setQuotedMessage(null); // 清除引用
+    
+    // 重置textarea高度
+    if (inputRef.current) {
+      (inputRef.current as unknown as HTMLTextAreaElement).style.height = '24px';
+    }
     inputRef.current?.focus();
   };
 
@@ -1874,8 +1889,9 @@ ${SmartHTMLGenerator.getModuleInstructions()}
 - 金额/礼物价值要符合你的角色身份和关系亲密度
 
 【👤 头像更换功能】：
-当用户发送图片并要求你换头像时（如"换头像"、"用这个做头像"、"换成这个头像"等），你可以使用以下格式：
+当用户发送图片并要求你换头像时，你可以使用以下格式：
 
+**1️⃣ 换成新头像**
 **格式**：[换头像]
 
 **使用场景**：
@@ -1887,11 +1903,24 @@ ${SmartHTMLGenerator.getModuleInstructions()}
 用户：[图片] 这个头像很适合你，换成这个吧
 你：好哒！这个头像很好看呢～ [换头像]
 
-用户：换头像
-你：好的！帮我换了～ [换头像]
+**2️⃣ 换回原头像**
+**格式**：[换回原头像]
+
+**使用场景**：
+1. 用户说："换回去"、"换回原来的头像"
+2. 用户说："还是之前那个好看"、"改回去吧"
+3. 用户后悔换头像，想恢复原来的
+
+**示例对话**：
+用户：还是换回原来的头像吧
+你：好的，给你换回去～ [换回原头像]
+
+用户：换回去
+你：好哒！已经换回来了～ [换回原头像]
 
 **注意**：
-- 只有在用户最近发送了图片时才能使用
+- [换头像] 只有在用户最近发送了图片时才能使用
+- [换回原头像] 只有在之前换过头像时才能使用
 - 不要主动提出换头像，等用户要求
 - 换头像后要表达感谢或喜欢
 
@@ -2773,10 +2802,13 @@ ${doc.content}`;
             }
             
             // 🎭 检查是否有头像更换指令
-            // 检测AI响应原文是否包含[换头像]
             const hasAvatarChangeRequest = newMessages.some(msg => 
               msg.role === 'assistant' && msg.content && msg.content.includes('换头像')
             );
+            const hasRestoreAvatarRequest = newMessages.some(msg => 
+              msg.role === 'assistant' && msg.content && msg.content.includes('换回原头像')
+            );
+            
             if (hasAvatarChangeRequest) {
               console.log('🎭 [头像更换] AI要求更换头像');
               // 查找最近的用户图片消息
@@ -2786,15 +2818,40 @@ ${doc.content}`;
               
               if (userImageMessage && userImageMessage.mediaUrl) {
                 console.log('✅ [头像更换] 找到用户图片，更新AI头像');
+                
+                const currentSettings = conversation.characterSettings!;
+                // 如果还没有保存原始头像，先保存
+                const originalAvatar = currentSettings.originalAvatar || currentSettings.avatar;
+                
                 onUpdateConversation(conversationId, {
                   characterSettings: {
-                    ...conversation.characterSettings!,
-                    avatar: userImageMessage.mediaUrl
+                    ...currentSettings,
+                    originalAvatar: originalAvatar, // 保存原始头像
+                    avatar: userImageMessage.mediaUrl // 更新为新头像
                   }
                 });
-                console.log('✅ [头像更换] AI头像已更新');
+                console.log('✅ [头像更换] AI头像已更新，原头像已保存');
               } else {
                 console.warn('⚠️ [头像更换] 未找到用户发送的图片');
+              }
+            }
+            
+            if (hasRestoreAvatarRequest) {
+              console.log('🎭 [头像更换] AI要求换回原头像');
+              const currentSettings = conversation.characterSettings!;
+              
+              if (currentSettings.originalAvatar) {
+                console.log('✅ [头像更换] 找到原始头像，恢复中...');
+                onUpdateConversation(conversationId, {
+                  characterSettings: {
+                    ...currentSettings,
+                    avatar: currentSettings.originalAvatar // 恢复原头像
+                    // 保留originalAvatar，以便再次换回
+                  }
+                });
+                console.log('✅ [头像更换] 已恢复原头像');
+              } else {
+                console.warn('⚠️ [头像更换] 没有保存的原始头像');
               }
             }
             
@@ -2827,6 +2884,10 @@ ${doc.content}`;
             const hasAvatarChangeRequest = newMessages.some(msg => 
               msg.role === 'assistant' && msg.content && msg.content.includes('换头像')
             );
+            const hasRestoreAvatarRequest = newMessages.some(msg => 
+              msg.role === 'assistant' && msg.content && msg.content.includes('换回原头像')
+            );
+            
             if (hasAvatarChangeRequest) {
               console.log('🎭 [头像更换] AI要求更换头像（用户已离开）');
               const userImageMessage = [...currentMessages]
@@ -2835,10 +2896,29 @@ ${doc.content}`;
               
               if (userImageMessage && userImageMessage.mediaUrl) {
                 console.log('✅ [头像更换] 更新AI头像');
+                const currentSettings = conversation.characterSettings!;
+                const originalAvatar = currentSettings.originalAvatar || currentSettings.avatar;
+                
                 onUpdateConversation(conversationId, {
                   characterSettings: {
-                    ...conversation.characterSettings!,
+                    ...currentSettings,
+                    originalAvatar: originalAvatar,
                     avatar: userImageMessage.mediaUrl
+                  }
+                });
+              }
+            }
+            
+            if (hasRestoreAvatarRequest) {
+              console.log('🎭 [头像更换] AI要求换回原头像（用户已离开）');
+              const currentSettings = conversation.characterSettings!;
+              
+              if (currentSettings.originalAvatar) {
+                console.log('✅ [头像更换] 恢复原头像');
+                onUpdateConversation(conversationId, {
+                  characterSettings: {
+                    ...currentSettings,
+                    avatar: currentSettings.originalAvatar
                   }
                 });
               }
@@ -4280,16 +4360,22 @@ ${doc.content}`;
             >
               <Plus className="w-5 h-5 text-gray-600" />
             </button>
-            <div className="flex-1 flex items-center gap-2 bg-gray-50 border border-gray-200 rounded-full px-4 py-2">
-              <input
-                ref={inputRef}
-                type="text"
+            <div className="flex-1 flex items-center gap-2 bg-gray-50 border border-gray-200 rounded-2xl px-4 py-2">
+              <textarea
+                ref={inputRef as any}
                 value={currentInput}
-                onChange={(e) => setCurrentInput(e.target.value)}
+                onChange={(e) => {
+                  setCurrentInput(e.target.value);
+                  // 自动调整高度
+                  e.target.style.height = 'auto';
+                  e.target.style.height = Math.min(e.target.scrollHeight, 120) + 'px';
+                }}
                 onKeyPress={handleKeyPress}
                 placeholder={messageBeingEdited ? "编辑消息..." : quotedMessage ? "回复消息..." : "输入消息..."}
-                className="flex-1 outline-none text-[15px] bg-transparent text-gray-900 placeholder-gray-400"
+                className="flex-1 outline-none text-[15px] bg-transparent text-gray-900 placeholder-gray-400 resize-none overflow-y-auto max-h-[120px] min-h-[24px]"
                 disabled={isGenerating}
+                rows={1}
+                style={{ height: '24px' }}
               />
             </div>
             {currentInput.trim() ? (

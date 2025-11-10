@@ -129,6 +129,7 @@ export interface SocialFeedMessage {
 
 export interface CharacterSettings {
   avatar?: string;
+  originalAvatar?: string; // 原始头像（用于"换回去"功能）
   nickname: string;
   username?: string; // 角色网名
   systemPrompt: string;
