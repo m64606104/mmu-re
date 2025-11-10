@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { X, FileText, Folder } from 'lucide-react';
+import { useToast } from './Toast';
 
 interface SendDocumentModalProps {
   onClose: () => void;
@@ -17,10 +18,11 @@ const SendDocumentModal: React.FC<SendDocumentModalProps> = ({ onClose, onSend, 
   const [content, setContent] = useState(initialDocument?.content || '');
   const [greeting, setGreeting] = useState('请查收');
   const [docType, setDocType] = useState<'text' | 'markdown' | 'code'>(initialDocument?.type || 'text');
+  const { showToast } = useToast();
 
   const handleSend = () => {
     if (!title.trim() || !content.trim()) {
-      alert('请填写文档标题和内容');
+      showToast('请填写文档标题和内容', 'error');
       return;
     }
 

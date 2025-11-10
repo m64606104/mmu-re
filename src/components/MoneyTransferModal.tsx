@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { X, Gift, CreditCard } from 'lucide-react';
 import { getBalance } from '../utils/wallet';
+import { useToast } from './Toast';
 
 interface MoneyTransferModalProps {
   onClose: () => void;
@@ -15,6 +16,7 @@ const MoneyTransferModal: React.FC<MoneyTransferModalProps> = ({
   const [amount, setAmount] = useState<string>('');
   const [message, setMessage] = useState('');
   const balance = getBalance();
+  const { showToast } = useToast();
 
   const quickAmounts = [1, 5, 10, 20, 50, 100];
 
@@ -22,12 +24,12 @@ const MoneyTransferModal: React.FC<MoneyTransferModalProps> = ({
     const numAmount = parseFloat(amount);
     
     if (!numAmount || numAmount <= 0) {
-      alert('请输入有效金额');
+      showToast('请输入有效金额', 'error');
       return;
     }
     
     if (numAmount > balance) {
-      alert('余额不足');
+      showToast('余额不足，请先充值', 'error');
       return;
     }
     

@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { ChevronLeft, FileText, Trash2, Edit, Send, Search, X } from 'lucide-react';
 import { getDocumentLibrary, deleteDocument, SavedDocument } from '../utils/documentLibrary';
+import { useConfirm } from '../hooks/useConfirm';
 
 interface DocumentLibraryModalProps {
   onClose: () => void;
@@ -12,6 +13,7 @@ const DocumentLibraryModal: React.FC<DocumentLibraryModalProps> = ({ onClose, on
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedType, setSelectedType] = useState<'all' | 'text' | 'markdown' | 'code'>('all');
   const [selectedSource, setSelectedSource] = useState<'all' | 'AI发送' | '用户上传'>('all');
+  const { confirm, ConfirmComponent } = useConfirm();
 
   useEffect(() => {
     loadDocuments();
@@ -22,8 +24,16 @@ const DocumentLibraryModal: React.FC<DocumentLibraryModalProps> = ({ onClose, on
     setDocuments(library);
   };
 
-  const handleDelete = (documentId: string) => {
-    if (confirm('确定要删除这个文档吗？')) {
+  const handleDelete = async (documentId: string) => {
+    const confirmed = await confirm({
+      title: '删除文档',
+      message: '确定要删除这个文档吗？\n删除后无法恢复。',
+      type: 'warning',
+      confirmText: '删除',
+      cancelText: '取消'
+    });
+    
+    if (confirmed) {
       deleteDocument(documentId);
       loadDocuments();
     }
@@ -227,6 +237,9 @@ const DocumentLibraryModal: React.FC<DocumentLibraryModalProps> = ({ onClose, on
           </div>
         )}
       </div>
+      
+      {/* 确认对话框 */}
+      {ConfirmComponent}
     </div>
   );
 };
