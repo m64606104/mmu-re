@@ -10,6 +10,10 @@ import XiaohongshuView from './XiaohongshuView';
 import SelectContactModal from './SelectContactModal';
 import WeChatLinkPreview from './WeChatLinkPreview';
 import { SmartLinkParser } from '../utils/smartLinkParser';
+import XiaohongshuFeed from './XiaohongshuFeed';
+import ZhihuFeed from './ZhihuFeed';
+import WeiboFeed from './WeiboFeed';
+import { SmartSocialGenerator } from '../utils/smartSocialGenerator';
 import { SavedDocument } from '../utils/documentLibrary';
 import { sendMoney, receiveMoney, getBalance, aiPayForUser, refundGift, getAIBalance, addAITransaction } from '../utils/wallet';
 import ActivityLogModal from './ActivityLogModal';
@@ -137,24 +141,46 @@ const backgroundTaskManager = {
         let finalContent = cleanContent;
         console.log(`📖 开始解析AI消息: ${finalContent.substring(0, 100)}...`);
         
-        // 🔗 优先解析链接预览（新系统）
-        const parsedLink = SmartLinkParser.parseMessage(finalContent);
-        if (parsedLink.linkPreviews.length > 0) {
-          console.log(`🔗 检测到${parsedLink.linkPreviews.length}个链接预览`);
+        // 🎭 优先检测社交平台内容（完整界面）
+        const socialPlatform = SmartSocialGenerator.detectPlatform(finalContent);
+        if (socialPlatform) {
+          console.log(`🎭 检测到${socialPlatform}完整内容`);
           
-          // 为每个链接预览创建消息
-          parsedLink.linkPreviews.forEach((linkPreview, idx) => {
-            allExtraMessages.push({
-              id: `${baseId}_link_${idx}`,
-              role: 'assistant',
-              content: `分享了${linkPreview.platform === 'xiaohongshu' ? '小红书' : linkPreview.platform === 'zhihu' ? '知乎' : ''}链接`,
-              timestamp: Date.now() + 100 + allExtraMessages.length * 10,
-              linkPreview
-            });
+          allExtraMessages.push({
+            id: `${baseId}_social`,
+            role: 'assistant',
+            content: `分享了${socialPlatform === 'xiaohongshu' ? '小红书' : socialPlatform === 'zhihu' ? '知乎' : '微博'}内容`,
+            timestamp: Date.now() + 100 + allExtraMessages.length * 10,
+            socialFeed: {
+              platform: socialPlatform,
+              rawContent: finalContent
+            }
           });
           
-          // 更新finalContent为去除链接标记后的纯文本
-          finalContent = parsedLink.textContent;
+          // 社交内容已完全处理，清空finalContent
+          finalContent = '';
+        }
+        
+        // 🔗 解析链接预览（新系统）
+        if (finalContent) {
+          const parsedLink = SmartLinkParser.parseMessage(finalContent);
+          if (parsedLink.linkPreviews.length > 0) {
+            console.log(`🔗 检测到${parsedLink.linkPreviews.length}个链接预览`);
+            
+            // 为每个链接预览创建消息
+            parsedLink.linkPreviews.forEach((linkPreview, idx) => {
+              allExtraMessages.push({
+                id: `${baseId}_link_${idx}`,
+                role: 'assistant',
+                content: `分享了${linkPreview.platform === 'xiaohongshu' ? '小红书' : linkPreview.platform === 'zhihu' ? '知乎' : ''}链接`,
+                timestamp: Date.now() + 100 + allExtraMessages.length * 10,
+                linkPreview
+              });
+            });
+            
+            // 更新finalContent为去除链接标记后的纯文本
+            finalContent = parsedLink.textContent;
+          }
         }
         
         // 检测红包：[发红包:金额:留言]
@@ -1650,6 +1676,8 @@ ${conversation.characterSettings.memoryEvents ? `记忆事件：${conversation.c
 - 引用消息会自动显示在气泡上方或内部，不影响其他内容
 
 ${SmartLinkParser.getPromptInstructions()}
+
+${SmartSocialGenerator.getFullPrompt()}
 
 【💰 红包和转账功能】：
 你可以在适当的场景下发送红包或转账，使用以下格式：
@@ -3273,6 +3301,17 @@ ${doc.content}`;
                         )}
                       </div>
                     ) : null}
+                    
+                    {/* 🎭 社交平台完整界面（小红书、知乎、微博） */}
+                    {message.socialFeed && message.socialFeed.platform === 'xiaohongshu' && (
+                      <XiaohongshuFeed rawContent={message.socialFeed.rawContent} />
+                    )}
+                    {message.socialFeed && message.socialFeed.platform === 'zhihu' && (
+                      <ZhihuFeed rawContent={message.socialFeed.rawContent} />
+                    )}
+                    {message.socialFeed && message.socialFeed.platform === 'weibo' && (
+                      <WeiboFeed rawContent={message.socialFeed.rawContent} />
+                    )}
                     
                     {/* 🔗 微信风格链接预览（新系统，优先显示） */}
                     {message.linkPreview && (

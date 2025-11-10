@@ -49,6 +49,8 @@ export interface Message {
   xiaohongshu?: XiaohongshuContent;
   // 🔗 链接预览支持（新系统，替代旧的document）
   linkPreview?: LinkPreviewMessage;
+  // 🎭 社交平台内容支持（小红书、知乎、微博）
+  socialFeed?: SocialFeedMessage;
 }
 
 // 💰 红包/转账类型
@@ -107,6 +109,12 @@ export interface LinkPreviewMessage {
   author?: string;         // 作者
   publishTime?: string;    // 发布时间
   content?: string;        // 完整内容（用于点击后展开）
+}
+
+// 🎭 社交平台内容消息类型（完整界面）
+export interface SocialFeedMessage {
+  platform: 'xiaohongshu' | 'zhihu' | 'weibo';
+  rawContent: string;  // 原始格式化内容（包含所有标记）
 }
 
 export interface CharacterSettings {
