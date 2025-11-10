@@ -597,6 +597,14 @@ export const generateAIMoment = async (
     // 保存到数据库
     await addMomentPost(conversation.id, post);
     
+    // 🎯 记录到统一行为管理器
+    const { UnifiedBehaviorManager } = await import('./aiUnifiedBehaviorManager');
+    await UnifiedBehaviorManager.recordMomentPost(
+      conversation.id,
+      cleanedContent,
+      imageDescriptions
+    );
+    
     // 更新生成时间和计数
     const updatedMomentsData = await getMomentsData(conversation.id);
     updatedMomentsData.lastGeneratedTime = Date.now();

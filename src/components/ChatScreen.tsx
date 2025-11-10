@@ -24,7 +24,8 @@ import {
 // import { detectMemes } from '../utils/memeSystem'; // 已删除热梗系统
 import { buildTimeAwarePrompt } from '../utils/timeAwareness';
 import { getMomentsData } from '../utils/aiMomentsGenerator';
-import { getAIStatus, analyzeAndUpdateStatusFromAI } from '../utils/aiStatusManager';
+import { getAIStatus } from '../utils/aiStatusManager';
+import { UnifiedBehaviorManager } from '../utils/aiUnifiedBehaviorManager';
 import { getErrorFromResponse, formatErrorMessage } from '../utils/apiErrorHandler';
 // @ts-ignore - 函数在backgroundTaskManager内部使用，TS静态分析无法识别
 import { splitMessages, cleanAIMessage } from '../utils/messageFormatter';
@@ -2524,25 +2525,23 @@ ${doc.content}`;
           // 🚀 性能优化：完全后台异步处理，不阻塞主流程
           // 使用setTimeout确保在下一个事件循环中执行，不影响用户体验
           setTimeout(() => {
-            // 分析AI消息更新状态
+            // 🎯 使用统一行为管理器记录AI消息并智能分析
             if (conversation.type === 'private' && conversation.characterSettings && newMessages.length > 0) {
-              const firstMessageContent = newMessages[0].content;
-              // 只在重要消息时更新AI状态
-              const shouldUpdateStatus = 
-                firstMessageContent.includes('在哪') ||
-                firstMessageContent.includes('去了') ||
-                firstMessageContent.includes('到了') ||
-                firstMessageContent.includes('回家') ||
-                firstMessageContent.includes('出门');
-                
-              if (shouldUpdateStatus) {
-                analyzeAndUpdateStatusFromAI(conversation.id, firstMessageContent)
-                  .then(() => getAIStatus(conversation.id))
-                  .then(status => {
+              // 记录所有AI消息到行为时间线
+              newMessages.forEach(msg => {
+                if (msg.content) {
+                  UnifiedBehaviorManager.recordChatMessage(
+                    conversation.id, 
+                    msg.content,
+                    apiConfig
+                  ).then(() => {
+                    // 更新显示的AI状态
+                    return getAIStatus(conversation.id);
+                  }).then(status => {
                     if (status && isComponentMountedRef.current) setAIStatus(status);
-                  })
-                  .catch(err => console.error('后台更新AI状态失败:', err));
-              }
+                  }).catch(err => console.error('记录AI行为失败:', err));
+                }
+              });
             }
             
             // 🧠 记忆总结完全后台处理

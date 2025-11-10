@@ -9,10 +9,10 @@ import { updateAIStatus, getAIStatus } from './aiStatusManager';
 /**
  * 构建生成行为轨迹的提示词
  */
-const buildActivityPrompt = (
+const buildActivityPrompt = async (
   conversation: Conversation,
   currentTime: Date
-): string => {
+): Promise<string> => {
   const hour = currentTime.getHours();
   const minute = currentTime.getMinutes();
   const dayOfWeek = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'][currentTime.getDay()];
@@ -33,11 +33,21 @@ const buildActivityPrompt = (
     roleType = '自由职业者';
   }
   
+  // 获取统一行为管理器的上下文
+  let behaviorContext = '';
+  try {
+    const { UnifiedBehaviorManager } = await import('./aiUnifiedBehaviorManager');
+    behaviorContext = await UnifiedBehaviorManager.getContextForPrompt(conversation.id);
+  } catch (err) {
+    console.log('获取行为上下文失败，使用默认模式');
+  }
+  
   const prompt = `你是${nickname}，一个${roleType}。
 
 【角色信息】
 ${systemPrompt ? `背景：${systemPrompt}` : ''}
 ${personality ? `性格：${personality}` : ''}
+${behaviorContext ? `统一行为上下文：${behaviorContext}` : ''}
 
 【当前时间】
 ${dayOfWeek} ${timeStr}
@@ -149,7 +159,7 @@ export const generateSmartActivity = async (
     }
     
     const currentTime = new Date();
-    const prompt = buildActivityPrompt(conversation, currentTime);
+    const prompt = await buildActivityPrompt(conversation, currentTime);
     
     // 调用API
     const response = await fetch(`${apiConfig.baseUrl}/v1/chat/completions`, {
