@@ -1525,6 +1525,33 @@ ${recentMessages}
     setShowSendingHint(true);
 
     try {
+      // 🔧 辅助函数：格式化历史消息内容（避免格式泄露）
+      const formatHistoryMessageContent = (msg: Message): string => {
+        // 如果是文档消息，使用正确的格式标记（不包含内容，避免token浪费）
+        if (msg.document) {
+          return `[发文档:${msg.document.title}:${msg.document.type}]`;
+        }
+        // 如果是转账/红包消息，使用正确的格式标记
+        if (msg.moneyTransfer) {
+          const type = msg.moneyTransfer.type === 'redPacket' ? '红包' : '转账';
+          if (msg.role === 'assistant') {
+            // AI发的红包/转账
+            return msg.moneyTransfer.type === 'redPacket' 
+              ? `[发红包:${msg.moneyTransfer.amount}:${msg.moneyTransfer.message}]`
+              : `[转账:${msg.moneyTransfer.amount}:${msg.moneyTransfer.message}]`;
+          } else {
+            // 用户发的，或AI接收/退回的
+            if (msg.moneyTransfer.status === 'received') {
+              return `[接收${type}:${msg.moneyTransfer.message}]`;
+            } else if (msg.moneyTransfer.status === 'returned') {
+              return `[退回${type}:${msg.moneyTransfer.message}]`;
+            }
+          }
+        }
+        // 其他消息返回原始内容
+        return msg.content;
+      };
+
       // 获取最近的用户消息（支持混合消息类型）
       const userMessages = conversation.messages.filter(m => m.role === 'user');
       const lastUserMsgForTime = userMessages[userMessages.length - 1];
@@ -2169,7 +2196,7 @@ ${SmartHTMLGenerator.getModuleInstructions()}
           .filter(m => !unhandledUserMessages.includes(m))
           .map(m => ({
             role: m.role,
-            content: m.content
+            content: formatHistoryMessageContent(m)
           }));
 
         // 构建混合内容（多图片 + 用户的文字消息）
@@ -2223,7 +2250,7 @@ ${SmartHTMLGenerator.getModuleInstructions()}
           .filter(m => !unhandledUserMessages.includes(m))
           .map(m => ({
             role: m.role,
-            content: m.content
+            content: formatHistoryMessageContent(m)
           }));
 
         // 组合视频描述和文字消息
@@ -2254,7 +2281,7 @@ ${SmartHTMLGenerator.getModuleInstructions()}
           .filter(m => !unhandledUserMessages.includes(m))
           .map(m => ({
             role: m.role,
-            content: m.mediaType === 'voice' && m.mediaDescription ? m.mediaDescription : m.content
+            content: formatHistoryMessageContent(m)
           }));
 
         // 组合语音转文字和其他文字消息
@@ -2284,7 +2311,7 @@ ${SmartHTMLGenerator.getModuleInstructions()}
           .filter(m => !unhandledUserMessages.includes(m))
           .map(m => ({
             role: m.role,
-            content: m.content
+            content: formatHistoryMessageContent(m)
           }));
 
         // 组合表情包和文字消息
