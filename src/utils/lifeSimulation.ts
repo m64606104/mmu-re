@@ -255,7 +255,7 @@ export const generateActivityWithAI = async (
         }
       ],
       temperature: 0.9,
-      max_tokens: 300
+      max_tokens: 800
     };
 
     const response = await fetch(`${apiConfig.baseUrl}/v1/chat/completions`, {
