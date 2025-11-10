@@ -2340,6 +2340,32 @@ ${doc.content}`;
                   });
                 }
               }
+              
+              // 🎯 如果用户还在页面，显示浮动提示框
+              if (isComponentMountedRef.current) {
+                setTimeout(() => {
+                  const hint = document.createElement('div');
+                  hint.textContent = contextualHint;
+                  hint.style.cssText = `
+                    position: fixed;
+                    top: 50%;
+                    left: 50%;
+                    transform: translate(-50%, -50%);
+                    background: rgba(0, 0, 0, 0.75);
+                    color: white;
+                    padding: 12px 24px;
+                    border-radius: 8px;
+                    font-size: 14px;
+                    z-index: 10000;
+                    animation: fadeInOut 2.5s ease-in-out;
+                    max-width: 80%;
+                    text-align: center;
+                    pointer-events: none;
+                  `;
+                  document.body.appendChild(hint);
+                  setTimeout(() => hint.remove(), 2500);
+                }, 300);
+              }
             });
             
             return;
