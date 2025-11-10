@@ -2,7 +2,7 @@
  * 关联虚拟角色到联系人的弹窗
  */
 
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { X, Link as LinkIcon, Users } from 'lucide-react';
 import { CharacterRelationship } from '../utils/aiRelationships';
 import { Conversation } from '../types';

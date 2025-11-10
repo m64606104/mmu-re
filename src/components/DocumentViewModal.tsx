@@ -268,7 +268,7 @@ const renderDocumentContent = (content: string, title: string) => {
         </div>
         <div className="bg-white p-4 space-y-2 max-h-96 overflow-y-auto">
           {lines.map((line, idx) => {
-            const [speaker, ...messageParts] = line.split('：');
+            const [, ...messageParts] = line.split('：');
             const message = messageParts.join('：');
             const isLeft = idx % 2 === 0;
             return message ? (
