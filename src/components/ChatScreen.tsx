@@ -5,7 +5,7 @@ import MoneyTransferModal from './MoneyTransferModal';
 import SendDocumentModal from './SendDocumentModal';
 import DocumentViewModal from './DocumentViewModal';
 import DocumentLibraryModal from './DocumentLibraryModal';
-import DocumentCard from './DocumentCard';
+import InlineDocumentRenderer from './InlineDocumentRenderer';
 import XiaohongshuView from './XiaohongshuView';
 import SelectContactModal from './SelectContactModal';
 import { SavedDocument } from '../utils/documentLibrary';
@@ -3250,18 +3250,16 @@ ${doc.content}`;
                       </div>
                     ) : null}
                     
-                    {/* 文档消息卡片 */}
+                    {/* 🎯 文档消息 - 内联渲染 */}
                     {message.document && (
-                      <DocumentCard
-                        title={message.document.title}
-                        content={message.document.content}
-                        greeting={message.document.greeting}
-                        type={message.document.type}
-                        onClick={(e) => {
-                          e?.stopPropagation?.();
-                          setViewingDocument(message.document);
-                        }}
-                      />
+                      <div className="px-4 pb-3">
+                        <InlineDocumentRenderer
+                          title={message.document.title}
+                          content={message.document.content}
+                          type={message.document.type}
+                          onViewFull={() => setViewingDocument(message.document)}
+                        />
+                      </div>
                     )}
                     
                     {/* 小红书消息 */}
