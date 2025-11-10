@@ -344,15 +344,26 @@ export const buildTimeContext = (lastUserMessageTimestamp?: number, lastUserMess
 };
 
 /**
+ * 待回复消息的基本信息
+ */
+export interface UnrepliedMessageInfo {
+  timestamp: number;
+  content: string;
+  index: number; // 在消息列表中的序号（方便AI引用）
+}
+
+/**
  * 生成时间感知的系统提示词（增强版）
  * @param lastUserMessageTimestamp 最后一条用户消息的时间戳
  * @param lastUserMessageContent 最后一条用户消息的内容
  * @param oldestUnrepliedTimestamp 最早未回复消息的时间戳（可选）
+ * @param unrepliedMessages 所有待回复消息的列表（新增）
  */
 export const buildTimeAwarePrompt = (
   lastUserMessageTimestamp?: number, 
   lastUserMessageContent?: string,
-  oldestUnrepliedTimestamp?: number
+  oldestUnrepliedTimestamp?: number,
+  unrepliedMessages?: UnrepliedMessageInfo[]
 ): string => {
   const context = buildTimeContext(lastUserMessageTimestamp, lastUserMessageContent);
   
@@ -365,6 +376,49 @@ export const buildTimeAwarePrompt = (
   if (context.lastMessageTime && context.timeGap && context.timeGapMinutes !== undefined) {
     prompt += `📨 对方最新消息发送时间: ${context.lastMessageTime}\n`;
     prompt += `⏱️ 时间间隔: ${context.timeGap}（${context.timeGapMinutes.toFixed(0)}分钟）\n\n`;
+    
+    // 🆕 如果有多条待回复消息，显示每条消息的详细时间
+    if (unrepliedMessages && unrepliedMessages.length > 1) {
+      prompt += `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`;
+      prompt += `【📋 待回复消息列表】（共${unrepliedMessages.length}条）\n`;
+      prompt += `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n`;
+      
+      const now = new Date();
+      unrepliedMessages.forEach((msg) => {
+        const msgDate = new Date(msg.timestamp);
+        const isSameDay = msgDate.toDateString() === now.toDateString();
+        const timePeriod = getTimePeriod(msgDate.getHours());
+        
+        let timeStr: string;
+        if (isSameDay) {
+          timeStr = `今天${timePeriod} ${String(msgDate.getHours()).padStart(2, '0')}:${String(msgDate.getMinutes()).padStart(2, '0')}`;
+        } else {
+          const month = msgDate.getMonth() + 1;
+          const day = msgDate.getDate();
+          const weekdays = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'];
+          const weekday = weekdays[msgDate.getDay()];
+          timeStr = `${month}月${day}日${weekday}${timePeriod} ${String(msgDate.getHours()).padStart(2, '0')}:${String(msgDate.getMinutes()).padStart(2, '0')}`;
+        }
+        
+        // 计算距离现在的时间
+        const timeDiff = now.getTime() - msg.timestamp;
+        const minutesDiff = Math.floor(timeDiff / (1000 * 60));
+        const timeGapStr = formatTimeGap(minutesDiff);
+        
+        // 截断过长的内容
+        const contentPreview = msg.content.length > 30 ? msg.content.substring(0, 30) + '...' : msg.content;
+        
+        prompt += `消息${msg.index}：\n`;
+        prompt += `  ⏰ 时间: ${timeStr}（${timeGapStr}）\n`;
+        prompt += `  📝 内容: ${contentPreview}\n\n`;
+      });
+      
+      prompt += `💡 **重要提示**：\n`;
+      prompt += `- 上面列出了所有待回复的消息及其发送时间\n`;
+      prompt += `- 你可以根据时间远近和内容重要性选择性回复\n`;
+      prompt += `- 时间久远的消息（超过1天）建议忽略，专注于最新的消息\n`;
+      prompt += `- 如果多条消息跨越很长时间，优先回复最新的高优先级消息\n\n`;
+    }
     
     // 🚨 根据时间间隔给出明确的禁止指令
     prompt += `🚨 **严格禁止模糊表达！必须遵守以下规则**：\n`;

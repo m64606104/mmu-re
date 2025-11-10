@@ -29,7 +29,7 @@ import {
   getMemoryBank
 } from '../utils/memorySystem';
 // import { detectMemes } from '../utils/memeSystem'; // 已删除热梗系统
-import { buildTimeAwarePrompt } from '../utils/timeAwareness';
+import { buildTimeAwarePrompt, UnrepliedMessageInfo } from '../utils/timeAwareness';
 import { getMomentsData } from '../utils/aiMomentsGenerator';
 import { getAIStatus } from '../utils/aiStatusManager';
 import { UnifiedBehaviorManager } from '../utils/aiUnifiedBehaviorManager';
@@ -1689,11 +1689,19 @@ ${recentMessages}
       // 获取纯文字消息
       const textMessages = unhandledUserMessages.filter(m => !m.mediaType);
       
+      // 🆕 收集所有待回复消息的详细信息
+      const unrepliedMessagesInfo: UnrepliedMessageInfo[] = unhandledUserMessages.map((msg, index) => ({
+        timestamp: msg.timestamp,
+        content: msg.content || '[媒体消息]',
+        index: index + 1
+      }));
+      
       // 🕐 生成增强的时间感知提示词（包含时间跨度分析）
       const timeAwarePrompt = buildTimeAwarePrompt(
         lastUserTimestamp, 
         lastUserMsgForTime?.content,
-        oldestUnrepliedTimestamp
+        oldestUnrepliedTimestamp,
+        unrepliedMessagesInfo
       );
       
       // 构建用户资料提示

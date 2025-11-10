@@ -17,6 +17,7 @@ import AnnouncementScreen from './components/AnnouncementScreen';
 import WalletScreen from './components/WalletScreen';
 import ShoppingScreen from './components/ShoppingScreen';
 import OrderHistoryScreen from './components/OrderHistoryScreen';
+import DatabaseScreen from './components/DatabaseScreen';
 import ToastContainer from './components/ToastContainer';
 import { MomentsAutoGenerator } from './components/MomentsAutoGenerator';
 import { AIMomentsInteractionManager } from './components/AIMomentsInteractionManager';
@@ -706,8 +707,15 @@ function App() {
             onBack={() => navigateTo('wallet')}
             onNavigateToChat={(conversationId) => {
               setCurrentConversationId(conversationId);
-              setCurrentScreen('chat');
+              navigateTo('chat');
             }}
+          />
+        );
+      case 'database':
+        return (
+          <DatabaseScreen
+            conversations={conversations}
+            onBack={() => navigateTo('home')}
           />
         );
       default:
