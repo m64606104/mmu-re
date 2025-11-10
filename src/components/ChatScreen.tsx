@@ -13,7 +13,8 @@ import { SmartLinkParser } from '../utils/smartLinkParser';
 import XiaohongshuFeed from './XiaohongshuFeed';
 import ZhihuFeed from './ZhihuFeed';
 import WeiboFeed from './WeiboFeed';
-import { SmartSocialGenerator } from '../utils/smartSocialGenerator';
+import SearchHistoryView from './SearchHistoryView';
+import { SmartHTMLGenerator } from '../utils/smartHTMLGenerator';
 import { SavedDocument } from '../utils/documentLibrary';
 import { sendMoney, receiveMoney, getBalance, aiPayForUser, refundGift, getAIBalance, addAITransaction } from '../utils/wallet';
 import ActivityLogModal from './ActivityLogModal';
@@ -82,25 +83,32 @@ const backgroundTaskManager = {
         return;
       }
 
-      // 🎭 优先检测完整的社交平台内容（必须在splitMessages之前）
-      const socialPlatform = SmartSocialGenerator.detectPlatform(assistantMessage);
+      // 🎭 优先检测完整的HTML模块内容（必须在splitMessages之前）
+      const htmlType = SmartHTMLGenerator.detectHTMLType(assistantMessage);
       
       // 将分割后的文本转换为Message对象数组
       const messages: Message[] = [];
       const allExtraMessages: Message[] = [];
       
-      // 如果检测到社交平台内容，不进行消息拆分，保持完整
-      if (socialPlatform) {
-        console.log(`🎭 检测到完整${socialPlatform}内容，跳过消息拆分`);
+      // 如果检测到HTML模块，不进行消息拆分，保持完整
+      if (htmlType) {
+        console.log(`🎭 检测到完整${htmlType}内容，跳过消息拆分`);
         
-        // 创建社交平台消息
+        const platformNames = {
+          'xiaohongshu': '小红书',
+          'zhihu': '知乎',
+          'weibo': '微博',
+          'search-history': '搜索记录'
+        };
+        
+        // 创建HTML模块消息
         allExtraMessages.push({
-          id: `${Date.now()}_social`,
+          id: `${Date.now()}_html`,
           role: 'assistant',
-          content: `分享了${socialPlatform === 'xiaohongshu' ? '小红书' : socialPlatform === 'zhihu' ? '知乎' : '微博'}内容`,
+          content: `分享了${platformNames[htmlType]}`,
           timestamp: Date.now() + 100,
           socialFeed: {
-            platform: socialPlatform,
+            platform: htmlType,
             rawContent: assistantMessage
           }
         });
@@ -1683,7 +1691,7 @@ ${conversation.characterSettings.memoryEvents ? `记忆事件：${conversation.c
 
 ${SmartLinkParser.getPromptInstructions()}
 
-${SmartSocialGenerator.getFullPrompt()}
+${SmartHTMLGenerator.getFullPrompt()}
 
 【💰 红包和转账功能】：
 你可以在适当的场景下发送红包或转账，使用以下格式：
@@ -3308,7 +3316,7 @@ ${doc.content}`;
                       </div>
                     ) : null}
                     
-                    {/* 🎭 社交平台完整界面（小红书、知乎、微博） */}
+                    {/* 🎭 HTML模块完整界面（小红书、知乎、微博、搜索记录等） */}
                     {message.socialFeed && message.socialFeed.platform === 'xiaohongshu' && (
                       <XiaohongshuFeed rawContent={message.socialFeed.rawContent} />
                     )}
@@ -3317,6 +3325,9 @@ ${doc.content}`;
                     )}
                     {message.socialFeed && message.socialFeed.platform === 'weibo' && (
                       <WeiboFeed rawContent={message.socialFeed.rawContent} />
+                    )}
+                    {message.socialFeed && message.socialFeed.platform === 'search-history' && (
+                      <SearchHistoryView rawContent={message.socialFeed.rawContent} />
                     )}
                     
                     {/* 🔗 微信风格链接预览（新系统，优先显示） */}

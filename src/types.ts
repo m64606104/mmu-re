@@ -113,7 +113,7 @@ export interface LinkPreviewMessage {
 
 // 🎭 社交平台内容消息类型（完整界面）
 export interface SocialFeedMessage {
-  platform: 'xiaohongshu' | 'zhihu' | 'weibo';
+  platform: 'xiaohongshu' | 'zhihu' | 'weibo' | 'search-history';
   rawContent: string;  // 原始格式化内容（包含所有标记）
 }
 
