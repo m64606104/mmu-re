@@ -288,7 +288,7 @@ export const generateActivityWithAI = async (
 };
 
 /**
- * 构建活动生成的提示词
+ * 构建活动生成的提示词（参考朋友圈生成逻辑优化）
  */
 const buildActivityPrompt = (conversation: Conversation): string => {
   const now = new Date();
@@ -297,89 +297,126 @@ const buildActivityPrompt = (conversation: Conversation): string => {
   const dateStr = now.toLocaleDateString('zh-CN');
   
   const characterSettings = conversation.characterSettings;
-  const nickname = characterSettings?.nickname || '未知';
+  if (!characterSettings) {
+    throw new Error('角色设定不存在');
+  }
+  
+  const nickname = characterSettings.nickname || conversation.name;
   
   // 获取记忆库
   const memoryBank = getMemoryBank(conversation.id);
-  const recentMemories = memoryBank.memories.slice(0, 5);
+  const recentMemories = memoryBank.memories.slice(0, 10);
   
-  // 获取最近的聊天
-  const recentMessages = conversation.messages
-    .filter(m => m.role === 'user')
-    .slice(-3)
-    .map(m => m.content)
-    .join('；');
+  // 获取最近的聊天记录
+  const recentMessages = conversation.messages.slice(-20);
   
-  // 时间上下文
-  let timeContext = '';
+  // 构建时间上下文（更详细）
+  let timeContext = `当前时间：${dateStr} ${dayOfWeek} ${hour}:${now.getMinutes()}\n`;
+  
   if (hour >= 0 && hour < 6) {
-    timeContext = '现在是深夜/凌晨，可能在睡觉、失眠、加班等';
+    timeContext += '现在是深夜/凌晨，大多数人在睡觉。可能的活动：失眠刷手机、加班赶工、熬夜看剧、早起准备等。\n';
   } else if (hour >= 6 && hour < 9) {
-    timeContext = '现在是早上，可能在起床、洗漱、吃早餐、上班路上等';
+    timeContext += '现在是早上，新的一天开始。可能的活动：刚起床洗漱、准备早餐、上班/上学路上、晨跑锻炼等。\n';
   } else if (hour >= 9 && hour < 12) {
-    timeContext = '现在是上午，可能在工作、学习、开会、处理事务等';
+    timeContext += '现在是上午，工作/学习时间。可能的活动：办公室工作、上课听讲、开会讨论、处理事务、喝咖啡提神等。\n';
   } else if (hour >= 12 && hour < 14) {
-    timeContext = '现在是中午，可能在吃午饭、午休等';
+    timeContext += '现在是中午，休息时间。可能的活动：吃午饭、午休小憩、刷手机放松、和同事聊天等。\n';
   } else if (hour >= 14 && hour < 18) {
-    timeContext = '现在是下午，可能在工作、学习、开会、喝下午茶等';
+    timeContext += '现在是下午，继续工作/学习。可能的活动：下午茶休息、赶项目进度、处理邮件、开会、犯困摸鱼等。\n';
   } else if (hour >= 18 && hour < 21) {
-    timeContext = '现在是傍晚，可能在吃晚饭、下班、散步、购物等';
+    timeContext += '现在是傍晚，下班/放学时间。可能的活动：吃晚饭、下班路上、逛街购物、健身运动、和朋友聚会等。\n';
   } else if (hour >= 21 && hour < 24) {
-    timeContext = '现在是晚上，可能在娱乐、看剧、运动、准备睡觉等';
+    timeContext += '现在是晚上，休闲时间。可能的活动：看电视/追剧、玩游戏、刷社交媒体、洗澡、准备睡觉、夜宵等。\n';
   }
   
-  // 构建角色信息
-  let characterInfo = `你是 ${nickname}。\n`;
-  if (characterSettings?.personality) {
-    characterInfo += `性格：${characterSettings.personality}\n`;
+  // 周末提示
+  if (dayOfWeek === '星期六' || dayOfWeek === '星期日') {
+    timeContext += '今天是周末，可以更自由地安排活动：睡懒觉、外出游玩、约会聚餐、宅家放松等。\n';
   }
-  if (characterSettings?.systemPrompt) {
-    characterInfo += `背景：${characterSettings.systemPrompt.substring(0, 100)}\n`;
+  
+  // 构建完整的角色信息
+  let characterInfo = `你是 ${nickname}。\n`;
+  
+  if (characterSettings.systemPrompt) {
+    characterInfo += `\n【角色背景】\n${characterSettings.systemPrompt}\n`;
+  }
+  
+  if (characterSettings.personality) {
+    characterInfo += `\n【性格特点】\n${characterSettings.personality}\n`;
+  }
+  
+  if (characterSettings.languageStyle) {
+    characterInfo += `\n【说话风格】\n${characterSettings.languageStyle}\n`;
   }
   
   // 记忆上下文
   let memoryContext = '';
   if (recentMemories.length > 0) {
-    memoryContext = '\n最近的记忆：\n' + recentMemories.slice(0, 3).map(m => `- ${m.content}`).join('\n');
+    memoryContext = '\n【你的记忆】\n以下是你记得的一些事情，活动可能与这些相关：\n';
+    recentMemories.slice(0, 5).forEach((memory, index) => {
+      memoryContext += `${index + 1}. ${memory.content}\n`;
+    });
   }
   
   // 聊天上下文
   let chatContext = '';
-  if (recentMessages) {
-    chatContext = `\n\n最近和用户聊到：${recentMessages}`;
+  if (recentMessages.length > 0) {
+    chatContext = '\n【最近的聊天】\n你和用户最近聊了这些内容，活动可能受此影响：\n';
+    const relevantMessages = recentMessages.filter(m => m.role === 'user').slice(-5);
+    relevantMessages.forEach((msg, index) => {
+      chatContext += `${index + 1}. ${msg.content}\n`;
+    });
   }
   
   const prompt = `${characterInfo}
-当前时间：${dateStr} ${dayOfWeek} ${hour}:${now.getMinutes()}
 ${timeContext}
-${memoryContext}${chatContext}
+${memoryContext}
+${chatContext}
 
 【任务】
-根据你的角色设定和当前时间，生成一条真实自然的生活活动记录。
+根据你的角色设定、性格、当前时间和情境，生成一条真实自然的生活活动记录。
 
-【要求】
-1. 活动要符合当前时间情境
-2. 活动要符合你的角色身份和性格
-3. 可以结合最近的聊天或记忆内容
-4. 描述要自然、口语化，10-20字以内
-5. 不要过于正式或刻板
+【重要原则 - 真实感和生活感】
+1. **像真人一样自然**：不要刻意、不要硬凑，像记录真实生活一样
+2. **符合身份和时间**：学生/上班族/研究生等不同身份，在相应时间做相应的事
+3. **有情绪和细节**：可以带点情绪（累了、开心、无聊、忙碌等），不要太平淡
+4. **口语化表达**：用日常口语，不要书面语或格式化的描述
+5. **可以有变化**：不是每天都一样，可以有特殊情况、突发事件、心情变化
+6. **结合记忆和聊天**：如果最近聊到或记忆中有相关的事，可以体现在活动中
 
+【描述风格】
+- 长度：15-30字，足够表达清楚又不啰嗦
+- 语气：符合你的性格和说话风格
+- 内容：可以是具体的动作、状态、想法、感受
+- 示例（真实感强的描述）：
+  * "刚开完会，脑子有点懵，想喝杯咖啡清醒一下"
+  * "在图书馆刷题，周围好多人，感觉压力好大"
+  * "懒得做饭，点了外卖，躺着刷手机等送达"
+  * "下班路上堵车，无聊听着歌发呆"
+  * "熬夜写论文到现在，眼睛都睁不开了"
+  * "周末睡到自然醒，感觉人生圆满"
+  
 【输出格式】
 严格按照以下格式输出（每个字段占一行）：
 
-活动：活动描述文本
-地点：地点名称
+活动：[活动描述，15-30字，要自然真实]
+地点：[地点名称，可以具体一点]
 状态：在线/忙碌/休息中/离开
 
-示例：
-活动：刚起床，洗漱中
-地点：家
+示例1（上班族下午）：
+活动：下午会议开了两小时，累趴了，现在摸鱼喝咖啡
+地点：公司茶水间
 状态：在线
 
-或：
-活动：在咖啡厅赶论文，快疯了
-地点：咖啡厅
+示例2（学生晚上）：
+活动：图书馆复习到现在，脑子已经转不动了
+地点：学校图书馆
 状态：忙碌
+
+示例3（周末）：
+活动：睡到中午才起，正在纠结中午吃什么
+地点：家
+状态：在线
 
 现在请生成：`;
   
