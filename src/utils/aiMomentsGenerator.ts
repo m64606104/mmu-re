@@ -1395,7 +1395,7 @@ B 回复 A: xx公园～
           { role: 'user', content: prompt }
         ],
         temperature: 0.8,
-        max_tokens: 500
+        max_tokens: 300
       })
     });
 
@@ -1527,7 +1527,7 @@ ${post.imageDescriptions ? `配图：${post.imageDescriptions.join('、')}` : ''
           { role: 'user', content: prompt }
         ],
         temperature: 0.8,
-        max_tokens: 500
+        max_tokens: 300
       })
     });
 
