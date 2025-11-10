@@ -632,15 +632,24 @@ export default function MomentsScreen({
                               
                               {/* 评论操作菜单 */}
                               {isSelected && (
-                                <div className="absolute top-full left-0 mt-1 bg-white rounded-lg shadow-lg border border-gray-200 z-10 min-w-[120px]">
+                                <div 
+                                  onClick={(e) => e.stopPropagation()}
+                                  className="absolute top-full left-0 mt-1 bg-white rounded-lg shadow-lg border border-gray-200 z-10 min-w-[120px]"
+                                >
                                   <button
-                                    onClick={() => handleReplyComment(moment.id, comment)}
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleReplyComment(moment.id, comment);
+                                    }}
                                     className="w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-50 rounded-t-lg"
                                   >
                                     💬 回复
                                   </button>
                                   <button
-                                    onClick={() => handleDeleteComment(moment.id, comment.id)}
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleDeleteComment(moment.id, comment.id);
+                                    }}
                                     className="w-full px-4 py-2 text-left text-sm text-red-600 hover:bg-red-50 rounded-b-lg"
                                   >
                                     🗑️ 删除

@@ -2259,17 +2259,6 @@ ${conversation.characterSettings.memoryEvents ? `记忆事件：${conversation.c
         };
       } else {
         // 普通文本消息
-        // 获取最近的用户消息，让AI能看到多条消息的上下文
-        const recentUserMessages = conversation.messages
-          .filter(m => m.role === 'user')
-          .slice(-3); // 🚀 性能优化：从5条减少到3条用户消息
-        
-        let contextPrompt = systemPrompt + '\n\n【🎨 多媒体消息完整指南】\n\n1️⃣ 基础格式：\n- 图片：[图片:详细描述10-50字]\n- 视频：[视频:生动具体的场景描述50-150字] ⚠️ 视频描述必须详细！\n- 语音：[语音:语音内容文字,时长3-10秒]\n- 表情包：[表情包:详细描述]\n\n📹 【视频描述完整指南 - 非常重要！】：\n\n✅ 必须包含的元素（让用户身临其境）：\n1. 人物/主体描述：\n   - 外貌特征（穿着、发型、表情、姿态）\n   - 动作细节（怎么做的、动作幅度、速度）\n   - 神态表情（眼神、微笑、专注等）\n   \n2. 环境/场景描述：\n   - 具体地点（录音室、咖啡厅、户外等）\n   - 环境细节（光线、氛围、背景物品）\n   - 空间感（远近、角度、视角）\n   \n3. 动态过程描述：\n   - 镜头运动（推近、拉远、转向）\n   - 动作顺序（先...然后...接着...）\n   - 时间流动感\n\n4. 抽象事物具体化（重点！）：\n   ❌ 错误示例："他弹奏了一段轻快的旋律"\n   ✅ 正确示例："他修长的手指在琴键上轻快地跳跃，像雨滴落在湖面，泛起一圈圈温柔的涟漪。旋律明快而跳脱，仿佛春日午后的微风，带着若有若无的花香，让人不自觉地想要跟着节奏摇摆"\n   \n   抽象描写技巧：\n   - 音乐 → 用比喻（像...仿佛...）、通感（用视觉/触觉描述听觉）\n   - 情绪 → 具体的表情、肢体语言、环境氛围\n   - 氛围 → 光影、色彩、温度、声音细节\n\n✅ 优秀视频描述示例：\n\n示例1 - 音乐相关：\n"[视频:温暖的录音室里，周棋洛穿着白色休闲卫衣，微微侧身坐在钢琴前。他垂眸看着琴键，修长的手指轻轻落下，琴声如清泉般流淌而出。旋律温柔而轻快，像是在讲述一个甜蜜的小秘密。镜头慢慢推近，能看到他嘴角勾起的浅浅笑意，眼神里藏着几分宠溺。琴声时而跳跃，时而舒缓，如同月光洒在水面，泛起细碎的银色波纹。他偶尔抬眸看向镜头，那一瞬间的眼神交汇，仿佛整个世界都安静了下来]"\n\n示例2 - 日常生活：\n"[视频:午后的咖啡厅，阳光透过落地窗洒在木质桌面上。你穿着米色针织衫，正低头专注地用手机拍摄眼前的拿铁咖啡。奶泡上的拉花是个精致的心形，你满意地笑了，那笑容像开在春天里的花。你端起咖啡杯，轻轻吹了吹，热气氤氲间，你的眼睛弯成月牙。镜头转向窗外，是车水马龙的街道，但咖啡厅里却如同一个温暖的小世界]"\n\n示例3 - 动态场景：\n"[视频:清晨的公园，薄雾还未散去。镜头跟随着一只橘猫的步伐，它优雅地跳上长椅，伸了个大大的懒腰，柔软的身体在阳光下舒展开来。它眯起眼睛，似乎在享受这难得的安静时光。突然，远处传来鸟叫声，它警觉地竖起耳朵，小脑袋左右转动，那认真的小表情让人忍俊不禁。接着它慵懒地趴下，用爪子轻轻拍打着飘落的树叶，像个顽皮的孩子]"\n\n❌ 避免简单抽象描述：\n- "他唱了一首歌" → 太简单\n- "他跳了一段舞" → 没有画面感\n- "风景很美" → 没有细节\n- "心情很好" → 没有具象化\n\n✅ 要让用户看完描述就能在脑海中浮现完整的画面！\n\n2️⃣ 🔥 多图发送（连发多张图）：\n例：[图片:海边日落，金色阳光][图片:远处的灯塔，白色建筑]\n场景：分享多张照片、展示对比、讲故事\n\n3️⃣ 🎯 纯媒体发送（只发媒体，不带文字）：\n- 纯图片：[图片:描述] （不加其他文字）\n- 纯表情包：[表情包:描述]\n- 纯语音：[语音:内容,X秒]\n- 纯视频：[视频:描述]\n\n4️⃣ 🌈 混合发送（媒体+文字或多种媒体）：\n例1：[图片:美食照片] 刚做的，超好吃！\n例2：[图片:风景] 看这个！[表情包:开心的表情] 美爆了\n例3：哈哈哈笑死我了 [表情包:捧腹大笑][语音:哈哈哈哈,3秒]\n例4：[视频:猫咪玩耍][图片:猫咪睡觉] 我家主子的日常～\n\n5️⃣ 🎭 智能使用场景：\n\n📸 图片使用时机（多用图片！）：\n- 分享生活：吃的、玩的、看到的美景\n- 展示成果：做的东西、买的新物品\n- 表达情绪：配合文字增强表现力\n- 讲故事：多图连发，更生动\n- 回应用户图片：用图片回应图片更自然\n❗️ 建议：日常聊天时可以经常配图，让对话更生动有趣\n\n🎬 视频使用时机：\n- 分享有趣/搞笑内容\n- 展示动态过程\n- 分享音乐、舞蹈等需要动态的内容\n❗️ 视频描述必须详细、生动、具体！参考上面的视频描述指南\n\n🎤 语音使用时机：\n- 表达强烈情绪（兴奋、惊讶）\n- 懒得打字的时候\n- 想让对话更亲近\n- 说笑话、讲段子\n❗️ 语音要简短（3-10秒），不要太长\n\n😊 表情包使用时机（多用表情包！）：\n- 开玩笑、搞笑\n- 表达情绪（开心、无语、害羞）\n- 回应好笑的内容\n- 缓和气氛\n- 可以连发多个表情包\n❗️ 建议：聊天中经常用表情包，更有活力\n\n6️⃣ 💡 使用策略：\n- ✅ 主动使用：不要等用户要求，主动配图/发表情包\n- ✅ 自然混搭：文字+图片+表情包，更生动\n- ✅ 多图讲故事：用2-3张图展示完整场景\n- ✅ 看情境：开心时多发表情包，分享时多发图\n- ❌ 避免单调：不要总是纯文字\n- ❌ 不过度：不是每句话都要配媒体\n\n7️⃣ 📝 实战示例：\n\n场景1 - 分享美食：\n"今天做了好吃的！[图片:色香味俱全的红烧肉][图片:摆盘精美的蔬菜沙拉] 超级成功！[表情包:得意的表情]"\n\n场景2 - 纯图片轰炸：\n"[图片:清晨的薄雾笼罩山林][图片:阳光透过树叶的光影][图片:远处的小木屋]"\n\n场景3 - 搞笑回应：\n"哈哈哈哈 [表情包:笑趴了][表情包:捶地笑] [语音:笑死我了哈哈哈,4秒]"\n\n场景4 - 日常闲聊：\n"刚睡醒 [表情包:迷糊的表情] 今天天气好好啊 [图片:窗外的蓝天白云]"\n\n\n【💬 消息引用功能】：\n- 当你看到用户的消息以"[回复 你/我 说的\"...内容...\"]"开头时，说明用户在引用之前的某条消息\n- 你也可以使用引用功能！当需要回应之前的某个话题时，使用格式：[回复 我/你 说的"...之前的内容..."]\n- 引用使用场景：回应之前的话题、澄清误会、继续某个讨论、回应多条消息中的某一条\n- 引用要自然，不要过度使用\n- 例如：用户说"那个电影怎么样？" 你可以回复："[回复 你 说的\"推荐个电影\"]\n哦对，我昨天看了那部电影，超级好看！..."';
-        
-        // 如果最近有多条用户消息，添加提示
-        if (recentUserMessages.length > 1) {
-          contextPrompt += '\n\n【当前对话情境】：\n用户最近发了多条消息，请根据优先级判断标准，优先回复重要的、有趣的话题。可以合并回复，也可以选择性跳过某些消息。';
-        }
         
         // 📝 自定义上下文数量（根据配置开关）
         const contextConfigEnabled = conversation.characterSettings?.contextConfig?.enabled || false;
@@ -3134,20 +3123,19 @@ ${doc.content}`;
                         : message.role === 'user'
                         ? 'bg-white text-gray-900 border border-gray-200'
                         : 'bg-white text-gray-900 border border-gray-200'
-                    } ${message.mediaType || message.moneyTransfer ? 'p-0 overflow-hidden' : 'px-4 py-2.5'} ${
+                    } ${message.mediaType || message.moneyTransfer ? 'p-0 overflow-hidden' : message.replyTo ? 'pb-2.5' : 'px-4 py-2.5'} ${
                       isMultiSelectMode && selectedMessages.includes(message.id) ? 'ring-2 ring-purple-500' : ''
                     }`}
                   >
                     {/* 引用消息显示（只在非特殊消息时显示在这里） */}
                     {message.replyTo && !message.moneyTransfer && !message.document && !message.order && (
-                      <div className="mb-2 pb-2 border-b border-gray-200 px-4 pt-2.5">
-                        <div className="text-xs text-gray-500 flex items-start gap-1">
-                          <div className="w-0.5 h-full bg-blue-400 mr-1"></div>
-                          <div>
-                            <div className="font-medium">{message.replyTo.role === 'user' ? '我' : conversation.name}</div>
-                            <div className="line-clamp-2">{message.replyTo.content}</div>
-                          </div>
+                      <div className="pt-3">
+                        {/* 被引用的原消息 */}
+                        <div className="px-4 text-sm text-gray-600 leading-relaxed mb-2.5">
+                          {message.replyTo.content}
                         </div>
+                        {/* 分隔线 */}
+                        <div className="border-b border-gray-200 mb-2.5"></div>
                       </div>
                     )}
                     
@@ -3599,7 +3587,7 @@ ${doc.content}`;
                     
                     {/* 纯文字内容 */}
                     {!message.mediaType && !message.moneyTransfer && !message.document && !message.order && (
-                      <p className="text-[15px] leading-relaxed whitespace-pre-wrap break-words">{message.content}</p>
+                      <p className={`text-[15px] leading-relaxed whitespace-pre-wrap break-words ${message.replyTo ? 'px-4' : ''}`}>{message.content}</p>
                     )}
                     {/* 用户媒体的描述文字（排除语音和表情包） */}
                     {message.role === 'user' && message.mediaType && message.mediaType !== 'sticker' && message.mediaType !== 'voice' && message.mediaDescription && (
