@@ -73,6 +73,7 @@ export interface DocumentMessage {
 // 🛍️ 订单消息类型
 export interface OrderMessage {
   type: 'gift' | 'payRequest'; // 礼物（为他人购买）或代付请求
+  source: 'taobao' | 'eleme' | 'movie'; // 商品来源：淘宝/饿了么/电影票
   products: OrderProduct[]; // 商品列表
   totalAmount: number; // 总金额
   recipientId?: string; // 收礼人ID（type为gift时）
@@ -81,6 +82,22 @@ export interface OrderMessage {
   status: 'pending' | 'accepted' | 'rejected' | 'paid'; // 待处理、已接受、已拒绝、已支付
   orderNumber?: string; // 订单号
   shippingAddress?: string; // 配送地址
+  // 外卖专用字段
+  deliveryInfo?: {
+    storeName?: string; // 店铺名称
+    distance?: string; // 距离
+    estimatedTime?: number; // 预计送达时间（分钟）
+    deliveryStatus?: 'preparing' | 'delivering' | 'delivered'; // 配送状态
+    riderName?: string; // 骑手姓名
+    riderPhone?: string; // 骑手电话
+  };
+  // 电影票专用字段
+  movieInfo?: {
+    cinemaName?: string; // 影院名称
+    showtime?: string; // 场次时间
+    seats?: string; // 座位号
+    hallNumber?: string; // 影厅号
+  };
 }
 
 // 🛒 订单商品

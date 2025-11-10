@@ -491,6 +491,7 @@ const backgroundTaskManager = {
               timestamp: Date.now() + 100 + allExtraMessages.length * 10,
               order: {
                 type: 'gift',
+                source: 'taobao', // AI发起的礼物默认为淘宝商品
                 products: [{
                   id: `product_${Date.now()}`,
                   name: productName,
@@ -3470,143 +3471,150 @@ ${doc.content}`;
                       />
                     )}
                     
-                    {/* 订单消息气泡（礼物/代付请求） */}
+                    {/* 订单消息气泡（礼物/代付请求） - 根据source显示不同样式 */}
                     {message.order && (
-                      <div className={`rounded-2xl overflow-hidden max-w-[300px] ${
-                        message.order.type === 'gift' 
-                          ? 'bg-gradient-to-br from-blue-500 to-purple-500' 
-                          : 'bg-gradient-to-br from-green-500 to-emerald-500'
-                      }`}>
-                        {/* 顶部标题 */}
-                        <div className="text-white text-center py-3 px-4">
-                          <div className="font-semibold text-base">
-                            {message.order.type === 'gift' ? '🎁 给你的礼物' : '🛒 购物车代付请求'}
-                          </div>
-                          {message.order.recipientName && (
-                            <div className="text-xs opacity-90 mt-1">
-                              {message.order.type === 'gift' 
-                                ? `送给 ${message.order.recipientName}` 
-                                : '对方已为你买单'
-                              }
+                      <div className="rounded-2xl overflow-hidden max-w-[300px]">
+                        {/* 淘宝商品卡片 */}
+                        {message.order.source === 'taobao' && (
+                          <div className="bg-gradient-to-br from-blue-500 to-purple-600">
+                            {/* 蓝色头部 */}
+                            <div className="text-white text-center py-3 px-4">
+                              <div className="font-semibold text-base">给你的礼物</div>
+                              <div className="text-xs opacity-90 mt-0.5">你的留言・查看详情</div>
                             </div>
-                          )}
-                        </div>
-                        
-                        {/* 白色内容区 */}
-                        <div className="bg-white p-4 space-y-3">
-                          {/* 留言 */}
-                          {message.order.message && (
-                            <div className="bg-blue-50 rounded-lg p-3">
-                              <div className="text-sm font-medium text-blue-900 mb-1">
-                                📝 下单留言
-                              </div>
-                              <div className="text-sm text-gray-700">
-                                {message.order.message}
-                              </div>
-                            </div>
-                          )}
-                          
-                          {/* 商品列表 */}
-                          <div className="space-y-2">
-                            <div className="text-sm font-semibold text-gray-800">商品明细</div>
-                            {message.order.products.map((product, idx) => (
-                              <div key={idx} className="flex items-center gap-2">
-                                {product.image && (
-                                  <img 
-                                    src={product.image} 
-                                    alt={product.name}
-                                    className="w-12 h-12 rounded object-cover"
-                                    onError={(e) => {
-                                      e.currentTarget.src = 'https://via.placeholder.com/100?text=商品';
-                                    }}
-                                  />
-                                )}
-                                <div className="flex-1 text-sm">
-                                  <div className="text-gray-800 line-clamp-1">{product.name}</div>
-                                  <div className="text-gray-500">×{product.quantity}</div>
+                            {/* 白色内容区 */}
+                            <div className="bg-white p-4 space-y-3">
+                              {message.order.message && (
+                                <div className="bg-blue-50 rounded-lg p-3">
+                                  <div className="text-sm font-medium text-blue-900 mb-1">已下单留言・送给专属礼物</div>
+                                  <div className="text-sm text-gray-700">{message.order.message}</div>
+                                  <div className="text-xs text-gray-500 mt-2">—顾语不</div>
                                 </div>
-                                <div className="text-red-600 font-semibold text-sm">
-                                  ¥{product.price.toFixed(2)}
+                              )}
+                              <div className="text-sm font-medium text-gray-800 mb-2">百线串丽 Nautilus复刻</div>
+                              <div className="text-orange-600 text-lg font-bold">¥{message.order.totalAmount.toFixed(2)}</div>
+                              <div className="text-blue-500 text-xs">查看详情 &gt;</div>
+                              {message.order.orderNumber && (
+                                <div className="text-xs text-gray-400">
+                                  序号: {message.order.orderNumber} <br />
+                                  时 间: {new Date().toLocaleDateString()} {new Date().toLocaleTimeString()}<br />
+                                  类型: 礼物 💝
                                 </div>
-                              </div>
-                            ))}
-                          </div>
-                          
-                          {/* 订单号 */}
-                          {message.order.orderNumber && (
-                            <div className="text-xs text-gray-400">
-                              订单号：{message.order.orderNumber}
-                            </div>
-                          )}
-                          
-                          {/* 总价 */}
-                          <div className="pt-2 border-t border-gray-200">
-                            <div className="flex justify-between items-center">
-                              <span className="text-sm text-gray-600">共 {message.order.products.length} 件商品，合计</span>
-                              <span className="text-xl font-bold text-red-600">
-                                ¥{message.order.totalAmount.toFixed(2)}
-                              </span>
-                            </div>
-                          </div>
-                          
-                          {/* 操作按钮 - 只有当AI发送的订单才显示，让用户响应 */}
-                          {message.role === 'assistant' && message.order.status === 'pending' && (
-                            <div className="flex gap-2">
-                              {message.order.type === 'gift' ? (
-                                <>
-                                  <button 
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      handleAcceptOrder(message);
-                                    }}
-                                    className="flex-1 py-2 bg-gradient-to-r from-blue-500 to-purple-500 text-white rounded-lg font-medium hover:opacity-90 transition-opacity"
-                                  >
-                                    收下礼物
-                                  </button>
-                                  <button 
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      handleRejectOrder(message);
-                                    }}
-                                    className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
-                                  >
-                                    退回
-                                  </button>
-                                </>
-                              ) : (
-                                <>
-                                  <button 
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      handleAcceptOrder(message);
-                                    }}
-                                    className="flex-1 py-2 bg-gradient-to-r from-green-500 to-emerald-500 text-white rounded-lg font-medium hover:opacity-90 transition-opacity"
-                                  >
-                                    帮TA付款
-                                  </button>
-                                  <button 
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      handleRejectOrder(message);
-                                    }}
-                                    className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
-                                  >
-                                    拒绝
-                                  </button>
-                                </>
+                              )}
+                              {message.role === 'assistant' && message.order.status === 'pending' && (
+                                <div className="flex gap-2 mt-3">
+                                  <button onClick={(e) => { e.stopPropagation(); handleAcceptOrder(message); }}
+                                    className="flex-1 py-2 bg-gradient-to-r from-blue-500 to-purple-500 text-white rounded-lg font-medium">收下礼物</button>
+                                  <button onClick={(e) => { e.stopPropagation(); handleRejectOrder(message); }}
+                                    className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg">退回</button>
+                                </div>
+                              )}
+                              {message.order.status !== 'pending' && (
+                                <div className="text-center py-2 text-sm font-medium text-gray-500">
+                                  {message.order.status === 'accepted' && '✅ 已接收'}
+                                  {message.order.status === 'rejected' && '❌ 已拒绝'}
+                                </div>
                               )}
                             </div>
-                          )}
-                          
-                          {/* 状态显示 */}
-                          {message.order.status !== 'pending' && (
-                            <div className="text-center py-2 text-sm font-medium">
-                              {message.order.status === 'accepted' && '✅ 已接收'}
-                              {message.order.status === 'rejected' && '❌ 已拒绝'}
-                              {message.order.status === 'paid' && '💰 已支付'}
+                          </div>
+                        )}
+
+                        {/* 饿了么外卖卡片 */}
+                        {message.order.source === 'eleme' && (
+                          <div className="bg-gradient-to-r from-yellow-400 to-yellow-500">
+                            {/* 黄色头部 */}
+                            <div className="text-gray-800 px-4 py-2.5">
+                              <div className="font-semibold text-sm">预计 20分钟后 送达</div>
+                              <div className="font-bold text-lg">正在为您火速配送</div>
                             </div>
-                          )}
-                        </div>
+                            {/* 白色内容区 */}
+                            <div className="bg-white p-4 space-y-3">
+                              {/* 骑手信息 */}
+                              <div className="flex items-center gap-3 pb-3 border-b">
+                                <div className="w-10 h-10 bg-gray-200 rounded-full flex items-center justify-center text-lg">👤</div>
+                                <div className="flex-1">
+                                  <div className="text-sm font-medium">李师傅 ★ 4.9</div>
+                                  <div className="text-xs text-gray-500">距离约 1.4km</div>
+                                </div>
+                                <button className="p-2 bg-gray-100 rounded-full">☁️</button>
+                              </div>
+                              {/* 配送进度 */}
+                              <div className="flex items-center justify-between text-xs text-gray-500 mb-2">
+                                <span>已接单</span>
+                                <span>已送出</span>
+                                <span className="font-bold text-gray-800">配送中</span>
+                                <span>送达</span>
+                              </div>
+                              <div className="h-1.5 bg-gray-200 rounded-full mb-4">
+                                <div className="h-full w-2/3 bg-gradient-to-r from-blue-500 to-blue-600 rounded-full"></div>
+                              </div>
+                              {/* 商品列表 */}
+                              <div className="border-t pt-3">
+                                <div className="font-semibold text-sm mb-2">商品和配送详情</div>
+                                {message.order.products.map((product, idx) => (
+                                  <div key={idx} className="text-sm text-gray-700 mb-1">
+                                    {product.name} ×{product.quantity} <span className="float-right">¥{product.price.toFixed(2)}</span>
+                                  </div>
+                                ))}
+                              </div>
+                              {/* 配送地址 */}
+                              <div className="border-t pt-3">
+                                <div className="font-semibold text-sm mb-1">配送地址</div>
+                                <div className="text-sm text-gray-600">北京市东城区XX路XX号 XX公寓 (距) 1868****119</div>
+                              </div>
+                              {/* 订单备注 */}
+                              {message.order.message && (
+                                <div className="border-t pt-3">
+                                  <div className="font-semibold text-sm mb-1">订单备注</div>
+                                  <div className="text-sm text-gray-600">{message.order.message}</div>
+                                </div>
+                              )}
+                              {message.role === 'assistant' && message.order.status === 'pending' && (
+                                <div className="flex gap-2 mt-3">
+                                  <button onClick={(e) => { e.stopPropagation(); handleAcceptOrder(message); }}
+                                    className="flex-1 py-2 bg-gradient-to-r from-yellow-400 to-yellow-500 text-gray-800 rounded-lg font-medium">确认收货</button>
+                                  <button onClick={(e) => { e.stopPropagation(); handleRejectOrder(message); }}
+                                    className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg">取消订单</button>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* 电影票卡片 (优化样式) */}
+                        {message.order.source === 'movie' && (
+                          <div className="bg-gradient-to-br from-purple-500 to-pink-500">
+                            <div className="text-white text-center py-3 px-4">
+                              <div className="font-semibold text-base">🎬 电影票</div>
+                              <div className="text-xs opacity-90 mt-0.5">给你的观影券</div>
+                            </div>
+                            <div className="bg-white p-4 space-y-3">
+                              {message.order.products.map((product, idx) => (
+                                <div key={idx}>
+                                  <div className="text-lg font-bold text-gray-800">{product.name}</div>
+                                  <div className="text-sm text-gray-600 mt-2">
+                                    影院: 万达影城 IMAX<br />
+                                    场次: 今天 19:30<br />
+                                    座位: 7排8座<br />
+                                    影厅: 3号厅
+                                  </div>
+                                  <div className="text-orange-600 text-lg font-bold mt-2">¥{product.price.toFixed(2)}</div>
+                                </div>
+                              ))}
+                              {message.order.message && (
+                                <div className="bg-purple-50 rounded-lg p-3 text-sm text-gray-700">{message.order.message}</div>
+                              )}
+                              {message.role === 'assistant' && message.order.status === 'pending' && (
+                                <div className="flex gap-2 mt-3">
+                                  <button onClick={(e) => { e.stopPropagation(); handleAcceptOrder(message); }}
+                                    className="flex-1 py-2 bg-gradient-to-r from-purple-500 to-pink-500 text-white rounded-lg font-medium">接受邀请</button>
+                                  <button onClick={(e) => { e.stopPropagation(); handleRejectOrder(message); }}
+                                    className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg">谢绝</button>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        )}
                       </div>
                     )}
                     

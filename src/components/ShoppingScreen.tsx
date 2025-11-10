@@ -10,8 +10,8 @@ interface ShoppingScreenProps {
   onBack: () => void;
   onPurchase: () => void; // 购买成功后刷新钱包
   conversations: Conversation[]; // AI角色列表
-  onSendGiftToAI: (product: Product, recipientId: string, recipientName: string) => void;
-  onRequestAIPay: (product: Product, aiId: string) => void;
+  onSendGiftToAI: (product: Product, recipientId: string, recipientName: string, shopType: 'food' | 'movie' | 'shopping') => void;
+  onRequestAIPay: (product: Product, aiId: string, shopType: 'food' | 'movie' | 'shopping') => void;
 }
 
 interface Product {
@@ -198,7 +198,7 @@ const ShoppingScreen: React.FC<ShoppingScreenProps> = ({
 
     const success = purchaseProduct(product.price, `送给${recipientName}的礼物：${product.name}`, currentShop.name);
     if (success) {
-      onSendGiftToAI(product, recipientId, recipientName);
+      onSendGiftToAI(product, recipientId, recipientName, shopType);
       onPurchase();
       alert(`礼物已送给${recipientName}`);
     }
@@ -208,7 +208,7 @@ const ShoppingScreen: React.FC<ShoppingScreenProps> = ({
   const handleRequestAIPay = (product: Product, aiId: string) => {
     const aiConv = conversations.find(c => c.id === aiId);
     const aiName = aiConv?.characterSettings?.nickname || 'AI';
-    onRequestAIPay(product, aiId);
+    onRequestAIPay(product, aiId, shopType);
     alert(`已向${aiName}发送代付请求`);
   };
 

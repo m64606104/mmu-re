@@ -195,7 +195,7 @@ function App() {
   }, [currentConversationId, navigateTo]);
 
   // 送礼物给AI
-  const handleSendGiftToAI = useCallback((product: any, recipientId: string, recipientName: string) => {
+  const handleSendGiftToAI = useCallback((product: any, recipientId: string, recipientName: string, shopType: 'food' | 'movie' | 'shopping') => {
     const giftMessage: Message = {
       id: `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
       role: 'user',
@@ -203,6 +203,7 @@ function App() {
       timestamp: Date.now(),
       order: {
         type: 'gift',
+        source: shopType === 'food' ? 'eleme' : shopType === 'movie' ? 'movie' : 'taobao',
         products: [{
           id: product.id,
           name: product.name,
@@ -234,7 +235,7 @@ function App() {
   }, [conversations, updateConversation, navigateTo]);
 
   // 请AI代付
-  const handleRequestAIPay = useCallback((product: any, aiId: string) => {
+  const handleRequestAIPay = useCallback((product: any, aiId: string, shopType: 'food' | 'movie' | 'shopping') => {
     const payRequestMessage: Message = {
       id: `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
       role: 'user',
@@ -242,6 +243,7 @@ function App() {
       timestamp: Date.now(),
       order: {
         type: 'payRequest',
+        source: shopType === 'food' ? 'eleme' : shopType === 'movie' ? 'movie' : 'taobao',
         products: [{
           id: product.id,
           name: product.name,
