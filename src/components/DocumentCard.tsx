@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { getSmartDocumentType } from '../utils/smartDocumentSystem';
 
 interface DocumentCardProps {
@@ -10,8 +10,8 @@ interface DocumentCardProps {
 }
 
 const DocumentCard: React.FC<DocumentCardProps> = ({ title, content, greeting, onClick }) => {
-  // 🎯 使用智能文档识别系统
-  const docInfo = getSmartDocumentType(title, content);
+  // 🎯 使用智能文档识别系统（缓存结果，避免重复检测）
+  const docInfo = useMemo(() => getSmartDocumentType(title, content), [title, content]);
   
   return (
     <div onClick={onClick} className="cursor-pointer">
