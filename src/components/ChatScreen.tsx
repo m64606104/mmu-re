@@ -2765,84 +2765,131 @@ ${doc.content}`;
         // 隐藏输入动画，显示消息
         setShowTyping(false);
         
-        // 解析消息中的多媒体标记
+        // 🔥 解析消息中的多媒体标记（支持混合发送）
         const msgContent = limitedMessages[i].trim();
-        const imageMatch = msgContent.match(/\[图片[:：]([^\]]+)\]/);
-        const videoMatch = msgContent.match(/\[视频[:：]([^\]]+)\]/);
-        // 修改语音正则：更宽松地匹配语音内容，支持包含标点符号的内容
-        const voiceMatch = msgContent.match(/\[语音[:：](.+?)(?:[，,]\s*(?:时长)?(\d+)秒?)?\]/);
-        const stickerMatch = msgContent.match(/\[表情包[:：]([^\]]+)\]/);
         
-        let newMessage: Message;
+        // 提取所有媒体标记
+        const imageMatches = [...msgContent.matchAll(/\[图片[:：]([^\]]+)\]/g)];
+        const videoMatches = [...msgContent.matchAll(/\[视频[:：]([^\]]+)\]/g)];
+        const voiceMatches = [...msgContent.matchAll(/\[语音[:：](.+?)(?:[，,]\s*(?:时长)?(\d+)秒?)?\]/g)];
+        const stickerMatches = [...msgContent.matchAll(/\[表情包[:：]([^\]]+)\]/g)];
+        const documentMatches = [...msgContent.matchAll(/\[文档[:：]([^\]]+)\]/g)];
         
-        if (imageMatch) {
-          // AI发送图片
-          const cleanContent = msgContent.replace(/\[图片[:：][^\]]+\]/, '').trim();
-          newMessage = {
-            id: Date.now().toString() + '_ai_' + i + Math.random(),
+        // 移除所有媒体标记，得到纯文本内容
+        let textContent = msgContent
+          .replace(/\[图片[:：][^\]]+\]/g, '')
+          .replace(/\[视频[:：][^\]]+\]/g, '')
+          .replace(/\[语音[:：].+?\]/g, '')
+          .replace(/\[表情包[:：][^\]]+\]/g, '')
+          .replace(/\[文档[:：][^\]]+\]/g, '')
+          .trim();
+        
+        // 收集所有要添加的消息
+        const messagesToAdd: Message[] = [];
+        
+        // 1. 如果有纯文本，先添加文本消息
+        if (textContent) {
+          messagesToAdd.push({
+            id: Date.now().toString() + '_ai_text_' + i + Math.random(),
             role: 'assistant' as const,
-            content: cleanContent || '[图片]',
+            content: textContent,
             timestamp: Date.now(),
+          });
+        }
+        
+        // 2. 添加所有图片消息
+        imageMatches.forEach((match, idx) => {
+          messagesToAdd.push({
+            id: Date.now().toString() + '_ai_image_' + i + '_' + idx + Math.random(),
+            role: 'assistant' as const,
+            content: '[图片]',
+            timestamp: Date.now() + idx,
             mediaType: 'image',
-            mediaDescription: imageMatch[1],
+            mediaDescription: match[1],
             isMediaDescriptionOnly: true
-          };
-        } else if (videoMatch) {
-          // AI发送视频
-          const cleanContent = msgContent.replace(/\[视频[:：][^\]]+\]/, '').trim();
-          newMessage = {
-            id: Date.now().toString() + '_ai_' + i + Math.random(),
+          });
+        });
+        
+        // 3. 添加所有视频消息
+        videoMatches.forEach((match, idx) => {
+          messagesToAdd.push({
+            id: Date.now().toString() + '_ai_video_' + i + '_' + idx + Math.random(),
             role: 'assistant' as const,
-            content: cleanContent || '[视频]',
-            timestamp: Date.now(),
+            content: '[视频]',
+            timestamp: Date.now() + idx,
             mediaType: 'video',
-            mediaDescription: videoMatch[1],
+            mediaDescription: match[1],
             isMediaDescriptionOnly: true
-          };
-        } else if (voiceMatch) {
-          // AI发送语音
-          const cleanContent = msgContent.replace(/\[语音[:：].+?\]/, '').trim();
-          newMessage = {
-            id: Date.now().toString() + '_ai_' + i + Math.random(),
+          });
+        });
+        
+        // 4. 添加所有语音消息
+        voiceMatches.forEach((match, idx) => {
+          messagesToAdd.push({
+            id: Date.now().toString() + '_ai_voice_' + i + '_' + idx + Math.random(),
             role: 'assistant' as const,
-            content: cleanContent || '[语音]',
-            timestamp: Date.now(),
+            content: '[语音]',
+            timestamp: Date.now() + idx,
             mediaType: 'voice',
-            mediaDescription: voiceMatch[1].trim(), // 语音内容（去掉时长部分）
-            voiceDuration: parseInt(voiceMatch[2]) || 3, // 时长（秒）
+            mediaDescription: match[1].trim(),
+            voiceDuration: parseInt(match[2]) || 3,
             isMediaDescriptionOnly: true
-          };
-        } else if (stickerMatch) {
-          // AI发送表情包
-          const cleanContent = msgContent.replace(/\[表情包[:：][^\]]+\]/, '').trim();
-          newMessage = {
-            id: Date.now().toString() + '_ai_' + i + Math.random(),
+          });
+        });
+        
+        // 5. 添加所有表情包消息
+        stickerMatches.forEach((match, idx) => {
+          messagesToAdd.push({
+            id: Date.now().toString() + '_ai_sticker_' + i + '_' + idx + Math.random(),
             role: 'assistant' as const,
-            content: cleanContent || '[表情包]',
-            timestamp: Date.now(),
+            content: '[表情包]',
+            timestamp: Date.now() + idx,
             mediaType: 'sticker',
-            mediaDescription: stickerMatch[1],
+            mediaDescription: match[1],
             isMediaDescriptionOnly: true
-          };
-        } else {
-          // 普通文字消息
-          newMessage = {
-            id: Date.now().toString() + '_ai_' + i + Math.random(),
+          });
+        });
+        
+        // 6. 添加所有文档消息
+        documentMatches.forEach((match, idx) => {
+          messagesToAdd.push({
+            id: Date.now().toString() + '_ai_doc_' + i + '_' + idx + Math.random(),
+            role: 'assistant' as const,
+            content: '[文档]',
+            timestamp: Date.now() + idx,
+            mediaType: 'document',
+            mediaDescription: match[1],
+            isMediaDescriptionOnly: true
+          });
+        });
+        
+        // 如果没有任何消息（纯标记但都被移除了），添加一个默认文本消息
+        if (messagesToAdd.length === 0) {
+          messagesToAdd.push({
+            id: Date.now().toString() + '_ai_default_' + i + Math.random(),
             role: 'assistant' as const,
             content: msgContent,
             timestamp: Date.now(),
-          };
+          });
         }
         
-        currentMessages = [...currentMessages, newMessage];
+        // 逐条添加消息（保持顺序和动画）
+        for (const msg of messagesToAdd) {
+          currentMessages = [...currentMessages, msg];
+          
+          // 更新消息列表
+          onUpdateConversation(conversation.id, {
+            messages: currentMessages,
+            lastMessageTime: Date.now(),
+          });
+          
+          // 多媒体消息之间短暂停顿
+          if (messagesToAdd.length > 1) {
+            await new Promise(resolve => setTimeout(resolve, 200));
+          }
+        }
         
-        // 更新消息列表
-        onUpdateConversation(conversation.id, {
-          messages: currentMessages,
-          lastMessageTime: Date.now(),
-        });
-        
-        // 短暂停顿再显示下一条
+        // 消息组之间稍长停顿
         if (i < limitedMessages.length - 1) {
           await new Promise(resolve => setTimeout(resolve, 300));
         }

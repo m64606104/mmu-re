@@ -7,6 +7,7 @@ import { Conversation, MomentsData, MomentPost, ApiConfig } from '../types';
 import { smartLoad, smartSave } from './storage';
 import { getMemoryBank } from './memory';
 import { getErrorFromResponse, formatErrorMessage } from './apiErrorHandler';
+import { SmartMomentsGenerator } from './smartMomentsSystem';
 
 const MOMENTS_STORAGE_KEY = 'moments_data';
 
@@ -203,7 +204,11 @@ export const shouldGenerateMoment = async (contactId: string): Promise<{shouldGe
 
 
 /**
- * 生成朋友圈提示词
+ * 生成朋友圈提示词（旧系统，已弃用）
+ * 
+ * ⚠️ 此函数已被SmartMomentsGenerator.buildSmartPrompt替代
+ * 优势：token节省80%（3000→600），智能利用行为时间线
+ * 保留此函数仅用于回退和参考
  */
 const buildMomentPrompt = (conversation: Conversation, todayPosts: MomentPost[]): string => {
   const now = new Date();
@@ -425,8 +430,8 @@ export const generateAIMoment = async (
     
     console.log(`📅 今天已发 ${todayPosts.length} 条朋友圈`);
     
-    // 构建提示词
-    const prompt = buildMomentPrompt(conversation, todayPosts);
+    // 🎯 使用新的智能朋友圈生成系统（token节省80%）
+    const prompt = await SmartMomentsGenerator.buildSmartPrompt(conversation, new Date());
     
     // 调用API
     const response = await fetch(`${apiConfig.baseUrl}/v1/chat/completions`, {

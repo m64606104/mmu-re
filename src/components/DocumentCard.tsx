@@ -14,14 +14,20 @@ const DocumentCard: React.FC<DocumentCardProps> = ({ title, content, greeting, o
     const lowerTitle = title.toLowerCase();
     const lowerContent = content.substring(0, 300).toLowerCase();
     
+    // 🔥 优先级1：待办事项/工作计划（避免被误识别为新闻）
+    if (lowerTitle.includes('待办') || lowerTitle.includes('事项') || 
+        lowerTitle.includes('计划') || lowerTitle.includes('日程') ||
+        lowerTitle.includes('任务') || lowerTitle.includes('to do') || lowerTitle.includes('todo')) {
+      return { icon: '✅', label: '工作计划', bgColor: 'from-blue-400 to-blue-500' };
+    }
+    
     // 微信公众号
     if (lowerTitle.includes('公众号') || lowerTitle.includes('推文')) {
       return { icon: '📱', label: '微信公众号', bgColor: 'from-green-400 to-green-500' };
     }
     
-    // 新闻类
-    if (lowerTitle.includes('新闻') || lowerTitle.includes('资讯') || lowerTitle.includes('快讯') ||
-        lowerContent.includes('记者') || lowerContent.includes('报道')) {
+    // 新闻类（降低优先级，避免误识别）
+    if (lowerTitle.includes('新闻') || lowerTitle.includes('资讯') || lowerTitle.includes('快讯')) {
       return { icon: '📰', label: '澎湃新闻', bgColor: 'from-blue-500 to-blue-600' };
     }
     
