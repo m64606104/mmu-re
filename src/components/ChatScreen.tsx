@@ -6,6 +6,7 @@ import SendDocumentModal from './SendDocumentModal';
 import DocumentViewModal from './DocumentViewModal';
 import DocumentLibraryModal from './DocumentLibraryModal';
 import DocumentCard from './DocumentCard';
+import XiaohongshuView from './XiaohongshuView';
 import { SavedDocument } from '../utils/documentLibrary';
 import { sendMoney, receiveMoney, getBalance, aiPayForUser, refundGift, getAIBalance, addAITransaction } from '../utils/wallet';
 import ActivityLogModal from './ActivityLogModal';
@@ -305,6 +306,25 @@ const backgroundTaskManager = {
           // 标记需要处理订单响应（在callback中处理）
           // 这里只是移除标记，实际更新逻辑在processAIOrderResponse中
           console.log(`🎁 AI订单响应: ${responseType}`);
+        }
+
+        // 检测小红书：小红书瀑布流[...]
+        const xhsMatch = finalContent.match(/小红书瀑布流\[([\s\S]*?)\]/);
+        if (xhsMatch) {
+          const xhsContent = xhsMatch[0]; // 完整的小红书内容
+          finalContent = finalContent.replace(xhsContent, '').trim();
+          
+          console.log('📕 AI发送小红书内容');
+          
+          allExtraMessages.push({
+            id: `${baseId}_xiaohongshu`,
+            role: 'assistant',
+            content: '发送了小红书内容',
+            timestamp: Date.now() + 100 + allExtraMessages.length * 10,
+            xiaohongshu: {
+              rawContent: xhsContent
+            }
+          });
         }
 
         // 检测AI送礼物：[送礼物:商品名称:价格:留言]
@@ -3169,6 +3189,11 @@ ${doc.content}`;
                           setViewingDocument(message.document);
                         }}
                       />
+                    )}
+                    
+                    {/* 小红书消息 */}
+                    {message.xiaohongshu && (
+                      <XiaohongshuView rawContent={message.xiaohongshu.rawContent} />
                     )}
                     
                     {/* 订单消息气泡（礼物/代付请求） */}

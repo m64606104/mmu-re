@@ -45,6 +45,8 @@ export interface Message {
   document?: DocumentMessage;
   // 🛍️ 订单/购物支持
   order?: OrderMessage;
+  // 📕 小红书支持
+  xiaohongshu?: XiaohongshuContent;
 }
 
 // 💰 红包/转账类型
@@ -86,6 +88,11 @@ export interface OrderProduct {
   price: number;
   quantity: number;
   image?: string;
+}
+
+// 📕 小红书内容类型
+export interface XiaohongshuContent {
+  rawContent: string; // 原始格式内容（包含所有小红书标记）
 }
 
 export interface CharacterSettings {
