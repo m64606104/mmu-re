@@ -219,8 +219,27 @@ const backgroundTaskManager = {
           });
         }
 
-        // 检测转账：[转账:金额:备注]
-        const transferMatch = finalContent.match(/\[转账:([\d.]+):([^\]]*)\]/);
+        // 🔥 智能识别转账（支持多种格式）
+        
+        // 格式1：标准格式 [转账:金额:备注]
+        let transferMatch = finalContent.match(/\[转账:([\d.]+):([^\]]*)\]/);
+        
+        // 格式2：描述性多行格式
+        // 【你发送了转账】
+        // 金额：¥88888
+        // 留言：xxx
+        // 状态：待领取
+        if (!transferMatch) {
+          const multiLineMatch = finalContent.match(/[【\[](?:你)?发送?了?转账[】\]]\s*金额[：:]\s*[¥￥]?([\d.]+)\s*留言[：:]\s*([^\n]*)/s);
+          if (multiLineMatch) {
+            transferMatch = [
+              multiLineMatch[0],
+              multiLineMatch[1], // 金额
+              multiLineMatch[2]  // 留言
+            ] as any;
+          }
+        }
+        
         if (transferMatch) {
           const amount = parseFloat(transferMatch[1]);
           const transferMsg = transferMatch[2];
@@ -242,15 +261,32 @@ const backgroundTaskManager = {
           });
         }
 
-        // 🔥 支持多个文档：[发文档:标题:类型] 文档内容 [发文档:标题2:类型2] 文档内容2
-        const docMatches = Array.from(finalContent.matchAll(/\[发文档:([^:]+):([^\]]+)\]/g));
-        if (docMatches.length > 0) {
-          console.log(`📄 检测到${docMatches.length}个文档标记`);
+        // 🔥 智能识别文档发送（支持多种格式）
+        
+        // 格式1：标准格式 [发文档:标题:类型]
+        const standardDocMatches = Array.from(finalContent.matchAll(/\[发文档:([^:]+):([^\]]+)\]/g));
+        
+        // 格式2：描述性格式 "发送了文档「标题」" 或 "发送了文档「标题」"
+        const descriptiveDocMatches = Array.from(finalContent.matchAll(/发送了?文档[「『]([^」』]+)[」』]/g));
+        
+        // 合并所有匹配，优先使用标准格式
+        const allDocMatches = standardDocMatches.length > 0 ? standardDocMatches : 
+                              descriptiveDocMatches.length > 0 ? descriptiveDocMatches.map(m => {
+                                // 将描述性格式转换为标准格式结构
+                                return {
+                                  ...m,
+                                  1: m[1], // 标题
+                                  2: 'text' // 默认类型
+                                };
+                              }) : [];
+        
+        if (allDocMatches.length > 0) {
+          console.log(`📄 检测到${allDocMatches.length}个文档标记`);
           
           // 按位置分割内容
           let textBeforeFirstDoc = '';
           
-          docMatches.forEach((docMatch, idx) => {
+          allDocMatches.forEach((docMatch: any, idx: number) => {
             const docTitle = docMatch[1];
             const docTypeInput = docMatch[2].toLowerCase();
             // 映射类型：markdown/code保持，其他都映射到text
@@ -267,7 +303,7 @@ const backgroundTaskManager = {
               // 第一个文档：标记前的内容可能是文本或文档内容
               textBeforeFirstDoc = finalContent.substring(0, tagIndex).trim();
               // 获取第一个标记后到第二个标记前的内容作为文档内容
-              const nextMatch = docMatches[idx + 1];
+              const nextMatch = allDocMatches[idx + 1];
               if (nextMatch) {
                 docContent = finalContent.substring(tagEndIndex, nextMatch.index).trim();
               } else {
@@ -294,7 +330,7 @@ const backgroundTaskManager = {
               }
             } else {
               // 后续文档：获取本标记后到下个标记前的内容
-              const nextMatch = docMatches[idx + 1];
+              const nextMatch = allDocMatches[idx + 1];
               if (nextMatch) {
                 docContent = finalContent.substring(tagEndIndex, nextMatch.index).trim();
               } else {
