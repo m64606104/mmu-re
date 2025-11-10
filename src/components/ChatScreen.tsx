@@ -177,60 +177,79 @@ const backgroundTaskManager = {
           });
         }
 
-        // 检测文档：[发文档:标题:类型] 或 文档内容\n[发文档:标题:类型]
-        // 允许任意类型描述（如"信件"），自动映射到text类型
-        const docMatch = finalContent.match(/\[发文档:([^:]+):([^\]]+)\]/);
-        if (docMatch) {
-          const docTitle = docMatch[1];
-          const docTypeInput = docMatch[2].toLowerCase();
-          // 映射类型：markdown/code保持，其他都映射到text
-          const docType: 'text' | 'markdown' | 'code' = 
-            docTypeInput === 'markdown' ? 'markdown' :
-            docTypeInput === 'code' ? 'code' : 'text';
+        // 🔥 支持多个文档：[发文档:标题:类型] 文档内容 [发文档:标题2:类型2] 文档内容2
+        const docMatches = Array.from(finalContent.matchAll(/\[发文档:([^:]+):([^\]]+)\]/g));
+        if (docMatches.length > 0) {
+          console.log(`📄 检测到${docMatches.length}个文档标记`);
           
-          const tagIndex = docMatch.index!;
-          const tagEndIndex = tagIndex + docMatch[0].length;
-          const contentBefore = finalContent.substring(0, tagIndex).trim();
-          const contentAfter = finalContent.substring(tagEndIndex).trim();
+          // 按位置分割内容
+          let textBeforeFirstDoc = '';
           
-          // 优先使用标记后的内容，如果没有则使用标记前的内容
-          let docContent = '';
-          if (contentAfter) {
-            // 格式1: [发文档:标题:类型] 内容在后面
-            docContent = contentAfter;
-            finalContent = contentBefore; // 保留标记前的文本
-          } else if (contentBefore) {
-            // 格式2: 内容在前面\n[发文档:标题:类型]
-            docContent = contentBefore;
-            finalContent = ''; // 所有内容都是文档，不保留文本
-          } else {
-            // 格式3: 只有标记，没有内容
-            docContent = '';
-            finalContent = '';
-          }
-          
-          // 🔥 限制AI生成文档的字数上限为20000字符
-          const MAX_DOC_LENGTH = 20000;
-          if (docContent.length > MAX_DOC_LENGTH) {
-            console.warn(`⚠️ AI文档超过字数限制: ${docContent.length} > ${MAX_DOC_LENGTH}，已截断`);
-            docContent = docContent.substring(0, MAX_DOC_LENGTH) + '\n\n...\n（文档内容过长，已截断）';
-          }
-          
-          console.log(`📄 AI发送文档: ${docTitle}, 内容长度: ${docContent.length}`);
-          
-          allExtraMessages.push({
-            id: `${baseId}_doc`,
-            role: 'assistant',
-            content: `发送了文档「${docTitle}」`,
-            timestamp: Date.now() + 100 + allExtraMessages.length * 10,
-            document: {
-              title: docTitle,
-              content: docContent,
-              type: docType,
-              greeting: '请查收',
-              size: new Blob([docContent]).size
+          docMatches.forEach((docMatch, idx) => {
+            const docTitle = docMatch[1];
+            const docTypeInput = docMatch[2].toLowerCase();
+            // 映射类型：markdown/code保持，其他都映射到text
+            const docType: 'text' | 'markdown' | 'code' = 
+              docTypeInput === 'markdown' ? 'markdown' :
+              docTypeInput === 'code' ? 'code' : 'text';
+            
+            const tagIndex = docMatch.index!;
+            const tagEndIndex = tagIndex + docMatch[0].length;
+            
+            // 获取这个标记之前的内容
+            let docContent = '';
+            if (idx === 0) {
+              // 第一个文档：标记前的内容可能是文本或文档内容
+              textBeforeFirstDoc = finalContent.substring(0, tagIndex).trim();
+              // 获取第一个标记后到第二个标记前的内容作为文档内容
+              const nextMatch = docMatches[idx + 1];
+              if (nextMatch) {
+                docContent = finalContent.substring(tagEndIndex, nextMatch.index).trim();
+              } else {
+                docContent = finalContent.substring(tagEndIndex).trim();
+              }
+              
+              // 如果第一个标记前有内容且标记后没内容，说明前面的是文档内容
+              if (textBeforeFirstDoc && !docContent) {
+                docContent = textBeforeFirstDoc;
+                textBeforeFirstDoc = '';
+              }
+            } else {
+              // 后续文档：获取本标记后到下个标记前的内容
+              const nextMatch = docMatches[idx + 1];
+              if (nextMatch) {
+                docContent = finalContent.substring(tagEndIndex, nextMatch.index).trim();
+              } else {
+                docContent = finalContent.substring(tagEndIndex).trim();
+              }
             }
+            
+            // 🔥 限制AI生成文档的字数上限为20000字符
+            const MAX_DOC_LENGTH = 20000;
+            if (docContent.length > MAX_DOC_LENGTH) {
+              console.warn(`⚠️ AI文档超过字数限制: ${docContent.length} > ${MAX_DOC_LENGTH}，已截断`);
+              docContent = docContent.substring(0, MAX_DOC_LENGTH) + '\n\n...\n（文档内容过长，已截断）';
+            }
+            
+            console.log(`📄 AI发送文档${idx + 1}: ${docTitle}, 类型: ${docType}, 内容长度: ${docContent.length}`);
+            
+            allExtraMessages.push({
+              id: `${baseId}_doc_${idx}`,
+              role: 'assistant',
+              content: `发送了文档「${docTitle}」`,
+              timestamp: Date.now() + 100 + allExtraMessages.length * 10,
+              document: {
+                title: docTitle,
+                content: docContent,
+                type: docType,
+                greeting: '请查收',
+                size: new Blob([docContent]).size
+              }
+            });
           });
+          
+          // 保留第一个文档标记前的文本（如果有）
+          finalContent = textBeforeFirstDoc;
         }
 
         // 检测引用消息：[回复 我/你 说的"xxx"]
