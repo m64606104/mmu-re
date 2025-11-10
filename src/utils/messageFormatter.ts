@@ -65,34 +65,56 @@ export const splitMessages = (message: string): string[] => {
     return [];
   }
   
-  // 🔒 保护文档内容：提取文档标记和内容，避免被拆分
+  // 🔒 保护特殊格式内容：文档、红包、转账、订单、小红书等，避免被拆分
+  const protectedPatterns = [
+    /\[发文档:[^\]]+\]/,          // 文档
+    /\[发红包:\d+(?:\.\d+)?:[^\]]*\]/,     // 红包
+    /\[转账:\d+(?:\.\d+)?:[^\]]*\]/,       // 转账
+    /\[送礼物:[^:]+:\d+(?:\.\d+)?:[^\]]*\]/, // 礼物
+    /\[接收红包:[^\]]*\]/,        // 接收红包
+    /\[退回红包:[^\]]*\]/,        // 退回红包
+    /\[接收转账:[^\]]*\]/,        // 接收转账
+    /\[退回转账:[^\]]*\]/,        // 退回转账
+    /小红书瀑布流\[[\s\S]*?\]/     // 小红书
+  ];
+  
+  let protectedParts: string[] = [];
+  let messageWithoutProtected = message;
+  
+  // 检查并提取所有受保护的内容
+  for (const pattern of protectedPatterns) {
+    const matches = Array.from(messageWithoutProtected.matchAll(new RegExp(pattern.source, 'g')));
+    if (matches.length > 0) {
+      matches.forEach(match => {
+        protectedParts.push(match[0]);
+        // 用占位符替换，避免影响其他内容的分割
+        messageWithoutProtected = messageWithoutProtected.replace(match[0], '___PROTECTED___');
+      });
+    }
+  }
+  
+  // 如果有文档标记且标记后有内容，需要特殊处理（文档内容在标记后）
   const documentPattern = /\[发文档:([^:]+):([^\]]+)\]/;
   const docMatch = message.match(documentPattern);
   let documentPart = '';
-  let messageWithoutDoc = message;
   
   if (docMatch) {
     const tagIndex = docMatch.index!;
     const tagEndIndex = tagIndex + docMatch[0].length;
-    
-    // 提取文档标记后的所有内容作为文档内容
     const contentAfter = message.substring(tagEndIndex).trim();
     
     if (contentAfter) {
       // 格式：[发文档:xxx] 内容在后面
       // 将整个文档（标记+内容）作为一个整体保护
-      documentPart = message.substring(tagIndex).trim(); // 从标记开始到结尾的所有内容
-      messageWithoutDoc = message.substring(0, tagIndex).trim(); // 只保留标记前的内容
-    } else {
-      // 格式：内容在前面 [发文档:xxx]
-      // 将整个文档（内容+标记）作为一个整体保护
-      documentPart = message; // 整个消息都是文档
-      messageWithoutDoc = ''; // 没有其他内容
+      documentPart = message.substring(tagIndex).trim();
+      messageWithoutProtected = message.substring(0, tagIndex).trim();
+      // 从已保护列表中移除单独的文档标记
+      protectedParts = protectedParts.filter(p => !p.match(documentPattern));
     }
   }
   
-  // 先清理消息（只清理非文档部分）
-  const cleaned = cleanAIMessage(messageWithoutDoc);
+  // 先清理消息（只清理非保护部分）
+  const cleaned = cleanAIMessage(messageWithoutProtected);
   
   // 检测并保护URL
   const urlPattern = /https?:\/\/[^\s]+/g;
@@ -209,14 +231,23 @@ export const splitMessages = (message: string): string[] => {
     }
   }
   
-  // 第四步：恢复URL占位符
+  // 第四步：恢复URL占位符和受保护内容
   let urlIndex = 0;
+  let protectedIndex = 0;
   const restoredMessages = finalMessages.map(msg => {
-    return msg.replace(new RegExp(urlPlaceholder, 'g'), () => {
+    // 先恢复URL
+    let restored = msg.replace(new RegExp(urlPlaceholder, 'g'), () => {
       const url = urls[urlIndex];
       urlIndex++;
       return url || '';
     });
+    // 再恢复受保护的内容（红包、转账等）
+    restored = restored.replace(/___PROTECTED___/g, () => {
+      const protectedContent = protectedParts[protectedIndex];
+      protectedIndex++;
+      return protectedContent || '';
+    });
+    return restored;
   });
   
   // 过滤掉空消息、只有标点的消息、以及纯URL的消息
