@@ -8,7 +8,7 @@ interface DocumentCardProps {
   onClick: (e?: React.MouseEvent) => void;
 }
 
-const DocumentCard: React.FC<DocumentCardProps> = ({ title, content, greeting, type, onClick }) => {
+const DocumentCard: React.FC<DocumentCardProps> = ({ title, content, greeting, onClick }) => {
   // 智能识别文档类型
   const getDocumentStyle = () => {
     const lowerTitle = title.toLowerCase();
