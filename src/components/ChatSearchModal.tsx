@@ -31,24 +31,48 @@ const ChatSearchModal: React.FC<ChatSearchModalProps> = ({ conversation, onClose
   const filteredMessages = useMemo(() => {
     let messages = conversation.messages;
 
+    // 🚫 首先过滤掉系统消息
+    messages = messages.filter(msg => msg.role !== 'system');
+
     // 根据分类筛选
     if (activeCategory !== 'all') {
       messages = messages.filter(msg => {
         switch (activeCategory) {
           case 'image':
-            return msg.mediaType === 'image' || msg.mediaType === 'video';
+            // 只显示AI发送的图片和视频
+            return msg.role === 'assistant' && (msg.mediaType === 'image' || msg.mediaType === 'video');
           case 'video':
-            return msg.mediaType === 'video';
+            // 只显示AI发送的视频
+            return msg.role === 'assistant' && msg.mediaType === 'video';
           case 'file':
-            return msg.document;
+            // 只显示AI发送的文档
+            return msg.role === 'assistant' && msg.document;
           case 'voice':
-            return msg.mediaType === 'voice';
+            // 只显示AI发送的语音
+            return msg.role === 'assistant' && msg.mediaType === 'voice';
           case 'link':
-            return msg.linkPreview || msg.content.includes('http://') || msg.content.includes('https://');
+            // 只显示AI发送的链接
+            return msg.role === 'assistant' && (msg.linkPreview || msg.content.includes('http://') || msg.content.includes('https://'));
           case 'trade':
+            // 显示所有交易（AI和用户都可能发起）
             return msg.moneyTransfer;
           case 'gift':
+            // 显示所有礼物（AI和用户都可能发起）
             return msg.order;
+          case 'date':
+            // 日期分类：显示所有非系统消息（已在上面过滤）
+            return true;
+          case 'location':
+            // 位置分类：检查消息内容是否包含位置信息
+            return msg.content && (
+              msg.content.includes('位置') ||
+              msg.content.includes('地址') ||
+              msg.content.includes('在') ||
+              /[\u4e00-\u9fa5]+[省市区县街道路]\d*号?/.test(msg.content)
+            );
+          case 'note':
+            // 笔记分类：显示较长的文本消息
+            return msg.content && msg.content.length > 100 && !msg.mediaType && !msg.document;
           default:
             return true;
         }

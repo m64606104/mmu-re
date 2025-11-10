@@ -1,30 +1,59 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useMemo } from 'react';
 import { ChevronLeft, FileText, Trash2, Edit, Send, Search, X } from 'lucide-react';
 import { getDocumentLibrary, deleteDocument, SavedDocument } from '../utils/documentLibrary';
 import { useConfirm } from '../hooks/useConfirm';
+import { Conversation, KnowledgeBaseItem } from '../types';
 
 interface DocumentLibraryModalProps {
   onClose: () => void;
   onSelectDocument?: (document: SavedDocument, shouldEdit: boolean) => void;
+  conversations?: Conversation[]; // 新增：用于收集知识库文档
 }
 
-const DocumentLibraryModal: React.FC<DocumentLibraryModalProps> = ({ onClose, onSelectDocument }) => {
-  const [documents, setDocuments] = useState<SavedDocument[]>([]);
+const DocumentLibraryModal: React.FC<DocumentLibraryModalProps> = ({ onClose, onSelectDocument, conversations = [] }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedType, setSelectedType] = useState<'all' | 'text' | 'markdown' | 'code'>('all');
-  const [selectedSource, setSelectedSource] = useState<'all' | 'AI发送' | '用户上传'>('all');
+  const [selectedSource, setSelectedSource] = useState<'all' | 'AI发送' | '用户上传' | '知识库'>('all');
   const { confirm, ConfirmComponent } = useConfirm();
 
-  useEffect(() => {
-    loadDocuments();
-  }, []);
+  // 收集所有文档：手动保存 + 知识库
+  const allDocuments = useMemo(() => {
+    const docs: SavedDocument[] = [];
+    
+    // 1. 从 localStorage 读取手动保存的文档
+    const savedDocs = getDocumentLibrary();
+    docs.push(...savedDocs);
+    
+    // 2. 从所有对话的知识库中收集文档
+    conversations.forEach((conv) => {
+      if (conv.characterSettings?.knowledgeBase) {
+        conv.characterSettings.knowledgeBase.forEach((item: KnowledgeBaseItem) => {
+          docs.push({
+            id: `kb_${conv.id}_${item.id}`,
+            title: item.title,
+            content: item.content,
+            type: 'text', // 知识库默认为text类型
+            size: new Blob([item.content]).size,
+            savedAt: item.createdAt || Date.now(),
+            source: '知识库' // 标记为知识库文档
+          });
+        });
+      }
+    });
+    
+    // 按时间倒序排列
+    return docs.sort((a, b) => b.savedAt - a.savedAt);
+  }, [conversations]);
 
-  const loadDocuments = () => {
-    const library = getDocumentLibrary();
-    setDocuments(library);
-  };
+  const documents = allDocuments;
 
   const handleDelete = async (documentId: string) => {
+    // 知识库文档不能删除，需要在角色设置中删除
+    if (documentId.startsWith('kb_')) {
+      alert('知识库文档需要在角色设置中删除');
+      return;
+    }
+    
     const confirmed = await confirm({
       title: '删除文档',
       message: '确定要删除这个文档吗？\n删除后无法恢复。',
@@ -35,7 +64,6 @@ const DocumentLibraryModal: React.FC<DocumentLibraryModalProps> = ({ onClose, on
     
     if (confirmed) {
       deleteDocument(documentId);
-      loadDocuments();
     }
   };
 
@@ -143,7 +171,8 @@ const DocumentLibraryModal: React.FC<DocumentLibraryModalProps> = ({ onClose, on
           {[
             { value: 'all', label: '全部来源' },
             { value: 'AI发送', label: '🤖 AI发送' },
-            { value: '用户上传', label: '📤 用户上传' }
+            { value: '用户上传', label: '📤 用户上传' },
+            { value: '知识库', label: '📚 知识库' }
           ].map(source => (
             <button
               key={source.value}

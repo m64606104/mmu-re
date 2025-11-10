@@ -548,6 +548,15 @@ const backgroundTaskManager = {
           }
         }
         
+        // 检测头像更换：[换头像]
+        // 注意：实际的头像更新会在callback外部处理
+        const hasAvatarChange = finalContent.includes('[换头像]');
+        if (hasAvatarChange) {
+          console.log('🎭 [头像更换] 检测到换头像指令，将在消息中标记');
+          // 移除标记，但保留信息供外部处理
+          finalContent = finalContent.replace(/\[换头像\]/g, '').trim();
+        }
+        
         // 构建消息对象
         // 如果提取了特殊指令且没有其他内容，不创建文本消息
         const hasSpecialContent = allExtraMessages.some(msg => msg.id.startsWith(baseId));
@@ -1864,6 +1873,28 @@ ${SmartHTMLGenerator.getModuleInstructions()}
 - 不要过度频繁（显得刻意），但也不要太吝啬
 - 金额/礼物价值要符合你的角色身份和关系亲密度
 
+【👤 头像更换功能】：
+当用户发送图片并要求你换头像时（如"换头像"、"用这个做头像"、"换成这个头像"等），你可以使用以下格式：
+
+**格式**：[换头像]
+
+**使用场景**：
+1. 用户明确要求："换头像"、"用这个做头像"
+2. 用户发送图片后说："这个做你头像吧"、"换成这个"
+3. 用户说："看，这个适合你"（暗示换头像）
+
+**示例对话**：
+用户：[图片] 这个头像很适合你，换成这个吧
+你：好哒！这个头像很好看呢～ [换头像]
+
+用户：换头像
+你：好的！帮我换了～ [换头像]
+
+**注意**：
+- 只有在用户最近发送了图片时才能使用
+- 不要主动提出换头像，等用户要求
+- 换头像后要表达感谢或喜欢
+
 【📄 发送内容卡片功能】：
 你可以发送各种形式的内容卡片给用户，**必须严格使用以下格式**：
 [发文档:标题:类型] 完整的文档内容...
@@ -2741,6 +2772,32 @@ ${doc.content}`;
               }
             }
             
+            // 🎭 检查是否有头像更换指令
+            // 检测AI响应原文是否包含[换头像]
+            const hasAvatarChangeRequest = newMessages.some(msg => 
+              msg.role === 'assistant' && msg.content && msg.content.includes('换头像')
+            );
+            if (hasAvatarChangeRequest) {
+              console.log('🎭 [头像更换] AI要求更换头像');
+              // 查找最近的用户图片消息
+              const userImageMessage = [...currentMessages]
+                .reverse()
+                .find(m => m.role === 'user' && m.mediaType === 'image' && m.mediaUrl);
+              
+              if (userImageMessage && userImageMessage.mediaUrl) {
+                console.log('✅ [头像更换] 找到用户图片，更新AI头像');
+                onUpdateConversation(conversationId, {
+                  characterSettings: {
+                    ...conversation.characterSettings!,
+                    avatar: userImageMessage.mediaUrl
+                  }
+                });
+                console.log('✅ [头像更换] AI头像已更新');
+              } else {
+                console.warn('⚠️ [头像更换] 未找到用户发送的图片');
+              }
+            }
+            
             // 所有消息显示完毕，隐藏生成状态
             setIsGenerating(false);
             
@@ -2765,6 +2822,27 @@ ${doc.content}`;
                 processAIMoneyResponse(msg);
               }
             });
+            
+            // 🎭 检查是否有头像更换指令（用户离开的情况下也要处理）
+            const hasAvatarChangeRequest = newMessages.some(msg => 
+              msg.role === 'assistant' && msg.content && msg.content.includes('换头像')
+            );
+            if (hasAvatarChangeRequest) {
+              console.log('🎭 [头像更换] AI要求更换头像（用户已离开）');
+              const userImageMessage = [...currentMessages]
+                .reverse()
+                .find(m => m.role === 'user' && m.mediaType === 'image' && m.mediaUrl);
+              
+              if (userImageMessage && userImageMessage.mediaUrl) {
+                console.log('✅ [头像更换] 更新AI头像');
+                onUpdateConversation(conversationId, {
+                  characterSettings: {
+                    ...conversation.characterSettings!,
+                    avatar: userImageMessage.mediaUrl
+                  }
+                });
+              }
+            }
             
             // 显示消息通知（用户已离开页面）
             showMessageNotification(conversationId, newMessages);
@@ -4535,6 +4613,7 @@ ${doc.content}`;
     {/* 文档库 */}
     {showDocumentLibrary && (
       <DocumentLibraryModal
+        conversations={conversations}
         onClose={() => setShowDocumentLibrary(false)}
         onSelectDocument={(doc, shouldEdit) => {
           if (shouldEdit) {
