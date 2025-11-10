@@ -82,12 +82,36 @@ const backgroundTaskManager = {
         return;
       }
 
-      // 使用splitMessages分割消息
-      const splitMsgs = splitMessages(assistantMessage);
+      // 🎭 优先检测完整的社交平台内容（必须在splitMessages之前）
+      const socialPlatform = SmartSocialGenerator.detectPlatform(assistantMessage);
       
       // 将分割后的文本转换为Message对象数组
       const messages: Message[] = [];
       const allExtraMessages: Message[] = [];
+      
+      // 如果检测到社交平台内容，不进行消息拆分，保持完整
+      if (socialPlatform) {
+        console.log(`🎭 检测到完整${socialPlatform}内容，跳过消息拆分`);
+        
+        // 创建社交平台消息
+        allExtraMessages.push({
+          id: `${Date.now()}_social`,
+          role: 'assistant',
+          content: `分享了${socialPlatform === 'xiaohongshu' ? '小红书' : socialPlatform === 'zhihu' ? '知乎' : '微博'}内容`,
+          timestamp: Date.now() + 100,
+          socialFeed: {
+            platform: socialPlatform,
+            rawContent: assistantMessage
+          }
+        });
+        
+        // 直接返回，不进行后续的消息拆分处理
+        callback([...messages, ...allExtraMessages], conversation.id);
+        return;
+      }
+      
+      // 使用splitMessages分割消息（非社交平台内容）
+      const splitMsgs = splitMessages(assistantMessage);
       
       splitMsgs.forEach((content, index) => {
         const baseId = Date.now().toString() + '_' + index;
@@ -141,25 +165,7 @@ const backgroundTaskManager = {
         let finalContent = cleanContent;
         console.log(`📖 开始解析AI消息: ${finalContent.substring(0, 100)}...`);
         
-        // 🎭 优先检测社交平台内容（完整界面）
-        const socialPlatform = SmartSocialGenerator.detectPlatform(finalContent);
-        if (socialPlatform) {
-          console.log(`🎭 检测到${socialPlatform}完整内容`);
-          
-          allExtraMessages.push({
-            id: `${baseId}_social`,
-            role: 'assistant',
-            content: `分享了${socialPlatform === 'xiaohongshu' ? '小红书' : socialPlatform === 'zhihu' ? '知乎' : '微博'}内容`,
-            timestamp: Date.now() + 100 + allExtraMessages.length * 10,
-            socialFeed: {
-              platform: socialPlatform,
-              rawContent: finalContent
-            }
-          });
-          
-          // 社交内容已完全处理，清空finalContent
-          finalContent = '';
-        }
+        // 注意：社交平台内容已在消息拆分前处理，这里不再检测
         
         // 🔗 解析链接预览（新系统）
         if (finalContent) {
