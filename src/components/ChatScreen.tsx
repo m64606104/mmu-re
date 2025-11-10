@@ -209,7 +209,20 @@ const backgroundTaskManager = {
               if (nextMatch) {
                 docContent = finalContent.substring(tagEndIndex, nextMatch.index).trim();
               } else {
-                docContent = finalContent.substring(tagEndIndex).trim();
+                // 没有下一个文档标记，提取到双换行或消息结束
+                let remainingContent = finalContent.substring(tagEndIndex);
+                // 查找双换行位置（表示文档内容结束）
+                const doubleNewlineIndex = remainingContent.search(/\n\s*\n/);
+                if (doubleNewlineIndex !== -1) {
+                  docContent = remainingContent.substring(0, doubleNewlineIndex).trim();
+                  // 把双换行后的内容保留到finalContent
+                  const afterDoc = remainingContent.substring(doubleNewlineIndex).trim();
+                  if (afterDoc) {
+                    textBeforeFirstDoc = textBeforeFirstDoc ? textBeforeFirstDoc + '\n\n' + afterDoc : afterDoc;
+                  }
+                } else {
+                  docContent = remainingContent.trim();
+                }
               }
               
               // 如果第一个标记前有内容且标记后没内容，说明前面的是文档内容
@@ -223,7 +236,19 @@ const backgroundTaskManager = {
               if (nextMatch) {
                 docContent = finalContent.substring(tagEndIndex, nextMatch.index).trim();
               } else {
-                docContent = finalContent.substring(tagEndIndex).trim();
+                // 没有下一个文档标记，提取到双换行或消息结束
+                let remainingContent = finalContent.substring(tagEndIndex);
+                const doubleNewlineIndex = remainingContent.search(/\n\s*\n/);
+                if (doubleNewlineIndex !== -1) {
+                  docContent = remainingContent.substring(0, doubleNewlineIndex).trim();
+                  // 把双换行后的内容保留到finalContent
+                  const afterDoc = remainingContent.substring(doubleNewlineIndex).trim();
+                  if (afterDoc && idx === 0) {
+                    textBeforeFirstDoc = textBeforeFirstDoc ? textBeforeFirstDoc + '\n\n' + afterDoc : afterDoc;
+                  }
+                } else {
+                  docContent = remainingContent.trim();
+                }
               }
             }
             

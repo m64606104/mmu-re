@@ -9,6 +9,139 @@ interface DocumentViewModalProps {
   onForward?: (document: DocumentMessage) => void;
 }
 
+// 智能识别并渲染文档内容
+const renderDocumentContent = (content: string, title: string) => {
+  // 检测是否包含<orange>标签
+  const orangeTagRegex = /<orange>([\s\S]*?)<\/orange>/g;
+  const orangeMatches = Array.from(content.matchAll(orangeTagRegex));
+  
+  if (orangeMatches.length > 0) {
+    // 包含<orange>标签，渲染HTML内容
+    return (
+      <div className="space-y-4">
+        {orangeMatches.map((match, idx) => (
+          <div 
+            key={idx} 
+            className="max-w-[310px] mx-auto"
+            dangerouslySetInnerHTML={{ __html: match[1] }}
+          />
+        ))}
+        {/* 渲染非orange标签的文本内容 */}
+        {content.replace(orangeTagRegex, '').trim() && (
+          <div className="mt-4 text-gray-800 leading-relaxed whitespace-pre-wrap">
+            {content.replace(orangeTagRegex, '').trim()}
+          </div>
+        )}
+      </div>
+    );
+  }
+  
+  // 智能识别内容类型并应用样式
+  const lowerTitle = title.toLowerCase();
+  const lowerContent = content.toLowerCase();
+  
+  // 日记/日志类
+  if (lowerTitle.includes('日记') || lowerTitle.includes('日志') || content.includes('今天') && content.includes('心情')) {
+    return (
+      <div className="max-w-[310px] mx-auto bg-gradient-to-br from-amber-50 to-orange-50 rounded-2xl p-6 shadow-lg border-2 border-amber-200">
+        <div className="text-center mb-4">
+          <div className="text-2xl font-bold text-amber-800" style={{ fontFamily: '"KaiTi", serif' }}>{title}</div>
+          <div className="text-sm text-amber-600 mt-1">📖</div>
+        </div>
+        <div className="text-gray-800 leading-relaxed whitespace-pre-wrap" style={{ fontFamily: '"KaiTi", serif', fontSize: '15px' }}>
+          {content}
+        </div>
+      </div>
+    );
+  }
+  
+  // 便签/便利贴类
+  if (lowerTitle.includes('便签') || lowerTitle.includes('便利贴') || lowerTitle.includes('提醒')) {
+    return (
+      <div className="max-w-[310px] mx-auto">
+        <div className="bg-yellow-100 rounded-lg p-5 shadow-md border-l-4 border-yellow-400" style={{ transform: 'rotate(-1deg)' }}>
+          <div className="flex items-start gap-2 mb-3">
+            <div className="text-2xl">📌</div>
+            <div className="flex-1 font-bold text-gray-800">{title}</div>
+          </div>
+          <div className="text-gray-700 leading-relaxed whitespace-pre-wrap" style={{ fontFamily: '"Comic Sans MS", cursive' }}>
+            {content}
+          </div>
+        </div>
+      </div>
+    );
+  }
+  
+  // 聊天记录类
+  if (lowerTitle.includes('聊天') || lowerTitle.includes('对话') || content.includes('：') && content.split('\n').length > 3) {
+    const lines = content.split('\n').filter(l => l.trim());
+    return (
+      <div className="max-w-[310px] mx-auto bg-gray-100 rounded-2xl p-4 shadow-lg">
+        <div className="bg-white rounded-t-xl p-3 text-center font-semibold text-gray-800 border-b">
+          💬 {title}
+        </div>
+        <div className="bg-white p-4 space-y-2 max-h-96 overflow-y-auto">
+          {lines.map((line, idx) => {
+            const [speaker, ...messageParts] = line.split('：');
+            const message = messageParts.join('：');
+            const isLeft = idx % 2 === 0;
+            return message ? (
+              <div key={idx} className={`flex ${isLeft ? 'justify-start' : 'justify-end'}`}>
+                <div className={`max-w-[70%] px-3 py-2 rounded-2xl ${isLeft ? 'bg-white border border-gray-200' : 'bg-blue-500 text-white'}`}>
+                  {message}
+                </div>
+              </div>
+            ) : null;
+          })}
+        </div>
+      </div>
+    );
+  }
+  
+  // 信件类
+  if (lowerTitle.includes('信') || lowerTitle.includes('letter') || content.includes('亲爱的') || content.includes('此致')) {
+    return (
+      <div className="max-w-[310px] mx-auto bg-gradient-to-b from-blue-50 to-white rounded-xl p-6 shadow-lg border border-blue-200">
+        <div className="text-center mb-6">
+          <div className="text-xl font-serif text-blue-900">✉️ {title}</div>
+          <div className="w-16 h-0.5 bg-blue-300 mx-auto mt-2"></div>
+        </div>
+        <div className="text-gray-800 leading-loose whitespace-pre-wrap" style={{ fontFamily: 'serif', fontSize: '14px', textIndent: '2em' }}>
+          {content}
+        </div>
+      </div>
+    );
+  }
+  
+  // 清单/列表类
+  if (lowerTitle.includes('清单') || lowerTitle.includes('列表') || lowerTitle.includes('todo') || content.split('\n').filter(l => l.trim().match(/^[\d\-\*•]/) || l.includes('☐') || l.includes('✓')).length > 2) {
+    const lines = content.split('\n').filter(l => l.trim());
+    return (
+      <div className="max-w-[310px] mx-auto bg-white rounded-xl p-5 shadow-lg border-2 border-indigo-200">
+        <div className="flex items-center gap-2 mb-4 pb-3 border-b-2 border-indigo-100">
+          <div className="text-2xl">📋</div>
+          <div className="font-bold text-indigo-900">{title}</div>
+        </div>
+        <div className="space-y-2">
+          {lines.map((line, idx) => (
+            <div key={idx} className="flex items-start gap-2 text-gray-700">
+              <div className="mt-1">{line.includes('✓') ? '✅' : '☐'}</div>
+              <div className="flex-1">{line.replace(/^[\d\-\*•☐✓]\s*/, '')}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
+  
+  // 默认：优雅的文本显示
+  return (
+    <div className="text-gray-800 leading-relaxed whitespace-pre-wrap">
+      {content}
+    </div>
+  );
+};
+
 const DocumentViewModal: React.FC<DocumentViewModalProps> = ({ document, onClose, onForward }) => {
   const [showSaveToast, setShowSaveToast] = useState(false);
   const [showRenameModal, setShowRenameModal] = useState(false);
@@ -113,31 +246,12 @@ const DocumentViewModal: React.FC<DocumentViewModalProps> = ({ document, onClose
           {/* 文档内容区域 */}
           <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-8">
             {document.type === 'code' ? (
-              <pre className="text-sm font-mono text-gray-800 whitespace-pre-wrap break-words">
+              <pre className="text-sm font-mono text-gray-800 whitespace-pre-wrap break-words bg-gray-50 p-4 rounded-lg border border-gray-200">
                 {document.content}
               </pre>
             ) : (
               <div className="prose prose-sm max-w-none">
-                {document.type === 'markdown' ? (
-                  // 简单的Markdown渲染（仅支持段落）
-                  <div className="space-y-4">
-                    {document.content.split('\n\n').map((para, idx) => (
-                      <p key={idx} className="text-gray-800 leading-relaxed">
-                        {para.split('\n').map((line, lineIdx) => (
-                          <React.Fragment key={lineIdx}>
-                            {line}
-                            {lineIdx < para.split('\n').length - 1 && <br />}
-                          </React.Fragment>
-                        ))}
-                      </p>
-                    ))}
-                  </div>
-                ) : (
-                  // 普通文本
-                  <div className="text-gray-800 leading-relaxed whitespace-pre-wrap">
-                    {document.content}
-                  </div>
-                )}
+                {renderDocumentContent(document.content, document.title)}
               </div>
             )}
           </div>
