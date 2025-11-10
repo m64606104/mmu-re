@@ -5,9 +5,11 @@ import MoneyTransferModal from './MoneyTransferModal';
 import SendDocumentModal from './SendDocumentModal';
 import DocumentViewModal from './DocumentViewModal';
 import DocumentLibraryModal from './DocumentLibraryModal';
-import InlineDocumentRenderer from './InlineDocumentRenderer';
+import DocumentCard from './DocumentCard';
 import XiaohongshuView from './XiaohongshuView';
 import SelectContactModal from './SelectContactModal';
+import WeChatLinkPreview from './WeChatLinkPreview';
+import { SmartLinkParser } from '../utils/smartLinkParser';
 import { SavedDocument } from '../utils/documentLibrary';
 import { sendMoney, receiveMoney, getBalance, aiPayForUser, refundGift, getAIBalance, addAITransaction } from '../utils/wallet';
 import ActivityLogModal from './ActivityLogModal';
@@ -131,9 +133,29 @@ const backgroundTaskManager = {
           cleanContent = cleanContent.replace(match[0], '').trim();
         }
         
-        // 🔍 解析特殊指令（红包、转账、文档）
+        // 🔍 解析特殊指令（链接预览、红包、转账、文档）
         let finalContent = cleanContent;
         console.log(`📖 开始解析AI消息: ${finalContent.substring(0, 100)}...`);
+        
+        // 🔗 优先解析链接预览（新系统）
+        const parsedLink = SmartLinkParser.parseMessage(finalContent);
+        if (parsedLink.linkPreviews.length > 0) {
+          console.log(`🔗 检测到${parsedLink.linkPreviews.length}个链接预览`);
+          
+          // 为每个链接预览创建消息
+          parsedLink.linkPreviews.forEach((linkPreview, idx) => {
+            allExtraMessages.push({
+              id: `${baseId}_link_${idx}`,
+              role: 'assistant',
+              content: `分享了${linkPreview.platform === 'xiaohongshu' ? '小红书' : linkPreview.platform === 'zhihu' ? '知乎' : ''}链接`,
+              timestamp: Date.now() + 100 + allExtraMessages.length * 10,
+              linkPreview
+            });
+          });
+          
+          // 更新finalContent为去除链接标记后的纯文本
+          finalContent = parsedLink.textContent;
+        }
         
         // 检测红包：[发红包:金额:留言]
         const redPacketMatch = finalContent.match(/\[发红包:([\d.]+):([^\]]*)\]/);
@@ -1626,6 +1648,8 @@ ${conversation.characterSettings.memoryEvents ? `记忆事件：${conversation.c
 - 语音消息的内容要口语化，像真的在说话
 - 表情包描述要准确传达情绪
 - 引用消息会自动显示在气泡上方或内部，不影响其他内容
+
+${SmartLinkParser.getPromptInstructions()}
 
 【💰 红包和转账功能】：
 你可以在适当的场景下发送红包或转账，使用以下格式：
@@ -3250,16 +3274,35 @@ ${doc.content}`;
                       </div>
                     ) : null}
                     
-                    {/* 🎯 文档消息 - 内联渲染 */}
-                    {message.document && (
-                      <div className="px-4 pb-3">
-                        <InlineDocumentRenderer
-                          title={message.document.title}
-                          content={message.document.content}
-                          type={message.document.type}
-                          onViewFull={() => setViewingDocument(message.document)}
-                        />
-                      </div>
+                    {/* 🔗 微信风格链接预览（新系统，优先显示） */}
+                    {message.linkPreview && (
+                      <WeChatLinkPreview
+                        data={message.linkPreview}
+                        onClick={() => {
+                          // 如果有完整内容，打开文档查看器
+                          if (message.linkPreview!.content) {
+                            setViewingDocument({
+                              title: message.linkPreview!.title,
+                              content: message.linkPreview!.content,
+                              type: 'text'
+                            });
+                          }
+                        }}
+                      />
+                    )}
+                    
+                    {/* 文档消息卡片（旧系统，保留兼容） */}
+                    {!message.linkPreview && message.document && (
+                      <DocumentCard
+                        title={message.document.title}
+                        content={message.document.content}
+                        greeting={message.document.greeting}
+                        type={message.document.type}
+                        onClick={(e) => {
+                          e?.stopPropagation?.();
+                          setViewingDocument(message.document);
+                        }}
+                      />
                     )}
                     
                     {/* 小红书消息 */}

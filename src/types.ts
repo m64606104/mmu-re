@@ -47,6 +47,8 @@ export interface Message {
   order?: OrderMessage;
   // 📕 小红书支持
   xiaohongshu?: XiaohongshuContent;
+  // 🔗 链接预览支持（新系统，替代旧的document）
+  linkPreview?: LinkPreviewMessage;
 }
 
 // 💰 红包/转账类型
@@ -93,6 +95,18 @@ export interface OrderProduct {
 // 📕 小红书内容类型
 export interface XiaohongshuContent {
   rawContent: string; // 原始格式内容（包含所有小红书标记）
+}
+
+// 🔗 链接预览消息类型（新系统）
+export interface LinkPreviewMessage {
+  title: string;           // 标题
+  description?: string;    // 描述/摘要
+  coverImage?: string;     // 封面图片URL或描述
+  platform: 'xiaohongshu' | 'zhihu' | 'weibo' | 'wechat' | 'news' | 'web' | 'document';
+  url?: string;            // 实际URL（如果有）
+  author?: string;         // 作者
+  publishTime?: string;    // 发布时间
+  content?: string;        // 完整内容（用于点击后展开）
 }
 
 export interface CharacterSettings {
