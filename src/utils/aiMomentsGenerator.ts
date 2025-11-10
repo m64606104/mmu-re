@@ -439,7 +439,7 @@ export const generateAIMoment = async (
         model: apiConfig.modelName,
         messages: [{ role: 'user', content: prompt }],
         temperature: 0.9,
-        max_tokens: 2000
+        max_tokens: 4000  // 🔥 增加到4000，支持多图片朋友圈（9张图×60字=540字，加文字内容）
       })
     });
     
@@ -501,8 +501,20 @@ export const generateAIMoment = async (
         hasImage = true;
       }
       
-      // 移除图片标记后的内容
-      let cleanedLine = trimmedLine.replace(/\[图片\d*[:：][^\]]+\]/g, '').trim();
+      // 🔥 容错：处理可能被截断的图片标记（缺少结尾的]）
+      const incompleteImagePattern = /\[图片\d*[:：]([^\[\]]{10,})$/;
+      const incompleteMatch = trimmedLine.match(incompleteImagePattern);
+      if (incompleteMatch) {
+        imageDescriptions.push(incompleteMatch[1].trim());
+        hasImage = true;
+        console.warn('⚠️ 检测到不完整的图片标记（可能被截断）:', incompleteMatch[1].substring(0, 30) + '...');
+      }
+      
+      // 移除图片标记后的内容（包括不完整的）
+      let cleanedLine = trimmedLine
+        .replace(/\[图片\d*[:：][^\]]+\]/g, '')  // 完整标记
+        .replace(/\[图片\d*[:：][^\[\]]{10,}$/g, '')  // 🔥 不完整标记（行尾截断）
+        .trim();
       
       // 如果不是纯图片行，保留文字内容
       if (cleanedLine || !hasImage) {
@@ -532,10 +544,11 @@ export const generateAIMoment = async (
         }
       }
       
-      // 移除时间和图片标记
+      // 移除时间和图片标记（包括不完整的）
       cleanedContent = content
         .replace(/时间[：:]\s*\d{1,2}:\d{2}\s*/g, '')
-        .replace(/\[图片\d*[:：][^\]]+\]/g, '')
+        .replace(/\[图片\d*[:：][^\]]+\]/g, '')  // 完整标记
+        .replace(/\[图片\d*[:：][^\[\]]{10,}$/gm, '')  // 🔥 不完整标记
         .trim();
       
       // 如果还是空的，但有图片描述，那就只发图片
@@ -544,6 +557,12 @@ export const generateAIMoment = async (
         return null;
       }
     }
+    
+    // 🔥 最终清理：移除所有可能残留的图片标记
+    cleanedContent = cleanedContent
+      .replace(/\[图片\d*[:：][^\]]+\]/g, '')  // 完整标记
+      .replace(/\[图片\d*[:：][^\[\]]+/g, '')  // 🔥 任何位置的不完整标记
+      .trim();
     
     // 🔥 最终验证：确保内容不是只包含无意义的代码片段（但允许只有图片没有文字）
     if (cleanedContent && cleanedContent.match(/^(时间|内容|朋友圈)[：:]/)) {
