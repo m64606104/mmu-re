@@ -134,6 +134,16 @@ export const splitMessages = (message: string): string[] => {
     return urlPlaceholder;
   });
   
+  // 🔒 保护引号内的内容（包括引号中的标点符号）
+  // 支持: "xxx"、「xxx」、『xxx』、【xxx】
+  const quotePattern = /([""「『【])([^""」』】]+)([""」』】])/g;
+  const quotedContents: string[] = [];
+  const quotePlaceholder = '___QUOTE_PLACEHOLDER___';
+  textWithPlaceholders = textWithPlaceholders.replace(quotePattern, (match) => {
+    quotedContents.push(match); // 保存整个引号及其内容
+    return quotePlaceholder;
+  });
+  
   // 主要分割符：句号、问号、感叹号、换行
   const primaryDelimiters = /([。！？!?.\n]+)/g;
   
@@ -159,23 +169,12 @@ export const splitMessages = (message: string): string[] => {
     segment = segment.trim();
     if (!segment) continue;
     
-    // 检查是否包含未闭合的引号
-    const openQuotes = (segment.match(/[""「『【]/g) || []).length;
-    const closeQuotes = (segment.match(/[""」』】]/g) || []).length;
-    const hasUnclosedQuotes = openQuotes !== closeQuotes;
-    
-    // 检查是否包含URL占位符
+    // 检查是否包含URL占位符或引号占位符
     const hasURL = segment.includes(urlPlaceholder);
+    const hasQuote = segment.includes(quotePlaceholder);
     
-    // 如果有未闭合引号或URL，保持完整性，不分割
-    if (hasUnclosedQuotes || hasURL) {
-      messages.push(segment);
-      continue;
-    }
-    
-    // 检查是否包含完整配对的引号内容
-    const hasCompleteQuotes = /[""「『【].*?[""」』】]/.test(segment);
-    if (hasCompleteQuotes) {
+    // 如果有URL或引号占位符，保持完整性，不分割
+    if (hasURL || hasQuote) {
       messages.push(segment);
       continue;
     }
@@ -240,8 +239,9 @@ export const splitMessages = (message: string): string[] => {
     }
   }
   
-  // 第四步：恢复URL占位符和受保护内容
+  // 第四步：恢复URL占位符、引号内容和受保护内容
   let urlIndex = 0;
+  let quoteIndex = 0;
   let protectedIndex = 0;
   const restoredMessages = finalMessages.map(msg => {
     // 先恢复URL
@@ -250,7 +250,13 @@ export const splitMessages = (message: string): string[] => {
       urlIndex++;
       return url || '';
     });
-    // 再恢复受保护的内容（红包、转账等）
+    // 恢复引号内容
+    restored = restored.replace(new RegExp(quotePlaceholder, 'g'), () => {
+      const quoted = quotedContents[quoteIndex];
+      quoteIndex++;
+      return quoted || '';
+    });
+    // 最后恢复受保护的内容（红包、转账等）
     restored = restored.replace(/___PROTECTED___/g, () => {
       const protectedContent = protectedParts[protectedIndex];
       protectedIndex++;

@@ -357,13 +357,40 @@ export const buildTimeAwarePrompt = (
   const context = buildTimeContext(lastUserMessageTimestamp, lastUserMessageContent);
   
   let prompt = `\n\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`;
-  prompt += `【🕐 时间感知系统】\n`;
+  prompt += `【🕐 时间感知系统 - 强制遵守】\n`;
   prompt += `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n`;
   
-  prompt += `📅 当前时间: ${context.currentTime}\n`;
+  prompt += `📅 当前时间（你现在回复的时间）: ${context.currentTime}\n`;
   
-  if (context.lastMessageTime && context.timeGap) {
-    prompt += `📨 对方最新消息时间: ${context.lastMessageTime}（${context.timeGap}）\n`;
+  if (context.lastMessageTime && context.timeGap && context.timeGapMinutes !== undefined) {
+    prompt += `📨 对方最新消息发送时间: ${context.lastMessageTime}\n`;
+    prompt += `⏱️ 时间间隔: ${context.timeGap}（${context.timeGapMinutes.toFixed(0)}分钟）\n\n`;
+    
+    // 🚨 根据时间间隔给出明确的禁止指令
+    prompt += `🚨 **严格禁止模糊表达！必须遵守以下规则**：\n`;
+    if (context.timeGapMinutes < 5) {
+      prompt += `   ✅ 允许: "刚刚"、"刚才"（因为确实只过了几分钟）\n`;
+      prompt += `   ❌ 禁止: 不要说"今天"（太模糊，应该说"刚才"）\n`;
+    } else if (context.timeGapMinutes < 60) {
+      const mins = Math.floor(context.timeGapMinutes);
+      prompt += `   ✅ 允许: "刚才"、"${mins}分钟前"（因为过了${mins}分钟）\n`;
+      prompt += `   ❌ 禁止: 不要说"今天"、"刚刚"（${mins}分钟不算刚刚）\n`;
+    } else if (context.timeGapMinutes < 360) { // 6小时内
+      const hours = Math.floor(context.timeGapMinutes / 60);
+      prompt += `   ✅ 允许: "${hours}小时前"、"${context.timePeriod}的时候"（因为过了${hours}小时）\n`;
+      prompt += `   ❌ **严格禁止**: "今天"、"刚才"、"刚刚"（已经过了${hours}小时！不要用模糊表达）\n`;
+    } else if (context.timeGapMinutes < 1440) { // 24小时内
+      const hours = Math.floor(context.timeGapMinutes / 60);
+      prompt += `   ✅ 允许: "昨天"、"之前"、"早上/下午/晚上的时候"（因为过了${hours}小时）\n`;
+      prompt += `   ❌ **严格禁止**: "今天"、"刚才"、"刚刚"、"刚刚才"（已经过了${hours}小时！）\n`;
+      prompt += `   ⚠️ 重要: 不要延续之前的具体话题，可以开新话题或简单问候\n`;
+    } else { // 超过1天
+      const days = Math.floor(context.timeGapMinutes / 1440);
+      prompt += `   ✅ 允许: "${days}天前"、"前几天"、"之前"、"最近"（因为过了${days}天）\n`;
+      prompt += `   ❌ **严格禁止**: "今天"、"刚才"、"刚刚"、"昨天"（已经过了${days}天！绝对不要用这些词）\n`;
+      prompt += `   🚫 **绝对禁止**: 不要回应之前的具体话题内容，必须像久别重逢一样开启新对话\n`;
+    }
+    prompt += `\n`;
   }
   
   // 如果有更早的未回复消息，标注时间跨度
