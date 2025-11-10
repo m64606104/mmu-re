@@ -499,6 +499,7 @@ function App() {
             conversation={currentConversation}
             apiConfig={apiConfig}
             currentUserProfile={userProfile}
+            conversations={conversations}
             onUpdateConversation={updateConversation}
             onBack={() => navigateTo(previousScreen === 'contacts' ? 'contacts' : 'social')}
             onOpenCharacterSettings={() => navigateTo('character-settings')}
