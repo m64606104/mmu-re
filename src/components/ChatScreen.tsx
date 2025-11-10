@@ -262,157 +262,190 @@ const backgroundTaskManager = {
           });
         }
 
-        // 🔥 智能识别文档发送（支持多种格式）
+        // 🔥 纯粹化的文档解析逻辑
+        // 核心规则：
+        // 1. 只识别标准格式：[发文档:标题:类型]
+        // 2. 标记后的内容是文档内容（直到双换行或消息结束）
+        // 3. 标记前的内容是普通聊天文本
+        // 4. 不支持描述性格式（如"发送了文档「XX」"）
         
-        console.log('🔍 开始解析文档，原始内容：', finalContent);
+        const DOC_PATTERN = /\[发文档:([^:]+):([^\]]+)\]/g;
+        const docMatches = Array.from(finalContent.matchAll(DOC_PATTERN));
         
-        // 格式1：标准格式 [发文档:标题:类型] 内容...
-        const standardDocMatches = Array.from(finalContent.matchAll(/\[发文档:([^:]+):([^\]]+)\]/g));
-        console.log('📋 标准格式匹配结果：', standardDocMatches.length, standardDocMatches);
+        console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+        console.log('📄 [文档解析] 开始');
+        console.log('原始内容长度:', finalContent.length);
+        console.log('原始内容预览:', finalContent.substring(0, 200));
+        console.log('检测到文档标记数量:', docMatches.length);
+        console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
         
-        // 格式2：描述性格式（仅标记，不提取内容）
-        // "发送了文档「标题」" → 视为只有标题，无内容
-        const descriptiveDocMatches = Array.from(finalContent.matchAll(/发送了?文档[「『]([^」』]+)[」』]/g));
-        console.log('📋 描述性格式匹配结果：', descriptiveDocMatches.length, descriptiveDocMatches);
-        
-        // 优先使用标准格式（有内容），如果没有则使用描述性格式（创建空文档占位）
-        const allDocMatches = standardDocMatches.length > 0 ? standardDocMatches : 
-                              descriptiveDocMatches.length > 0 ? descriptiveDocMatches.map(m => {
-                                // 描述性格式：标记为特殊类型，表示这是无内容的占位文档
-                                return {
-                                  ...m,
-                                  1: m[1],           // 标题
-                                  2: 'text',         // 默认类型
-                                  isPlaceholder: true // 标记：这是占位符，没有实际内容
-                                };
-                              }) : [];
-        
-        if (allDocMatches.length > 0) {
-          console.log(`📄 检测到${allDocMatches.length}个文档标记`);
+        if (docMatches.length === 0) {
+          console.log('✅ [文档解析] 未检测到文档标记，按普通消息处理');
+        } else {
+          // 存储所有段落（文本 + 文档）
+          interface Segment {
+            type: 'text' | 'document';
+            content: string;
+            title?: string;
+            docType?: 'text' | 'markdown' | 'code';
+            hasError?: boolean;
+          }
+          const segments: Segment[] = [];
+          let currentIndex = 0;
           
-          // 按位置分割内容
-          let textBeforeFirstDoc = '';
-          
-          allDocMatches.forEach((docMatch: any, idx: number) => {
-            const docTitle = docMatch[1];
-            const docTypeInput = docMatch[2].toLowerCase();
-            const isPlaceholder = docMatch.isPlaceholder === true; // 是否是占位符（描述性格式）
+          // 逐个处理文档标记
+          for (let i = 0; i < docMatches.length; i++) {
+            const match = docMatches[i];
+            const tagIndex = match.index!;
+            const tagEndIndex = tagIndex + match[0].length;
+            const docTitle = match[1].trim();
+            const docTypeInput = match[2].toLowerCase().trim();
             
-            // 映射类型：markdown/code保持，其他都映射到text
+            // 映射类型
             const docType: 'text' | 'markdown' | 'code' = 
               docTypeInput === 'markdown' ? 'markdown' :
               docTypeInput === 'code' ? 'code' : 'text';
             
-            const tagIndex = docMatch.index!;
-            const tagEndIndex = tagIndex + docMatch[0].length;
+            console.log(`\n━━ [文档解析] 处理第${i + 1}个标记 ━━`);
+            console.log('标题:', docTitle);
+            console.log('类型:', docType);
+            console.log('标记位置:', tagIndex, '-', tagEndIndex);
+            console.log('标记内容:', match[0]);
             
-            // 获取文档内容
+            // 步骤1：提取标记前的普通文本
+            if (tagIndex > currentIndex) {
+              const textBefore = finalContent.substring(currentIndex, tagIndex).trim();
+              if (textBefore) {
+                segments.push({ type: 'text', content: textBefore });
+                console.log('✅ [文档解析] 标记前的文本长度:', textBefore.length);
+                console.log('   预览:', textBefore.substring(0, 80) + '...');
+              } else {
+                console.log('ℹ️ [文档解析] 标记前无内容');
+              }
+            }
+            
+            // 步骤2：提取文档内容（标记后到双换行/下一个标记/消息结束）
+            const nextMatch = docMatches[i + 1];
+            const searchEnd = nextMatch ? nextMatch.index! : finalContent.length;
+            let remainingContent = finalContent.substring(tagEndIndex, searchEnd);
+            
+            // 查找双换行（文档内容边界）
+            const doubleNewlineMatch = remainingContent.match(/\n\s*\n/);
             let docContent = '';
+            let textAfterDoc = '';
             
-            // 🔥 如果是占位符（描述性格式），提取标记之前的所有内容作为文档内容
-            if (isPlaceholder) {
-              // 描述性格式的AI通常是：先输出文档内容，最后才说"发送了文档「xxx」"
-              // 所以我们提取标记之前的所有内容作为文档内容
-              if (idx === 0) {
-                // 如果这是第一个文档标记，提取它之前的所有内容
-                console.log(`🔍 描述性格式 - 标记位置: ${tagIndex}, 标记内容: "${docMatch[0]}"`);
-                console.log(`🔍 标记前的内容: "${finalContent.substring(0, tagIndex)}"`);
-                docContent = finalContent.substring(0, tagIndex).trim();
-                console.log(`🔍 提取的文档内容长度: ${docContent.length}`);
-                console.log(`🔍 提取的文档内容预览: "${docContent.substring(0, 100)}..."`);
-                // 清空finalContent（文档内容不应该显示在气泡中）
-                textBeforeFirstDoc = '';
-              } else {
-                // 如果不是第一个，提取上一个标记之后到这个标记之前的内容
-                const prevMatch = allDocMatches[idx - 1];
-                const startIdx = prevMatch ? (prevMatch.index! + prevMatch[0].length) : 0;
-                docContent = finalContent.substring(startIdx, tagIndex).trim();
-              }
-              
-              console.log(`📄 检测到描述性文档标记: ${docTitle}, 提取内容长度: ${docContent.length}`);
-              
-              // 如果没有提取到内容，创建提示
-              if (!docContent) {
-                console.warn(`⚠️ 描述性文档没有内容！标题: ${docTitle}`);
-                docContent = `📄 ${docTitle}\n\n（此文档暂无内容）\n\n提示：AI使用了描述性格式，但没有在标记前提供内容。`;
-              }
-            } else if (idx === 0) {
-              // 第一个文档：标记前的内容可能是文本或文档内容
-              textBeforeFirstDoc = finalContent.substring(0, tagIndex).trim();
-              // 获取第一个标记后到第二个标记前的内容作为文档内容
-              const nextMatch = allDocMatches[idx + 1];
-              if (nextMatch) {
-                docContent = finalContent.substring(tagEndIndex, nextMatch.index).trim();
-              } else {
-                // 没有下一个文档标记，提取到双换行或消息结束
-                let remainingContent = finalContent.substring(tagEndIndex);
-                // 查找双换行位置（表示文档内容结束）
-                const doubleNewlineIndex = remainingContent.search(/\n\s*\n/);
-                if (doubleNewlineIndex !== -1) {
-                  docContent = remainingContent.substring(0, doubleNewlineIndex).trim();
-                  // 把双换行后的内容保留到finalContent
-                  const afterDoc = remainingContent.substring(doubleNewlineIndex).trim();
-                  if (afterDoc) {
-                    textBeforeFirstDoc = textBeforeFirstDoc ? textBeforeFirstDoc + '\n\n' + afterDoc : afterDoc;
-                  }
-                } else {
-                  docContent = remainingContent.trim();
-                }
-              }
-              
-              // 如果第一个标记前有内容且标记后没内容，说明前面的是文档内容
-              if (textBeforeFirstDoc && !docContent) {
-                docContent = textBeforeFirstDoc;
-                textBeforeFirstDoc = '';
+            if (doubleNewlineMatch) {
+              const doubleNewlineIndex = doubleNewlineMatch.index!;
+              docContent = remainingContent.substring(0, doubleNewlineIndex).trim();
+              textAfterDoc = remainingContent.substring(doubleNewlineIndex + doubleNewlineMatch[0].length).trim();
+              console.log('✅ [文档解析] 检测到双换行，文档内容在此结束');
+              console.log('   双换行位置:', doubleNewlineIndex);
+              if (textAfterDoc) {
+                console.log('   双换行后的内容长度:', textAfterDoc.length);
+                console.log('   预览:', textAfterDoc.substring(0, 80) + '...');
               }
             } else {
-              // 后续文档：获取本标记后到下个标记前的内容
-              const nextMatch = allDocMatches[idx + 1];
-              if (nextMatch) {
-                docContent = finalContent.substring(tagEndIndex, nextMatch.index).trim();
-              } else {
-                // 没有下一个文档标记，提取到双换行或消息结束
-                let remainingContent = finalContent.substring(tagEndIndex);
-                const doubleNewlineIndex = remainingContent.search(/\n\s*\n/);
-                if (doubleNewlineIndex !== -1) {
-                  docContent = remainingContent.substring(0, doubleNewlineIndex).trim();
-                  // 把双换行后的内容保留到finalContent
-                  const afterDoc = remainingContent.substring(doubleNewlineIndex).trim();
-                  if (afterDoc && idx === 0) {
-                    textBeforeFirstDoc = textBeforeFirstDoc ? textBeforeFirstDoc + '\n\n' + afterDoc : afterDoc;
-                  }
-                } else {
-                  docContent = remainingContent.trim();
-                }
+              docContent = remainingContent.trim();
+              console.log('ℹ️ [文档解析] 未检测到双换行，文档内容延续到', nextMatch ? '下一个标记' : '消息结束');
+            }
+            
+            console.log('文档内容长度:', docContent.length);
+            console.log('文档内容预览:', docContent.substring(0, 150) + '...');
+            
+            // 验证文档内容
+            if (!docContent || docContent.length < 10) {
+              console.error('❌ [文档解析] 文档内容过短或为空！');
+              console.error('   这是AI格式错误：');
+              console.error('   期望: [发文档:标题:类型] 内容紧跟在后面...');
+              console.error('   实际: [发文档:标题:类型]（后面没有内容）');
+              
+              // 创建错误提示文档
+              segments.push({
+                type: 'document',
+                title: docTitle,
+                docType: docType,
+                content: `⚠️ 文档格式错误\n\nAI使用了文档标记 [发文档:${docTitle}:${docType}]，但没有提供文档内容。\n\n正确格式应该是：\n[发文档:${docTitle}:${docType}] 文档内容紧跟在标记后面...\n\n请让AI重新生成文档。`,
+                hasError: true
+              });
+            } else {
+              // 限制文档长度
+              const MAX_DOC_LENGTH = 20000;
+              if (docContent.length > MAX_DOC_LENGTH) {
+                console.warn(`⚠️ [文档解析] 文档内容超过字数限制: ${docContent.length} > ${MAX_DOC_LENGTH}，已截断`);
+                docContent = docContent.substring(0, MAX_DOC_LENGTH) + '\n\n...\n（文档内容过长，已截断）';
               }
+              
+              segments.push({
+                type: 'document',
+                title: docTitle,
+                docType: docType,
+                content: docContent
+              });
+              console.log('✅ [文档解析] 成功提取文档内容');
             }
             
-            // 🔥 限制AI生成文档的字数上限为20000字符
-            const MAX_DOC_LENGTH = 20000;
-            if (docContent.length > MAX_DOC_LENGTH) {
-              console.warn(`⚠️ AI文档超过字数限制: ${docContent.length} > ${MAX_DOC_LENGTH}，已截断`);
-              docContent = docContent.substring(0, MAX_DOC_LENGTH) + '\n\n...\n（文档内容过长，已截断）';
+            // 如果有双换行后的内容，添加为普通文本
+            if (textAfterDoc) {
+              segments.push({ type: 'text', content: textAfterDoc });
+              console.log('✅ [文档解析] 双换行后的文本长度:', textAfterDoc.length);
             }
             
-            console.log(`📄 AI发送文档${idx + 1}: ${docTitle}, 类型: ${docType}, 内容长度: ${docContent.length}`);
-            
+            // 更新当前索引
+            if (doubleNewlineMatch) {
+              currentIndex = tagEndIndex + doubleNewlineMatch.index! + doubleNewlineMatch[0].length;
+            } else {
+              currentIndex = searchEnd;
+            }
+          }
+          
+          // 步骤3：处理最后剩余的文本
+          if (currentIndex < finalContent.length) {
+            const remainingText = finalContent.substring(currentIndex).trim();
+            if (remainingText) {
+              segments.push({ type: 'text', content: remainingText });
+              console.log('\n✅ [文档解析] 剩余文本长度:', remainingText.length);
+              console.log('   预览:', remainingText.substring(0, 80) + '...');
+            }
+          }
+          
+          // 输出解析结果摘要
+          console.log('\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+          console.log('📊 [文档解析] 结果摘要:');
+          console.log('总段落数:', segments.length);
+          segments.forEach((seg, idx) => {
+            if (seg.type === 'text') {
+              console.log(`  ${idx + 1}. [文本] 长度:${seg.content.length}`);
+            } else {
+              const errorFlag = seg.hasError ? ' ⚠️错误' : '';
+              console.log(`  ${idx + 1}. [文档] "${seg.title}" (${seg.docType}) 长度:${seg.content.length}${errorFlag}`);
+            }
+          });
+          console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
+          
+          // 根据segments创建消息
+          // 收集所有文本段落
+          const textSegments = segments.filter(s => s.type === 'text');
+          const docSegments = segments.filter(s => s.type === 'document') as Array<Segment & { title: string; docType: 'text' | 'markdown' | 'code' }>;
+          
+          // 合并所有文本内容
+          finalContent = textSegments.map(s => s.content).join('\n\n').trim();
+          
+          // 创建文档消息
+          docSegments.forEach((docSeg, idx) => {
             allExtraMessages.push({
               id: `${baseId}_doc_${idx}`,
               role: 'assistant',
-              content: `发送了文档「${docTitle}」`,
+              content: `发送了文档「${docSeg.title}」`,
               timestamp: Date.now() + 100 + allExtraMessages.length * 10,
               document: {
-                title: docTitle,
-                content: docContent,
-                type: docType,
-                greeting: '请查收',
-                size: new Blob([docContent]).size
+                title: docSeg.title,
+                content: docSeg.content,
+                type: docSeg.docType,
+                greeting: docSeg.hasError ? '格式错误' : '请查收',
+                size: new Blob([docSeg.content]).size
               }
             });
           });
-          
-          // 保留第一个文档标记前的文本（如果有）
-          finalContent = textBeforeFirstDoc;
         }
 
         // 检测引用消息：[回复 我/你 说的"xxx"]
@@ -1787,22 +1820,31 @@ ${SmartHTMLGenerator.getModuleInstructions()}
 **🔥 核心规则（必须遵守）：**
 1. **标记格式：** [发文档:标题:类型]
 2. **类型选择：** text、markdown、code（三选一）
-3. **内容位置：** 标记后面紧跟完整文档内容（200-5000字）
-4. **内容完整性：** 必须输出完整文档，不能只有标记没有内容！
+3. **内容位置：** 标记**后面立即**紧跟完整文档内容（200-5000字）
+4. **一体化输出：** 标记和内容必须在同一次输出中，**不能分开**！
+5. **内容完整性：** 必须输出完整文档，不能只有标记没有内容！
 
 **🚫 绝对禁止（会导致错误）：**
-- ❌ 错误示例1："发送了文档「标题」" ← 没有标记，没有内容
-- ❌ 错误示例2："[发文档:标题:text]" ← 只有标记，没有内容
-- ❌ 错误示例3："我给你写了个文档「标题」" ← 描述性文字，不是正确格式
+- ❌ 错误示例1："发送了文档「标题」" ← 没有使用标记格式
+- ❌ 错误示例2："[发文档:标题:text]" ← 只有标记，后面没有内容
+- ❌ 错误示例3："我给你写了个文档「标题」" ← 描述性文字，不是标记格式
+- ❌ 错误示例4：先输出"[发文档:标题:text]"，再另外输出内容 ← **标记和内容被分开了**
+- ❌ 错误示例5：先输出文档内容，最后说"发送了文档「标题」" ← **顺序反了**
 
 **✅ 正确示例（完整格式）：**
+例子1：
 [发文档:【女推同人】失控:text] 周子谦的吻落在唇角，那是带着些许酒气的温度。办公室的灯光昏暗，投影在玻璃上的两个身影交叠在一起，暧昧而危险。"主人..."苏绝的声音颤抖着，手指攥紧了对方的衣领......（后面继续输出完整文档内容，至少200-1000字）
 
+例子2（带前导文字）：
+我给你写了个故事 [发文档:校园回忆:text] 那是一个秋天的午后，阳光透过教室的窗户洒在课桌上......（完整内容）
+
 **⚠️ 重要提醒：**
-- 标记后必须输出完整文档内容，不能只有标记！
-- 内容会在卡片中显示，不会泄露到气泡中
+- **标记和内容是一个整体**，必须在同一次输出中完成！
+- 标记后**立即**开始输出文档内容，中间不能有换行或其他内容
+- 内容会在文档卡片中显示，标记前的文字会在聊天气泡中显示
 - 系统会自动识别内容类型（新闻、小红书、同人文等）
 - 📏 字数限制：单个文档最多20000字符
+- 如果要在文档后继续聊天，用**双换行**（两个回车）分隔
 
 【内容形式与专业规范】：
 根据不同内容形式，必须详细、专业、符合真实文体：
