@@ -439,7 +439,7 @@ export const generateAIMoment = async (
         model: apiConfig.modelName,
         messages: [{ role: 'user', content: prompt }],
         temperature: 0.9,
-        max_tokens: 800
+        max_tokens: 2000
       })
     });
     
@@ -521,26 +521,43 @@ export const generateAIMoment = async (
     
     // 🔧 容错：如果清理后内容为空或只剩下"时间"之类的，使用原始内容
     if (!cleanedContent || cleanedContent.length < 3 || cleanedContent.match(/^时间[：:]/)) {
-      console.warn('⚠️ 清理后内容为空或异常，使用原始内容');
+      console.warn('⚠️ 清理后内容为空或异常，重新提取内容和图片');
+      
+      // 重新提取图片描述（如果之前没提取到）
+      if (imageDescriptions.length === 0) {
+        const imagePattern = /\[图片\d*[:：]([^\]]+)\]/g;
+        let match;
+        while ((match = imagePattern.exec(content)) !== null) {
+          imageDescriptions.push(match[1].trim());
+        }
+      }
+      
+      // 移除时间和图片标记
       cleanedContent = content
         .replace(/时间[：:]\s*\d{1,2}:\d{2}\s*/g, '')
         .replace(/\[图片\d*[:：][^\]]+\]/g, '')
         .trim();
       
-      // 如果还是空的，说明整个返回有问题
-      if (!cleanedContent || cleanedContent.length < 3) {
+      // 如果还是空的，但有图片描述，那就只发图片
+      if ((!cleanedContent || cleanedContent.length < 3) && imageDescriptions.length === 0) {
         console.error('❌ 无法提取有效的朋友圈内容，原始返回:', content);
         return null;
       }
     }
     
-    // 🔥 最终验证：确保内容不是只包含无意义的代码片段
-    if (cleanedContent.match(/^(时间|内容|朋友圈)[：:]/)) {
+    // 🔥 最终验证：确保内容不是只包含无意义的代码片段（但允许只有图片没有文字）
+    if (cleanedContent && cleanedContent.match(/^(时间|内容|朋友圈)[：:]/)) {
       console.error('❌ 朋友圈内容格式异常，可能是格式标记而非实际内容:', cleanedContent);
       return null;
     }
     
-    console.log('✅ 清理后的朋友圈内容:', cleanedContent);
+    // 如果文字内容为空但有图片，将内容设为空字符串（允许只发图片）
+    if (!cleanedContent && imageDescriptions.length > 0) {
+      cleanedContent = '';
+      console.log('📸 纯图片朋友圈，没有文字内容');
+    }
+    
+    console.log('✅ 清理后的朋友圈内容:', cleanedContent || '(无文字)');
     console.log('🖼️ 提取的图片描述:', imageDescriptions);
     
     // 创建朋友圈帖子
