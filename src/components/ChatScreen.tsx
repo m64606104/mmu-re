@@ -263,20 +263,22 @@ const backgroundTaskManager = {
 
         // 🔥 智能识别文档发送（支持多种格式）
         
-        // 格式1：标准格式 [发文档:标题:类型]
+        // 格式1：标准格式 [发文档:标题:类型] 内容...
         const standardDocMatches = Array.from(finalContent.matchAll(/\[发文档:([^:]+):([^\]]+)\]/g));
         
-        // 格式2：描述性格式 "发送了文档「标题」" 或 "发送了文档「标题」"
+        // 格式2：描述性格式（仅标记，不提取内容）
+        // "发送了文档「标题」" → 视为只有标题，无内容
         const descriptiveDocMatches = Array.from(finalContent.matchAll(/发送了?文档[「『]([^」』]+)[」』]/g));
         
-        // 合并所有匹配，优先使用标准格式
+        // 优先使用标准格式（有内容），如果没有则使用描述性格式（创建空文档占位）
         const allDocMatches = standardDocMatches.length > 0 ? standardDocMatches : 
                               descriptiveDocMatches.length > 0 ? descriptiveDocMatches.map(m => {
-                                // 将描述性格式转换为标准格式结构
+                                // 描述性格式：标记为特殊类型，表示这是无内容的占位文档
                                 return {
                                   ...m,
-                                  1: m[1], // 标题
-                                  2: 'text' // 默认类型
+                                  1: m[1],           // 标题
+                                  2: 'text',         // 默认类型
+                                  isPlaceholder: true // 标记：这是占位符，没有实际内容
                                 };
                               }) : [];
         
@@ -289,6 +291,8 @@ const backgroundTaskManager = {
           allDocMatches.forEach((docMatch: any, idx: number) => {
             const docTitle = docMatch[1];
             const docTypeInput = docMatch[2].toLowerCase();
+            const isPlaceholder = docMatch.isPlaceholder === true; // 是否是占位符（描述性格式）
+            
             // 映射类型：markdown/code保持，其他都映射到text
             const docType: 'text' | 'markdown' | 'code' = 
               docTypeInput === 'markdown' ? 'markdown' :
@@ -297,9 +301,32 @@ const backgroundTaskManager = {
             const tagIndex = docMatch.index!;
             const tagEndIndex = tagIndex + docMatch[0].length;
             
-            // 获取这个标记之前的内容
+            // 获取文档内容
             let docContent = '';
-            if (idx === 0) {
+            
+            // 🔥 如果是占位符（描述性格式），提取标记之前的所有内容作为文档内容
+            if (isPlaceholder) {
+              // 描述性格式的AI通常是：先输出文档内容，最后才说"发送了文档「xxx」"
+              // 所以我们提取标记之前的所有内容作为文档内容
+              if (idx === 0) {
+                // 如果这是第一个文档标记，提取它之前的所有内容
+                docContent = finalContent.substring(0, tagIndex).trim();
+                // 清空finalContent（文档内容不应该显示在气泡中）
+                textBeforeFirstDoc = '';
+              } else {
+                // 如果不是第一个，提取上一个标记之后到这个标记之前的内容
+                const prevMatch = allDocMatches[idx - 1];
+                const startIdx = prevMatch ? (prevMatch.index! + prevMatch[0].length) : 0;
+                docContent = finalContent.substring(startIdx, tagIndex).trim();
+              }
+              
+              console.log(`📄 检测到描述性文档标记: ${docTitle}, 提取内容长度: ${docContent.length}`);
+              
+              // 如果没有提取到内容，创建提示
+              if (!docContent) {
+                docContent = `📄 ${docTitle}\n\n（此文档暂无内容）\n\n提示：AI使用了描述性格式，但没有在标记前提供内容。`;
+              }
+            } else if (idx === 0) {
               // 第一个文档：标记前的内容可能是文本或文档内容
               textBeforeFirstDoc = finalContent.substring(0, tagIndex).trim();
               // 获取第一个标记后到第二个标记前的内容作为文档内容
