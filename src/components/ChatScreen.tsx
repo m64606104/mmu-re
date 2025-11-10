@@ -5,6 +5,7 @@ import MoneyTransferModal from './MoneyTransferModal';
 import SendDocumentModal from './SendDocumentModal';
 import DocumentViewModal from './DocumentViewModal';
 import DocumentLibraryModal from './DocumentLibraryModal';
+import DocumentCard from './DocumentCard';
 import { SavedDocument } from '../utils/documentLibrary';
 import { sendMoney, receiveMoney, getBalance, aiPayForUser, refundGift, getAIBalance, addAITransaction } from '../utils/wallet';
 import ActivityLogModal from './ActivityLogModal';
@@ -3157,133 +3158,18 @@ ${doc.content}`;
                     ) : null}
                     
                     {/* 文档消息卡片 */}
-                    {message.document ? (() => {
-                      // 智能识别文档类型
-                      const getDocumentDisplayType = (title: string, content: string) => {
-                        const lowerTitle = title.toLowerCase();
-                        const lowerContent = content.substring(0, 200).toLowerCase();
-                        
-                        // 新闻类
-                        if (lowerTitle.includes('新闻') || lowerTitle.includes('资讯') || lowerTitle.includes('快讯') ||
-                            lowerContent.includes('【导语】') || lowerContent.includes('记者') || lowerContent.includes('报道')) {
-                          return { icon: '📰', label: '新闻资讯', color: 'bg-red-50 text-red-500' };
-                        }
-                        
-                        // 小红书笔记
-                        if (lowerTitle.includes('小红书') || lowerTitle.includes('种草') || lowerTitle.includes('测评') ||
-                            lowerContent.includes('姐妹们') || lowerContent.includes('宝子们') || lowerContent.includes('！！！')) {
-                          return { icon: '📕', label: '小红书笔记', color: 'bg-pink-50 text-pink-500' };
-                        }
-                        
-                        // 公众号文章
-                        if (lowerTitle.includes('公众号') || lowerTitle.includes('推文') || lowerTitle.includes('文章') ||
-                            lowerContent.includes('点击上方') || lowerContent.includes('关注我们')) {
-                          return { icon: '💬', label: '公众号文章', color: 'bg-green-50 text-green-500' };
-                        }
-                        
-                        // 同人文/小说
-                        if (lowerTitle.includes('同人') || lowerTitle.includes('小说') || lowerTitle.includes('番外') ||
-                            lowerContent.includes('第一章') || lowerContent.includes('完') || lowerContent.match(/[""].*[""]说/)) {
-                          return { icon: '📖', label: '文学作品', color: 'bg-purple-50 text-purple-500' };
-                        }
-                        
-                        // 八卦/爆料
-                        if (lowerTitle.includes('八卦') || lowerTitle.includes('爆料') || lowerTitle.includes('瓜') ||
-                            lowerContent.includes('据说') || lowerContent.includes('传闻') || lowerContent.includes('爆料')) {
-                          return { icon: '🔥', label: '八卦爆料', color: 'bg-orange-50 text-orange-500' };
-                        }
-                        
-                        // 信件
-                        if (lowerTitle.includes('信') || lowerTitle.includes('情书') ||
-                            lowerContent.includes('亲爱的') || lowerContent.includes('提笔') || lowerContent.includes('落款')) {
-                          return { icon: '✉️', label: '私人信件', color: 'bg-amber-50 text-amber-500' };
-                        }
-                        
-                        // 策划案/方案
-                        if (lowerTitle.includes('策划') || lowerTitle.includes('方案') || lowerTitle.includes('计划') ||
-                            lowerContent.includes('一、') || lowerContent.includes('二、') || lowerContent.includes('背景分析')) {
-                          return { icon: '📋', label: '策划方案', color: 'bg-indigo-50 text-indigo-500' };
-                        }
-                        
-                        // 报告/分析
-                        if (lowerTitle.includes('报告') || lowerTitle.includes('分析') || lowerTitle.includes('数据') ||
-                            lowerContent.includes('摘要') || lowerContent.includes('结论') || lowerContent.includes('%')) {
-                          return { icon: '📊', label: '分析报告', color: 'bg-cyan-50 text-cyan-500' };
-                        }
-                        
-                        // 测试/问卷
-                        if (lowerTitle.includes('测试') || lowerTitle.includes('问卷') || lowerTitle.includes('测评') ||
-                            lowerContent.includes('第1题') || lowerContent.includes('选项') || lowerContent.includes('结果解析')) {
-                          return { icon: '📝', label: '互动测试', color: 'bg-yellow-50 text-yellow-600' };
-                        }
-                        
-                        // 攻略/教程
-                        if (lowerTitle.includes('攻略') || lowerTitle.includes('教程') || lowerTitle.includes('指南') ||
-                            lowerContent.includes('步骤') || lowerContent.includes('技巧') || lowerContent.includes('注意事项')) {
-                          return { icon: '📚', label: '实用攻略', color: 'bg-teal-50 text-teal-500' };
-                        }
-                        
-                        // 剧透/解析
-                        if (lowerTitle.includes('剧透') || lowerTitle.includes('解析') || lowerTitle.includes('彩蛋') ||
-                            lowerContent.includes('剧透预警') || lowerContent.includes('细节分析') || lowerContent.includes('隐藏')) {
-                          return { icon: '🎭', label: '剧透解析', color: 'bg-rose-50 text-rose-500' };
-                        }
-                        
-                        // 设定/创作
-                        if (lowerTitle.includes('设定') || lowerTitle.includes('角色') || lowerTitle.includes('世界观') ||
-                            lowerContent.includes('【角色】') || lowerContent.includes('性格：') || lowerContent.includes('背景设定')) {
-                          return { icon: '🎨', label: '创作设定', color: 'bg-violet-50 text-violet-500' };
-                        }
-                        
-                        // 书评/影评
-                        if (lowerTitle.includes('书评') || lowerTitle.includes('影评') || lowerTitle.includes('推荐') ||
-                            lowerContent.includes('【作品信息】') || lowerContent.includes('推荐指数') || lowerContent.includes('⭐')) {
-                          return { icon: '📖', label: '书影推荐', color: 'bg-emerald-50 text-emerald-500' };
-                        }
-                        
-                        // 默认：在线文档
-                        return { icon: '📄', label: '在线文档', color: 'bg-blue-50 text-blue-500' };
-                      };
-                      
-                      const docType = getDocumentDisplayType(message.document.title, message.document.content);
-                      
-                      return (
-                        <div
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setViewingDocument(message.document);
-                          }}
-                          className="bg-white border border-gray-200 rounded-2xl p-0 overflow-hidden cursor-pointer hover:shadow-md transition-shadow max-w-[280px]"
-                        >
-                          <div className="p-4">
-                            <div className="flex items-start gap-3">
-                              <div className={`w-12 h-12 rounded-lg flex items-center justify-center flex-shrink-0 ${docType.color}`}>
-                                <span className="text-2xl">{docType.icon}</span>
-                              </div>
-                              <div className="flex-1 min-w-0">
-                                <div className="font-medium text-gray-900 truncate mb-1">
-                                  {message.document.title}
-                                </div>
-                                <div className="text-xs text-gray-500 flex items-center gap-2">
-                                  {message.document.greeting && (
-                                    <>
-                                      <span>{message.document.greeting}</span>
-                                      <span>•</span>
-                                    </>
-                                  )}
-                                  <span className="flex items-center gap-1">
-                                    <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                                    </svg>
-                                    {docType.label}
-                                  </span>
-                                </div>
-                              </div>
-                            </div>
-                          </div>
-                        </div>
-                      );
-                    })() : null}
+                    {message.document && (
+                      <DocumentCard
+                        title={message.document.title}
+                        content={message.document.content}
+                        greeting={message.document.greeting}
+                        type={message.document.type}
+                        onClick={(e) => {
+                          e?.stopPropagation?.();
+                          setViewingDocument(message.document);
+                        }}
+                      />
+                    )}
                     
                     {/* 订单消息气泡（礼物/代付请求） */}
                     {message.order && (
