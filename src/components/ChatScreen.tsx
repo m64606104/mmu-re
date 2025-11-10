@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { ChevronLeft, Send, Mic, Sparkles, Smile, BellOff, Bell, Pause, Play, Image as ImageIcon, Video, Phone, MapPin, FileText, Plus, CreditCard } from 'lucide-react';
+import { ChevronLeft, Send, Mic, Sparkles, Smile, BellOff, Bell, Pause, Play, Image as ImageIcon, Video, Phone, MapPin, FileText, Plus, CreditCard, Search } from 'lucide-react';
 import { Conversation, Message, ApiConfig, UserProfile } from '../types';
 import MoneyTransferModal from './MoneyTransferModal';
 import SendDocumentModal from './SendDocumentModal';
@@ -13,6 +13,7 @@ import XiaohongshuFeed from './XiaohongshuFeed';
 import ZhihuFeed from './ZhihuFeed';
 import WeiboFeed from './WeiboFeed';
 import SearchHistoryView from './SearchHistoryView';
+import ChatSearchModal from './ChatSearchModal';
 import { SmartHTMLGenerator } from '../utils/smartHTMLGenerator';
 import { SavedDocument } from '../utils/documentLibrary';
 import { sendMoney, receiveMoney, getBalance, aiPayForUser, refundGift, getAIBalance, addAITransaction } from '../utils/wallet';
@@ -170,6 +171,7 @@ const backgroundTaskManager = {
         
         // 🔍 解析特殊指令（链接预览、红包、转账、文档）
         let finalContent = cleanContent;
+        console.log(`📖 开始解析AI消息: ${finalContent.substring(0, 100)}...`);
         
         // 注意：社交平台内容已在消息拆分前处理，这里不再检测
         
@@ -705,6 +707,9 @@ ${recentMessages}
   // AI状态相关state
   const [aiStatus, setAIStatus] = useState<any | null>(null);
   const [showActivityModal, setShowActivityModal] = useState(false);
+  
+  // 搜索相关state
+  const [showSearchModal, setShowSearchModal] = useState(false);
   
   // 语音相关state
   const [isRecording, setIsRecording] = useState(false);
@@ -3215,6 +3220,15 @@ ${doc.content}`;
           </div>
         </div>
         <div className="flex items-center gap-2">
+          {/* 搜索按钮 */}
+          <button
+            onClick={() => setShowSearchModal(true)}
+            className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+            title="搜索聊天记录"
+          >
+            <Search className="w-5 h-5 text-gray-700" />
+          </button>
+          
           {/* 免打扰按钮 */}
           <button
             onClick={() => {
@@ -3274,7 +3288,7 @@ ${doc.content}`;
                   </span>
                 </div>
               ) : (
-              <div className={`message-bubble flex gap-2 items-end ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+              <div id={`message-${message.id}`} className={`message-bubble flex gap-2 items-end transition-colors ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}>
                 {message.role === 'assistant' && (
                   <div className="relative flex-shrink-0">
                     {conversation.characterSettings?.avatar ? (
@@ -4508,6 +4522,26 @@ ${doc.content}`;
         }}
         conversations={conversations}
         currentConversationId={conversation.id}
+      />
+    )}
+
+    {/* 聊天记录搜索模态框 */}
+    {showSearchModal && (
+      <ChatSearchModal
+        conversation={conversation}
+        onClose={() => setShowSearchModal(false)}
+        onMessageClick={(messageId) => {
+          // 滚动到指定消息
+          const messageElement = document.getElementById(`message-${messageId}`);
+          if (messageElement) {
+            messageElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            // 高亮显示该消息
+            messageElement.classList.add('bg-yellow-100');
+            setTimeout(() => {
+              messageElement.classList.remove('bg-yellow-100');
+            }, 2000);
+          }
+        }}
       />
     )}
     </>

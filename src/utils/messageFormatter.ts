@@ -275,11 +275,22 @@ export const splitMessages = (message: string): string[] => {
       return true;
     });
   
+  // 🔥 移除订单响应标记（这些标记用于程序识别，不应显示给用户）
+  const cleanedMessages = filteredMessages.map(msg => {
+    // 移除所有订单响应标记
+    return msg
+      .replace(/\[接受礼物\]/g, '')
+      .replace(/\[退回礼物\]/g, '')
+      .replace(/\[同意代付\]/g, '')
+      .replace(/\[拒绝代付\]/g, '')
+      .trim();
+  }).filter(msg => msg.length > 0); // 移除可能变成空的消息
+  
   // 🔒 将文档部分添加回去（如果有的话）
   if (documentPart) {
     // 文档始终作为单独的一条消息，放在最后
-    return [...filteredMessages, documentPart];
+    return [...cleanedMessages, documentPart];
   }
   
-  return filteredMessages;
+  return cleanedMessages;
 };

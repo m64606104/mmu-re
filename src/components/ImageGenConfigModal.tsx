@@ -53,26 +53,23 @@ export default function ImageGenConfigModal({
 
       const data = await response.json();
       
-      // 提取图像生成相关的模型
-      const imageModels = data.data
-        ?.filter((model: any) => 
-          model.id.includes('dall-e') || 
-          model.id.includes('image') ||
-          model.id.includes('stable-diffusion') ||
-          model.id.includes('midjourney')
-        )
-        .map((model: any) => model.id) || [];
-
-      if (imageModels.length === 0) {
+      // 🔥 参考SettingsScreen的实现，获取所有模型
+      const allModels = data.data?.map((m: any) => m.id) || [];
+      
+      if (allModels.length === 0) {
         // 如果没有找到，使用常见的默认模型
         setModels(['dall-e-3', 'dall-e-2', 'stable-diffusion-xl']);
+        if (!selectedModel) {
+          setSelectedModel('dall-e-3');
+        }
       } else {
-        setModels(imageModels);
-      }
-
-      // 如果没有选择模型，默认选择第一个
-      if (!selectedModel && imageModels.length > 0) {
-        setSelectedModel(imageModels[0]);
+        // 🔥 显示所有模型，而不是过滤（参考SettingsScreen的做法）
+        setModels(allModels);
+        
+        // 如果没有选择模型，默认选择第一个
+        if (!selectedModel) {
+          setSelectedModel(allModels[0]);
+        }
       }
     } catch (err) {
       console.error('获取模型失败:', err);
@@ -166,12 +163,13 @@ export default function ImageGenConfigModal({
           {models.length > 0 && (
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
-                选择模型
+                选择模型 ({models.length}个可用)
               </label>
               <select
                 value={selectedModel}
                 onChange={(e) => setSelectedModel(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:border-blue-500 focus:outline-none"
+                className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:border-blue-500 focus:outline-none max-h-48 overflow-y-auto"
+                size={Math.min(models.length + 1, 8)}
               >
                 <option value="">请选择模型</option>
                 {models.map((model) => (
