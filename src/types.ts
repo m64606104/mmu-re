@@ -54,6 +54,7 @@ export interface MoneyTransfer {
   message?: string; // 红包/转账留言
   status: 'pending' | 'received' | 'returned'; // 待领取、已领取、已退回
   receivedAt?: number; // 领取时间
+  originalAmount?: number; // 原始金额（用于退回时显示）
 }
 
 // 📄 文档消息类型

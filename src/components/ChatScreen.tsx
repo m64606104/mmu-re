@@ -53,12 +53,11 @@ const backgroundTaskManager = {
       const data = await response.json();
       const assistantMessage = data.choices[0]?.message?.content;
 
-      if (!assistantMessage || assistantMessage.trim() === '') {
-        throw new Error('AI返回空内容');
-      }
-
-      // 检查是否选择不回复
-      if (assistantMessage.trim() === '[不回复]' || assistantMessage.includes('[不回复]')) {
+      // 检查是否选择不回复或返回空内容
+      if (!assistantMessage || assistantMessage.trim() === '' || 
+          assistantMessage.trim() === '[不回复]' || assistantMessage.includes('[不回复]')) {
+        // 这是AI选择不回复，不是API错误
+        console.log('💭 AI选择不回复此消息');
         callback([], conversation.id);
         return;
       }
@@ -816,6 +815,10 @@ ${recentMessages}
 
   // 处理红包接收/退回
   const handleReceiveMoney = (messageId: string, accept: boolean) => {
+    // 找到要处理的红包消息
+    const targetMessage = conversation.messages.find(msg => msg.id === messageId);
+    if (!targetMessage || !targetMessage.moneyTransfer) return;
+    
     const updatedMessages = conversation.messages.map(msg => {
       if (msg.id === messageId && msg.moneyTransfer) {
         if (accept) {
@@ -836,16 +839,33 @@ ${recentMessages}
             }
           };
         } else {
-          // 退回红包
+          // 退回红包 - 保存原始金额，用于显示
           return {
             ...msg,
             moneyTransfer: {
               ...msg.moneyTransfer,
+              originalAmount: msg.moneyTransfer.amount, // 保存原始金额
               status: 'returned' as const
             }
           };
         }
       }
+      
+      // 🔥 修复：如果是退回，同时更新用户发送的红包消息状态
+      if (!accept && msg.role === 'user' && msg.moneyTransfer && 
+          msg.moneyTransfer.status === 'pending' &&
+          msg.timestamp < targetMessage.timestamp) {
+        // 这是用户之前发送的红包，现在被AI退回
+        return {
+          ...msg,
+          moneyTransfer: {
+            ...msg.moneyTransfer,
+            originalAmount: msg.moneyTransfer.amount, // 保存原始金额
+            status: 'returned' as const
+          }
+        };
+      }
+      
       return msg;
     });
 
@@ -3069,7 +3089,7 @@ ${doc.content}`;
                             </div>
                           </div>
                           <div className="text-2xl font-bold mb-2">
-                            ¥{message.moneyTransfer.amount.toFixed(2)}
+                            ¥{(message.moneyTransfer.originalAmount || message.moneyTransfer.amount).toFixed(2)}
                           </div>
                           {message.moneyTransfer.message && (
                             <div className="text-sm opacity-90 mb-2">
@@ -3088,7 +3108,7 @@ ${doc.content}`;
                           )}
                           {message.moneyTransfer.status === 'returned' && (
                             <div className="text-xs opacity-75">
-                              已退回
+                              心意我领啦，钱钱快收回去~
                             </div>
                           )}
                         </div>
