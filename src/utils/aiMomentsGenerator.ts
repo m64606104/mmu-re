@@ -439,7 +439,7 @@ export const generateAIMoment = async (
         model: apiConfig.modelName,
         messages: [{ role: 'user', content: prompt }],
         temperature: 0.9,
-        max_tokens: 200
+        max_tokens: 800
       })
     });
     
@@ -456,6 +456,8 @@ export const generateAIMoment = async (
       console.error('❌ API返回内容为空');
       return null;
     }
+    
+    console.log('📝 AI原始返回内容:', content);
     
     // 解析AI返回的时间和内容
     const timeMatch = content.match(/时间[：:]\s*(\d{1,2}):(\d{2})/);
@@ -524,7 +526,22 @@ export const generateAIMoment = async (
         .replace(/时间[：:]\s*\d{1,2}:\d{2}\s*/g, '')
         .replace(/\[图片\d*[:：][^\]]+\]/g, '')
         .trim();
+      
+      // 如果还是空的，说明整个返回有问题
+      if (!cleanedContent || cleanedContent.length < 3) {
+        console.error('❌ 无法提取有效的朋友圈内容，原始返回:', content);
+        return null;
+      }
     }
+    
+    // 🔥 最终验证：确保内容不是只包含无意义的代码片段
+    if (cleanedContent.match(/^(时间|内容|朋友圈)[：:]/)) {
+      console.error('❌ 朋友圈内容格式异常，可能是格式标记而非实际内容:', cleanedContent);
+      return null;
+    }
+    
+    console.log('✅ 清理后的朋友圈内容:', cleanedContent);
+    console.log('🖼️ 提取的图片描述:', imageDescriptions);
     
     // 创建朋友圈帖子
     const post: MomentPost = {

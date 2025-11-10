@@ -11,6 +11,7 @@ const DocumentLibraryModal: React.FC<DocumentLibraryModalProps> = ({ onClose, on
   const [documents, setDocuments] = useState<SavedDocument[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedType, setSelectedType] = useState<'all' | 'text' | 'markdown' | 'code'>('all');
+  const [selectedSource, setSelectedSource] = useState<'all' | 'AI发送' | '用户上传'>('all');
 
   useEffect(() => {
     loadDocuments();
@@ -39,7 +40,8 @@ const DocumentLibraryModal: React.FC<DocumentLibraryModalProps> = ({ onClose, on
     const matchesSearch = doc.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
                          doc.content.toLowerCase().includes(searchQuery.toLowerCase());
     const matchesType = selectedType === 'all' || doc.type === selectedType;
-    return matchesSearch && matchesType;
+    const matchesSource = selectedSource === 'all' || doc.source === selectedSource;
+    return matchesSearch && matchesType && matchesSource;
   });
 
   const getTypeIcon = (type: string) => {
@@ -122,6 +124,27 @@ const DocumentLibraryModal: React.FC<DocumentLibraryModalProps> = ({ onClose, on
               {type === 'text' && '📝 文本'}
               {type === 'markdown' && '📄 Markdown'}
               {type === 'code' && '💻 代码'}
+            </button>
+          ))}
+        </div>
+
+        {/* 来源筛选 */}
+        <div className="flex gap-2 px-4 pb-3 overflow-x-auto border-t border-gray-100 pt-3">
+          {[
+            { value: 'all', label: '全部来源' },
+            { value: 'AI发送', label: '🤖 AI发送' },
+            { value: '用户上传', label: '📤 用户上传' }
+          ].map(source => (
+            <button
+              key={source.value}
+              onClick={() => setSelectedSource(source.value as any)}
+              className={`px-3 py-1 rounded-full text-sm whitespace-nowrap transition-colors ${
+                selectedSource === source.value
+                  ? 'bg-purple-500 text-white'
+                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+              }`}
+            >
+              {source.label}
             </button>
           ))}
         </div>

@@ -256,14 +256,14 @@ const ActivityLogModal: React.FC<ActivityLogModalProps> = ({
                             index === 0 ? 'bg-green-500' : 'bg-gray-300'
                           }`} />
                         </div>
-                        <div className="flex-1">
-                          <p className="text-sm text-gray-900 leading-relaxed break-words whitespace-pre-wrap">
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm text-gray-900 leading-relaxed break-words whitespace-normal">
                             {log.activity}
                           </p>
                           {log.location && (
                             <div className="flex items-center gap-1 mt-2 text-xs text-gray-500">
                               <MapPin size={12} />
-                              <span>{log.location}</span>
+                              <span className="break-words">{log.location}</span>
                             </div>
                           )}
                         </div>

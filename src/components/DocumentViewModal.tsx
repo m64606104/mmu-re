@@ -11,10 +11,22 @@ interface DocumentViewModalProps {
 
 const DocumentViewModal: React.FC<DocumentViewModalProps> = ({ document, onClose, onForward }) => {
   const [showSaveToast, setShowSaveToast] = useState(false);
+  const [showRenameModal, setShowRenameModal] = useState(false);
+  const [newTitle, setNewTitle] = useState(document.title);
 
   const handleSave = () => {
+    setNewTitle(document.title);
+    setShowRenameModal(true);
+  };
+
+  const handleConfirmSave = () => {
     try {
-      saveDocument(document);
+      const docToSave = {
+        ...document,
+        title: newTitle.trim() || document.title
+      };
+      saveDocument(docToSave, 'AI发送');
+      setShowRenameModal(false);
       setShowSaveToast(true);
       setTimeout(() => setShowSaveToast(false), 2000);
     } catch (error) {
@@ -142,6 +154,42 @@ const DocumentViewModal: React.FC<DocumentViewModalProps> = ({ document, onClose
           )}
         </div>
       </div>
+
+      {/* 重命名对话框 */}
+      {showRenameModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={() => setShowRenameModal(false)}>
+          <div className="bg-white rounded-xl p-6 w-[90%] max-w-md shadow-2xl" onClick={(e) => e.stopPropagation()}>
+            <h3 className="text-lg font-semibold text-gray-900 mb-4">保存文档</h3>
+            <div className="mb-4">
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                文档标题
+              </label>
+              <input
+                type="text"
+                value={newTitle}
+                onChange={(e) => setNewTitle(e.target.value)}
+                placeholder="输入文档标题"
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                autoFocus
+              />
+            </div>
+            <div className="flex gap-3">
+              <button
+                onClick={() => setShowRenameModal(false)}
+                className="flex-1 py-2.5 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
+              >
+                取消
+              </button>
+              <button
+                onClick={handleConfirmSave}
+                className="flex-1 py-2.5 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors"
+              >
+                保存
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

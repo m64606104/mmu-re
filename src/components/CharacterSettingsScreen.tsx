@@ -151,55 +151,70 @@ export default function CharacterSettingsScreen({
   };
 
   const handleSave = () => {
-    // 🔧 根据记忆系统开关同步更新 enabledFeatures
-    const currentFeatures = conversation.enabledFeatures || [];
-    let updatedFeatures = [...currentFeatures];
-    
-    if (memoryConfigEnabled) {
-      // 如果开启记忆系统，确保 'memory-system' 在列表中
-      if (!updatedFeatures.includes('memory-system')) {
-        updatedFeatures.push('memory-system');
+    try {
+      console.log('🔄 开始保存角色设置...');
+      
+      // 🔧 根据记忆系统开关同步更新 enabledFeatures
+      const currentFeatures = conversation.enabledFeatures || [];
+      let updatedFeatures = [...currentFeatures];
+      
+      if (memoryConfigEnabled) {
+        // 如果开启记忆系统，确保 'memory-system' 在列表中
+        if (!updatedFeatures.includes('memory-system')) {
+          updatedFeatures.push('memory-system');
+        }
+      } else {
+        // 如果关闭记忆系统，从列表中移除 'memory-system'
+        updatedFeatures = updatedFeatures.filter(f => f !== 'memory-system');
       }
-    } else {
-      // 如果关闭记忆系统，从列表中移除 'memory-system'
-      updatedFeatures = updatedFeatures.filter(f => f !== 'memory-system');
+      
+      console.log('📝 准备更新对话数据...');
+      
+      onUpdateConversation(conversation.id, {
+        name: nickname || conversation.name,
+        characterSettings: {
+          avatar,
+          nickname,
+          username,
+          systemPrompt,
+          personality,
+          languageStyle,
+          languageExample,
+          memoryEvents,
+          proactiveMessaging: {
+            enabled: proactiveEnabled,
+            minInterval,
+            maxInterval,
+            activeHourStart,
+            activeHourEnd,
+            lastMessageTime: settings.proactiveMessaging?.lastMessageTime,
+          },
+          memoryConfig: {
+            enabled: memoryConfigEnabled,
+          },
+          momentsMemoryConfig: {
+            enabled: momentsMemoryEnabled,
+          },
+          contextConfig: {
+            enabled: contextConfigEnabled,
+            messageCount: contextMessageCount,
+          },
+          knowledgeBase: knowledgeBase,
+        },
+        enabledFeatures: updatedFeatures, // 同步更新 enabledFeatures
+      });
+      
+      console.log('✅ 角色设置保存成功');
+      alert('角色设置已保存');
+      
+      // 使用 setTimeout 确保 alert 显示后再返回
+      setTimeout(() => {
+        onBack();
+      }, 100);
+    } catch (error) {
+      console.error('❌ 保存角色设置失败:', error);
+      alert('保存失败，请重试');
     }
-    
-    onUpdateConversation(conversation.id, {
-      name: nickname || conversation.name,
-      characterSettings: {
-        avatar,
-        nickname,
-        username,
-        systemPrompt,
-        personality,
-        languageStyle,
-        languageExample,
-        memoryEvents,
-        proactiveMessaging: {
-          enabled: proactiveEnabled,
-          minInterval,
-          maxInterval,
-          activeHourStart,
-          activeHourEnd,
-          lastMessageTime: settings.proactiveMessaging?.lastMessageTime,
-        },
-        memoryConfig: {
-          enabled: memoryConfigEnabled,
-        },
-        momentsMemoryConfig: {
-          enabled: momentsMemoryEnabled,
-        },
-        contextConfig: {
-          enabled: contextConfigEnabled,
-          messageCount: contextMessageCount,
-        },
-        knowledgeBase: knowledgeBase,
-      },
-      enabledFeatures: updatedFeatures, // 同步更新 enabledFeatures
-    });
-    alert('角色设置已保存');
-    onBack();
   };
 
   const handleDelete = () => {
@@ -227,35 +242,62 @@ export default function CharacterSettingsScreen({
   };
 
   const handleSaveKnowledge = () => {
-    if (!knowledgeTitle.trim() || !knowledgeContent.trim()) {
-      alert('请填写标题和内容');
-      return;
-    }
+    try {
+      if (!knowledgeTitle.trim() || !knowledgeContent.trim()) {
+        alert('请填写标题和内容');
+        return;
+      }
 
-    if (editingKnowledge) {
-      // 编辑现有文档
-      setKnowledgeBase(knowledgeBase.map(item =>
-        item.id === editingKnowledge.id
-          ? { ...item, title: knowledgeTitle, content: knowledgeContent, updatedAt: Date.now() }
-          : item
-      ));
-    } else {
-      // 添加新文档
-      const newItem: KnowledgeBaseItem = {
-        id: Date.now().toString(),
-        title: knowledgeTitle,
-        content: knowledgeContent,
-        type: 'text',
-        createdAt: Date.now(),
-        updatedAt: Date.now(),
-      };
-      setKnowledgeBase([...knowledgeBase, newItem]);
-    }
+      console.log('🔄 开始保存资料库...');
 
-    setShowKnowledgeModal(false);
-    setKnowledgeTitle('');
-    setKnowledgeContent('');
-    setEditingKnowledge(null);
+      if (editingKnowledge) {
+        // 编辑现有文档
+        setKnowledgeBase(knowledgeBase.map(item =>
+          item.id === editingKnowledge.id
+            ? { ...item, title: knowledgeTitle, content: knowledgeContent, updatedAt: Date.now() }
+            : item
+        ));
+      } else {
+        // 添加新文档
+        const newItem: KnowledgeBaseItem = {
+          id: Date.now().toString(),
+          title: knowledgeTitle,
+          content: knowledgeContent,
+          type: 'text',
+          createdAt: Date.now(),
+          updatedAt: Date.now(),
+        };
+        setKnowledgeBase([...knowledgeBase, newItem]);
+        
+        // 同时保存到文档库
+        try {
+          const { saveDocument } = require('../utils/documentLibrary');
+          const docToSave = {
+            title: knowledgeTitle,
+            content: knowledgeContent,
+            type: 'text' as const,
+            size: new Blob([knowledgeContent]).size,
+          };
+          saveDocument(docToSave, '用户上传');
+          console.log('✅ 已同步保存到文档库');
+        } catch (error) {
+          console.error('保存到文档库失败:', error);
+        }
+      }
+
+      console.log('✅ 资料库保存成功');
+      
+      // 使用 setTimeout 确保状态更新完成后再关闭弹窗
+      setTimeout(() => {
+        setShowKnowledgeModal(false);
+        setKnowledgeTitle('');
+        setKnowledgeContent('');
+        setEditingKnowledge(null);
+      }, 50);
+    } catch (error) {
+      console.error('❌ 保存资料库失败:', error);
+      alert('保存失败，请重试');
+    }
   };
 
   const handleDeleteKnowledge = (id: string) => {

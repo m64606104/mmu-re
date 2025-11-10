@@ -117,18 +117,23 @@ const SendDocumentModal: React.FC<SendDocumentModalProps> = ({ onClose, onSend, 
 
           {/* 文档内容 */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              文档内容
-            </label>
+            <div className="flex items-center justify-between mb-2">
+              <label className="block text-sm font-medium text-gray-700">
+                文档内容
+              </label>
+              <span className="text-xs text-gray-500">
+                {content.length} 字符
+              </span>
+            </div>
             <textarea
               value={content}
               onChange={(e) => setContent(e.target.value)}
               placeholder="输入文档内容..."
               className="w-full h-48 px-4 py-2 border border-gray-200 rounded-lg focus:border-blue-500 focus:outline-none resize-none font-mono text-sm"
             />
-            <div className="text-xs text-gray-500 mt-1">
-              {content.length} 字符
-            </div>
+            <p className="text-xs text-gray-500 mt-1">
+              💡 用户发送的文档无字数限制
+            </p>
           </div>
 
           {/* 问候语 */}

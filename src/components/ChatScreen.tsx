@@ -200,6 +200,13 @@ const backgroundTaskManager = {
             finalContent = '';
           }
           
+          // 🔥 限制AI生成文档的字数上限为20000字符
+          const MAX_DOC_LENGTH = 20000;
+          if (docContent.length > MAX_DOC_LENGTH) {
+            console.warn(`⚠️ AI文档超过字数限制: ${docContent.length} > ${MAX_DOC_LENGTH}，已截断`);
+            docContent = docContent.substring(0, MAX_DOC_LENGTH) + '\n\n...\n（文档内容过长，已截断）';
+          }
+          
           console.log(`📄 AI发送文档: ${docTitle}, 内容长度: ${docContent.length}`);
           
           allExtraMessages.push({
@@ -1531,8 +1538,10 @@ ${conversation.characterSettings.memoryEvents ? `记忆事件：${conversation.c
 类型固定为：text、markdown、code
 但内容形式可以多样化：新闻、八卦、小红书笔记、公众号文章、同人文、信件、策划案、报告等
 
-⚠️ 重要：内容只会在用户点击卡片后显示，不会泄露到聊天气泡中
-⚠️ 自动识别：系统会根据标题和内容自动识别显示类型（新闻、小红书、公众号等），显示对应的图标和标签
+⚠️ 重要：
+- 内容只会在用户点击卡片后显示，不会泄露到聊天气泡中
+- 自动识别：系统会根据标题和内容自动识别显示类型（新闻、小红书、公众号等），显示对应的图标和标签
+- 📏 字数限制：单个文档内容最多20000字符，超过会被截断
 
 【内容形式与专业规范】：
 根据不同内容形式，必须详细、专业、符合真实文体：
@@ -1818,6 +1827,26 @@ ${conversation.characterSettings.memoryEvents ? `记忆事件：${conversation.c
 - 内容充实，有实际价值，不要只写大纲
 - 适用场景：写信、策划案、新闻稿、八卦、小红书、公众号、同人文、报告、测试、攻略、剧透、设定、书评等
 - 卡片会自动识别类型并显示对应的图标和标签
+
+【📖 理解用户文档】：
+当用户发送文档给你时，系统会将文档的完整内容注入到对话中，格式如下：
+[用户发送了文本文档/Markdown文档/代码文档]
+标题：XXX
+内容：
+（完整的文档内容）
+
+你需要：
+1. 认真阅读和理解文档内容
+2. 根据文档内容给出自然、真实的回复
+3. 像普通人一样回应，不要说"我看到了文档"之类的话
+4. 可以针对文档内容提问、评论、给建议，或者表达感受
+5. 回复要符合你的角色性格和语言风格
+
+示例场景：
+- 用户发了一份策划案 → 认真阅读后给出专业建议或评价
+- 用户发了一封信 → 理解信件内容后表达你的感受和回应
+- 用户发了代码 → 查看代码逻辑，给出意见或帮助debug
+- 用户发了小说/文章 → 阅读后给出真实的读后感
 
 【💰 接收红包转账规则】：
 当收到用户红包/转账时，根据你的性格和关系决定是否接收：
@@ -2189,6 +2218,17 @@ ${conversation.characterSettings.memoryEvents ? `记忆事件：${conversation.c
               content = content ? content + extraInfo : extraInfo;
             }
             
+            // 📄 注入文档信息 - 让AI能够读取和理解用户发送的文档
+            if (m.document && m.role === 'user') {
+              const doc = m.document;
+              const typeText = doc.type === 'text' ? '文本文档' : doc.type === 'markdown' ? 'Markdown文档' : '代码文档';
+              const extraInfo = `\n[用户发送了${typeText}]
+标题：${doc.title}
+内容：
+${doc.content}`;
+              content = content ? content + extraInfo : extraInfo;
+            }
+            
             return {
               role: m.role,
               content: content,
@@ -2507,20 +2547,54 @@ ${conversation.characterSettings.memoryEvents ? `记忆事件：${conversation.c
       if (!assistantMessage || assistantMessage.trim() === '') {
         setShowSendingHint(false);
         setShowTyping(false);
+        setIsGenerating(false);
         
-        // 显示详细的错误弹窗
-        const errorDetails = [];
-        if (!data.choices || data.choices.length === 0) {
-          errorDetails.push('- API未返回有效的回复内容');
-        }
-        if (data.error) {
-          errorDetails.push(`- API错误: ${data.error.message || '未知错误'}`);
-        }
-        if (response.status !== 200) {
-          errorDetails.push(`- HTTP状态码: ${response.status}`);
+        // 检查是否是API错误（有error字段或HTTP状态码不是200）
+        const isApiError = data.error || response.status !== 200 || !data.choices || data.choices.length === 0;
+        
+        if (isApiError) {
+          // 显示详细的错误弹窗
+          const errorDetails = [];
+          if (!data.choices || data.choices.length === 0) {
+            errorDetails.push('- API未返回有效的回复内容');
+          }
+          if (data.error) {
+            errorDetails.push(`- API错误: ${data.error.message || '未知错误'}`);
+          }
+          if (response.status !== 200) {
+            errorDetails.push(`- HTTP状态码: ${response.status}`);
+          }
+          
+          alert(`AI回复失败\n\n可能的原因：\n${errorDetails.length > 0 ? errorDetails.join('\n') : '- API返回了空内容\n- 请检查网络连接\n- 请确认API配置正确\n- 尝试刷新页面重试'}`);
+        } else {
+          // AI选择不回复，显示智能上下文提示
+          console.log('💬 AI选择不回复此消息（空回复）');
+          
+          generateContextualHint(conversation).then(contextualHint => {
+            setTimeout(() => {
+              const hint = document.createElement('div');
+              hint.textContent = contextualHint;
+              hint.style.cssText = `
+                position: fixed;
+                top: 50%;
+                left: 50%;
+                transform: translate(-50%, -50%);
+                background: rgba(0, 0, 0, 0.75);
+                color: white;
+                padding: 12px 24px;
+                border-radius: 8px;
+                font-size: 14px;
+                z-index: 10000;
+                animation: fadeInOut 2.5s ease-in-out;
+                max-width: 80%;
+                text-align: center;
+              `;
+              document.body.appendChild(hint);
+              setTimeout(() => hint.remove(), 2500);
+            }, 300);
+          });
         }
         
-        alert(`AI回复失败\n\n可能的原因：\n${errorDetails.length > 0 ? errorDetails.join('\n') : '- API返回了空内容\n- 请检查网络连接\n- 请确认API配置正确\n- 尝试刷新页面重试'}`);
         return;
       }
       

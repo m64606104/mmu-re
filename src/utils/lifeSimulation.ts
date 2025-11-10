@@ -505,6 +505,7 @@ export const generateDailyActivities = (
 ): ActivityLogEntry[] => {
   const activities: ActivityLogEntry[] = [];
   const personality = conversation.characterSettings?.personality;
+  const now = new Date();
   
   // 为一天的不同时段生成活动
   const timeSlots = [
@@ -524,6 +525,11 @@ export const generateDailyActivities = (
     slotDate.setHours(hour, minutes, 0, 0);
     
     const timestamp = slotDate.getTime();
+    
+    // 🔥 关键修复：只生成当前时间之前的活动，不生成未来的活动
+    if (timestamp > now.getTime()) {
+      return; // 跳过未来的时间段
+    }
     
     // 检查是否已有相近时间的活动（避免重复）
     const hasNearbyActivity = activities.some(a => 
