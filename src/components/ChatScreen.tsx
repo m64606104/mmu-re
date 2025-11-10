@@ -2328,9 +2328,8 @@ ${doc.content}`;
             // 情况2：AI选择不回复（无error）
             console.log('💬 AI选择不回复');
             
-            // 🔥 生成智能的上下文不回复提示
+            // 🔥 生成智能的上下文不回复提示，作为系统消息添加到聊天记录
             generateContextualHint(conversation).then(contextualHint => {
-              // 添加智能提示到聊天记录（无论用户在不在页面都保留）
               const systemMessage: Message = {
                 id: Date.now().toString(),
                 role: 'system',
@@ -2349,32 +2348,6 @@ ${doc.content}`;
                     lastMessageTime: Date.now(),
                   });
                 }
-              }
-              
-              // 🎯 如果用户还在页面，显示浮动提示框
-              if (isComponentMountedRef.current) {
-                setTimeout(() => {
-                  const hint = document.createElement('div');
-                  hint.textContent = contextualHint;
-                  hint.style.cssText = `
-                    position: fixed;
-                    top: 50%;
-                    left: 50%;
-                    transform: translate(-50%, -50%);
-                    background: rgba(0, 0, 0, 0.75);
-                    color: white;
-                    padding: 12px 24px;
-                    border-radius: 8px;
-                    font-size: 14px;
-                    z-index: 10000;
-                    animation: fadeInOut 2.5s ease-in-out;
-                    max-width: 80%;
-                    text-align: center;
-                    pointer-events: none;
-                  `;
-                  document.body.appendChild(hint);
-                  setTimeout(() => hint.remove(), 2500);
-                }, 300);
               }
             });
             
