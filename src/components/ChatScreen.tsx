@@ -2578,7 +2578,14 @@ ${doc.content}`;
       
     } catch (error) {
       console.error('Generate failed:', error);
-      alert('生成失败，请检查配置和网络');
+      
+      // 🔥 改进错误提示，告知用户可以重试
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      const displayError = errorMessage.length > 100 ? '网络或API错误' : errorMessage;
+      const retryHint = '\n\n💡 提示：您可以再次发送消息重试，或检查网络连接和API配置。';
+      
+      showToast(`消息发送失败：${displayError}` + retryHint, 'error');
+      
       setShowSendingHint(false);
       setShowTyping(false);
       setIsGenerating(false);
