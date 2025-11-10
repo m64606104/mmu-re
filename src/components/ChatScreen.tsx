@@ -263,12 +263,16 @@ const backgroundTaskManager = {
 
         // 🔥 智能识别文档发送（支持多种格式）
         
+        console.log('🔍 开始解析文档，原始内容：', finalContent);
+        
         // 格式1：标准格式 [发文档:标题:类型] 内容...
         const standardDocMatches = Array.from(finalContent.matchAll(/\[发文档:([^:]+):([^\]]+)\]/g));
+        console.log('📋 标准格式匹配结果：', standardDocMatches.length, standardDocMatches);
         
         // 格式2：描述性格式（仅标记，不提取内容）
         // "发送了文档「标题」" → 视为只有标题，无内容
         const descriptiveDocMatches = Array.from(finalContent.matchAll(/发送了?文档[「『]([^」』]+)[」』]/g));
+        console.log('📋 描述性格式匹配结果：', descriptiveDocMatches.length, descriptiveDocMatches);
         
         // 优先使用标准格式（有内容），如果没有则使用描述性格式（创建空文档占位）
         const allDocMatches = standardDocMatches.length > 0 ? standardDocMatches : 
@@ -310,7 +314,11 @@ const backgroundTaskManager = {
               // 所以我们提取标记之前的所有内容作为文档内容
               if (idx === 0) {
                 // 如果这是第一个文档标记，提取它之前的所有内容
+                console.log(`🔍 描述性格式 - 标记位置: ${tagIndex}, 标记内容: "${docMatch[0]}"`);
+                console.log(`🔍 标记前的内容: "${finalContent.substring(0, tagIndex)}"`);
                 docContent = finalContent.substring(0, tagIndex).trim();
+                console.log(`🔍 提取的文档内容长度: ${docContent.length}`);
+                console.log(`🔍 提取的文档内容预览: "${docContent.substring(0, 100)}..."`);
                 // 清空finalContent（文档内容不应该显示在气泡中）
                 textBeforeFirstDoc = '';
               } else {
@@ -324,6 +332,7 @@ const backgroundTaskManager = {
               
               // 如果没有提取到内容，创建提示
               if (!docContent) {
+                console.warn(`⚠️ 描述性文档没有内容！标题: ${docTitle}`);
                 docContent = `📄 ${docTitle}\n\n（此文档暂无内容）\n\n提示：AI使用了描述性格式，但没有在标记前提供内容。`;
               }
             } else if (idx === 0) {
@@ -1768,20 +1777,27 @@ ${SmartHTMLGenerator.getModuleInstructions()}
 
 【📄 发送内容卡片功能】：
 你可以发送各种形式的内容卡片给用户，**必须严格使用以下格式**：
-[发文档:标题:类型] 内容...
+[发文档:标题:类型] 完整的文档内容...
 
-类型固定为：text、markdown、code
-但内容形式可以多样化：新闻、八卦、小红书笔记、公众号文章、同人文、信件、策划案、报告等
+**🔥 核心规则（必须遵守）：**
+1. **标记格式：** [发文档:标题:类型]
+2. **类型选择：** text、markdown、code（三选一）
+3. **内容位置：** 标记后面紧跟完整文档内容（200-5000字）
+4. **内容完整性：** 必须输出完整文档，不能只有标记没有内容！
 
-🚫 绝对禁止：
-- ❌ 错误："发送了文档「【女推同人】失控」"
-- ❌ 错误："我给你写了个文档"  
-- ✅ 正确："给你写了点东西 [发文档:【女推同人】失控:text] 周子谦的吻落在..."
+**🚫 绝对禁止（会导致错误）：**
+- ❌ 错误示例1："发送了文档「标题」" ← 没有标记，没有内容
+- ❌ 错误示例2："[发文档:标题:text]" ← 只有标记，没有内容
+- ❌ 错误示例3："我给你写了个文档「标题」" ← 描述性文字，不是正确格式
 
-⚠️ 重要：
-- 内容只会在用户点击卡片后显示，不会泄露到聊天气泡中
-- 自动识别：系统会根据标题和内容自动识别显示类型（新闻、小红书、公众号等），显示对应的图标和标签
-- 📏 字数限制：单个文档内容最多20000字符，超过会被截断
+**✅ 正确示例（完整格式）：**
+[发文档:【女推同人】失控:text] 周子谦的吻落在唇角，那是带着些许酒气的温度。办公室的灯光昏暗，投影在玻璃上的两个身影交叠在一起，暧昧而危险。"主人..."苏绝的声音颤抖着，手指攥紧了对方的衣领......（后面继续输出完整文档内容，至少200-1000字）
+
+**⚠️ 重要提醒：**
+- 标记后必须输出完整文档内容，不能只有标记！
+- 内容会在卡片中显示，不会泄露到气泡中
+- 系统会自动识别内容类型（新闻、小红书、同人文等）
+- 📏 字数限制：单个文档最多20000字符
 
 【内容形式与专业规范】：
 根据不同内容形式，必须详细、专业、符合真实文体：
