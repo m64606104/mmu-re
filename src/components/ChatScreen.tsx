@@ -486,7 +486,15 @@ const backgroundTaskManager = {
       return "task_" + Date.now();
     } catch (error) {
       console.error('API调用失败:', error);
-      callback([], conversation.id, error instanceof Error ? error.message : String(error));
+      
+      // 🔥 识别CORS错误
+      let errorMessage = error instanceof Error ? error.message : String(error);
+      if (errorMessage.includes('Load failed') || errorMessage.includes('NetworkError') || 
+          errorMessage.includes('Failed to fetch')) {
+        errorMessage = 'API服务连接失败，可能原因：\n1. API地址配置错误\n2. API服务暂时不可用\n3. 网络连接问题\n\n请检查API设置或稍后重试';
+      }
+      
+      callback([], conversation.id, errorMessage);
       return "task_failed_" + Date.now();
     }
   }
