@@ -72,13 +72,17 @@ function App() {
       // 从智能存储加载数据
       const saved = await smartLoad('conversations');
       
+      let loadedConversations: Conversation[] = [];
+      
       if (saved) {
+        loadedConversations = saved;
         setConversations(saved);
       } else {
         // 检查旧的localStorage数据
         const oldSaved = localStorage.getItem('conversations');
         if (oldSaved) {
           const parsed = JSON.parse(oldSaved);
+          loadedConversations = parsed;
           setConversations(parsed);
           // 保存到新存储
           await smartSave('conversations', parsed);
@@ -126,7 +130,26 @@ function App() {
               unreadCount: 0,
             },
           ];
+          loadedConversations = presetContacts;
           setConversations(presetContacts);
+        }
+      }
+
+      // 💰 智能财务系统：自动配置AI收入
+      if (loadedConversations.length > 0 && apiConfig) {
+        try {
+          const { autoConfigureAllIncome } = await import('./utils/smartFinanceSystem');
+          const { processAllAutoIncome } = await import('./utils/aiFinance');
+          
+          // 为所有AI配置收入（仅首次，已配置的会跳过）
+          setTimeout(async () => {
+            await autoConfigureAllIncome(loadedConversations, apiConfig);
+            
+            // 处理一次自动收入
+            await processAllAutoIncome();
+          }, 3000); // 延迟3秒执行，避免阻塞初始化
+        } catch (error) {
+          console.error('初始化财务系统失败:', error);
         }
       }
     };
@@ -153,6 +176,21 @@ function App() {
   useEffect(() => {
     localStorage.setItem('userProfile', JSON.stringify(userProfile));
   }, [userProfile]);
+
+  // 💰 定时处理AI自动收入（每小时检查一次）
+  useEffect(() => {
+    const processIncomeInterval = setInterval(async () => {
+      try {
+        const { processAllAutoIncome } = await import('./utils/aiFinance');
+        await processAllAutoIncome();
+        console.log('✅ 定时处理AI自动收入完成');
+      } catch (error) {
+        console.error('⚠️ 定时处理AI自动收入失败:', error);
+      }
+    }, 60 * 60 * 1000); // 1小时
+
+    return () => clearInterval(processIncomeInterval);
+  }, []);
 
   useEffect(() => {
     // 🚀 性能优化：朋友圈数据也使用防抖保存
