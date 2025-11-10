@@ -1165,7 +1165,7 @@ ${recentMessages}
   };
 
   // 处理AI的订单响应（解析AI回复中的[接受礼物]等标记）
-  const processAIOrderResponse = (aiMessage: Message) => {
+  const processAIOrderResponse = (aiMessage: Message, currentMessages: Message[]) => {
     // 检测AI回复中的订单响应标记
     const responseMatch = aiMessage.content.match(/\[(接受礼物|退回礼物|同意代付|拒绝代付)\]/);
     if (!responseMatch) return;
@@ -1173,8 +1173,9 @@ ${recentMessages}
     const responseType = responseMatch[1];
     console.log(`🎁 处理AI订单响应: ${responseType}`);
     
+    // 🔥 使用传入的最新消息列表，而不是conversation.messages
     // 找到最近的待处理订单消息（用户发送的）
-    const recentOrderMessage = [...conversation.messages]
+    const recentOrderMessage = [...currentMessages]
       .reverse()
       .find(msg => 
         msg.role === 'user' && 
@@ -1218,8 +1219,8 @@ ${recentMessages}
       newStatus = 'rejected';
     }
     
-    // 更新订单状态
-    const updatedMessages = conversation.messages.map(msg => {
+    // 🔥 使用传入的最新消息列表更新订单状态
+    const updatedMessages = currentMessages.map(msg => {
       if (msg.id === recentOrderMessage.id && msg.order) {
         return {
           ...msg,
@@ -1232,6 +1233,7 @@ ${recentMessages}
       return msg;
     });
     
+    // 🔥 只更新一次，使用最新的消息列表
     onUpdateConversation(conversation.id, {
       messages: updatedMessages
     });
@@ -2311,10 +2313,12 @@ ${conversation.characterSettings.memoryEvents ? `记忆事件：${conversation.c
               const order = m.order;
               const typeText = order.type === 'gift' ? '礼物' : '代付请求';
               const productList = order.products.map(p => `${p.name} ¥${p.price}`).join('、');
-              const extraInfo = `\n[${m.role === 'user' ? '用户' : '你'}发送了${typeText}]
+              const extraInfo = `\n[系统提示：${m.role === 'user' ? '用户' : '你'}发送了${typeText}]
 商品：${productList}
 总金额：¥${order.totalAmount}${order.message ? `\n留言：${order.message}` : ''}
-状态：${order.status === 'pending' ? '待处理' : order.status === 'accepted' ? '已接受' : order.status === 'paid' ? '已支付' : '已拒绝'}`;
+状态：${order.status === 'pending' ? '待处理' : order.status === 'accepted' ? '已接受' : order.status === 'paid' ? '已支付' : '已拒绝'}
+
+⚠️ 注意：这是系统提示信息，不要在回复中重复这些内容！请自然地回应礼物/代付请求。`;
               content = content ? content + extraInfo : extraInfo;
             }
             
@@ -2471,7 +2475,7 @@ ${doc.content}`;
               
               // 🎁 处理订单响应（如果AI回复包含订单响应标记）
               if (newMessages[i].content) {
-                processAIOrderResponse(newMessages[i]);
+                processAIOrderResponse(newMessages[i], currentMessages);
               }
               
               // 💰 处理红包/转账响应（如果AI回复包含红包响应）
@@ -2502,7 +2506,7 @@ ${doc.content}`;
             // 🎁 处理订单响应（用户离开的情况下也要处理）
             newMessages.forEach(msg => {
               if (msg.content) {
-                processAIOrderResponse(msg);
+                processAIOrderResponse(msg, currentMessages);
               }
               // 💰 处理红包/转账响应
               if (msg.moneyTransfer) {
