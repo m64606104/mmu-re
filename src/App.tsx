@@ -24,6 +24,7 @@ import ProactiveMessagingService from './components/ProactiveMessagingService';
 import MessageNotification from './components/MessageNotification';
 import { smartLoad, smartSave, migrateToIndexedDB } from './utils/storage';
 import SmartActivityScheduler from './components/SmartActivityScheduler';
+import { generateAIMoment } from './utils/aiMomentsGenerator';
 
 function App() {
   const [currentScreen, setCurrentScreen] = useState<Screen>('home');
@@ -486,6 +487,20 @@ function App() {
     navigateTo('chat', newConversation.id);
   }, [conversations, navigateTo]);
 
+  // 手动触发AI发朋友圈
+  const handleRequestAIMoment = async () => {
+    const currentConversation = conversations.find(c => c.id === currentConversationId);
+    if (!currentConversation) return;
+    
+    console.log(`🎯 手动触发AI发朋友圈: ${currentConversation.name}`);
+    try {
+      await generateAIMoment(currentConversation, apiConfig);
+      console.log('✅ AI朋友圈发布成功');
+    } catch (error) {
+      console.error('❌ AI朋友圈发布失败:', error);
+    }
+  };
+
   // 渲染当前页面
   const renderScreen = () => {
     const currentConversation = conversations.find(c => c.id === currentConversationId);
@@ -503,6 +518,7 @@ function App() {
             onUpdateConversation={updateConversation}
             onBack={() => navigateTo(previousScreen === 'contacts' ? 'contacts' : 'social')}
             onOpenCharacterSettings={() => navigateTo('character-settings')}
+            onRequestAIMoment={handleRequestAIMoment}
           />
         ) : (
           <HomeScreen onNavigate={navigateTo} />
