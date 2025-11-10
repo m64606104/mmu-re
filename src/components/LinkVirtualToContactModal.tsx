@@ -2,10 +2,12 @@
  * 关联虚拟角色到联系人的弹窗
  */
 
-import { useState } from 'react';
+import React, { useState } from 'react';
 import { X, Link as LinkIcon, Users } from 'lucide-react';
 import { CharacterRelationship } from '../utils/aiRelationships';
 import { Conversation } from '../types';
+import { useConfirm } from '../hooks/useConfirm';
+import { useToast } from './Toast';
 
 interface LinkVirtualToContactModalProps {
   isOpen: boolean;
@@ -23,16 +25,26 @@ export default function LinkVirtualToContactModal({
   availableContacts
 }: LinkVirtualToContactModalProps) {
   const [selectedContactId, setSelectedContactId] = useState('');
+  const { confirm, ConfirmComponent } = useConfirm();
+  const { showToast } = useToast();
 
   if (!isOpen) return null;
 
-  const handleLink = () => {
+  const handleLink = async () => {
     if (!selectedContactId) {
-      alert('请选择一个联系人');
+      showToast('请选择一个联系人', 'error');
       return;
     }
 
-    if (confirm('确定要将虚拟角色关联到此联系人吗？\n\n关联后，虚拟角色的关系数据将合并到联系人关系中。')) {
+    const confirmed = await confirm({
+      title: '关联虚拟角色',
+      message: '确定要将虚拟角色关联到此联系人吗？\n\n关联后，虚拟角色的关系数据将合并到联系人关系中。',
+      type: 'info',
+      confirmText: '确定关联',
+      cancelText: '取消'
+    });
+
+    if (confirmed) {
       onLink(virtualRelationship, selectedContactId);
       onClose();
     }
@@ -167,6 +179,9 @@ export default function LinkVirtualToContactModal({
           </button>
         </div>
       </div>
+      
+      {/* 确认对话框 */}
+      {ConfirmComponent}
     </div>
   );
 }
