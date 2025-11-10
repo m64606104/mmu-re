@@ -40,6 +40,192 @@ const renderDocumentContent = (content: string, title: string) => {
   const lowerTitle = title.toLowerCase();
   const lowerContent = content.toLowerCase();
   
+  // 🔥 微信公众号文章类
+  if (lowerTitle.includes('公众号') || lowerTitle.includes('推文') || 
+      (content.includes('作者') && content.includes('来源') && content.length > 500)) {
+    const lines = content.split('\n').filter(l => l.trim());
+    const titleLine = lines[0] || title;
+    const author = lines.find(l => l.includes('作者'))?.replace(/作者[:：]\s*/, '') || '';
+    const contentLines = lines.slice(author ? 2 : 1);
+    
+    return (
+      <div className="max-w-[400px] mx-auto bg-white">
+        {/* 公众号头部 */}
+        <div className="px-6 pt-8 pb-6 bg-white">
+          <h1 className="text-2xl font-bold text-gray-900 leading-tight mb-4" style={{ letterSpacing: '-0.5px' }}>
+            {titleLine}
+          </h1>
+          <div className="flex items-center justify-between text-sm text-gray-500 border-b pb-4">
+            <div className="flex items-center gap-2">
+              <div className="w-8 h-8 bg-gradient-to-br from-green-400 to-green-600 rounded-full flex items-center justify-center text-white text-xs font-bold">
+                {author.charAt(0) || 'A'}
+              </div>
+              <span>{author || '公众号'}</span>
+            </div>
+            <div className="text-xs text-gray-400">
+              刚刚
+            </div>
+          </div>
+        </div>
+        
+        {/* 公众号正文 */}
+        <div className="px-6 pb-8">
+          <div className="text-gray-800 leading-loose text-[15px] space-y-4">
+            {contentLines.map((line, idx) => (
+              line.trim() && (
+                <p key={idx} className="indent-8">
+                  {line}
+                </p>
+              )
+            ))}
+          </div>
+        </div>
+      </div>
+    );
+  }
+  
+  // 📰 新闻类（澎湃风格）
+  if (lowerTitle.includes('新闻') || lowerTitle.includes('资讯') || lowerTitle.includes('快讯') ||
+      lowerContent.includes('记者') || lowerContent.includes('报道') || lowerContent.includes('消息')) {
+    const lines = content.split('\n').filter(l => l.trim());
+    const headline = lines[0] || title;
+    const source = lines.find(l => l.includes('来源'))?.replace(/来源[:：]\s*/, '') || '澎湃新闻';
+    const time = lines.find(l => l.includes('时间'))?.replace(/时间[:：]\s*/, '') || '刚刚';
+    const contentLines = lines.slice(1).filter(l => !l.includes('来源') && !l.includes('时间'));
+    
+    return (
+      <div className="max-w-[400px] mx-auto bg-white">
+        {/* 新闻头部 */}
+        <div className="border-b-4 border-blue-600 pb-4 mb-4">
+          <div className="bg-blue-600 text-white px-4 py-2 text-xs font-bold inline-block mb-4">
+            📰 热点新闻
+          </div>
+          <h1 className="text-2xl font-bold text-gray-900 px-4 leading-tight">
+            {headline}
+          </h1>
+        </div>
+        
+        {/* 新闻元信息 */}
+        <div className="flex items-center gap-4 px-4 mb-6 text-xs text-gray-500">
+          <span className="flex items-center gap-1">
+            📡 {source}
+          </span>
+          <span>•</span>
+          <span>{time}</span>
+        </div>
+        
+        {/* 新闻正文 */}
+        <div className="px-4 pb-6">
+          <div className="text-gray-800 leading-relaxed text-[15px] space-y-3">
+            {contentLines.map((line, idx) => (
+              line.trim() && (
+                <p key={idx} className="indent-8">
+                  {line}
+                </p>
+              )
+            ))}
+          </div>
+        </div>
+      </div>
+    );
+  }
+  
+  // 🎭 微博帖子类
+  if (lowerTitle.includes('微博') || lowerTitle.includes('动态') || 
+      (content.includes('#') && content.includes('话题'))) {
+    const lines = content.split('\n').filter(l => l.trim());
+    const username = lines.find(l => l.includes('@'))?.replace('@', '') || '微博用户';
+    const mainContent = lines.filter(l => !l.includes('@') && !l.includes('来源')).join('\n');
+    
+    return (
+      <div className="max-w-[400px] mx-auto bg-white rounded-xl border border-gray-200 overflow-hidden">
+        {/* 微博头部 */}
+        <div className="flex items-start gap-3 p-4 bg-gradient-to-b from-orange-50 to-white">
+          <div className="w-12 h-12 bg-gradient-to-br from-orange-400 to-red-500 rounded-full flex items-center justify-center text-white text-lg font-bold">
+            {username.charAt(0)}
+          </div>
+          <div className="flex-1">
+            <div className="font-semibold text-gray-900">{username}</div>
+            <div className="text-xs text-gray-500">刚刚</div>
+          </div>
+          <div className="text-orange-500 text-sm">+ 关注</div>
+        </div>
+        
+        {/* 微博内容 */}
+        <div className="px-4 pb-4">
+          <div className="text-gray-800 text-[15px] leading-relaxed whitespace-pre-wrap">
+            {mainContent}
+          </div>
+          
+          {/* 微博互动 */}
+          <div className="flex items-center justify-around mt-6 pt-4 border-t border-gray-100 text-gray-500 text-sm">
+            <div className="flex items-center gap-1">
+              💬 <span>评论</span>
+            </div>
+            <div className="flex items-center gap-1">
+              🔁 <span>转发</span>
+            </div>
+            <div className="flex items-center gap-1">
+              ❤️ <span>点赞</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+  
+  // 💡 知乎问答类
+  if (lowerTitle.includes('知乎') || lowerTitle.includes('问答') || lowerTitle.includes('如何') ||
+      lowerTitle.includes('为什么') || content.includes('题主') || content.includes('谢邀')) {
+    const lines = content.split('\n').filter(l => l.trim());
+    const question = lines[0] || title;
+    const answerer = lines.find(l => l.includes('答主'))?.replace(/答主[:：]\s*/, '') || '匿名用户';
+    const answerContent = lines.slice(1).filter(l => !l.includes('答主')).join('\n');
+    
+    return (
+      <div className="max-w-[400px] mx-auto bg-white">
+        {/* 知乎问题 */}
+        <div className="px-4 py-6 bg-gradient-to-b from-blue-50 to-white border-b">
+          <div className="text-xs text-blue-600 font-semibold mb-2">💡 知乎问答</div>
+          <h2 className="text-xl font-bold text-gray-900 leading-tight">
+            {question}
+          </h2>
+        </div>
+        
+        {/* 回答者信息 */}
+        <div className="flex items-center gap-3 px-4 py-4 bg-gray-50">
+          <div className="w-10 h-10 bg-gradient-to-br from-blue-400 to-blue-600 rounded-full flex items-center justify-center text-white font-bold">
+            {answerer.charAt(0)}
+          </div>
+          <div className="flex-1">
+            <div className="font-semibold text-gray-900">{answerer}</div>
+            <div className="text-xs text-gray-500">资深用户</div>
+          </div>
+        </div>
+        
+        {/* 回答内容 */}
+        <div className="px-4 py-6">
+          <div className="text-gray-800 text-[15px] leading-loose whitespace-pre-wrap">
+            {answerContent}
+          </div>
+          
+          {/* 互动区 */}
+          <div className="flex items-center gap-6 mt-6 pt-4 border-t text-gray-500 text-sm">
+            <div className="flex items-center gap-1">
+              👍 <span>赞同</span>
+            </div>
+            <div className="flex items-center gap-1">
+              💬 <span>评论</span>
+            </div>
+            <div className="flex items-center gap-1">
+              ⭐ <span>收藏</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+  
   // 日记/日志类
   if (lowerTitle.includes('日记') || lowerTitle.includes('日志') || content.includes('今天') && content.includes('心情')) {
     return (
