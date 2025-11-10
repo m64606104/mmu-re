@@ -6,7 +6,6 @@ import SendDocumentModal from './SendDocumentModal';
 import DocumentViewModal from './DocumentViewModal';
 import DocumentLibraryModal from './DocumentLibraryModal';
 import DocumentCard from './DocumentCard';
-import XiaohongshuView from './XiaohongshuView';
 import SelectContactModal from './SelectContactModal';
 import WeChatLinkPreview from './WeChatLinkPreview';
 import { SmartLinkParser } from '../utils/smartLinkParser';
@@ -382,36 +381,6 @@ const backgroundTaskManager = {
               amount: 0, // 占位，需要后续更新
               message: message,
               status: action === '接收' ? 'received' : 'returned'
-            }
-          });
-        }
-
-        // 检测订单响应：[接受礼物] [退回礼物] [同意代付] [拒绝代付]
-        const orderResponseMatch = finalContent.match(/\[(接受礼物|退回礼物|同意代付|拒绝代付)\]/);
-        if (orderResponseMatch) {
-          const responseType = orderResponseMatch[1];
-          finalContent = finalContent.replace(orderResponseMatch[0], '').trim();
-          
-          // 标记需要处理订单响应（在callback中处理）
-          // 这里只是移除标记，实际更新逻辑在processAIOrderResponse中
-          console.log(`🎁 AI订单响应: ${responseType}`);
-        }
-
-        // 检测小红书：小红书瀑布流[...]
-        const xhsMatch = finalContent.match(/小红书瀑布流\[([\s\S]*?)\]/);
-        if (xhsMatch) {
-          const xhsContent = xhsMatch[0]; // 完整的小红书内容
-          finalContent = finalContent.replace(xhsContent, '').trim();
-          
-          console.log('📕 AI发送小红书内容');
-          
-          allExtraMessages.push({
-            id: `${baseId}_xiaohongshu`,
-            role: 'assistant',
-            content: '发送了小红书内容',
-            timestamp: Date.now() + 100 + allExtraMessages.length * 10,
-            xiaohongshu: {
-              rawContent: xhsContent
             }
           });
         }
@@ -1691,7 +1660,7 @@ ${conversation.characterSettings.memoryEvents ? `记忆事件：${conversation.c
 
 ${SmartLinkParser.getPromptInstructions()}
 
-${SmartHTMLGenerator.getFullPrompt()}
+${SmartHTMLGenerator.getModuleInstructions()}
 
 【💰 红包和转账功能】：
 你可以在适当的场景下发送红包或转账，使用以下格式：
@@ -3301,15 +3270,24 @@ ${doc.content}`;
                           )}
                         </div>
                         {message.moneyTransfer.status === 'pending' && message.role === 'assistant' && (
-                          <div className="bg-white/20 backdrop-blur-sm border-t border-white/20">
+                          <div className="bg-white/20 backdrop-blur-sm border-t border-white/20 flex">
                             <button
                               onClick={(e) => {
                                 e.stopPropagation();
                                 handleReceiveMoney(message.id, true);
                               }}
-                              className="w-full py-3 text-white font-medium hover:bg-white/10 transition-colors"
+                              className="flex-1 py-3 text-white font-medium hover:bg-white/10 transition-colors border-r border-white/20"
                             >
-                              {message.moneyTransfer.type === 'redPacket' ? '🎁 领取红包' : '✅ 确认收款'}
+                              {message.moneyTransfer.type === 'redPacket' ? '🎁 领取' : '✅ 收款'}
+                            </button>
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleReceiveMoney(message.id, false);
+                              }}
+                              className="flex-1 py-3 text-white font-medium hover:bg-white/10 transition-colors"
+                            >
+                              💝 退回
                             </button>
                           </div>
                         )}
@@ -3359,11 +3337,6 @@ ${doc.content}`;
                           setViewingDocument(message.document);
                         }}
                       />
-                    )}
-                    
-                    {/* 小红书消息 */}
-                    {message.xiaohongshu && (
-                      <XiaohongshuView rawContent={message.xiaohongshu.rawContent} />
                     )}
                     
                     {/* 订单消息气泡（礼物/代付请求） */}

@@ -45,11 +45,9 @@ export interface Message {
   document?: DocumentMessage;
   // 🛍️ 订单/购物支持
   order?: OrderMessage;
-  // 📕 小红书支持
-  xiaohongshu?: XiaohongshuContent;
   // 🔗 链接预览支持（新系统，替代旧的document）
   linkPreview?: LinkPreviewMessage;
-  // 🎭 社交平台内容支持（小红书、知乎、微博）
+  // 🎭 可视化内容模块（小红书、知乎、微博、搜索记录等）
   socialFeed?: SocialFeedMessage;
 }
 
@@ -92,11 +90,6 @@ export interface OrderProduct {
   price: number;
   quantity: number;
   image?: string;
-}
-
-// 📕 小红书内容类型
-export interface XiaohongshuContent {
-  rawContent: string; // 原始格式内容（包含所有小红书标记）
 }
 
 // 🔗 链接预览消息类型（新系统）
