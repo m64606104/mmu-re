@@ -170,7 +170,6 @@ const backgroundTaskManager = {
         
         // 🔍 解析特殊指令（链接预览、红包、转账、文档）
         let finalContent = cleanContent;
-        console.log(`📖 开始解析AI消息: ${finalContent.substring(0, 100)}...`);
         
         // 注意：社交平台内容已在消息拆分前处理，这里不再检测
         
