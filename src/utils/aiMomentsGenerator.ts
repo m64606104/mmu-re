@@ -1470,12 +1470,79 @@ const makeInteractionDecision = async (
     const authorName = authorAI === 'user' ? '用户' : (authorAI.characterSettings?.nickname || authorAI.name);
     const authorId = authorAI === 'user' ? 'user' : authorAI.id;
     
-    // 获取关系（如果是用户，则查询与用户的关系）
-    const relationship = getRelationship(viewerAI.id, authorId);
-    const relationshipDesc = relationship ? getRelationshipLabel(relationship.level) : (authorAI === 'user' ? '你的主人' : '普通关系');
+    // 🎯 特殊处理用户朋友圈：获取丰富的上下文信息
+    let userContext = '';
+    let relationshipDesc = '';
+    
+    if (authorAI === 'user') {
+      // 获取用户资料
+      const userProfileStr = localStorage.getItem('userProfile');
+      const userProfile = userProfileStr ? JSON.parse(userProfileStr) : null;
+      
+      // 获取聊天记录
+      const conversationsStr = localStorage.getItem('conversations');
+      const allConversations = conversationsStr ? JSON.parse(conversationsStr) : [];
+      const thisConversation = allConversations.find((c: any) => c.id === viewerAI.id);
+      const recentMessages = thisConversation?.messages?.slice(-10) || []; // 最近10条消息
+      
+      // 获取记忆
+      const memoryBank = getMemoryBank(viewerAI.id);
+      const memories = memoryBank.memories
+        .filter((m: any) => m.importance === 'high' || m.importance === 'medium')
+        .slice(0, 5); // 最重要的5条记忆
+      
+      // 获取关系信息
+      const relationship = getRelationship(viewerAI.id, 'user');
+      
+      // 构建用户上下文
+      userContext = `\n【关于用户的信息】`;
+      
+      if (userProfile) {
+        userContext += `\n用户姓名：${userProfile.username}`;
+        if (userProfile.bio) userContext += `\n用户简介：${userProfile.bio}`;
+        if (userProfile.location) userContext += `\n用户位置：${userProfile.location}`;
+      }
+      
+      if (relationship) {
+        relationshipDesc = getRelationshipLabel(relationship.level);
+        userContext += `\n你和用户的关系：${relationshipDesc}`;
+        if (relationship.description) userContext += `（${relationship.description}）`;
+      } else {
+        relationshipDesc = '亲密伙伴';
+        userContext += `\n你和用户的关系：用户是你的主人，你应该积极关注TA的动态`;
+      }
+      
+      if (memories.length > 0) {
+        userContext += `\n\n【你对用户的记忆】`;
+        memories.forEach((mem: any, idx: number) => {
+          userContext += `\n${idx + 1}. ${mem.content}`;
+        });
+      }
+      
+      if (recentMessages.length > 0) {
+        userContext += `\n\n【最近的聊天记录】`;
+        const chatHistory = recentMessages.slice(-5).map((msg: any) => {
+          const speaker = msg.role === 'user' ? '用户' : '你';
+          return `${speaker}: ${msg.content.substring(0, 50)}${msg.content.length > 50 ? '...' : ''}`;
+        }).join('\n');
+        userContext += `\n${chatHistory}`;
+      }
+    } else {
+      // AI之间的关系
+      const relationship = getRelationship(viewerAI.id, authorId);
+      relationshipDesc = relationship ? getRelationshipLabel(relationship.level) : '普通关系';
+      if (relationship?.description) {
+        userContext = `\n【你们的关系】\n${relationshipDesc}（${relationship.description}）`;
+      } else {
+        userContext = `\n【你们的关系】\n${relationshipDesc}`;
+      }
+    }
 
     // 构建决策提示词
     const prompt = `你是 ${viewerSettings.nickname || viewerAI.name}。
+
+【你的角色设定】
+${viewerSettings.systemPrompt || ''}
 
 【你的性格】
 ${viewerSettings.personality || ''}
@@ -1483,8 +1550,7 @@ ${viewerSettings.personality || ''}
 【你的说话风格】
 ${viewerSettings.languageStyle || ''}
 
-【你对${authorName}的关系】
-${relationshipDesc}${relationship?.description ? `（${relationship.description}）` : ''}
+${userContext}
 
 【朋友圈内容】
 ${authorName} 发了一条朋友圈：
@@ -1493,9 +1559,10 @@ ${post.imageDescriptions ? `配图：${post.imageDescriptions.join('、')}` : ''
 
 【任务】
 你刷朋友圈时看到了这条动态，请根据：
-1. 你的性格和兴趣
+1. 你的角色设定、性格、兴趣和背景
 2. 朋友圈的内容
-3. 你和发布者的关系
+3. 你和发布者的关系、记忆、聊天历史
+${authorAI === 'user' ? '4. **这是用户（你的主人）发的朋友圈，你应该更积极地关注和互动**' : ''}
 
 决定是否互动，以及如何互动。
 
@@ -1509,9 +1576,13 @@ ${post.imageDescriptions ? `配图：${post.imageDescriptions.join('、')}` : ''
 }
 
 【决策指南】
-- 如果内容不感兴趣、和你无关、或者关系不好，可以选择不互动
+${authorAI === 'user' ? `- **用户是你的主人，你应该积极关注TA的朋友圈**
+- 除非朋友圈内容真的和你完全无关，否则建议至少点个赞
+- 如果内容和你们的聊天、记忆相关，强烈建议评论
+- 如果朋友圈反映用户的心情或状态，应该关心并互动
+` : `- 如果内容不感兴趣、和你无关、或者关系不好，可以选择不互动
 - 如果只是觉得还可以，点个赞就行
-- 如果真的有共鸣、想法、或者关系很好，可以评论
+`}- 如果真的有共鸣、想法、或者关系很好，可以评论
 - 评论要真诚、自然，符合你的性格和说话风格`;
 
     // 调用API
