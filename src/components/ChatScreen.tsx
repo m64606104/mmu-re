@@ -2848,19 +2848,6 @@ ${doc.content}`;
         }
       }
 
-      // 🎯 分析AI消息并更新状态
-      if (conversation.type === 'private' && conversation.characterSettings && assistantMessage) {
-        // 🔥 性能优化：仅在AI明确表达状态变化时更新
-        if (assistantMessage.includes('我在') || assistantMessage.includes('我去') || 
-            assistantMessage.includes('我到') || assistantMessage.includes('正在')) {
-          await analyzeAndUpdateStatusFromAI(conversation.id, assistantMessage);
-          const updatedStatus = await getAIStatus(conversation.id);
-          if (updatedStatus) {
-            setAIStatus(updatedStatus);
-          }
-        }
-      }
-
       // 🧠 检查是否需要自动总结记忆
       if (conversation.enabledFeatures?.includes('memory-system')) {
         if (shouldTriggerAutoSummary(conversation.id, currentMessages.length)) {
