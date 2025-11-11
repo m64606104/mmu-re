@@ -1,5 +1,5 @@
 import { Conversation, ApiConfig } from '../types';
-import { updateAIStatus, getAIStatus } from './aiStatusManager';
+import { updateAIStatus } from './aiStatusManager';
 
 /**
  * 智能行为轨迹生成器
@@ -211,23 +211,62 @@ export const generateSmartActivity = async (
 };
 
 /**
- * 检查是否应该生成新的行为轨迹
- * 策略：每隔一段时间（如1-3小时）自动生成
+ * 获取行为轨迹生成计数器
  */
-export const shouldGenerateActivity = async (conversationId: string): Promise<boolean> => {
+const getActivityCounter = (conversationId: string): {
+  lastActivityMessageCount: number;
+  messagesSinceLastActivity: number;
+} => {
   try {
-    const status = await getAIStatus(conversationId);
-    if (!status) return true; // 没有状态，应该生成
+    const stored = localStorage.getItem(`activity_counter_${conversationId}`);
+    if (stored) {
+      return JSON.parse(stored);
+    }
+  } catch (e) {
+    console.error('读取活动计数器失败:', e);
+  }
+  return {
+    lastActivityMessageCount: 0,
+    messagesSinceLastActivity: 0
+  };
+};
+
+/**
+ * 更新行为轨迹生成计数器
+ */
+const updateActivityCounter = (conversationId: string, currentMessageCount: number): void => {
+  try {
+    const counter = {
+      lastActivityMessageCount: currentMessageCount,
+      messagesSinceLastActivity: 0
+    };
+    localStorage.setItem(`activity_counter_${conversationId}`, JSON.stringify(counter));
+    console.log(`✅ 更新行为轨迹计数器: ${currentMessageCount}条消息`);
+  } catch (e) {
+    console.error('更新活动计数器失败:', e);
+  }
+};
+
+/**
+ * 检查是否应该生成新的行为轨迹
+ * 🔥 新策略：每50-100条消息生成一次（参考记忆总结机制）
+ */
+export const shouldGenerateActivity = async (
+  conversationId: string,
+  currentMessageCount: number,
+  activityInterval: number = 75 // 默认每75条消息触发一次
+): Promise<boolean> => {
+  try {
+    const counter = getActivityCounter(conversationId);
+    const messagesSince = currentMessageCount - counter.lastActivityMessageCount;
     
-    const now = Date.now();
-    const lastUpdate = status.lastUpdateTime || 0;
-    const timeDiff = now - lastUpdate;
-    
-    // 超过1小时没更新，应该生成新活动
-    const shouldGenerate = timeDiff > 60 * 60 * 1000;
+    // 达到消息数量阈值，应该生成新活动
+    const shouldGenerate = messagesSince >= activityInterval;
     
     if (shouldGenerate) {
-      console.log(`⏰ 距离上次更新已${Math.floor(timeDiff / 1000 / 60)}分钟，应该生成新活动`);
+      console.log(`💬 已累计 ${messagesSince} 条消息，应该生成新的行为轨迹`);
+      // 更新计数器
+      updateActivityCounter(conversationId, currentMessageCount);
     }
     
     return shouldGenerate;
@@ -239,19 +278,21 @@ export const shouldGenerateActivity = async (conversationId: string): Promise<bo
 
 /**
  * 定时任务：为所有AI角色生成智能行为轨迹
+ * 🔥 改为基于消息数量触发，而不是定时触发
  */
 export const startActivityScheduler = (
   conversations: Conversation[],
   apiConfig: ApiConfig,
-  intervalMinutes: number = 90 // 默认每90分钟检查一次
+  intervalMinutes: number = 90, // 保留参数以兼容，但实际不再使用时间触发
+  messageInterval: number = 75 // 每多少条消息触发一次（默认75条）
 ): NodeJS.Timeout => {
   const checkAndGenerate = async () => {
-    console.log('🔄 检查是否需要生成新的行为轨迹...');
+    console.log('🔄 检查是否需要根据消息数量生成新的行为轨迹...');
     
     for (const conv of conversations) {
       // 只处理私聊且有角色设定的对话
       if (conv.type === 'private' && conv.characterSettings) {
-        const should = await shouldGenerateActivity(conv.id);
+        const should = await shouldGenerateActivity(conv.id, conv.messages.length, messageInterval);
         if (should) {
           await generateSmartActivity(conv, apiConfig);
           // 添加随机延迟，避免所有AI同时更新
@@ -264,10 +305,11 @@ export const startActivityScheduler = (
   // 立即执行一次
   checkAndGenerate();
   
-  // 设置定时任务
-  const intervalId = setInterval(checkAndGenerate, intervalMinutes * 60 * 1000);
+  // 🔥 改为每10分钟检查一次消息数量（而不是每90分钟）
+  // 这样可以更及时地响应新消息，但只有消息数量达到阈值才会生成
+  const intervalId = setInterval(checkAndGenerate, 10 * 60 * 1000);
   
-  console.log(`✅ 智能行为轨迹调度器已启动，每${intervalMinutes}分钟检查一次`);
+  console.log(`✅ 智能行为轨迹调度器已启动（基于消息数量触发，每${messageInterval}条消息生成一次）`);
   
   return intervalId;
 };

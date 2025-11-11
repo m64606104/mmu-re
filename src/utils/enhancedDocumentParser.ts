@@ -333,3 +333,54 @@ export function generateDocumentPreview(doc: DocumentMessage, maxLength: number 
   if (text.length <= maxLength) return text;
   return text.substring(0, maxLength) + '...';
 }
+
+/**
+ * 解析上传的文档文件（PDF、Word、TXT等）
+ * 用于知识库文档上传
+ */
+export async function parseDocument(file: File): Promise<string> {
+  const fileType = file.name.split('.').pop()?.toLowerCase() || '';
+  
+  // TXT文件直接读取
+  if (fileType === 'txt') {
+    return await file.text();
+  }
+  
+  // PDF文件
+  if (fileType === 'pdf') {
+    try {
+      // 动态导入PDF解析库
+      const pdfjsLib = await import('pdfjs-dist');
+      pdfjsLib.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.js`;
+      
+      const arrayBuffer = await file.arrayBuffer();
+      const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+      let fullText = '';
+      
+      for (let i = 1; i <= pdf.numPages; i++) {
+        const page = await pdf.getPage(i);
+        const textContent = await page.getTextContent();
+        const pageText = textContent.items.map((item: any) => item.str).join(' ');
+        fullText += pageText + '\n';
+      }
+      
+      return fullText.trim();
+    } catch (error) {
+      throw new Error('PDF解析失败：' + (error instanceof Error ? error.message : '未知错误'));
+    }
+  }
+  
+  // Word文件（.docx）
+  if (fileType === 'docx' || fileType === 'doc') {
+    try {
+      const mammoth = await import('mammoth');
+      const arrayBuffer = await file.arrayBuffer();
+      const result = await mammoth.extractRawText({ arrayBuffer });
+      return result.value.trim();
+    } catch (error) {
+      throw new Error('Word文档解析失败：' + (error instanceof Error ? error.message : '未知错误'));
+    }
+  }
+  
+  throw new Error(`不支持的文件类型：${fileType}。请上传PDF、Word或TXT文件。`);
+}

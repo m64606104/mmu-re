@@ -40,15 +40,32 @@ export default function ImageGenConfigModal({
     setError('');
 
     try {
+      // 🔥 正确处理API地址：移除末尾斜杠，然后添加 /v1/models
+      let baseUrl = apiUrl.trim();
+      // 移除可能的尾部斜杠
+      if (baseUrl.endsWith('/')) {
+        baseUrl = baseUrl.slice(0, -1);
+      }
+      // 移除可能的API路径后缀
+      baseUrl = baseUrl.replace(/\/(v1\/)?chat\/completions$/, '');
+      baseUrl = baseUrl.replace(/\/(v1\/)?images\/generations$/, '');
+      
+      // 确保有 /v1 前缀
+      const modelsUrl = baseUrl.includes('/v1') 
+        ? `${baseUrl}/models` 
+        : `${baseUrl}/v1/models`;
+      
+      console.log('🔍 获取模型列表:', modelsUrl);
+      
       // 尝试获取模型列表
-      const response = await fetch(`${apiUrl.replace('/images/generations', '')}/models`, {
+      const response = await fetch(modelsUrl, {
         headers: {
           'Authorization': `Bearer ${apiKey}`
         }
       });
 
       if (!response.ok) {
-        throw new Error('获取模型失败');
+        throw new Error(`获取模型失败: ${response.status} ${response.statusText}`);
       }
 
       const data = await response.json();

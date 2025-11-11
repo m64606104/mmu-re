@@ -354,7 +354,7 @@ export default function CharacterSettingsScreen({
     setIsParsingFile(true);
     
     try {
-      const { parseDocument } = await import('../utils/documentParser');
+      const { parseDocument } = await import('../utils/enhancedDocumentParser');
       const text = await parseDocument(file);
       
       // 自动填充标题和内容
@@ -833,24 +833,61 @@ export default function CharacterSettingsScreen({
               <div>
                 <div className="flex items-center justify-between mb-2">
                   <label className="text-sm text-gray-600">活跃时段</label>
-                  <span className="text-xs text-gray-500">点</span>
+                  <span className="text-xs text-gray-500">点（0-23）</span>
                 </div>
                 <div className="flex items-center gap-3">
                   <input
-                    type="number"
+                    type="text"
+                    inputMode="numeric"
                     value={activeHourStart}
-                    onChange={(e) => setActiveHourStart(Math.max(0, Math.min(23, parseInt(e.target.value) || 0)))}
-                    min="0"
-                    max="23"
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      // 允许空白或数字输入
+                      if (val === '' || /^\d+$/.test(val)) {
+                        const num = val === '' ? 0 : parseInt(val);
+                        if (num >= 0 && num <= 23) {
+                          setActiveHourStart(num);
+                        }
+                      }
+                    }}
+                    onBlur={(e) => {
+                      // 失焦时确保有效值
+                      const val = e.target.value;
+                      if (val === '') {
+                        setActiveHourStart(0);
+                      }
+                    }}
+                    placeholder="0"
                     className="w-20 px-3 py-2 text-center border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                   />
                   <span className="text-gray-500">-</span>
                   <input
-                    type="number"
+                    type="text"
+                    inputMode="numeric"
                     value={activeHourEnd}
-                    onChange={(e) => setActiveHourEnd(Math.max(activeHourStart, Math.min(23, parseInt(e.target.value) || 23)))}
-                    min={activeHourStart}
-                    max="23"
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      // 允许空白或数字输入
+                      if (val === '' || /^\d+$/.test(val)) {
+                        const num = val === '' ? 23 : parseInt(val);
+                        if (num >= 0 && num <= 23) {
+                          setActiveHourEnd(num);
+                        }
+                      }
+                    }}
+                    onBlur={(e) => {
+                      // 失焦时确保有效值且不小于开始时间
+                      const val = e.target.value;
+                      if (val === '') {
+                        setActiveHourEnd(Math.max(activeHourStart, 23));
+                      } else {
+                        const num = parseInt(val);
+                        if (num < activeHourStart) {
+                          setActiveHourEnd(activeHourStart);
+                        }
+                      }
+                    }}
+                    placeholder="23"
                     className="w-20 px-3 py-2 text-center border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                   />
                 </div>

@@ -10,7 +10,7 @@ interface ShoppingScreenProps {
   onBack: () => void;
   onPurchase: () => void; // 购买成功后刷新钱包
   conversations: Conversation[]; // AI角色列表
-  onSendGiftToAI: (product: Product, recipientId: string, recipientName: string, shopType: 'food' | 'movie' | 'shopping') => void;
+  onSendGiftToAI: (product: Product, recipientId: string, recipientName: string, shopType: 'food' | 'movie' | 'shopping', message?: string) => void;
   onRequestAIPay: (product: Product, aiId: string, shopType: 'food' | 'movie' | 'shopping') => void;
 }
 
@@ -188,7 +188,7 @@ const ShoppingScreen: React.FC<ShoppingScreenProps> = ({
   };
 
   // 为AI购买（送礼）
-  const handlePurchaseForAI = (product: Product, recipientId: string, recipientName: string) => {
+  const handlePurchaseForAI = (product: Product, recipientId: string, recipientName: string, message?: string) => {
     const balance = getBalance();
     
     if (balance < product.price) {
@@ -198,7 +198,7 @@ const ShoppingScreen: React.FC<ShoppingScreenProps> = ({
 
     const success = purchaseProduct(product.price, `送给${recipientName}的礼物：${product.name}`, currentShop.name);
     if (success) {
-      onSendGiftToAI(product, recipientId, recipientName, shopType);
+      onSendGiftToAI(product, recipientId, recipientName, shopType, message);
       onPurchase();
       alert(`礼物已送给${recipientName}`);
     }

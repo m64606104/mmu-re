@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { X, User, Gift, CreditCard } from 'lucide-react';
 import { Conversation } from '../types';
 
@@ -14,7 +15,7 @@ interface PurchaseOptionsModalProps {
   product: Product | null;
   conversations: Conversation[];
   onPurchaseForSelf: (product: Product) => void;
-  onPurchaseForAI: (product: Product, recipientId: string, recipientName: string) => void;
+  onPurchaseForAI: (product: Product, recipientId: string, recipientName: string, message?: string) => void;
   onRequestAIPay: (product: Product, aiId: string) => void;
 }
 
@@ -27,10 +28,23 @@ export default function PurchaseOptionsModal({
   onPurchaseForAI,
   onRequestAIPay
 }: PurchaseOptionsModalProps) {
+  const [selectedGiftRecipient, setSelectedGiftRecipient] = useState<{id: string, name: string} | null>(null);
+  const [giftMessage, setGiftMessage] = useState('');
+  
   if (!isOpen || !product) return null;
 
   // 只显示AI角色（排除群聊）
   const aiConversations = conversations.filter(c => c.type === 'private' && c.characterSettings);
+  
+  // 处理送礼确认
+  const handleConfirmGift = () => {
+    if (selectedGiftRecipient) {
+      onPurchaseForAI(product, selectedGiftRecipient.id, selectedGiftRecipient.name, giftMessage.trim());
+      setSelectedGiftRecipient(null);
+      setGiftMessage('');
+      onClose();
+    }
+  };
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-end justify-center z-50">
@@ -92,8 +106,7 @@ export default function PurchaseOptionsModal({
                   <button
                     key={conv.id}
                     onClick={() => {
-                      onPurchaseForAI(product, conv.id, conv.characterSettings!.nickname);
-                      onClose();
+                      setSelectedGiftRecipient({id: conv.id, name: conv.characterSettings!.nickname});
                     }}
                     className="w-full flex items-center gap-3 p-3 bg-pink-50 hover:bg-pink-100 rounded-xl transition-colors text-left"
                   >
@@ -142,6 +155,49 @@ export default function PurchaseOptionsModal({
           )}
         </div>
       </div>
+      
+      {/* 礼物备注弹窗 */}
+      {selectedGiftRecipient && (
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50" style={{zIndex: 60}}>
+          <div className="bg-white rounded-2xl w-[90%] max-w-sm p-6 m-4">
+            <h3 className="text-lg font-semibold mb-4 text-gray-800">添加礼物备注</h3>
+            <div className="mb-4">
+              <div className="text-sm text-gray-600 mb-2">
+                送给：<span className="font-medium text-gray-800">{selectedGiftRecipient.name}</span>
+              </div>
+              <div className="text-sm text-gray-600 mb-3">
+                商品：<span className="font-medium text-gray-800">{product.name}</span> ¥{product.price}
+              </div>
+              <textarea
+                value={giftMessage}
+                onChange={(e) => setGiftMessage(e.target.value)}
+                placeholder="写下你想对TA说的话...（可选）"
+                className="w-full p-3 border border-gray-300 rounded-lg resize-none focus:outline-none focus:ring-2 focus:ring-pink-500 focus:border-transparent"
+                rows={3}
+                maxLength={100}
+              />
+              <div className="text-xs text-gray-400 text-right mt-1">{giftMessage.length}/100</div>
+            </div>
+            <div className="flex gap-2">
+              <button
+                onClick={() => {
+                  setSelectedGiftRecipient(null);
+                  setGiftMessage('');
+                }}
+                className="flex-1 py-2.5 px-4 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg font-medium transition-colors"
+              >
+                取消
+              </button>
+              <button
+                onClick={handleConfirmGift}
+                className="flex-1 py-2.5 px-4 bg-gradient-to-r from-pink-500 to-rose-500 hover:from-pink-600 hover:to-rose-600 text-white rounded-lg font-medium transition-colors"
+              >
+                确认送出
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
