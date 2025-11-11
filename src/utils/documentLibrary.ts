@@ -14,7 +14,9 @@ export interface SavedDocument {
   type: 'text' | 'markdown' | 'code';
   size: number;
   savedAt: number;
-  source?: string; // 来源（对话ID或"用户创建"）
+  source?: string; // 来源（"AI发送"、"用户上传"、"知识库"）
+  conversationId?: string; // 所属对话ID（知识库文档）
+  characterName?: string; // 角色名称（知识库文档）
 }
 
 /**
