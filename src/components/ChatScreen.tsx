@@ -3,10 +3,12 @@ import { ChevronLeft, Send, Mic, Sparkles, Smile, BellOff, Bell, Pause, Play, Im
 import { Conversation, Message, ApiConfig, UserProfile } from '../types';
 import MoneyTransferModal from './MoneyTransferModal';
 import SendDocumentModal from './SendDocumentModal';
-import DocumentViewModal from './DocumentViewModal';
 import DocumentLibraryModal from './DocumentLibraryModal';
-import DocumentCard from './DocumentCard';
+import WordStyleDocumentCard from './WordStyleDocumentCard';
+import WordStyleDocumentModal from './WordStyleDocumentModal';
 import SelectContactModal from './SelectContactModal';
+import { parseEnhancedDocument } from '../utils/enhancedDocumentParser';
+import { saveDocument as saveToLibrary } from '../utils/documentLibrary';
 import WeChatLinkPreview from './WeChatLinkPreview';
 import { SmartLinkParser } from '../utils/smartLinkParser';
 import XiaohongshuFeed from './XiaohongshuFeed';
@@ -262,191 +264,42 @@ const backgroundTaskManager = {
           });
         }
 
-        // 🔥 纯粹化的文档解析逻辑
-        // 核心规则：
-        // 1. 只识别标准格式：[发文档:标题:类型]
-        // 2. 标记后的内容是文档内容（直到双换行或消息结束）
-        // 3. 标记前的内容是普通聊天文本
-        // 4. 不支持描述性格式（如"发送了文档「XX」"）
-        
-        const DOC_PATTERN = /\[发文档:([^:]+):([^\]]+)\]/g;
-        const docMatches = Array.from(finalContent.matchAll(DOC_PATTERN));
-        
+        // 🌟 增强的文档解析（支持多种格式）
         console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
         console.log('📄 [文档解析] 开始');
         console.log('原始内容长度:', finalContent.length);
         console.log('原始内容预览:', finalContent.substring(0, 200));
-        console.log('检测到文档标记数量:', docMatches.length);
-        console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
         
-        if (docMatches.length === 0) {
-          console.log('✅ [文档解析] 未检测到文档标记，按普通消息处理');
-        } else {
-          // 存储所有段落（文本 + 文档）
-          interface Segment {
-            type: 'text' | 'document';
-            content: string;
-            title?: string;
-            docType?: 'text' | 'markdown' | 'code';
-            hasError?: boolean;
-          }
-          const segments: Segment[] = [];
-          let currentIndex = 0;
-          
-          // 逐个处理文档标记
-          for (let i = 0; i < docMatches.length; i++) {
-            const match = docMatches[i];
-            const tagIndex = match.index!;
-            const tagEndIndex = tagIndex + match[0].length;
-            const docTitle = match[1].trim();
-            const docTypeInput = match[2].toLowerCase().trim();
-            
-            // 映射类型
-            const docType: 'text' | 'markdown' | 'code' = 
-              docTypeInput === 'markdown' ? 'markdown' :
-              docTypeInput === 'code' ? 'code' : 'text';
-            
-            console.log(`\n━━ [文档解析] 处理第${i + 1}个标记 ━━`);
-            console.log('标题:', docTitle);
-            console.log('类型:', docType);
-            console.log('标记位置:', tagIndex, '-', tagEndIndex);
-            console.log('标记内容:', match[0]);
-            
-            // 步骤1：提取标记前的普通文本
-            if (tagIndex > currentIndex) {
-              const textBefore = finalContent.substring(currentIndex, tagIndex).trim();
-              if (textBefore) {
-                segments.push({ type: 'text', content: textBefore });
-                console.log('✅ [文档解析] 标记前的文本长度:', textBefore.length);
-                console.log('   预览:', textBefore.substring(0, 80) + '...');
-              } else {
-                console.log('ℹ️ [文档解析] 标记前无内容');
-              }
-            }
-            
-            // 步骤2：提取文档内容（标记后到双换行/下一个标记/消息结束）
-            const nextMatch = docMatches[i + 1];
-            const searchEnd = nextMatch ? nextMatch.index! : finalContent.length;
-            let remainingContent = finalContent.substring(tagEndIndex, searchEnd);
-            
-            // 查找双换行（文档内容边界）
-            const doubleNewlineMatch = remainingContent.match(/\n\s*\n/);
-            let docContent = '';
-            let textAfterDoc = '';
-            
-            if (doubleNewlineMatch) {
-              const doubleNewlineIndex = doubleNewlineMatch.index!;
-              docContent = remainingContent.substring(0, doubleNewlineIndex).trim();
-              textAfterDoc = remainingContent.substring(doubleNewlineIndex + doubleNewlineMatch[0].length).trim();
-              console.log('✅ [文档解析] 检测到双换行，文档内容在此结束');
-              console.log('   双换行位置:', doubleNewlineIndex);
-              if (textAfterDoc) {
-                console.log('   双换行后的内容长度:', textAfterDoc.length);
-                console.log('   预览:', textAfterDoc.substring(0, 80) + '...');
-              }
-            } else {
-              docContent = remainingContent.trim();
-              console.log('ℹ️ [文档解析] 未检测到双换行，文档内容延续到', nextMatch ? '下一个标记' : '消息结束');
-            }
-            
-            console.log('文档内容长度:', docContent.length);
-            console.log('文档内容预览:', docContent.substring(0, 150) + '...');
-            
-            // 验证文档内容
-            if (!docContent || docContent.length < 10) {
-              console.error('❌ [文档解析] 文档内容过短或为空！');
-              console.error('   这是AI格式错误：');
-              console.error('   期望: [发文档:标题:类型] 内容紧跟在后面...');
-              console.error('   实际: [发文档:标题:类型]（后面没有内容）');
-              
-              // 创建错误提示文档
-              segments.push({
-                type: 'document',
-                title: docTitle,
-                docType: docType,
-                content: `⚠️ 文档格式错误\n\nAI使用了文档标记 [发文档:${docTitle}:${docType}]，但没有提供文档内容。\n\n正确格式应该是：\n[发文档:${docTitle}:${docType}] 文档内容紧跟在标记后面...\n\n请让AI重新生成文档。`,
-                hasError: true
-              });
-            } else {
-              // 限制文档长度
-              const MAX_DOC_LENGTH = 20000;
-              if (docContent.length > MAX_DOC_LENGTH) {
-                console.warn(`⚠️ [文档解析] 文档内容超过字数限制: ${docContent.length} > ${MAX_DOC_LENGTH}，已截断`);
-                docContent = docContent.substring(0, MAX_DOC_LENGTH) + '\n\n...\n（文档内容过长，已截断）';
-              }
-              
-              segments.push({
-                type: 'document',
-                title: docTitle,
-                docType: docType,
-                content: docContent
-              });
-              console.log('✅ [文档解析] 成功提取文档内容');
-            }
-            
-            // 如果有双换行后的内容，添加为普通文本
-            if (textAfterDoc) {
-              segments.push({ type: 'text', content: textAfterDoc });
-              console.log('✅ [文档解析] 双换行后的文本长度:', textAfterDoc.length);
-            }
-            
-            // 更新当前索引
-            if (doubleNewlineMatch) {
-              currentIndex = tagEndIndex + doubleNewlineMatch.index! + doubleNewlineMatch[0].length;
-            } else {
-              currentIndex = searchEnd;
-            }
-          }
-          
-          // 步骤3：处理最后剩余的文本
-          if (currentIndex < finalContent.length) {
-            const remainingText = finalContent.substring(currentIndex).trim();
-            if (remainingText) {
-              segments.push({ type: 'text', content: remainingText });
-              console.log('\n✅ [文档解析] 剩余文本长度:', remainingText.length);
-              console.log('   预览:', remainingText.substring(0, 80) + '...');
-            }
-          }
-          
-          // 输出解析结果摘要
-          console.log('\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-          console.log('📊 [文档解析] 结果摘要:');
-          console.log('总段落数:', segments.length);
-          segments.forEach((seg, idx) => {
-            if (seg.type === 'text') {
-              console.log(`  ${idx + 1}. [文本] 长度:${seg.content.length}`);
-            } else {
-              const errorFlag = seg.hasError ? ' ⚠️错误' : '';
-              console.log(`  ${idx + 1}. [文档] "${seg.title}" (${seg.docType}) 长度:${seg.content.length}${errorFlag}`);
-            }
-          });
-          console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
-          
-          // 根据segments创建消息
-          // 收集所有文本段落
-          const textSegments = segments.filter(s => s.type === 'text');
-          const docSegments = segments.filter(s => s.type === 'document') as Array<Segment & { title: string; docType: 'text' | 'markdown' | 'code' }>;
-          
-          // 合并所有文本内容
-          finalContent = textSegments.map(s => s.content).join('\n\n').trim();
+        const parsedDoc = parseEnhancedDocument(finalContent);
+        
+        if (parsedDoc) {
+          console.log('✅ [文档解析] 成功识别文档');
+          console.log('   标题:', parsedDoc.title);
+          console.log('   类型:', parsedDoc.type);
+          console.log('   内容长度:', parsedDoc.content.length);
           
           // 创建文档消息
-          docSegments.forEach((docSeg, idx) => {
-            allExtraMessages.push({
-              id: `${baseId}_doc_${idx}`,
-              role: 'assistant',
-              content: `发送了文档「${docSeg.title}」`,
-              timestamp: Date.now() + 100 + allExtraMessages.length * 10,
-              document: {
-                title: docSeg.title,
-                content: docSeg.content,
-                type: docSeg.docType,
-                greeting: docSeg.hasError ? '格式错误' : '请查收',
-                size: new Blob([docSeg.content]).size
-              }
-            });
+          allExtraMessages.push({
+            id: `${baseId}_doc`,
+            role: 'assistant',
+            content: `发送了文档「${parsedDoc.title}」`,
+            timestamp: Date.now() + 100,
+            document: {
+              title: parsedDoc.title,
+              content: parsedDoc.content,
+              type: parsedDoc.type,
+              greeting: parsedDoc.greeting || '请查收'
+            }
           });
+          
+          // 文档已提取，清空正文
+          finalContent = '';
+          console.log('📄 [文档解析] 文档已提取为单独消息');
+        } else {
+          console.log('ℹ️ [文档解析] 未检测到文档，按普通消息处理');
         }
+        
+        console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
 
         // 检测引用消息：[回复 我/你 说的"xxx"]
         let replyToInfo: { content: string; role: 'user' | 'assistant' } | undefined;
@@ -3717,16 +3570,23 @@ ${doc.content}`;
                       />
                     )}
                     
-                    {/* 文档消息卡片（旧系统，保留兼容） */}
+                    {/* Word 风格文档卡片 */}
                     {!message.linkPreview && message.document && (
-                      <DocumentCard
-                        title={message.document.title}
-                        content={message.document.content}
-                        greeting={message.document.greeting}
-                        type={message.document.type}
-                        onClick={(e) => {
-                          e?.stopPropagation?.();
-                          setViewingDocument(message.document);
+                      <WordStyleDocumentCard
+                        document={message.document}
+                        compact={true}
+                        onClick={() => setViewingDocument(message.document)}
+                        onSave={() => {
+                          try {
+                            saveToLibrary(message.document!, conversation.id);
+                            alert('✅ 文档已保存到文档库');
+                          } catch (error) {
+                            alert('❌ 保存失败');
+                          }
+                        }}
+                        onForward={() => {
+                          setForwardingDocument(message.document!);
+                          setShowSelectContact(true);
                         }}
                       />
                     )}
@@ -4744,14 +4604,25 @@ ${doc.content}`;
       />
     )}
 
-    {/* 文档查看器 */}
+    {/* Word 风格文档查看器 */}
     {viewingDocument && (
-      <DocumentViewModal
+      <WordStyleDocumentModal
         document={viewingDocument}
+        author={conversation.characterSettings?.nickname || conversation.name}
+        authorAvatar={conversation.characterSettings?.avatar || conversation.avatar}
+        timestamp={Date.now()}
         onClose={() => setViewingDocument(null)}
-        onForward={(document) => {
-          // 转发文档：打开选择联系人弹窗
-          setForwardingDocument(document);
+        onSave={() => {
+          try {
+            saveToLibrary(viewingDocument, conversation.id);
+            alert('✅ 文档已保存到文档库');
+            setViewingDocument(null);
+          } catch (error) {
+            alert('❌ 保存失败');
+          }
+        }}
+        onForward={() => {
+          setForwardingDocument(viewingDocument);
           setViewingDocument(null);
           setShowSelectContact(true);
         }}
