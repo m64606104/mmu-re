@@ -123,6 +123,18 @@ export default function SettingsScreen({ apiConfig, onUpdateConfig, onBack }: Se
       // 收集所有localStorage数据
       const allData: { [key: string]: any } = {};
       
+      // 🔍 统计各类数据
+      const stats = {
+        conversations: 0,      // 对话数
+        messages: 0,          // 消息数
+        moments: 0,           // 朋友圈数
+        contacts: 0,          // 联系人数
+        documents: 0,         // 文档数
+        images: 0,            // 图片数
+        profiles: 0,          // 角色数
+        relationships: 0      // 关系数
+      };
+      
       // 遍历localStorage获取所有数据
       for (let i = 0; i < localStorage.length; i++) {
         const key = localStorage.key(i);
@@ -131,7 +143,26 @@ export default function SettingsScreen({ apiConfig, onUpdateConfig, onBack }: Se
           if (value) {
             try {
               // 尝试解析JSON
-              allData[key] = JSON.parse(value);
+              const parsed = JSON.parse(value);
+              allData[key] = parsed;
+              
+              // 📊 统计数据量
+              if (key === 'conversations' && Array.isArray(parsed)) {
+                stats.conversations = parsed.length;
+                stats.messages = parsed.reduce((sum: number, conv: any) => 
+                  sum + (conv.messages?.length || 0), 0);
+                stats.profiles = parsed.filter((c: any) => c.characterSettings).length;
+              } else if (key.startsWith('moments_') && parsed.posts) {
+                stats.moments += parsed.posts.length;
+              } else if (key === 'contacts' && Array.isArray(parsed)) {
+                stats.contacts = parsed.length;
+              } else if (key === 'documentLibrary' && Array.isArray(parsed)) {
+                stats.documents = parsed.length;
+              } else if (key === 'relationships' && Array.isArray(parsed)) {
+                stats.relationships = parsed.length;
+              } else if (key === 'landscapeImage' || key === 'bannerImage') {
+                stats.images++;
+              }
             } catch {
               // 如果不是JSON，直接存储字符串
               allData[key] = value;
@@ -145,6 +176,7 @@ export default function SettingsScreen({ apiConfig, onUpdateConfig, onBack }: Se
         exportDate: new Date().toISOString(),
         appVersion: '1.0.0',
         dataType: 'full-backup',
+        stats: stats,  // 添加统计信息
         data: allData
       };
 
@@ -160,10 +192,23 @@ export default function SettingsScreen({ apiConfig, onUpdateConfig, onBack }: Se
       document.body.removeChild(link);
       URL.revokeObjectURL(url);
       
-      alert('✅ 全部数据已导出！');
+      // 显示详细的导出信息
+      const message = `✅ 全部数据已导出！\n\n` +
+        `📊 包含内容：\n` +
+        `• 对话记录: ${stats.conversations} 个（${stats.messages} 条消息）\n` +
+        `• AI角色: ${stats.profiles} 个\n` +
+        `• 联系人: ${stats.contacts} 个\n` +
+        `• 朋友圈: ${stats.moments} 条\n` +
+        `• 文档库: ${stats.documents} 份\n` +
+        `• 关系网络: ${stats.relationships} 条\n` +
+        `• 背景图片: ${stats.images} 张\n` +
+        `• 其他设置和数据\n\n` +
+        `💾 文件已保存到下载文件夹`;
+      
+      alert(message);
     } catch (error) {
       console.error('导出失败:', error);
-      alert('导出失败，请重试');
+      alert('❌ 导出失败，请重试\n\n错误: ' + error);
     }
   };
 
@@ -179,16 +224,33 @@ export default function SettingsScreen({ apiConfig, onUpdateConfig, onBack }: Se
         
         // 验证数据格式
         if (!importedData.data || typeof importedData.data !== 'object') {
-          alert('导入文件格式不正确');
+          alert('❌ 导入文件格式不正确');
           return;
         }
 
-        // 确认导入
-        const confirmMsg = `即将导入数据备份\n\n` +
-          `备份时间: ${new Date(importedData.exportDate).toLocaleString()}\n` +
-          `数据项数: ${Object.keys(importedData.data).length}\n\n` +
+        // 构建详细的确认消息
+        const stats = importedData.stats || {};
+        const confirmMsg = `📥 即将导入数据备份\n\n` +
+          `📅 备份时间: ${new Date(importedData.exportDate).toLocaleString()}\n` +
+          `📊 数据内容:\n` +
+          `  • 对话记录: ${stats.conversations || '?'} 个\n` +
+          `  • AI角色: ${stats.profiles || '?'} 个\n` +
+          `  • 联系人: ${stats.contacts || '?'} 个\n` +
+          `  • 朋友圈: ${stats.moments || '?'} 条\n` +
+          `  • 文档库: ${stats.documents || '?'} 份\n` +
+          `  • 关系网络: ${stats.relationships || '?'} 条\n` +
+          `  • 背景图片: ${stats.images || '?'} 张\n` +
+          `  • 总数据项: ${Object.keys(importedData.data).length}\n\n` +
           `⚠️ 警告：这将覆盖当前所有数据！\n` +
           `建议先导出当前数据作为备份。\n\n` +
+          `✅ 包含内容：\n` +
+          `  • 所有对话和消息\n` +
+          `  • 所有AI角色设置\n` +
+          `  • 联系人和关系网络\n` +
+          `  • 朋友圈内容\n` +
+          `  • 文档库和知识库\n` +
+          `  • 头像和背景图片\n` +
+          `  • API配置和其他设置\n\n` +
           `确定要继续吗？`;
         
         if (!window.confirm(confirmMsg)) {
@@ -200,6 +262,7 @@ export default function SettingsScreen({ apiConfig, onUpdateConfig, onBack }: Se
 
         // 恢复所有数据
         const data = importedData.data;
+        let importedCount = 0;
         for (const key in data) {
           const value = data[key];
           if (typeof value === 'object') {
@@ -207,9 +270,12 @@ export default function SettingsScreen({ apiConfig, onUpdateConfig, onBack }: Se
           } else {
             localStorage.setItem(key, value);
           }
+          importedCount++;
         }
 
-        alert('✅ 数据导入成功！\n\n页面将刷新以应用更改。');
+        alert(`✅ 数据导入成功！\n\n` +
+          `已恢复 ${importedCount} 项数据\n` +
+          `页面将刷新以应用更改。`);
         
         // 刷新页面
         setTimeout(() => {
@@ -460,9 +526,17 @@ export default function SettingsScreen({ apiConfig, onUpdateConfig, onBack }: Se
           <div className="mt-4 p-3 bg-amber-50 border border-amber-200 rounded-lg">
             <p className="text-xs text-amber-800 leading-relaxed">
               <span className="font-semibold">📦 数据迁移说明：</span><br />
-              • 导出：保存所有对话、朋友圈、设置等数据<br />
-              • 导入：恢复之前导出的数据到新设备<br />
-              • ⚠️ 导入会覆盖当前数据，请谨慎操作
+              <span className="font-semibold">✅ 包含内容：</span><br />
+              • 所有对话记录和消息<br />
+              • 所有AI角色设置（头像、性格、知识库等）<br />
+              • 联系人和关系网络<br />
+              • 朋友圈内容和互动记录<br />
+              • 文档库和已保存的文档<br />
+              • 用户头像和背景图片<br />
+              • API配置和其他设置<br />
+              <span className="font-semibold mt-2 block">⚠️ 注意：</span>
+              • 导入会覆盖当前所有数据<br />
+              • 建议定期备份数据
             </p>
           </div>
         </div>
