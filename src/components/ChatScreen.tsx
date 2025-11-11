@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { ChevronLeft, Send, Mic, Sparkles, Smile, BellOff, Bell, Pause, Play, Image as ImageIcon, Video, Phone, MapPin, FileText, Plus, CreditCard, Search } from 'lucide-react';
+import { ChevronLeft, Send, Mic, Sparkles, Smile, BellOff, Bell, Pause, Play, Image as ImageIcon, Video, Phone, MapPin, FileText, Plus, CreditCard, Search, MessageCircle } from 'lucide-react';
 import { Conversation, Message, ApiConfig, UserProfile } from '../types';
 import MoneyTransferModal from './MoneyTransferModal';
 import SendDocumentModal from './SendDocumentModal';
@@ -20,6 +20,19 @@ import { SmartHTMLGenerator } from '../utils/smartHTMLGenerator';
 import { SavedDocument } from '../utils/documentLibrary';
 import { sendMoney, receiveMoney, getBalance, aiPayForUser, refundGift, getAIBalance, addAITransaction } from '../utils/wallet';
 import ActivityLogModal from './ActivityLogModal';
+// 子聊天相关导入
+import SubChatWindow from './SubChatWindow';
+import SubChatManager from './SubChatManager';
+import { SubChat } from '../types';
+import {
+  createSubChat,
+  addMessageToSubChat,
+  updateSubChatInConversation,
+  addSubChatToConversation,
+  removeSubChatFromConversation,
+  getTotalUnreadCount,
+  getPendingSubChatsCount,
+} from '../utils/subChatManager';
 import { 
   getConversationMemories, 
   applyMemoriesToContext,
@@ -533,6 +546,15 @@ export default function ChatScreen({
   // 多选删除状态
   const [isMultiSelectMode, setIsMultiSelectMode] = useState(false);
   const [selectedMessages, setSelectedMessages] = useState<string[]>([]);
+  
+  // 💬 子聊天相关状态
+  const [showSubChatManager, setShowSubChatManager] = useState(false);
+  const [activeSubChatId, setActiveSubChatId] = useState<string | null>(null);
+  const [minimizedSubChats, setMinimizedSubChats] = useState<Set<string>>(new Set());
+  
+  // 计算子聊天统计
+  const subChatUnreadCount = getTotalUnreadCount(conversation);
+  const pendingSubChatsCount = getPendingSubChatsCount(conversation);
   
   // 🔥 确保用户查看聊天时，未读消息始终为 0
   useEffect(() => {

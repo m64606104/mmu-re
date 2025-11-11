@@ -1,0 +1,225 @@
+// ============ 子聊天功能处理函数 ============
+
+/**
+ * 创建用户发起的子聊天
+ */
+const handleCreateUserSubChat = (name: string) => {
+  const newSubChat = createSubChat(name, 'user');
+  const updatedConversation = addSubChatToConversation(conversation, newSubChat);
+  onUpdateConversation(conversation.id, {
+    subChats: updatedConversation.subChats,
+  });
+  
+  // 自动打开新创建的子聊天
+  setActiveSubChatId(newSubChat.id);
+  setShowSubChatManager(false);
+};
+
+/**
+ * 选择/打开子聊天
+ */
+const handleSelectSubChat = (subChatId: string) => {
+  // 标记为已读并激活
+  const updatedConversation = updateSubChatInConversation(
+    conversation,
+    subChatId,
+    { unreadCount: 0, status: 'active', isActive: true }
+  );
+  
+  onUpdateConversation(conversation.id, {
+    subChats: updatedConversation.subChats,
+  });
+  
+  setActiveSubChatId(subChatId);
+  setShowSubChatManager(false);
+  
+  // 从最小化列表中移除
+  setMinimizedSubChats(prev => {
+    const newSet = new Set(prev);
+    newSet.delete(subChatId);
+    return newSet;
+  });
+};
+
+/**
+ * 重命名子聊天
+ */
+const handleRenameSubChat = (subChatId: string, newName: string) => {
+  const updatedConversation = updateSubChatInConversation(
+    conversation,
+    subChatId,
+    { name: newName }
+  );
+  
+  onUpdateConversation(conversation.id, {
+    subChats: updatedConversation.subChats,
+  });
+};
+
+/**
+ * 删除子聊天
+ */
+const handleDeleteSubChat = (subChatId: string) => {
+  const updatedConversation = removeSubChatFromConversation(conversation, subChatId);
+  
+  onUpdateConversation(conversation.id, {
+    subChats: updatedConversation.subChats,
+  });
+  
+  // 如果是当前打开的，关闭它
+  if (activeSubChatId === subChatId) {
+    setActiveSubChatId(null);
+  }
+  
+  // 从最小化列表中移除
+  setMinimizedSubChats(prev => {
+    const newSet = new Set(prev);
+    newSet.delete(subChatId);
+    return newSet;
+  });
+};
+
+/**
+ * 关闭子聊天窗口
+ */
+const handleCloseSubChat = (subChatId: string) => {
+  const updatedConversation = updateSubChatInConversation(
+    conversation,
+    subChatId,
+    { isActive: false }
+  );
+  
+  onUpdateConversation(conversation.id, {
+    subChats: updatedConversation.subChats,
+  });
+  
+  if (activeSubChatId === subChatId) {
+    setActiveSubChatId(null);
+  }
+  
+  setMinimizedSubChats(prev => {
+    const newSet = new Set(prev);
+    newSet.delete(subChatId);
+    return newSet;
+  });
+};
+
+/**
+ * 最小化/恢复子聊天窗口
+ */
+const handleToggleMinimizeSubChat = (subChatId: string) => {
+  setMinimizedSubChats(prev => {
+    const newSet = new Set(prev);
+    if (newSet.has(subChatId)) {
+      newSet.delete(subChatId);
+    } else {
+      newSet.add(subChatId);
+    }
+    return newSet;
+  });
+};
+
+/**
+ * 在子聊天中发送消息
+ */
+const handleSendSubChatMessage = async (subChatId: string, content: string) => {
+  const subChat = (conversation.subChats || []).find(sc => sc.id === subChatId);
+  if (!subChat) return;
+  
+  // 1. 创建用户消息
+  const userMessage: Message = {
+    id: `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+    role: 'user',
+    content,
+    timestamp: Date.now(),
+  };
+  
+  // 2. 添加到子聊天
+  let updatedSubChat = addMessageToSubChat(subChat, userMessage);
+  
+  // 3. 更新对话
+  onUpdateConversation(conversation.id, {
+    subChats: (conversation.subChats || []).map(sc =>
+      sc.id === subChatId ? updatedSubChat : sc
+    ),
+  });
+  
+  // 4. 调用AI生成回复
+  setIsGenerating(true);
+  
+  try {
+    // 使用主对话的System Prompt构建函数
+    const characterName = conversation.characterSettings?.nickname || conversation.name;
+    const characterPersonality = conversation.characterSettings?.personality || '';
+    
+    // 简化的system prompt（实际应该调用完整的buildSystemPrompt）
+    const systemPrompt = `你是${characterName}。性格：${characterPersonality}
+
+这是一个子聊天对话，消息历史独立于主聊天。请根据当前对话内容自然回复。`;
+    
+    const response = await fetch(apiConfig.baseUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${apiConfig.apiKey}`,
+      },
+      body: JSON.stringify({
+        model: apiConfig.modelName,
+        messages: [
+          { role: 'system', content: systemPrompt },
+          ...updatedSubChat.messages.map(msg => ({
+            role: msg.role,
+            content: msg.content,
+          })),
+        ],
+        temperature: 0.8,
+      }),
+    });
+    
+    if (!response.ok) {
+      throw new Error('AI回复失败');
+    }
+    
+    const data = await response.json();
+    const aiContent = data.choices?.[0]?.message?.content || '抱歉，我现在无法回复。';
+    
+    // 5. 创建AI消息
+    const aiMessage: Message = {
+      id: `msg_${Date.now() + 1}_${Math.random().toString(36).substr(2, 9)}`,
+      role: 'assistant',
+      content: aiContent,
+      timestamp: Date.now(),
+    };
+    
+    // 6. 添加AI回复到子聊天
+    updatedSubChat = addMessageToSubChat(updatedSubChat, aiMessage);
+    
+    // 7. 更新对话
+    onUpdateConversation(conversation.id, {
+      subChats: (conversation.subChats || []).map(sc =>
+        sc.id === subChatId ? updatedSubChat : sc
+      ),
+    });
+    
+  } catch (error) {
+    console.error('子聊天AI回复失败:', error);
+    showToast('AI回复失败，请重试', 'error');
+  } finally {
+    setIsGenerating(false);
+  }
+};
+
+/**
+ * AI发起子聊天（从解析逻辑调用）
+ */
+const handleAIInitiateSubChat = (purpose: string, suggestedName: string) => {
+  const newSubChat = createSubChat(suggestedName, 'ai', purpose);
+  const updatedConversation = addSubChatToConversation(conversation, newSubChat);
+  
+  onUpdateConversation(conversation.id, {
+    subChats: updatedConversation.subChats,
+  });
+  
+  // 显示通知
+  showToast(`AI想发起子聊天：${suggestedName}`, 'info');
+};
