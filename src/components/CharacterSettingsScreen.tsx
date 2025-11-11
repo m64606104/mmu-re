@@ -378,23 +378,78 @@ export default function CharacterSettingsScreen({
   // 处理角色迁移导出
   const handleExportCharacter = async () => {
     try {
-      // 获取记忆库数据
+      // 1. 获取记忆库数据
       const memoryKey = `memory_bank_${conversation.id}`;
       const memoryData = localStorage.getItem(memoryKey);
       const memories = memoryData ? JSON.parse(memoryData) : [];
       
+      // 2. 获取朋友圈数据
+      const momentsKey = `moments_${conversation.id}`;
+      const momentsData = localStorage.getItem(momentsKey);
+      const moments = momentsData ? JSON.parse(momentsData) : null;
+      
+      // 3. 获取AI财务数据
+      const financeKey = `ai_finance_${conversation.id}`;
+      const financeData = localStorage.getItem(financeKey);
+      const finance = financeData ? JSON.parse(financeData) : null;
+      
+      // 4. 获取关系网络数据（查找与此角色相关的关系）
+      const relationshipsData = localStorage.getItem('relationships');
+      const allRelationships = relationshipsData ? JSON.parse(relationshipsData) : [];
+      const characterRelationships = allRelationships.filter(
+        (rel: any) => rel.personId === conversation.id || rel.targetId === conversation.id
+      );
+      
+      // 5. 统计数据
+      const stats = {
+        messagesCount: conversation.messages.length,
+        memoriesCount: memories.length || 0,
+        momentsCount: moments?.posts?.length || 0,
+        knowledgeBaseCount: conversation.characterSettings?.knowledgeBase?.length || 0,
+        relationshipsCount: characterRelationships.length,
+        hasFinanceData: !!finance,
+        hasAIStatus: !!conversation.aiStatus,
+      };
+      
       // 构建导出数据
       const exportData = {
-        version: '1.0',
+        version: '2.0', // 升级版本号
         exportTime: new Date().toISOString(),
+        
+        // 基本信息
         character: {
+          id: conversation.id, // 添加ID
+          type: conversation.type, // 对话类型
           name: conversation.name,
           avatar: conversation.avatar,
-          characterSettings: conversation.characterSettings,
+          characterSettings: conversation.characterSettings, // 包含知识库knowledgeBase
           enabledFeatures: conversation.enabledFeatures,
+          lastMessageTime: conversation.lastMessageTime,
+          isMuted: conversation.isMuted,
+          // 群聊相关
+          groupRemark: conversation.groupRemark,
+          members: conversation.members,
+          // AI状态信息
+          aiStatus: conversation.aiStatus,
         },
-        memories: memories,
+        
+        // 记忆库（完整的MemoryBank数据）
+        memoryBank: memories,
+        
+        // 朋友圈数据
+        moments: moments,
+        
+        // AI财务数据
+        finance: finance,
+        
+        // 关系网络
+        relationships: characterRelationships,
+        
+        // 消息记录（可选）
         messages: includeMessages ? conversation.messages : [],
+        
+        // 统计信息
+        stats: stats,
       };
       
       // 生成文件
@@ -403,18 +458,31 @@ export default function CharacterSettingsScreen({
       const url = URL.createObjectURL(dataBlob);
       const link = document.createElement('a');
       link.href = url;
-      const fileName = `${conversation.name}_角色迁移_${new Date().toLocaleDateString().replace(/\//g, '-')}.json`;
+      const fileName = `${conversation.name}_完整角色数据_${new Date().toLocaleDateString().replace(/\//g, '-')}.json`;
       link.download = fileName;
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
       URL.revokeObjectURL(url);
       
-      alert('✅ 角色数据已导出！\n\n可以通过"扫一扫"功能导入到其他设备');
+      // 显示详细的导出信息
+      const message = `✅ 角色数据已导出！\n\n` +
+        `📊 包含内容：\n` +
+        `• 角色设置和性格\n` +
+        `• 知识库文档: ${stats.knowledgeBaseCount} 份\n` +
+        `• 记忆库: ${stats.memoriesCount} 条\n` +
+        `• 朋友圈: ${stats.momentsCount} 条\n` +
+        `• 关系网络: ${stats.relationshipsCount} 个\n` +
+        `• AI状态信息: ${stats.hasAIStatus ? '有' : '无'}\n` +
+        `• 财务数据: ${stats.hasFinanceData ? '有' : '无'}\n` +
+        `• 消息记录: ${includeMessages ? stats.messagesCount + ' 条' : '未包含'}\n\n` +
+        `📱 可以通过"扫一扫"功能导入到其他设备`;
+      
+      alert(message);
       setShowMigration(false);
     } catch (error) {
       console.error('导出失败:', error);
-      alert('❌ 导出失败，请重试');
+      alert('❌ 导出失败，请重试\n\n错误: ' + error);
     }
   };
 
@@ -1104,9 +1172,19 @@ export default function CharacterSettingsScreen({
               </button>
             </div>
 
-            <p className="text-sm text-gray-600 mb-6">
-              导出角色设置、记忆库和聊天记录，导入到其他设备
-            </p>
+            <div className="mb-4 p-3 bg-blue-50 border border-blue-100 rounded-lg">
+              <p className="text-xs text-blue-700 leading-relaxed">
+                <span className="font-semibold">📦 包含内容：</span><br />
+                • 角色设置和性格<br />
+                • 知识库文档<br />
+                • 记忆库（完整的AI记忆）<br />
+                • 朋友圈内容<br />
+                • AI状态和行为轨迹<br />
+                • 财务数据<br />
+                • 关系网络<br />
+                • 聊天记录（可选）
+              </p>
+            </div>
 
             {/* 导出选项 */}
             <div className="mb-6">
@@ -1126,7 +1204,7 @@ export default function CharacterSettingsScreen({
                 </button>
               </div>
               <p className="text-xs text-gray-500">
-                {includeMessages ? '✅ 将导出所有聊天消息' : '⚠️ 仅导出角色设置和记忆库'}
+                {includeMessages ? '✅ 将导出所有聊天消息（文件较大）' : '💡 仅导出角色核心数据（推荐）'}
               </p>
             </div>
 
