@@ -130,6 +130,7 @@ export default function SettingsScreen({ apiConfig, onUpdateConfig, onBack }: Se
         moments: 0,           // 朋友圈数
         contacts: 0,          // 联系人数
         documents: 0,         // 文档数
+        memories: 0,          // 记忆数
         images: 0,            // 图片数
         profiles: 0,          // 角色数
         relationships: 0      // 关系数
@@ -156,8 +157,12 @@ export default function SettingsScreen({ apiConfig, onUpdateConfig, onBack }: Se
                 stats.moments += parsed.posts.length;
               } else if (key === 'contacts' && Array.isArray(parsed)) {
                 stats.contacts = parsed.length;
-              } else if (key === 'documentLibrary' && Array.isArray(parsed)) {
+              } else if (key === 'document_library' && Array.isArray(parsed)) {
                 stats.documents = parsed.length;
+              } else if (key === 'chat_memory_banks' && Array.isArray(parsed)) {
+                // 统计记忆库中的记忆数量
+                stats.memories = parsed.reduce((sum: number, bank: any) => 
+                  sum + (bank.memories?.length || 0), 0);
               } else if (key === 'relationships' && Array.isArray(parsed)) {
                 stats.relationships = parsed.length;
               } else if (key === 'landscapeImage' || key === 'bannerImage') {
@@ -200,6 +205,7 @@ export default function SettingsScreen({ apiConfig, onUpdateConfig, onBack }: Se
         `• 联系人: ${stats.contacts} 个\n` +
         `• 朋友圈: ${stats.moments} 条\n` +
         `• 文档库: ${stats.documents} 份\n` +
+        `• 记忆库: ${stats.memories} 条\n` +
         `• 关系网络: ${stats.relationships} 条\n` +
         `• 背景图片: ${stats.images} 张\n` +
         `• 其他设置和数据\n\n` +
@@ -238,6 +244,7 @@ export default function SettingsScreen({ apiConfig, onUpdateConfig, onBack }: Se
           `  • 联系人: ${stats.contacts || '?'} 个\n` +
           `  • 朋友圈: ${stats.moments || '?'} 条\n` +
           `  • 文档库: ${stats.documents || '?'} 份\n` +
+          `  • 记忆库: ${stats.memories || '?'} 条\n` +
           `  • 关系网络: ${stats.relationships || '?'} 条\n` +
           `  • 背景图片: ${stats.images || '?'} 张\n` +
           `  • 总数据项: ${Object.keys(importedData.data).length}\n\n` +
@@ -245,7 +252,7 @@ export default function SettingsScreen({ apiConfig, onUpdateConfig, onBack }: Se
           `建议先导出当前数据作为备份。\n\n` +
           `✅ 包含内容：\n` +
           `  • 所有对话和消息\n` +
-          `  • 所有AI角色设置\n` +
+          `  • 所有AI角色设置（含记忆库）\n` +
           `  • 联系人和关系网络\n` +
           `  • 朋友圈内容\n` +
           `  • 文档库和知识库\n` +

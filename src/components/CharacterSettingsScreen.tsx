@@ -378,10 +378,11 @@ export default function CharacterSettingsScreen({
   // 处理角色迁移导出
   const handleExportCharacter = async () => {
     try {
-      // 1. 获取记忆库数据
-      const memoryKey = `memory_bank_${conversation.id}`;
-      const memoryData = localStorage.getItem(memoryKey);
-      const memories = memoryData ? JSON.parse(memoryData) : [];
+      // 1. 获取记忆库数据（使用正确的存储key）
+      const memoryBanksData = localStorage.getItem('chat_memory_banks');
+      const allMemoryBanks = memoryBanksData ? JSON.parse(memoryBanksData) : [];
+      const memoryBank = allMemoryBanks.find((bank: any) => bank.conversationId === conversation.id);
+      const memories = memoryBank?.memories || [];
       
       // 2. 获取朋友圈数据
       const momentsKey = `moments_${conversation.id}`;
@@ -400,12 +401,20 @@ export default function CharacterSettingsScreen({
         (rel: any) => rel.personId === conversation.id || rel.targetId === conversation.id
       );
       
-      // 5. 统计数据
+      // 5. 获取文档库数据（知识库）
+      const documentLibraryData = localStorage.getItem('document_library');
+      const allDocuments = documentLibraryData ? JSON.parse(documentLibraryData) : [];
+      const characterDocuments = allDocuments.filter(
+        (doc: any) => doc.conversationId === conversation.id
+      );
+      
+      // 6. 统计数据
       const stats = {
         messagesCount: conversation.messages.length,
         memoriesCount: memories.length || 0,
         momentsCount: moments?.posts?.length || 0,
         knowledgeBaseCount: conversation.characterSettings?.knowledgeBase?.length || 0,
+        documentsCount: characterDocuments.length,
         relationshipsCount: characterRelationships.length,
         hasFinanceData: !!finance,
         hasAIStatus: !!conversation.aiStatus,
@@ -434,7 +443,7 @@ export default function CharacterSettingsScreen({
         },
         
         // 记忆库（完整的MemoryBank数据）
-        memoryBank: memories,
+        memoryBank: memoryBank,
         
         // 朋友圈数据
         moments: moments,
@@ -444,6 +453,9 @@ export default function CharacterSettingsScreen({
         
         // 关系网络
         relationships: characterRelationships,
+        
+        // 文档库（角色相关的文档）
+        documents: characterDocuments,
         
         // 消息记录（可选）
         messages: includeMessages ? conversation.messages : [],
@@ -470,6 +482,7 @@ export default function CharacterSettingsScreen({
         `📊 包含内容：\n` +
         `• 角色设置和性格\n` +
         `• 知识库文档: ${stats.knowledgeBaseCount} 份\n` +
+        `• 文档库: ${stats.documentsCount} 份\n` +
         `• 记忆库: ${stats.memoriesCount} 条\n` +
         `• 朋友圈: ${stats.momentsCount} 条\n` +
         `• 关系网络: ${stats.relationshipsCount} 个\n` +
