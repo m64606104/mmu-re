@@ -54,6 +54,81 @@ export default function AnnouncementScreen({ onBack }: AnnouncementScreenProps) 
 
         {/* 公告列表 */}
         <div className="space-y-4">
+          {/* 11.11 更新 - Word 文档系统与优化 */}
+          <div className="bg-gradient-to-br from-indigo-500/20 to-blue-500/20 border-2 border-indigo-400/50 rounded-xl p-4 shadow-lg mb-4">
+            <div className="flex items-start gap-3 mb-3">
+              <div className="w-10 h-10 rounded-full bg-gradient-to-br from-indigo-500 to-blue-500 flex items-center justify-center flex-shrink-0">
+                <Bell className="w-5 h-5 text-white" />
+              </div>
+              <div className="flex-1">
+                <h3 className="text-lg font-bold text-white mb-1">📄 Word 文档系统与功能优化</h3>
+                <p className="text-xs text-gray-300">2024年11月11日 更新</p>
+              </div>
+            </div>
+            <div className="pl-13 space-y-3">
+              <div>
+                <h4 className="text-sm font-semibold text-indigo-200 mb-1">🗂️ 资料库功能</h4>
+                <p className="text-gray-100 text-sm leading-relaxed">
+                  <strong>在主屏幕增加了"资料库"</strong>，里面显示用户聊天记录中的文档和用户上传的文档等。方便快速查找和管理所有文档资料。
+                </p>
+              </div>
+              
+              <div>
+                <h4 className="text-sm font-semibold text-blue-200 mb-1">🔍 聊天记录搜索</h4>
+                <p className="text-gray-100 text-sm leading-relaxed">
+                  <strong>增加了聊天记录搜索功能</strong>，支持按内容、图片、视频、文件、链接、交易等分类搜索，快速定位历史消息。
+                </p>
+              </div>
+              
+              <div>
+                <h4 className="text-sm font-semibold text-cyan-200 mb-1">💰 红包转账优化</h4>
+                <p className="text-gray-100 text-sm leading-relaxed">
+                  <strong>优化修复了红包转账功能的问题和显示</strong>，交互更流畅，显示更清晰。
+                </p>
+              </div>
+              
+              <div>
+                <h4 className="text-sm font-semibold text-purple-200 mb-1">🎨 AI 换头像功能</h4>
+                <p className="text-gray-100 text-sm leading-relaxed">
+                  <strong>增加了让 AI 换头像功能</strong>，你现在可以发送图片给 AI 并且要求他换头像啦～并且可以让他换回来（仅保留上一次的头像）。
+                </p>
+              </div>
+              
+              <div>
+                <h4 className="text-sm font-semibold text-pink-200 mb-1">📄 文档保存与转发</h4>
+                <p className="text-gray-100 text-sm leading-relaxed">
+                  <strong>增加了文档的保存、转发功能</strong>，Word 风格展示更专业美观，支持复制、下载等操作。
+                </p>
+              </div>
+              
+              <div>
+                <h4 className="text-sm font-semibold text-amber-200 mb-1">⏰ 时间感知优化</h4>
+                <p className="text-gray-100 text-sm leading-relaxed">
+                  <strong>继续优化了 AI 时间感知</strong>，增强了当消息间隔较长时的判断，AI 现在能更好地理解对话的时间背景。
+                </p>
+              </div>
+              
+              <div>
+                <h4 className="text-sm font-semibold text-emerald-200 mb-1">💾 数据导出完善</h4>
+                <p className="text-gray-100 text-sm leading-relaxed">
+                  <strong>更新了设置里的资料导出</strong>，包含了新更新的全部内容，确保您的数据完整备份。
+                </p>
+              </div>
+              
+              <div className="bg-white/10 rounded-lg p-3 mt-2">
+                <p className="text-xs text-gray-200 leading-relaxed">
+                  💡 <strong>使用提示：</strong>测试并且修复了各种 bug，系统更加稳定流畅
+                </p>
+              </div>
+              
+              <div className="bg-indigo-500/20 border border-indigo-400/50 rounded-lg p-3 mt-2">
+                <p className="text-xs text-indigo-100 leading-relaxed">
+                  ✨ <strong>新特性：</strong>文档系统全面升级到 Word 风格，支持 5 种格式解析，更专业更美观
+                </p>
+              </div>
+            </div>
+          </div>
+
           {/* 11.10 凌晨更新 - 红包转账与商城功能 */}
           <div className="bg-gradient-to-br from-yellow-500/20 to-orange-500/20 border-2 border-yellow-400/50 rounded-xl p-4 shadow-lg mb-4">
             <div className="flex items-start gap-3 mb-3">
