@@ -3898,11 +3898,21 @@ ${doc.content}`;
                         compact={true}
                         onClick={() => setViewingDocument(message.document)}
                         onSave={() => {
+                          // 弹出输入框让用户自定义名称
+                          const customTitle = prompt(
+                            '请输入文档名称：',
+                            message.document!.title
+                          );
+                          
+                          if (customTitle === null) return; // 用户取消
+                          
+                          const finalTitle = customTitle.trim() || message.document!.title;
+                          
                           try {
-                            saveToLibrary(message.document!, conversation.id);
-                            alert('✅ 文档已保存到文档库');
+                            saveToLibrary(message.document!, conversation.id, finalTitle);
+                            showToast(`✅ 文档已保存：${finalTitle}`, 'success');
                           } catch (error) {
-                            alert('❌ 保存失败');
+                            showToast('❌ 保存失败', 'error');
                           }
                         }}
                         onForward={() => {
@@ -4934,12 +4944,22 @@ ${doc.content}`;
         timestamp={Date.now()}
         onClose={() => setViewingDocument(null)}
         onSave={() => {
+          // 弹出输入框让用户自定义名称
+          const customTitle = prompt(
+            '请输入文档名称：',
+            viewingDocument.title
+          );
+          
+          if (customTitle === null) return; // 用户取消
+          
+          const finalTitle = customTitle.trim() || viewingDocument.title;
+          
           try {
-            saveToLibrary(viewingDocument, conversation.id);
-            alert('✅ 文档已保存到文档库');
+            saveToLibrary(viewingDocument, conversation.id, finalTitle);
+            showToast(`✅ 文档已保存：${finalTitle}`, 'success');
             setViewingDocument(null);
           } catch (error) {
-            alert('❌ 保存失败');
+            showToast('❌ 保存失败', 'error');
           }
         }}
         onForward={() => {

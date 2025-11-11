@@ -35,11 +35,14 @@ export const getDocumentLibrary = (): SavedDocument[] => {
 
 /**
  * 保存文档到文档库
+ * @param document 要保存的文档
+ * @param source 文档来源
+ * @param customTitle 自定义标题（可选，如果不提供则使用document.title）
  */
-export const saveDocument = (document: DocumentMessage, source?: string): SavedDocument => {
+export const saveDocument = (document: DocumentMessage, source?: string, customTitle?: string): SavedDocument => {
   const savedDoc: SavedDocument = {
     id: Date.now().toString() + '_' + Math.random().toString(36).substr(2, 9),
-    title: document.title,
+    title: customTitle || document.title, // 优先使用自定义标题
     content: document.content,
     type: document.type,
     size: document.size || new Blob([document.content]).size,

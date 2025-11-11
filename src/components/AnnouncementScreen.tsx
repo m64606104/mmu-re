@@ -115,15 +115,16 @@ export default function AnnouncementScreen({ onBack }: AnnouncementScreenProps) 
                 </p>
               </div>
               
-              <div className="bg-white/10 rounded-lg p-3 mt-2">
-                <p className="text-xs text-gray-200 leading-relaxed">
-                  💡 <strong>使用提示：</strong>测试并且修复了各种 bug，系统更加稳定流畅
+              <div>
+                <h4 className="text-sm font-semibold text-violet-200 mb-1">💬 子聊天功能</h4>
+                <p className="text-gray-100 text-sm leading-relaxed">
+                  <strong>增加了"子聊天"玩法</strong>，AI可以主动发起独立的子聊天窗口，适用于角色扮演、私密对话等场景。消息历史完全独立，带来全新的互动体验。
                 </p>
               </div>
               
-              <div className="bg-indigo-500/20 border border-indigo-400/50 rounded-lg p-3 mt-2">
-                <p className="text-xs text-indigo-100 leading-relaxed">
-                  ✨ <strong>新特性：</strong>文档系统全面升级到 Word 风格，支持 5 种格式解析，更专业更美观
+              <div className="bg-amber-500/20 border border-amber-400/50 rounded-lg p-3 mt-2">
+                <p className="text-xs text-amber-100 leading-relaxed">
+                  📢 <strong>开发计划：</strong>近期不会推出新功能，先专注清几轮bug，提升系统稳定性
                 </p>
               </div>
             </div>
