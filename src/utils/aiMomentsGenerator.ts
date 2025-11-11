@@ -1034,14 +1034,18 @@ ${post.imageDescriptions ? `配图：${post.imageDescriptions.join('、')}` : ''
       }
       
       if (decision.replyContent) {
-        // 回复评论
+        // 🎯 回复评论（找到最后一条评论作为回复目标）
+        const lastComment = post.comments[post.comments.length - 1];
         await commentMomentPost(aiConversation.id, post.id, {
           authorId: aiConversation.id,
           authorName: aiConversation.characterSettings.nickname || aiConversation.name,
           authorAvatar: aiConversation.characterSettings.avatar || aiConversation.avatar,
-          content: decision.replyContent
+          content: decision.replyContent,
+          // ✅ 添加回复信息，让作者的回复也显示为回复样式
+          replyTo: lastComment?.id,
+          replyToName: lastComment?.authorName || lastComment?.username
         });
-        console.log(`✅ ${aiConversation.characterSettings.nickname} 回复: ${decision.replyContent}`);
+        console.log(`✅ ${aiConversation.characterSettings.nickname} 回复 ${lastComment?.authorName}: ${decision.replyContent}`);
       }
     } catch (parseError) {
       console.error('解析AI决策失败:', decisionContent, parseError);
