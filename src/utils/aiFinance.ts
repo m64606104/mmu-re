@@ -376,3 +376,145 @@ export const getFinanceStats = async (aiId: string): Promise<{
     todayTransactionCount: todayTransactions.length
   };
 };
+
+/**
+ * 根据角色设置生成初始资金
+ * 会根据AI的性格描述推断职业和收入水平
+ */
+export const generateInitialBalance = (characterSettings?: any): number => {
+  if (!characterSettings) return 5000; // 默认5000元
+  
+  const personality = (characterSettings.personality || '').toLowerCase();
+  
+  // 高收入职业关键词
+  const highIncomeKeywords = ['总裁', 'ceo', '老板', '企业家', '医生', '律师', '投资', '金融'];
+  // 中等收入职业关键词
+  const middleIncomeKeywords = ['白领', '工程师', '程序员', '设计师', '老师', '教师', '公务员'];
+  // 学生或低收入关键词
+  const studentKeywords = ['学生', '实习', '兼职'];
+  
+  // 检查关键词
+  for (const keyword of highIncomeKeywords) {
+    if (personality.includes(keyword)) {
+      return Math.floor(Math.random() * 500000) + 100000; // 10万-60万
+    }
+  }
+  
+  for (const keyword of middleIncomeKeywords) {
+    if (personality.includes(keyword)) {
+      return Math.floor(Math.random() * 50000) + 10000; // 1万-6万
+    }
+  }
+  
+  for (const keyword of studentKeywords) {
+    if (personality.includes(keyword)) {
+      return Math.floor(Math.random() * 3000) + 1000; // 1000-4000
+    }
+  }
+  
+  // 默认中等收入
+  return Math.floor(Math.random() * 30000) + 5000; // 5000-35000
+};
+
+/**
+ * 为AI设置自动收入
+ * 根据角色设置配置定期收入（如工资、兼职收入等）
+ */
+export const setupAutoIncome = async (aiId: string, characterSettings?: any): Promise<void> => {
+  if (!characterSettings) return;
+  
+  const financeData = await getAIFinanceData(aiId);
+  const personality = (characterSettings.personality || '').toLowerCase();
+  
+  // 根据角色推断收入配置
+  const incomeConfigs: IncomeConfig[] = [];
+  
+  // 检测是否有工作
+  if (personality.includes('总裁') || personality.includes('ceo') || personality.includes('老板')) {
+    incomeConfigs.push({
+      enabled: true,
+      baseAmount: 75000, // 基础7.5万
+      randomRange: [50000, 100000], // 5万-10万/月
+      frequency: 'monthly',
+      description: '公司分红',
+      lastIncomeTime: Date.now(),
+      nextIncomeTime: Date.now() + 30 * 24 * 60 * 60 * 1000 // 30天后
+    });
+  } else if (personality.includes('白领') || personality.includes('工程师') || personality.includes('程序员')) {
+    incomeConfigs.push({
+      enabled: true,
+      baseAmount: 10000, // 基础1万
+      randomRange: [5000, 15000], // 5000-15000/月
+      frequency: 'monthly',
+      description: '工资',
+      lastIncomeTime: Date.now(),
+      nextIncomeTime: Date.now() + 30 * 24 * 60 * 60 * 1000
+    });
+  } else if (personality.includes('学生')) {
+    incomeConfigs.push({
+      enabled: true,
+      baseAmount: 1500, // 基础1500
+      randomRange: [500, 2500], // 500-2500
+      frequency: 'weekly',
+      description: '兼职收入',
+      lastIncomeTime: Date.now(),
+      nextIncomeTime: Date.now() + 7 * 24 * 60 * 60 * 1000 // 7天后
+    });
+  }
+  
+  financeData.incomeConfigs = incomeConfigs;
+  await updateAIFinanceData(financeData);
+};
+
+/**
+ * 生成随机日常支出
+ * 模拟AI的日常消费行为
+ */
+export const generateDailyExpense = async (aiId: string, characterSettings?: any): Promise<void> => {
+  const financeData = await getAIFinanceData(aiId);
+  
+  // 检查余额
+  if (financeData.balance < 50) return; // 余额太低不消费
+  
+  const personality = (characterSettings?.personality || '').toLowerCase();
+  
+  // 随机决定是否消费（30%概率）
+  if (Math.random() > 0.3) return;
+  
+  // 消费类型和金额范围
+  const expenseTypes = [
+    { category: 'shopping', description: '购买日用品', minAmount: 20, maxAmount: 200 },
+    { category: 'shopping', description: '网购', minAmount: 50, maxAmount: 500 },
+    { category: 'other', description: '餐饮', minAmount: 15, maxAmount: 100 },
+    { category: 'other', description: '交通', minAmount: 5, maxAmount: 50 },
+    { category: 'other', description: '娱乐', minAmount: 30, maxAmount: 300 }
+  ];
+  
+  // 根据身份调整消费水平
+  let multiplier = 1;
+  if (personality.includes('总裁') || personality.includes('老板')) {
+    multiplier = 3;
+  } else if (personality.includes('学生')) {
+    multiplier = 0.5;
+  }
+  
+  // 随机选择消费类型
+  const expenseType = expenseTypes[Math.floor(Math.random() * expenseTypes.length)];
+  const amount = Math.floor((Math.random() * (expenseType.maxAmount - expenseType.minAmount) + expenseType.minAmount) * multiplier);
+  
+  // 确保不超过余额
+  const finalAmount = Math.min(amount, financeData.balance * 0.1); // 最多花10%的余额
+  
+  if (finalAmount >= 5) { // 至少5元才记录
+    await addTransaction(
+      aiId,
+      'expense',
+      finalAmount,
+      expenseType.category,
+      expenseType.description,
+      undefined,
+      undefined,
+      true // 自动生成
+    );
+  }
+};

@@ -416,3 +416,59 @@ export interface AIFinanceData {
     lowBalanceThreshold: number; // 余额不足阈值
   };
 }
+
+// ===================================
+// 📱 公众号系统类型定义
+// ===================================
+
+// 公众号内容类型
+export type OfficialAccountContentType = 
+  | 'entertainment' // 娱乐新闻
+  | 'food' // 美食资讯
+  | 'discount' // 折扣优惠
+  | 'tech' // 科技资讯
+  | 'finance' // 财经新闻
+  | 'life' // 生活百科
+  | 'game' // 游戏资讯
+  | 'custom'; // 自定义
+
+// 公众号发布频率
+export type PublishFrequency = 
+  | 'realtime' // 实时（随时推送）
+  | 'hourly' // 每小时
+  | 'daily' // 每天
+  | 'weekly' // 每周
+  | 'custom'; // 自定义
+
+// 公众号文章
+export interface OfficialArticle {
+  id: string; // 文章ID
+  title: string; // 标题
+  summary: string; // 摘要
+  content: string; // 正文内容
+  coverImage?: string; // 封面图片描述
+  author: string; // 作者/公众号名称
+  publishTime: number; // 发布时间
+  readCount: number; // 阅读量
+  likeCount: number; // 点赞数
+  category: string; // 分类标签
+  source?: string; // 来源
+}
+
+// 公众号配置
+export interface OfficialAccountSettings {
+  id: string; // 公众号ID
+  name: string; // 公众号名称
+  avatar: string; // 头像
+  description: string; // 简介
+  verified: boolean; // 是否认证
+  contentType: OfficialAccountContentType; // 内容类型
+  publishFrequency: PublishFrequency; // 发布频率
+  customFrequencyHours?: number; // 自定义发布间隔（小时）
+  enabled: boolean; // 是否启用
+  tags: string[]; // 标签
+  followerCount: number; // 关注人数
+  articles: OfficialArticle[]; // 历史文章列表
+  lastPublishTime?: number; // 最后发布时间
+  nextPublishTime?: number; // 下次计划发布时间
+}
