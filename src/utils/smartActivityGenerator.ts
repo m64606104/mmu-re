@@ -283,7 +283,7 @@ export const shouldGenerateActivity = async (
 export const startActivityScheduler = (
   conversations: Conversation[],
   apiConfig: ApiConfig,
-  intervalMinutes: number = 90, // 保留参数以兼容，但实际不再使用时间触发
+  _intervalMinutes: number = 90, // 保留参数以兼容，但实际不再使用时间触发
   messageInterval: number = 75 // 每多少条消息触发一次（默认75条）
 ): NodeJS.Timeout => {
   const checkAndGenerate = async () => {

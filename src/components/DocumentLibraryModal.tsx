@@ -120,7 +120,7 @@ const DocumentLibraryModal: React.FC<DocumentLibraryModalProps> = ({ onClose, on
             文档与资料库
           </h2>
           <p className="text-sm text-gray-500 mt-0.5">
-            共 {documents.length} 篇文档 · 聊天记录 {conversations.length} · 知识库 {documents.filter(d => d.source === '知识库').length}
+            共 {documents.length} 篇 · 手动保存 {documents.filter(d => d.source !== '知识库').length} · 知识库 {documents.filter(d => d.source === '知识库').length}
           </p>
         </div>
       </div>
