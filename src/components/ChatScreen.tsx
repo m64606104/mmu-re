@@ -183,13 +183,50 @@ const backgroundTaskManager = {
           cleanContent = cleanContent.replace(match[0], '').trim();
         }
         
-        // 🔍 解析特殊指令（链接预览、红包、转账、文档）
+        // 🔍 解析特殊指令（文档、链接预览、红包、转账）
         let finalContent = cleanContent;
         console.log(`📖 开始解析AI消息: ${finalContent.substring(0, 100)}...`);
         
         // 注意：社交平台内容已在消息拆分前处理，这里不再检测
         
-        // 🔗 解析链接预览（新系统）
+        // 🔥 第一优先级：文档解析（必须在链接解析之前！）
+        console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+        console.log('📄 [文档解析] 开始 (优先级最高)');
+        console.log('原始内容长度:', finalContent.length);
+        console.log('原始内容预览:', finalContent.substring(0, 200));
+        
+        const parsedDoc = parseEnhancedDocument(finalContent);
+        
+        if (parsedDoc) {
+          console.log('✅ [文档解析] 成功识别文档');
+          console.log('   标题:', parsedDoc.title);
+          console.log('   类型:', parsedDoc.type);
+          console.log('   内容长度:', parsedDoc.content.length);
+          
+          // 创建文档消息
+          allExtraMessages.push({
+            id: `${baseId}_doc`,
+            role: 'assistant',
+            content: `发送了文档「${parsedDoc.title}」`,
+            timestamp: Date.now() + 100,
+            document: {
+              title: parsedDoc.title,
+              content: parsedDoc.content,
+              type: parsedDoc.type,
+              greeting: parsedDoc.greeting || '请查收'
+            }
+          });
+          
+          // 文档已提取，清空正文
+          finalContent = '';
+          console.log('📄 [文档解析] 文档已提取为单独消息');
+        } else {
+          console.log('ℹ️ [文档解析] 未检测到文档标记');
+        }
+        
+        console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
+        
+        // 🔗 第二优先级：解析链接预览（小红书、知乎、微博等）
         if (finalContent) {
           const parsedLink = SmartLinkParser.parseMessage(finalContent);
           if (parsedLink.linkPreviews.length > 0) {
@@ -275,43 +312,6 @@ const backgroundTaskManager = {
             }
           });
         }
-
-        // 🌟 增强的文档解析（支持多种格式）
-        console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-        console.log('📄 [文档解析] 开始');
-        console.log('原始内容长度:', finalContent.length);
-        console.log('原始内容预览:', finalContent.substring(0, 200));
-        
-        const parsedDoc = parseEnhancedDocument(finalContent);
-        
-        if (parsedDoc) {
-          console.log('✅ [文档解析] 成功识别文档');
-          console.log('   标题:', parsedDoc.title);
-          console.log('   类型:', parsedDoc.type);
-          console.log('   内容长度:', parsedDoc.content.length);
-          
-          // 创建文档消息
-          allExtraMessages.push({
-            id: `${baseId}_doc`,
-            role: 'assistant',
-            content: `发送了文档「${parsedDoc.title}」`,
-            timestamp: Date.now() + 100,
-            document: {
-              title: parsedDoc.title,
-              content: parsedDoc.content,
-              type: parsedDoc.type,
-              greeting: parsedDoc.greeting || '请查收'
-            }
-          });
-          
-          // 文档已提取，清空正文
-          finalContent = '';
-          console.log('📄 [文档解析] 文档已提取为单独消息');
-        } else {
-          console.log('ℹ️ [文档解析] 未检测到文档，按普通消息处理');
-        }
-        
-        console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
 
         // 检测引用消息：[回复 我/你 说的"xxx"]
         let replyToInfo: { content: string; role: 'user' | 'assistant' } | undefined;

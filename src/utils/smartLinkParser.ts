@@ -136,52 +136,9 @@ export class SmartLinkParser {
     }
 
     // ==========================================
-    // 格式7: 文档格式（兼容旧格式）
+    // ⚠️ 注意：[发文档] 标记现在由 enhancedDocumentParser.ts 处理
+    // 这里不再解析文档标记，避免冲突
     // ==========================================
-    // 示例：[发文档:标题:类型] 内容
-    const docMatches = message.matchAll(/\[发文档:(.*?):(.*?)\]/g);
-    for (const match of docMatches) {
-      const title = match[1];
-      // docType用于未来扩展，当前统一为document平台
-      // const docType = match[2];
-      
-      // 尝试提取文档内容（标记后的内容）
-      const docTagIndex = match.index! + match[0].length;
-      let content = '';
-      
-      // 查找双换行或下一个标记
-      const remainingText = message.substring(docTagIndex);
-      const doubleNewlineIndex = remainingText.search(/\n\s*\n/);
-      if (doubleNewlineIndex !== -1) {
-        content = remainingText.substring(0, doubleNewlineIndex).trim();
-      } else {
-        // 没有双换行，提取到消息结尾或下一个标记
-        const nextTagIndex = remainingText.search(/\[(?:链接|小红书|知乎|微博|公众号|发文档):/);
-        if (nextTagIndex !== -1) {
-          content = remainingText.substring(0, nextTagIndex).trim();
-        } else {
-          content = remainingText.trim();
-        }
-      }
-
-      // 生成描述（取前100字符）
-      const description = content.length > 100 
-        ? content.substring(0, 100) + '...' 
-        : content;
-
-      linkPreviews.push({
-        title,
-        description,
-        platform: 'document',
-        content,
-      });
-
-      // 从文本中移除标记和内容
-      textContent = textContent.replace(match[0], '').trim();
-      if (content) {
-        textContent = textContent.replace(content, '').trim();
-      }
-    }
 
     return {
       textContent: textContent.replace(/\n{3,}/g, '\n\n').trim(), // 清理多余空行
