@@ -195,75 +195,7 @@ const backgroundTaskManager = {
         console.log('原始内容长度:', finalContent.length);
         console.log('原始内容预览:', finalContent.substring(0, 200));
         
-        // 🔥 三层容错解析（工程化方案）
-        let parsedDoc = null;
-        
-        // 【Layer 1】JSON格式解析（主要方式）
-        try {
-          const jsonMatch = finalContent.match(/\{[\s\S]*"type"\s*:\s*"document"[\s\S]*\}/);
-          if (jsonMatch) {
-            const jsonStr = jsonMatch[0];
-            const docData = JSON.parse(jsonStr);
-            
-            if (docData.type === 'document' && docData.title && docData.content) {
-              console.log('✅ [Layer 1 - JSON] 成功解析JSON格式文档');
-              
-              // 标准化文档对象
-              parsedDoc = {
-                title: docData.title,
-                type: docData.docType || 'text',
-                content: docData.content,
-                summary: docData.summary,
-                greeting: docData.greeting,
-                meta: {
-                  author: docData.meta?.author || 'AI',
-                  date: docData.meta?.date || new Date().toISOString().split('T')[0],
-                  wordCount: docData.content?.length || 0
-                }
-              };
-              
-              // 移除JSON部分
-              finalContent = finalContent.replace(jsonStr, '').trim();
-            }
-          }
-        } catch (e) {
-          console.log('ℹ️ [Layer 1 - JSON] JSON解析失败，尝试Layer 2');
-        }
-        
-        // 【Layer 2】标记格式解析（兼容旧格式）
-        if (!parsedDoc) {
-          const tagMatch = finalContent.match(/\[发文档:(.*?):(.*?)\]/);
-          if (tagMatch) {
-            console.log('✅ [Layer 2 - Tag] 识别到标记格式');
-            parsedDoc = parseEnhancedDocument(finalContent);
-          }
-        }
-        
-        // 【Layer 3】描述性文本解析（"发送了文档「标题」"）
-        if (!parsedDoc) {
-          const descMatch = finalContent.match(/发送了文档[「『](.*?)[」』]/);
-          if (descMatch && descMatch.index !== undefined) {
-            console.log('✅ [Layer 3 - Desc] 识别到描述性文档');
-            const title = descMatch[1];
-            const matchEnd = descMatch.index + descMatch[0].length;
-            const contentAfter = finalContent.substring(matchEnd).trim();
-            
-            if (contentAfter && contentAfter.length > 50) {
-              parsedDoc = {
-                title: title,
-                type: 'text',
-                content: contentAfter,
-                meta: {
-                  author: 'AI',
-                  date: new Date().toISOString().split('T')[0],
-                  wordCount: contentAfter.length
-                }
-              };
-              // 清空内容
-              finalContent = finalContent.substring(0, descMatch.index).trim();
-            }
-          }
-        }
+        const parsedDoc = parseEnhancedDocument(finalContent);
         
         if (parsedDoc) {
           console.log('✅ [文档解析] 成功识别文档');
@@ -275,7 +207,7 @@ const backgroundTaskManager = {
           allExtraMessages.push({
             id: `${baseId}_doc`,
             role: 'assistant',
-            content: parsedDoc.greeting || `发送了文档「${parsedDoc.title}」`,
+            content: `发送了文档「${parsedDoc.title}」`,
             timestamp: Date.now() + 100,
             document: {
               title: parsedDoc.title,
@@ -2113,52 +2045,37 @@ ${SmartHTMLGenerator.getModuleInstructions()}
 - 换头像后要表达感谢或喜欢
 
 【📄 发送内容卡片功能】：
-当用户要求你写文档、策划案、信件、新闻、同人文等内容时，必须使用JSON格式输出。
-
-**📋 JSON格式（必须严格遵守）：**
-{
-  "type": "document",
-  "title": "文档标题",
-  "docType": "text",
-  "summary": "50-100字的摘要，概括文档主要内容",
-  "content": "完整的文档内容（200-5000字）...",
-  "greeting": "这是我写的文档，请查收～",
-  "meta": {
-    "author": "你的角色名",
-    "date": "2025-11-12"
-  }
-}
-
-**字段说明**：
-- docType可选值：text（普通文本）、markdown（带格式）、code（代码）
-- summary：简短摘要，让用户快速了解文档内容
-- meta.author：填写你的角色名称
-- meta.date：当前日期
+你可以发送各种形式的内容卡片给用户，**必须严格使用以下格式**：
+[发文档:标题:类型] 完整的文档内容...
 
 **🔥 核心规则（必须遵守）：**
-1. **必须是完整的JSON对象**，不要在JSON前后加任何其他文字
-2. **content必须完整**，至少200字，最多20000字
-3. **summary必填**，50-100字概括内容
-4. **一次性输出**：整个JSON必须一次性输出完整，不能分段
-5. **JSON必须有效**：确保格式正确，字符串正确转义
-6. **换行用\\n表示**，特殊字符需要转义（如引号用\\"）
-
-**✅ 正确示例：**
-{ "type": "document", "title": "【女推同人】失控", "docType": "text", "summary": "一个关于自我认知与控制边界的故事，讲述主角在情感与理智之间的挣扎。", "content": "周子谦的吻落在唇角，那是带着些许酒气的温度。办公室的灯光昏暗，投影在玻璃上的两个身影交叠在一起，暧昧而危险。\\n\\n\\"主人...\\"苏绝的声音颤抖着，手指攥紧了对方的衣领......（继续完整内容200-1000字）", "greeting": "我给你写了个故事～", "meta": { "author": "超牛逼的语c老师", "date": "2025-11-12" } }
+1. **标记格式：** [发文档:标题:类型]
+2. **类型选择：** text、markdown、code（三选一）
+3. **内容位置：** 标记**后面立即**紧跟完整文档内容（200-5000字）
+4. **一体化输出：** 标记和内容必须在同一次输出中，**不能分开**！
+5. **内容完整性：** 必须输出完整文档，不能只有标记没有内容！
 
 **🚫 绝对禁止（会导致错误）：**
-- ❌ "发送了文档「标题」" ← 不是JSON格式
-- ❌ 只输出JSON的一部分 ← 不完整
-- ❌ 先输出文字再输出JSON ← JSON前有其他内容
-- ❌ content或summary字段为空 ← 内容不完整
-- ❌ JSON格式错误 ← 无效JSON
+- ❌ 错误示例1："发送了文档「标题」" ← 没有使用标记格式
+- ❌ 错误示例2："[发文档:标题:text]" ← 只有标记，后面没有内容
+- ❌ 错误示例3："我给你写了个文档「标题」" ← 描述性文字，不是标记格式
+- ❌ 错误示例4：先输出"[发文档:标题:text]"，再另外输出内容 ← **标记和内容被分开了**
+- ❌ 错误示例5：先输出文档内容，最后说"发送了文档「标题」" ← **顺序反了**
 
-**🎯 三层容错机制说明**：
-即使你输出失败，系统也有容错：
-1. 优先解析JSON格式（推荐）
-2. 兼容旧标记格式 [发文档:标题:类型]
-3. 识别描述性文本"发送了文档「标题」"
-但请尽量使用JSON格式以获得最佳体验！
+**✅ 正确示例（完整格式）：**
+例子1：
+[发文档:【女推同人】失控:text] 周子谦的吻落在唇角，那是带着些许酒气的温度。办公室的灯光昏暗，投影在玻璃上的两个身影交叠在一起，暧昧而危险。"主人..."苏绝的声音颤抖着，手指攥紧了对方的衣领......（后面继续输出完整文档内容，至少200-1000字）
+
+例子2（带前导文字）：
+我给你写了个故事 [发文档:校园回忆:text] 那是一个秋天的午后，阳光透过教室的窗户洒在课桌上......（完整内容）
+
+**⚠️ 重要提醒：**
+- **标记和内容是一个整体**，必须在同一次输出中完成！
+- 标记后**立即**开始输出文档内容，中间不能有换行或其他内容
+- 内容会在文档卡片中显示，标记前的文字会在聊天气泡中显示
+- 系统会自动识别内容类型（新闻、小红书、同人文等）
+- 📏 字数限制：单个文档最多20000字符
+- 如果要在文档后继续聊天，用**双换行**（两个回车）分隔
 
 【内容形式与专业规范】：
 根据不同内容形式，必须详细、专业、符合真实文体：
