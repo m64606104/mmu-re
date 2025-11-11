@@ -314,7 +314,14 @@ export default function SettingsScreen({ apiConfig, onUpdateConfig, onBack }: Se
 
       {/* Content */}
       <div className="flex-1 overflow-y-auto p-4">
-        <div className="bg-white rounded-lg shadow-sm p-4 space-y-4">
+        {/* API 配置卡片 */}
+        <div className="bg-white rounded-xl shadow-sm p-5 space-y-4">
+          <h2 className="text-base font-semibold text-gray-900 mb-3 flex items-center gap-2">
+            <Database className="w-5 h-5 text-blue-500" />
+            API 配置
+          </h2>
+
+          {/* Base URL */}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">
               Base URL
@@ -324,10 +331,11 @@ export default function SettingsScreen({ apiConfig, onUpdateConfig, onBack }: Se
               value={baseUrl}
               onChange={(e) => setBaseUrl(e.target.value)}
               placeholder="https://api520.pro"
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full px-3 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
             />
           </div>
 
+          {/* API Key */}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">
               API Key
@@ -337,58 +345,94 @@ export default function SettingsScreen({ apiConfig, onUpdateConfig, onBack }: Se
               value={apiKey}
               onChange={(e) => setApiKey(e.target.value)}
               placeholder="sk-..."
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full px-3 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
             />
           </div>
 
+          {/* 模型选择 - 始终显示 */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              模型名称
+            </label>
+            {availableModels.length > 0 ? (
+              // 有可用模型列表时，使用下拉选择
+              <div className="space-y-2">
+                <select
+                  value={modelName}
+                  onChange={(e) => setModelName(e.target.value)}
+                  className="w-full px-3 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all bg-white"
+                >
+                  {availableModels.map(model => (
+                    <option key={model} value={model}>{model}</option>
+                  ))}
+                </select>
+                <p className="text-xs text-green-600 flex items-center gap-1">
+                  <Check className="w-3 h-3" />
+                  已获取 {availableModels.length} 个可用模型
+                </p>
+              </div>
+            ) : (
+              // 没有可用模型列表时，使用文本输入
+              <div className="space-y-2">
+                <input
+                  type="text"
+                  value={modelName}
+                  onChange={(e) => setModelName(e.target.value)}
+                  placeholder="gpt-3.5-turbo"
+                  className="w-full px-3 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
+                />
+                <p className="text-xs text-gray-500">
+                  💡 点击"测试连接"可自动获取可用模型列表
+                </p>
+              </div>
+            )}
+          </div>
+
+          {/* 当前配置状态 */}
+          {modelName && (
+            <div className="bg-blue-50 border border-blue-100 rounded-lg p-3">
+              <p className="text-xs text-blue-700">
+                <span className="font-semibold">当前模型：</span>
+                <span className="ml-1 font-mono">{modelName}</span>
+              </p>
+            </div>
+          )}
+
+          {/* 测试连接按钮 */}
           <button
             onClick={testConnection}
             disabled={testing}
-            className="w-full bg-blue-500 text-white py-2 rounded-lg font-medium flex items-center justify-center gap-2 disabled:bg-gray-400"
+            className="w-full bg-blue-500 hover:bg-blue-600 text-white py-2.5 rounded-lg font-medium flex items-center justify-center gap-2 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors"
           >
             {testing ? (
               <>
                 <Loader2 className="w-5 h-5 animate-spin" />
-                测试中...
+                测试连接中...
               </>
             ) : testResult === 'success' ? (
               <>
                 <Check className="w-5 h-5" />
-                测试成功
+                连接成功 · 点击重新测试
               </>
             ) : (
-              '测试连接'
+              '测试 API 连接'
             )}
           </button>
 
-          {availableModels.length > 0 && (
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                选择模型
-              </label>
-              <select
-                value={modelName}
-                onChange={(e) => setModelName(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-              >
-                {availableModels.map(model => (
-                  <option key={model} value={model}>{model}</option>
-                ))}
-              </select>
-            </div>
-          )}
-
+          {/* 保存按钮 */}
           <button
             onClick={handleSave}
-            className="w-full bg-green-500 text-white py-2 rounded-lg font-medium"
+            className="w-full bg-green-500 hover:bg-green-600 text-white py-2.5 rounded-lg font-medium transition-colors"
           >
             保存配置
           </button>
         </div>
 
         {/* 语音转文字设置 */}
-        <div className="bg-white rounded-lg shadow-sm p-4 mt-4">
-          <h2 className="text-base font-semibold text-gray-900 mb-3">🎤 语音转文字</h2>
+        <div className="bg-white rounded-xl shadow-sm p-5 mt-4">
+          <h2 className="text-base font-semibold text-gray-900 mb-3 flex items-center gap-2">
+            🎤 语音转文字
+          </h2>
           
           {/* 开关 */}
           <div className="flex items-center justify-between mb-4 p-3 bg-gray-50 rounded-lg">
@@ -421,7 +465,7 @@ export default function SettingsScreen({ apiConfig, onUpdateConfig, onBack }: Se
                   value={sttApiUrl}
                   onChange={(e) => setSttApiUrl(e.target.value)}
                   placeholder="https://open.bigmodel.cn/api/paas/v4"
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full px-3 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
                 />
               </div>
 
@@ -434,7 +478,7 @@ export default function SettingsScreen({ apiConfig, onUpdateConfig, onBack }: Se
                   value={sttApiKey}
                   onChange={(e) => setSttApiKey(e.target.value)}
                   placeholder="请输入语音识别API Key"
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full px-3 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
                 />
               </div>
 
@@ -447,7 +491,7 @@ export default function SettingsScreen({ apiConfig, onUpdateConfig, onBack }: Se
                   value={sttModel}
                   onChange={(e) => setSttModel(e.target.value)}
                   placeholder="glm-4-flash"
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full px-3 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
                 />
               </div>
 
@@ -467,8 +511,10 @@ export default function SettingsScreen({ apiConfig, onUpdateConfig, onBack }: Se
         </div>
 
         {/* 头像装饰设置 */}
-        <div className="bg-white rounded-lg shadow-sm p-4 mt-4">
-          <h2 className="text-base font-semibold text-gray-900 mb-3">头像装饰</h2>
+        <div className="bg-white rounded-xl shadow-sm p-5 mt-4">
+          <h2 className="text-base font-semibold text-gray-900 mb-2 flex items-center gap-2">
+            ✨ 头像装饰
+          </h2>
           <p className="text-sm text-gray-500 mb-4">选择你喜欢的头像装饰图标</p>
           <div className="grid grid-cols-6 gap-3">
             {AVATAR_BADGES.map((badge) => (
@@ -485,7 +531,7 @@ export default function SettingsScreen({ apiConfig, onUpdateConfig, onBack }: Se
               </button>
             ))}
           </div>
-          <div className="mt-4 p-3 bg-blue-50 rounded-lg">
+          <div className="mt-4 p-3 bg-blue-50 border border-blue-100 rounded-lg">
             <p className="text-sm text-blue-700">
               当前选择: <span className="text-xl ml-2">{selectedBadge}</span>
             </p>
@@ -493,11 +539,11 @@ export default function SettingsScreen({ apiConfig, onUpdateConfig, onBack }: Se
         </div>
 
         {/* 数据管理 */}
-        <div className="bg-white rounded-lg shadow-sm p-4 mt-4">
-          <div className="flex items-center gap-2 mb-3">
-            <Database className="w-5 h-5 text-gray-700" />
-            <h2 className="text-base font-semibold text-gray-900">数据管理</h2>
-          </div>
+        <div className="bg-white rounded-xl shadow-sm p-5 mt-4">
+          <h2 className="text-base font-semibold text-gray-900 mb-2 flex items-center gap-2">
+            <Database className="w-5 h-5 text-purple-500" />
+            数据管理
+          </h2>
           <p className="text-sm text-gray-500 mb-4">导出或导入所有应用数据</p>
           
           <div className="grid grid-cols-2 gap-3">
