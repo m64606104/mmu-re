@@ -1,7 +1,8 @@
 import { useState, useMemo } from 'react';
-import { ChevronLeft, FileText, Calendar, User, Search, FolderOpen, BookOpen, X } from 'lucide-react';
+import { ChevronLeft, FileText, Calendar, User, Search, FolderOpen, BookOpen, X, Upload } from 'lucide-react';
 import { Conversation, KnowledgeBaseItem } from '../types';
 import DocumentViewModal from './DocumentViewModal';
+import { getDocumentLibrary, SavedDocument } from '../utils/documentLibrary';
 
 interface DatabaseScreenProps {
   conversations: Conversation[];
@@ -13,14 +14,14 @@ interface DocumentItem {
   title: string;
   content: string;
   type: 'text' | 'markdown' | 'code';
-  source: 'chat' | 'knowledge'; // 来源：聊天记录 or 知识库
-  sourceName: string; // 来源名称（对话名称 or AI名称）
+  source: 'chat' | 'knowledge' | 'saved'; // 来源：聊天记录 | 知识库 | 手动保存
+  sourceName: string; // 来源名称（对话名称 or AI名称 or 保存来源）
   createdAt: number;
 }
 
 export default function DatabaseScreen({ conversations, onBack }: DatabaseScreenProps) {
   const [searchQuery, setSearchQuery] = useState('');
-  const [selectedSource, setSelectedSource] = useState<'all' | 'chat' | 'knowledge'>('all');
+  const [selectedSource, setSelectedSource] = useState<'all' | 'chat' | 'knowledge' | 'saved'>('all');
   const [selectedDocument, setSelectedDocument] = useState<DocumentItem | null>(null);
 
   // 收集所有文档
@@ -61,6 +62,20 @@ export default function DatabaseScreen({ conversations, onBack }: DatabaseScreen
       }
     });
 
+    // 3. 从文档库中读取手动保存的文档
+    const savedDocs = getDocumentLibrary();
+    savedDocs.forEach((doc: SavedDocument) => {
+      docs.push({
+        id: `saved_${doc.id}`,
+        title: doc.title,
+        content: doc.content,
+        type: doc.type,
+        source: 'saved',
+        sourceName: doc.source || '手动保存',
+        createdAt: doc.savedAt,
+      });
+    });
+
     // 按时间倒序排序
     return docs.sort((a, b) => b.createdAt - a.createdAt);
   }, [conversations]);
@@ -91,7 +106,8 @@ export default function DatabaseScreen({ conversations, onBack }: DatabaseScreen
   const stats = useMemo(() => {
     const chatDocs = allDocuments.filter((d) => d.source === 'chat').length;
     const knowledgeDocs = allDocuments.filter((d) => d.source === 'knowledge').length;
-    return { total: allDocuments.length, chat: chatDocs, knowledge: knowledgeDocs };
+    const savedDocs = allDocuments.filter((d) => d.source === 'saved').length;
+    return { total: allDocuments.length, chat: chatDocs, knowledge: knowledgeDocs, saved: savedDocs };
   }, [allDocuments]);
 
   // 格式化时间
@@ -134,9 +150,9 @@ export default function DatabaseScreen({ conversations, onBack }: DatabaseScreen
             <ChevronLeft className="w-5 h-5 text-slate-700" />
           </button>
           <div className="flex-1">
-            <h1 className="text-lg font-bold text-slate-800">资料库</h1>
+            <h1 className="text-lg font-bold text-slate-800">文档与资料库</h1>
             <p className="text-xs text-slate-500">
-              共 {stats.total} 份文档 · 聊天记录 {stats.chat} · 知识库 {stats.knowledge}
+              共 {stats.total} 份 · 聊天 {stats.chat} · 知识库 {stats.knowledge} · 保存 {stats.saved}
             </p>
           </div>
         </div>
@@ -164,10 +180,10 @@ export default function DatabaseScreen({ conversations, onBack }: DatabaseScreen
         </div>
 
         {/* 过滤标签 */}
-        <div className="px-4 pb-3 flex gap-2">
+        <div className="px-4 pb-3 flex gap-2 overflow-x-auto">
           <button
             onClick={() => setSelectedSource('all')}
-            className={`px-3 py-1.5 rounded-full text-xs font-medium transition-colors ${
+            className={`px-3 py-1.5 rounded-full text-xs font-medium transition-colors whitespace-nowrap ${
               selectedSource === 'all'
                 ? 'bg-blue-500 text-white'
                 : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
@@ -177,23 +193,33 @@ export default function DatabaseScreen({ conversations, onBack }: DatabaseScreen
           </button>
           <button
             onClick={() => setSelectedSource('chat')}
-            className={`px-3 py-1.5 rounded-full text-xs font-medium transition-colors ${
+            className={`px-3 py-1.5 rounded-full text-xs font-medium transition-colors whitespace-nowrap ${
               selectedSource === 'chat'
                 ? 'bg-green-500 text-white'
                 : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
             }`}
           >
-            聊天记录 ({stats.chat})
+            💬 聊天 ({stats.chat})
           </button>
           <button
             onClick={() => setSelectedSource('knowledge')}
-            className={`px-3 py-1.5 rounded-full text-xs font-medium transition-colors ${
+            className={`px-3 py-1.5 rounded-full text-xs font-medium transition-colors whitespace-nowrap ${
               selectedSource === 'knowledge'
                 ? 'bg-purple-500 text-white'
                 : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
             }`}
           >
-            知识库 ({stats.knowledge})
+            📚 知识库 ({stats.knowledge})
+          </button>
+          <button
+            onClick={() => setSelectedSource('saved')}
+            className={`px-3 py-1.5 rounded-full text-xs font-medium transition-colors whitespace-nowrap ${
+              selectedSource === 'saved'
+                ? 'bg-orange-500 text-white'
+                : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+            }`}
+          >
+            💾 保存 ({stats.saved})
           </button>
         </div>
       </div>
@@ -206,10 +232,10 @@ export default function DatabaseScreen({ conversations, onBack }: DatabaseScreen
             <p className="text-slate-500 text-sm mb-1">
               {searchQuery ? '没有找到相关文档' : '还没有保存任何文档'}
             </p>
-            <p className="text-slate-400 text-xs">
+            <p className="text-slate-400 text-xs max-w-xs">
               {searchQuery
                 ? '试试调整搜索关键词'
-                : 'AI发送的文档和上传到资料库的文档会显示在这里'}
+                : '💬 聊天记录中的文档\n📚 角色知识库文档\n💾 手动保存的文档\n都会显示在这里'}
             </p>
           </div>
         ) : (
@@ -226,13 +252,17 @@ export default function DatabaseScreen({ conversations, onBack }: DatabaseScreen
                     className={`flex-shrink-0 w-10 h-10 rounded-lg flex items-center justify-center ${
                       doc.source === 'chat'
                         ? 'bg-green-100 text-green-600'
-                        : 'bg-purple-100 text-purple-600'
+                        : doc.source === 'knowledge'
+                        ? 'bg-purple-100 text-purple-600'
+                        : 'bg-orange-100 text-orange-600'
                     }`}
                   >
                     {doc.source === 'chat' ? (
                       <FileText className="w-5 h-5" />
-                    ) : (
+                    ) : doc.source === 'knowledge' ? (
                       <BookOpen className="w-5 h-5" />
+                    ) : (
+                      <Upload className="w-5 h-5" />
                     )}
                   </div>
 
@@ -255,10 +285,12 @@ export default function DatabaseScreen({ conversations, onBack }: DatabaseScreen
                         className={`px-2 py-0.5 rounded-full ${
                           doc.source === 'chat'
                             ? 'bg-green-50 text-green-600'
-                            : 'bg-purple-50 text-purple-600'
+                            : doc.source === 'knowledge'
+                            ? 'bg-purple-50 text-purple-600'
+                            : 'bg-orange-50 text-orange-600'
                         }`}
                       >
-                        {doc.source === 'chat' ? '聊天' : '知识库'}
+                        {doc.source === 'chat' ? '💬' : doc.source === 'knowledge' ? '📚' : '💾'}
                       </span>
                     </div>
                   </div>

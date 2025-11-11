@@ -265,13 +265,78 @@ export const splitMessages = (message: string): string[] => {
     return restored;
   });
   
+  // 🧠 第五步：智能标点符号检查和修复
+  const smartFixedMessages: string[] = [];
+  for (let i = 0; i < restoredMessages.length; i++) {
+    const msg = restoredMessages[i].trim();
+    if (!msg) continue;
+    
+    // 检查是否只有引号或标点符号
+    const isOnlyPunctuation = /^[“”「」『』【】。！？!?.,，；;]+$/.test(msg);
+    
+    if (isOnlyPunctuation) {
+      // 如果是单独的引号或标点，尝试合并到上一个消息
+      if (smartFixedMessages.length > 0) {
+        const lastMsg = smartFixedMessages[smartFixedMessages.length - 1];
+        
+        // 检查上一个消息是否缺少闭合引号
+        const hasOpenQuote = /[“「『【]/.test(lastMsg) && !/[”」』】]/.test(lastMsg);
+        
+        if (hasOpenQuote && /[”」』】]/.test(msg)) {
+          // 上一个消息有开引号没有闭引号，而当前是闭引号，合并
+          smartFixedMessages[smartFixedMessages.length - 1] = lastMsg + msg;
+        } else {
+          // 其他情况，直接合并
+          smartFixedMessages[smartFixedMessages.length - 1] = lastMsg + msg;
+        }
+      } else {
+        // 如果是第一个消息且只有标点，跳过
+        continue;
+      }
+    } else {
+      // 检查是否缺少闭合引号
+      const openQuotes = (msg.match(/[“「『【]/g) || []).length;
+      const closeQuotes = (msg.match(/[”」』】]/g) || []).length;
+      
+      if (openQuotes > closeQuotes) {
+        // 有未闭合的引号，检查下一个消息是否是闭合引号
+        if (i + 1 < restoredMessages.length) {
+          const nextMsg = restoredMessages[i + 1].trim();
+          if (/^[”」』】]/.test(nextMsg)) {
+            // 下一个消息以闭引号开头，合并
+            smartFixedMessages.push(msg + nextMsg);
+            i++; // 跳过下一个
+            continue;
+          }
+        }
+        // 如果没有找到闭合引号，自动补齐
+        const lastOpenQuote = msg.match(/[“「『【]/g)?.slice(-1)[0];
+        const closeQuoteMap: Record<string, string> = {
+          '“': '”',
+          '「': '」',
+          '『': '』',
+          '【': '】'
+        };
+        if (lastOpenQuote && closeQuoteMap[lastOpenQuote]) {
+          smartFixedMessages.push(msg + closeQuoteMap[lastOpenQuote]);
+        } else {
+          smartFixedMessages.push(msg);
+        }
+      } else {
+        smartFixedMessages.push(msg);
+      }
+    }
+  }
+  
   // 过滤掉空消息、只有标点的消息、以及纯URL的消息
-  const filteredMessages = restoredMessages
+  const filteredMessages = smartFixedMessages
     .map(msg => msg.trim())
     .filter(msg => {
       if (!msg || msg.length === 0) return false;
-      // 过滤纯标点
+      // 过滤纯标点（但不包括引号，因为引号应该已经被合并）
       if (/^[。！？!?.,，；;]+$/.test(msg)) return false;
+      // 过滤单独的引号（如果还有漏网之鱼）
+      if (/^[“”「」『』【】]+$/.test(msg)) return false;
       // 过滤纯URL（包括可能的[]前缀）
       if (/^\[?\]?https?:\/\/[^\s]+$/.test(msg)) return false;
       // 过滤只有.html、.com等扩展名结尾的片段

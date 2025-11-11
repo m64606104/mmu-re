@@ -553,13 +553,14 @@ const backgroundTaskManager = {
         const hasAvatarChange = finalContent.includes('[换头像]');
         const hasRestoreAvatar = finalContent.includes('[换回原头像]');
         
+        // 移除所有头像标记（包括全角/半角括号和中英文字符）
         if (hasAvatarChange) {
-          console.log('🎭 [头像更换] 检测到换头像指令');
-          finalContent = finalContent.replace(/\[换头像\]/g, '').trim();
+          console.log('🎭 [头像更换] 检测到换头像指令，移除标记');
+          finalContent = finalContent.replace(/\[换头像\]/g, '').replace(/【换头像】/g, '').trim();
         }
         if (hasRestoreAvatar) {
-          console.log('🎭 [头像更换] 检测到换回原头像指令');
-          finalContent = finalContent.replace(/\[换回原头像\]/g, '').trim();
+          console.log('🎭 [头像更换] 检测到换回原头像指令，移除标记');
+          finalContent = finalContent.replace(/\[换回原头像\]/g, '').replace(/【换回原头像】/g, '').trim();
         }
         
         // 构建消息对象
@@ -1422,18 +1423,13 @@ ${recentMessages}
       return; // 不是需要处理的响应
     }
     
-    console.log(`💰 检测到AI红包响应消息`);
+    console.log(`💰 [processAIMoneyResponse] 检测到AI红包响应消息`);
+    console.log(`   消息ID: ${aiMessage.id}`);
+    console.log(`   类型: ${aiMessage.moneyTransfer.type}`);
+    console.log(`   状态: ${aiMessage.moneyTransfer.status}`);
     
-    // 从localStorage获取最新对话
-    const storedConversations = localStorage.getItem('conversations');
-    if (!storedConversations) return;
-    
-    const allConversations = JSON.parse(storedConversations) as Conversation[];
-    const currentConv = allConversations.find((c: Conversation) => c.id === conversation.id);
-    if (!currentConv) return;
-    
-    // 找到用户最近发送的待处理红包/转账消息
-    const userMoneyMessage = [...currentConv.messages]
+    // 找到用户最近发送的待处理红包/转账消息（使用当前conversation对象）
+    const userMoneyMessage = [...conversation.messages]
       .reverse()
       .find(msg => 
         msg.role === 'user' && 
@@ -1443,19 +1439,25 @@ ${recentMessages}
       );
     
     if (!userMoneyMessage || !userMoneyMessage.moneyTransfer) {
-      console.log('⚠️ 未找到待处理的红包/转账消息');
+      console.error('❌ [processAIMoneyResponse] 未找到待处理的红包/转账消息');
+      console.error('   conversation.messages数量:', conversation.messages.length);
+      console.error('   查找条件: role=user, status=pending, type=' + aiMessage.moneyTransfer.type);
       return;
     }
     
     const originalAmount = userMoneyMessage.moneyTransfer.amount;
     const responseStatus = aiMessage.moneyTransfer.status; // 'received' 或 'returned'
     
-    console.log(`💰 处理AI红包响应: ${responseStatus}, 金额: ¥${originalAmount}`);
+    console.log(`💰 [processAIMoneyResponse] 找到原始红包消息`);
+    console.log(`   原始消息ID: ${userMoneyMessage.id}`);
+    console.log(`   金额: ¥${originalAmount}`);
+    console.log(`   新状态: ${responseStatus}`);
     
     // 更新对话中的两条消息
-    const updatedMessages = currentConv.messages.map(msg => {
+    const updatedMessages = conversation.messages.map(msg => {
       // 更新AI响应消息的金额
       if (msg.id === aiMessage.id && msg.moneyTransfer) {
+        console.log(`   ✓ 更新AI响应消息金额: ${originalAmount}`);
         return {
           ...msg,
           moneyTransfer: {
@@ -1466,6 +1468,7 @@ ${recentMessages}
       }
       // 更新用户原始消息的状态
       if (msg.id === userMoneyMessage.id && msg.moneyTransfer) {
+        console.log(`   ✓ 更新用户红包状态: ${responseStatus}`);
         return {
           ...msg,
           moneyTransfer: {
@@ -1478,20 +1481,26 @@ ${recentMessages}
       return msg;
     });
     
-    // 更新localStorage
-    const updatedConversations = allConversations.map(c => 
-      c.id === conversation.id 
-        ? { ...c, messages: updatedMessages }
-        : c
-    );
-    localStorage.setItem('conversations', JSON.stringify(updatedConversations));
-    
-    // 立即更新当前组件状态
+    // 立即更新当前组件状态（先更新，再存储）
+    console.log(`💾 [processAIMoneyResponse] 更新组件状态...`);
     onUpdateConversation(conversation.id, {
       messages: updatedMessages
     });
     
-    console.log(`✅ 红包状态已更新: ${responseStatus}`);
+    // 再更新localStorage
+    const storedConversations = localStorage.getItem('conversations');
+    if (storedConversations) {
+      const allConversations = JSON.parse(storedConversations) as Conversation[];
+      const updatedConversations = allConversations.map(c => 
+        c.id === conversation.id 
+          ? { ...c, messages: updatedMessages }
+          : c
+      );
+      localStorage.setItem('conversations', JSON.stringify(updatedConversations));
+      console.log(`✅ [processAIMoneyResponse] localStorage已更新`);
+    }
+    
+    console.log(`✅ [processAIMoneyResponse] 红包状态更新完成: ${responseStatus}`);
     
     // 显示Toast提示
     const toastMessages: Record<string, string> = {
