@@ -328,12 +328,13 @@ const backgroundTaskManager = {
           
           console.log(`💰 AI${action}${type}: ${message}`);
           
-          // 创建转账气泡（AI接收用户的钱时，需要找到原始金额）
-          // 这里暂时用0，实际金额会在processAIMoneyResponse中更新
+          // 🔥 重要：创建红包/转账气泡，但不设置content
+          // AI的文字回复会作为独立的文本消息显示（通过finalContent）
+          // 这样可以同时显示：① 红包气泡 + ② AI的文字回复
           allExtraMessages.push({
             id: `${baseId}_moneyresponse`,
             role: 'assistant',
-            content: action === '接收' ? `已收到你的${type}` : `已退回你的${type}`,
+            content: '', // ⚠️ 设为空，避免显示默认文字如"已收到你的红包"
             timestamp: Date.now() + 100 + allExtraMessages.length * 10,
             moneyTransfer: {
               type: type === '红包' ? 'redPacket' : 'transfer',
@@ -1277,10 +1278,11 @@ ${recentMessages}
   };
 
   // 处理AI的红包/转账响应（更新金额和状态）
-  const processAIMoneyResponse = (aiMessage: Message) => {
+  // 🔥 重要：接收currentMessages参数，避免覆盖最新消息
+  const processAIMoneyResponse = (aiMessage: Message, currentMessages: Message[]) => {
     // 检查是否是红包/转账响应消息（amount为0）
     if (!aiMessage.moneyTransfer || aiMessage.moneyTransfer.amount !== 0) {
-      return; // 不是需要处理的响应
+      return currentMessages; // 不是需要处理的响应，直接返回
     }
     
     console.log(`💰 [processAIMoneyResponse] 检测到AI红包响应消息`);
@@ -1288,8 +1290,8 @@ ${recentMessages}
     console.log(`   类型: ${aiMessage.moneyTransfer.type}`);
     console.log(`   状态: ${aiMessage.moneyTransfer.status}`);
     
-    // 找到用户最近发送的待处理红包/转账消息（使用当前conversation对象）
-    const userMoneyMessage = [...conversation.messages]
+    // 🔥 使用currentMessages而不是conversation.messages
+    const userMoneyMessage = [...currentMessages]
       .reverse()
       .find(msg => 
         msg.role === 'user' && 
@@ -1300,9 +1302,9 @@ ${recentMessages}
     
     if (!userMoneyMessage || !userMoneyMessage.moneyTransfer) {
       console.error('❌ [processAIMoneyResponse] 未找到待处理的红包/转账消息');
-      console.error('   conversation.messages数量:', conversation.messages.length);
+      console.error('   currentMessages数量:', currentMessages.length);
       console.error('   查找条件: role=user, status=pending, type=' + aiMessage.moneyTransfer.type);
-      return;
+      return currentMessages; // 返回原消息数组
     }
     
     const originalAmount = userMoneyMessage.moneyTransfer.amount;
@@ -1313,8 +1315,8 @@ ${recentMessages}
     console.log(`   金额: ¥${originalAmount}`);
     console.log(`   新状态: ${responseStatus}`);
     
-    // 更新对话中的两条消息
-    const updatedMessages = conversation.messages.map(msg => {
+    // 🔥 更新currentMessages而不是conversation.messages
+    const updatedMessages = currentMessages.map(msg => {
       // 更新AI响应消息的金额
       if (msg.id === aiMessage.id && msg.moneyTransfer) {
         console.log(`   ✓ 更新AI响应消息金额: ${originalAmount}`);
@@ -1341,25 +1343,6 @@ ${recentMessages}
       return msg;
     });
     
-    // 立即更新当前组件状态（先更新，再存储）
-    console.log(`💾 [processAIMoneyResponse] 更新组件状态...`);
-    onUpdateConversation(conversation.id, {
-      messages: updatedMessages
-    });
-    
-    // 再更新localStorage
-    const storedConversations = localStorage.getItem('conversations');
-    if (storedConversations) {
-      const allConversations = JSON.parse(storedConversations) as Conversation[];
-      const updatedConversations = allConversations.map(c => 
-        c.id === conversation.id 
-          ? { ...c, messages: updatedMessages }
-          : c
-      );
-      localStorage.setItem('conversations', JSON.stringify(updatedConversations));
-      console.log(`✅ [processAIMoneyResponse] localStorage已更新`);
-    }
-    
     console.log(`✅ [processAIMoneyResponse] 红包状态更新完成: ${responseStatus}`);
     
     // 显示Toast提示
@@ -1368,6 +1351,9 @@ ${recentMessages}
       'returned': `↩️ AI已退回${aiMessage.moneyTransfer.type === 'redPacket' ? '红包' : '转账'} ¥${originalAmount}`
     };
     showToast(toastMessages[responseStatus] || '💰 红包状态已更新', 'success');
+    
+    // 🔥 返回更新后的消息数组
+    return updatedMessages;
   };
 
   // 发送视频消息
@@ -2666,7 +2652,11 @@ ${doc.content}`;
               
               // 💰 处理红包/转账响应（如果AI回复包含红包响应）
               if (newMessages[i].moneyTransfer) {
-                processAIMoneyResponse(newMessages[i]);
+                currentMessages = processAIMoneyResponse(newMessages[i], currentMessages);
+                // 🔥 更新到conversation
+                onUpdateConversation(conversationId, {
+                  messages: currentMessages
+                });
               }
               
               // 短暂停顿再显示下一条
@@ -2750,8 +2740,13 @@ ${doc.content}`;
               }
               // 💰 处理红包/转账响应
               if (msg.moneyTransfer) {
-                processAIMoneyResponse(msg);
+                currentMessages = processAIMoneyResponse(msg, currentMessages);
               }
+            });
+            
+            // 🔥 更新到conversation
+            onUpdateConversation(conversationId, {
+              messages: currentMessages
             });
             
             // 🎭 检查是否有头像更换指令（用户离开的情况下也要处理）
