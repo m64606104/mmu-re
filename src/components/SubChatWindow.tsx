@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { X, Send, Minimize2, Maximize2, MessageCircle } from 'lucide-react';
-import { SubChat, Message, ApiConfig, Conversation } from '../types';
+import { X, Send, Minimize2, MessageCircle } from 'lucide-react';
+import { SubChat, ApiConfig, Conversation } from '../types';
 
 interface SubChatWindowProps {
   subChat: SubChat;
@@ -16,11 +16,11 @@ interface SubChatWindowProps {
 const SubChatWindow: React.FC<SubChatWindowProps> = ({
   subChat,
   conversation,
-  apiConfig,
+  apiConfig: _apiConfig,
   onClose,
   onMinimize,
   onSendMessage,
-  onUpdateSubChat,
+  onUpdateSubChat: _onUpdateSubChat,
   isMinimized,
 }) => {
   const [input, setInput] = useState('');

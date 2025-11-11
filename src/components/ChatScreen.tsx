@@ -23,7 +23,6 @@ import ActivityLogModal from './ActivityLogModal';
 // 子聊天相关导入
 import SubChatWindow from './SubChatWindow';
 import SubChatManager from './SubChatManager';
-import { SubChat } from '../types';
 import {
   createSubChat,
   addMessageToSubChat,
@@ -355,6 +354,26 @@ const backgroundTaskManager = {
               message: message,
               status: action === '接收' ? 'received' : 'returned'
             }
+          });
+        }
+
+        // 💬 检测子聊天发起：[发起子聊天:目的:建议名称]
+        const subChatMatch = finalContent.match(/\[发起子聊天:([^:]+):([^\]]+)\]/);
+        if (subChatMatch) {
+          const purpose = subChatMatch[1].trim();
+          const suggestedName = subChatMatch[2].trim();
+          
+          console.log(`💬 AI发起子聊天: ${suggestedName}, 目的: ${purpose}`);
+          
+          // 移除标记
+          finalContent = finalContent.replace(subChatMatch[0], '').trim();
+          
+          // 💡 将子聊天请求存储为特殊消息，由组件处理
+          allExtraMessages.push({
+            id: `${baseId}_subchat_request`,
+            role: 'system',
+            content: `__SUBCHAT_REQUEST__${purpose}__${suggestedName}`,
+            timestamp: Date.now() + 100 + allExtraMessages.length * 10,
           });
         }
 
@@ -833,6 +852,230 @@ ${recentMessages}
     }
   }, [conversation.id, conversation.type, conversation.characterSettings]);
 
+  // ============ 💬 子聊天功能处理函数 ============
+  
+  /**
+   * 创建用户发起的子聊天
+   */
+  const handleCreateUserSubChat = (name: string) => {
+    const newSubChat = createSubChat(name, 'user');
+    const updatedConversation = addSubChatToConversation(conversation, newSubChat);
+    onUpdateConversation(conversation.id, {
+      subChats: updatedConversation.subChats,
+    });
+    
+    // 自动打开新创建的子聊天
+    setActiveSubChatId(newSubChat.id);
+    setShowSubChatManager(false);
+  };
+
+  /**
+   * 选择/打开子聊天
+   */
+  const handleSelectSubChat = (subChatId: string) => {
+    // 标记为已读并激活
+    const updatedConversation = updateSubChatInConversation(
+      conversation,
+      subChatId,
+      { unreadCount: 0, status: 'active', isActive: true }
+    );
+    
+    onUpdateConversation(conversation.id, {
+      subChats: updatedConversation.subChats,
+    });
+    
+    setActiveSubChatId(subChatId);
+    setShowSubChatManager(false);
+    
+    // 从最小化列表中移除
+    setMinimizedSubChats(prev => {
+      const newSet = new Set(prev);
+      newSet.delete(subChatId);
+      return newSet;
+    });
+  };
+
+  /**
+   * 重命名子聊天
+   */
+  const handleRenameSubChat = (subChatId: string, newName: string) => {
+    const updatedConversation = updateSubChatInConversation(
+      conversation,
+      subChatId,
+      { name: newName }
+    );
+    
+    onUpdateConversation(conversation.id, {
+      subChats: updatedConversation.subChats,
+    });
+  };
+
+  /**
+   * 删除子聊天
+   */
+  const handleDeleteSubChat = (subChatId: string) => {
+    const updatedConversation = removeSubChatFromConversation(conversation, subChatId);
+    
+    onUpdateConversation(conversation.id, {
+      subChats: updatedConversation.subChats,
+    });
+    
+    // 如果是当前打开的，关闭它
+    if (activeSubChatId === subChatId) {
+      setActiveSubChatId(null);
+    }
+    
+    // 从最小化列表中移除
+    setMinimizedSubChats(prev => {
+      const newSet = new Set(prev);
+      newSet.delete(subChatId);
+      return newSet;
+    });
+  };
+
+  /**
+   * 关闭子聊天窗口
+   */
+  const handleCloseSubChat = (subChatId: string) => {
+    const updatedConversation = updateSubChatInConversation(
+      conversation,
+      subChatId,
+      { isActive: false }
+    );
+    
+    onUpdateConversation(conversation.id, {
+      subChats: updatedConversation.subChats,
+    });
+    
+    if (activeSubChatId === subChatId) {
+      setActiveSubChatId(null);
+    }
+    
+    setMinimizedSubChats(prev => {
+      const newSet = new Set(prev);
+      newSet.delete(subChatId);
+      return newSet;
+    });
+  };
+
+  /**
+   * 最小化/恢复子聊天窗口
+   */
+  const handleToggleMinimizeSubChat = (subChatId: string) => {
+    setMinimizedSubChats(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(subChatId)) {
+        newSet.delete(subChatId);
+      } else {
+        newSet.add(subChatId);
+      }
+      return newSet;
+    });
+  };
+
+  /**
+   * 在子聊天中发送消息
+   */
+  const handleSendSubChatMessage = async (subChatId: string, content: string) => {
+    const subChat = (conversation.subChats || []).find(sc => sc.id === subChatId);
+    if (!subChat) return;
+    
+    // 1. 创建用户消息
+    const userMessage: Message = {
+      id: `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+      role: 'user',
+      content,
+      timestamp: Date.now(),
+    };
+    
+    // 2. 添加到子聊天
+    let updatedSubChat = addMessageToSubChat(subChat, userMessage);
+    
+    // 3. 更新对话
+    onUpdateConversation(conversation.id, {
+      subChats: (conversation.subChats || []).map(sc =>
+        sc.id === subChatId ? updatedSubChat : sc
+      ),
+    });
+    
+    // 4. 调用AI生成回复
+    setIsGenerating(true);
+    
+    try {
+      const characterName = conversation.characterSettings?.nickname || conversation.name;
+      const characterPersonality = conversation.characterSettings?.personality || '';
+      
+      // 简化的system prompt
+      const systemPrompt = `你是${characterName}。${characterPersonality ? `性格：${characterPersonality}` : ''}
+
+这是一个子聊天对话，消息历史独立于主聊天。请根据当前对话内容自然回复。`;
+      
+      const response = await fetch(apiConfig.baseUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${apiConfig.apiKey}`,
+        },
+        body: JSON.stringify({
+          model: apiConfig.modelName,
+          messages: [
+            { role: 'system', content: systemPrompt },
+            ...updatedSubChat.messages.map(msg => ({
+              role: msg.role,
+              content: msg.content,
+            })),
+          ],
+          temperature: 0.8,
+        }),
+      });
+      
+      if (!response.ok) {
+        throw new Error('AI回复失败');
+      }
+      
+      const data = await response.json();
+      const aiContent = data.choices?.[0]?.message?.content || '抱歉，我现在无法回复。';
+      
+      // 5. 创建AI消息
+      const aiMessage: Message = {
+        id: `msg_${Date.now() + 1}_${Math.random().toString(36).substr(2, 9)}`,
+        role: 'assistant',
+        content: aiContent,
+        timestamp: Date.now(),
+      };
+      
+      // 6. 添加AI回复到子聊天
+      updatedSubChat = addMessageToSubChat(updatedSubChat, aiMessage);
+      
+      // 7. 更新对话
+      onUpdateConversation(conversation.id, {
+        subChats: (conversation.subChats || []).map(sc =>
+          sc.id === subChatId ? updatedSubChat : sc
+        ),
+      });
+      
+    } catch (error) {
+      console.error('子聊天AI回复失败:', error);
+      showToast('AI回复失败，请重试', 'error');
+    } finally {
+      setIsGenerating(false);
+    }
+  };
+
+  /**
+   * AI发起子聊天（从解析逻辑调用）
+   */
+  const handleAIInitiateSubChat = (purpose: string, suggestedName: string) => {
+    const newSubChat = createSubChat(suggestedName, 'ai', purpose);
+    const updatedConversation = addSubChatToConversation(conversation, newSubChat);
+    
+    onUpdateConversation(conversation.id, {
+      subChats: updatedConversation.subChats,
+    });
+    
+    // 显示通知
+    showToast(`AI想发起子聊天：${suggestedName}`, 'info');
+  };
 
   const handleSendMessage = () => {
     if (!currentInput.trim()) return;
@@ -2681,6 +2924,21 @@ ${doc.content}`;
                 });
               }
               
+              // 💬 处理子聊天请求（如果AI发起子聊天）
+              if (newMessages[i].role === 'system' && newMessages[i].content.startsWith('__SUBCHAT_REQUEST__')) {
+                const parts = newMessages[i].content.split('__');
+                if (parts.length >= 4) {
+                  const purpose = parts[2];
+                  const suggestedName = parts[3];
+                  handleAIInitiateSubChat(purpose, suggestedName);
+                  // 从消息列表中移除这个系统消息
+                  currentMessages = currentMessages.filter(msg => msg.id !== newMessages[i].id);
+                  onUpdateConversation(conversationId, {
+                    messages: currentMessages
+                  });
+                }
+              }
+              
               // 短暂停顿再显示下一条
               if (i < newMessages.length - 1) {
                 await new Promise(resolve => setTimeout(resolve, 300));
@@ -3371,6 +3629,29 @@ ${doc.content}`;
           >
             <Search className="w-5 h-5 text-gray-700" />
           </button>
+          
+          {/* 💬 子聊天按钮 */}
+          {conversation.type === 'private' && (
+            <button
+              onClick={() => setShowSubChatManager(true)}
+              className="p-2 hover:bg-gray-100 rounded-lg transition-colors relative"
+              title="子聊天"
+            >
+              <MessageCircle className="w-5 h-5 text-gray-700" />
+              {/* 未读数角标 */}
+              {subChatUnreadCount > 0 && (
+                <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs px-1.5 py-0.5 rounded-full min-w-[18px] text-center">
+                  {subChatUnreadCount > 99 ? '99+' : subChatUnreadCount}
+                </span>
+              )}
+              {/* 待处理请求角标 */}
+              {pendingSubChatsCount > 0 && subChatUnreadCount === 0 && (
+                <span className="absolute -top-1 -right-1 bg-yellow-500 text-white text-xs px-1.5 py-0.5 rounded-full min-w-[18px] text-center">
+                  {pendingSubChatsCount}
+                </span>
+              )}
+            </button>
+          )}
           
           {/* 免打扰按钮 */}
           <button
@@ -4730,6 +5011,83 @@ ${doc.content}`;
         }}
       />
     )}
+
+    {/* 💬 子聊天管理器 */}
+    {showSubChatManager && (
+      <SubChatManager
+        subChats={conversation.subChats || []}
+        onClose={() => setShowSubChatManager(false)}
+        onSelectSubChat={handleSelectSubChat}
+        onCreateSubChat={handleCreateUserSubChat}
+        onRenameSubChat={handleRenameSubChat}
+        onDeleteSubChat={handleDeleteSubChat}
+      />
+    )}
+
+    {/* 💬 子聊天窗口 */}
+    {activeSubChatId && (
+      (() => {
+        const subChat = (conversation.subChats || []).find(
+          sc => sc.id === activeSubChatId
+        );
+        
+        if (!subChat) return null;
+        
+        return (
+          <SubChatWindow
+            subChat={subChat}
+            conversation={conversation}
+            apiConfig={apiConfig}
+            onClose={() => handleCloseSubChat(activeSubChatId)}
+            onMinimize={() => handleToggleMinimizeSubChat(activeSubChatId)}
+            onSendMessage={handleSendSubChatMessage}
+            onUpdateSubChat={(subChatId, updates) => {
+              const updatedConversation = updateSubChatInConversation(
+                conversation,
+                subChatId,
+                updates
+              );
+              onUpdateConversation(conversation.id, {
+                subChats: updatedConversation.subChats,
+              });
+            }}
+            isMinimized={minimizedSubChats.has(activeSubChatId)}
+          />
+        );
+      })()
+    )}
+
+    {/* 💬 最小化的子聊天列表 */}
+    {conversation.subChats?.map((subChat) => {
+      if (
+        !minimizedSubChats.has(subChat.id) ||
+        activeSubChatId !== subChat.id
+      )
+        return null;
+      
+      return (
+        <SubChatWindow
+          key={subChat.id}
+          subChat={subChat}
+          conversation={conversation}
+          apiConfig={apiConfig}
+          onClose={() => handleCloseSubChat(subChat.id)}
+          onMinimize={() => handleToggleMinimizeSubChat(subChat.id)}
+          onSendMessage={handleSendSubChatMessage}
+          onUpdateSubChat={(subChatId, updates) => {
+            const updatedConversation = updateSubChatInConversation(
+              conversation,
+              subChatId,
+              updates
+            );
+            onUpdateConversation(conversation.id, {
+              subChats: updatedConversation.subChats,
+            });
+          }}
+          isMinimized={true}
+        />
+      );
+    })}
     </>
   );
 }
