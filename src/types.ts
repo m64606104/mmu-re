@@ -208,6 +208,28 @@ export interface AIStatusInfo {
   lastUpdateTime: number; // 最后更新时间
 }
 
+// 💬 子聊天类型定义
+export interface SubChat {
+  id: string; // 子聊天唯一ID
+  name: string; // 用户命名的子聊天名称
+  messages: Message[]; // 独立的消息列表
+  createdAt: number; // 创建时间
+  lastMessageTime: number; // 最后消息时间
+  unreadCount: number; // 未读消息数
+  isActive: boolean; // 是否激活/打开
+  initiator: 'user' | 'ai'; // 发起方（用户或AI）
+  purpose?: string; // AI发起时的目的说明（如"想私下聊聊"）
+  status: 'pending' | 'active' | 'closed'; // 待接受、进行中、已关闭
+}
+
+// 子聊天请求类型（AI发起时）
+export interface SubChatRequest {
+  id: string; // 请求ID
+  purpose: string; // 发起目的
+  suggestedName: string; // AI建议的名称
+  timestamp: number; // 发起时间
+}
+
 export interface Conversation {
   id: string;
   type: 'private' | 'group';
@@ -222,6 +244,7 @@ export interface Conversation {
   groupRemark?: string; // 群备注名（仅群聊）
   members?: string[]; // 群成员ID数组（仅群聊）
   aiStatus?: AIStatusInfo; // AI状态信息（仅私聊AI角色）
+  subChats?: SubChat[]; // 子聊天列表
 }
 
 export interface UserProfile {
