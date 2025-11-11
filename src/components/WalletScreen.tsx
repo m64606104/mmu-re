@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { ChevronLeft, Wallet, Settings, Eye, X } from 'lucide-react';
+import { ChevronLeft, Wallet, Eye, X } from 'lucide-react';
 import { getWalletData, WalletData } from '../utils/wallet';
 import { getAIFinanceData } from '../utils/aiFinance';
 import { AIFinanceData, Conversation } from '../types';
@@ -88,16 +88,6 @@ const WalletScreen: React.FC<WalletScreenProps> = ({ onBack, onNavigateToShop, c
               {viewingAI ? `${viewingAI.name}的钱包` : '钱包'}
             </h1>
           </div>
-          {/* 眼睛图标 - 只在用户钱包显示 */}
-          {!viewingAI && aiConversations.length > 0 && (
-            <button
-              onClick={() => setShowAISelector(true)}
-              className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
-              title="查看AI钱包"
-            >
-              <Eye className="w-5 h-5 text-gray-600" />
-            </button>
-          )}
         </div>
       </div>
 
@@ -110,7 +100,15 @@ const WalletScreen: React.FC<WalletScreenProps> = ({ onBack, onNavigateToShop, c
                 <Wallet className="w-6 h-6" />
                 <span className="text-sm opacity-90">钱包余额</span>
               </div>
-              {!viewingAI && <Settings className="w-5 h-5 opacity-75" />}
+              {!viewingAI && aiConversations.length > 0 && (
+                <button
+                  onClick={() => setShowAISelector(true)}
+                  className="p-1.5 hover:bg-white/20 rounded-lg transition-colors"
+                  title="查看AI钱包"
+                >
+                  <Eye className="w-5 h-5" />
+                </button>
+              )}
             </div>
             <div className="text-4xl font-bold mb-1">
               ¥{viewingAI && aiFinanceData ? aiFinanceData.balance.toFixed(2) : walletData.balance.toFixed(2)}
