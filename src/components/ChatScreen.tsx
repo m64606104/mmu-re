@@ -2134,20 +2134,25 @@ ${SmartHTMLGenerator.getModuleInstructions()}
 【💰 接收红包转账规则】：
 当收到用户红包/转账时，根据你的性格和关系决定是否接收：
 
-接收格式（会以转账形式返回）：
+接收格式（会以转账气泡 + 文字消息显示）：
 - [接收红包:留言] - 接收红包并表达感谢
 - [接收转账:留言] - 接收转账并说明
 示例："太感谢了！[接收红包:谢谢你的心意]"
 
-退回格式（会以转账形式返回）：
+退回格式（会以转账气泡 + 文字消息显示）：
 - [退回红包:留言] - 退回红包并说明理由
 - [退回转账:留言] - 退回转账并说明理由  
 示例："不用这么客气 [退回红包:我们这么熟不用红包啦]"
 
-注意：
-- 接收/退回都会以转账气泡的形式显示，不是普通文字
-- 留言要简短自然，10字以内
-- 根据关系和金额合理判断
+⚠️ 重要规则：
+- **必须同时发送文字回复和标记**，不要只发送 [接收红包:xxx]
+- 文字回复要自然表达你的感受（如"谢谢""太好了""不用这么客气"等）
+- 标记中的留言要简短，10字以内
+- 会同时显示：① 你的文字消息 + ② 红包/转账气泡
+- 根据关系和金额合理判断是否接收
+
+错误示例：❌ 只回复 "[接收红包:谢谢]"  
+正确示例：✅ "太感谢啦！[接收红包:谢谢你]"
 
 【🎁 订单/礼物规则】：
 你可能会收到用户送的礼物或代付请求：
@@ -3482,8 +3487,8 @@ ${doc.content}`;
                     )}
                     
                     {/* 红包/转账消息气泡 */}
-                    {message.moneyTransfer ? (
-                      <div className={`p-0 rounded-2xl overflow-hidden ${
+                    {message.moneyTransfer && (
+                      <div className={`p-0 rounded-2xl overflow-hidden mb-2 ${
                         message.role === 'user' 
                           ? 'bg-gradient-to-br from-yellow-400 to-orange-400' 
                           : 'bg-gradient-to-br from-yellow-500 to-orange-500'
@@ -3544,7 +3549,18 @@ ${doc.content}`;
                           </div>
                         )}
                       </div>
-                    ) : null}
+                    )}
+                    
+                    {/* 🔥 红包/转账的文字回复（新增：显示AI的感谢等回复） */}
+                    {message.moneyTransfer && message.content && message.content.trim() && (
+                      <div className={`rounded-2xl px-4 py-2.5 ${
+                        message.role === 'user'
+                          ? 'bg-white border border-gray-200'
+                          : 'bg-white border border-gray-200'
+                      }`}>
+                        <p className="text-[15px] leading-relaxed whitespace-pre-wrap break-words">{message.content}</p>
+                      </div>
+                    )}
                     
                     {/* 🎭 HTML模块完整界面（小红书、知乎、微博、搜索记录等） */}
                     {message.socialFeed && message.socialFeed.platform === 'xiaohongshu' && (
@@ -3977,7 +3993,7 @@ ${doc.content}`;
                     )}
                     
                     {/* 纯文字内容 */}
-                    {!message.mediaType && !message.moneyTransfer && !message.document && !message.order && (
+                    {!message.mediaType && !message.moneyTransfer && !message.document && !message.order && message.content && message.content.trim() && (
                       <p className={`text-[15px] leading-relaxed whitespace-pre-wrap break-words ${message.replyTo ? 'px-4' : ''}`}>{message.content}</p>
                     )}
                     {/* 用户媒体的描述文字（排除语音和表情包） */}
