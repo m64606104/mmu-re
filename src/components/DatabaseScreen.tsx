@@ -1,7 +1,7 @@
 import { useState, useMemo } from 'react';
 import { ChevronLeft, FileText, Calendar, User, Search, FolderOpen, BookOpen, X, Upload } from 'lucide-react';
 import { Conversation, KnowledgeBaseItem } from '../types';
-import DocumentViewModal from './DocumentViewModal';
+import WordStyleDocumentModal from './WordStyleDocumentModal';
 import { getDocumentLibrary, SavedDocument } from '../utils/documentLibrary';
 
 interface DatabaseScreenProps {
@@ -303,13 +303,15 @@ export default function DatabaseScreen({ conversations, onBack }: DatabaseScreen
 
       {/* 文档查看弹窗 */}
       {selectedDocument && (
-        <DocumentViewModal
-          onClose={handleCloseDocument}
+        <WordStyleDocumentModal
           document={{
             title: selectedDocument.title,
             content: selectedDocument.content,
             type: selectedDocument.type,
           }}
+          author={selectedDocument.sourceName}
+          timestamp={selectedDocument.createdAt}
+          onClose={handleCloseDocument}
         />
       )}
     </div>

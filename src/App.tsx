@@ -205,9 +205,20 @@ function App() {
   // 处理页面切换
   const navigateTo = useCallback((screen: Screen, conversationId?: string) => {
     setPreviousScreen(currentScreen); // 记录当前页面作为来源
-    if (conversationId) {
+    
+    // 切换到聊天页面时，清零未读消息
+    if (screen === 'chat' && conversationId) {
+      setCurrentConversationId(conversationId);
+      // 清零该对话的未读数
+      setConversations(prev => prev.map(conv => 
+        conv.id === conversationId 
+          ? { ...conv, unreadCount: 0 } 
+          : conv
+      ));
+    } else if (conversationId) {
       setCurrentConversationId(conversationId);
     }
+    
     setCurrentScreen(screen);
   }, [currentScreen]);
 
@@ -314,16 +325,22 @@ function App() {
   const addMessageToConversation = useCallback((conversationId: string, message: Message) => {
     setConversations(prev => prev.map(conv => {
       if (conv.id === conversationId) {
+        // 只有当用户不在该对话的聊天页面时，才增加未读数
+        const shouldIncreaseUnread = !(
+          currentScreen === 'chat' && 
+          currentConversationId === conversationId
+        );
+        
         return {
           ...conv,
           messages: [...conv.messages, message],
           lastMessageTime: message.timestamp,
-          unreadCount: conv.unreadCount + 1
+          unreadCount: shouldIncreaseUnread ? conv.unreadCount + 1 : 0
         };
       }
       return conv;
     }));
-  }, []);
+  }, [currentScreen, currentConversationId]);
 
   // 导入角色数据
   const handleImportCharacter = useCallback((data: any) => {

@@ -533,6 +533,13 @@ export default function ChatScreen({
   const [isMultiSelectMode, setIsMultiSelectMode] = useState(false);
   const [selectedMessages, setSelectedMessages] = useState<string[]>([]);
   
+  // 🔥 确保用户查看聊天时，未读消息始终为 0
+  useEffect(() => {
+    if (conversation.unreadCount > 0) {
+      onUpdateConversation(conversation.id, { unreadCount: 0 });
+    }
+  }, [conversation.id, conversation.unreadCount, onUpdateConversation]);
+  
   // 生成智能的不回复提示
   const generateContextualHint = async (conversationData: Conversation) => {
     try {
