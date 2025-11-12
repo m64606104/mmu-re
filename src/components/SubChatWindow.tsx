@@ -1,10 +1,12 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { X, Send, Minimize2, MessageCircle, Plus, Zap, Smile, Video, Move, 
-  Mic, FileText, CreditCard, Image as ImageIcon, Phone, MapPin } from 'lucide-react';
+  Mic, FileText, CreditCard, Image as ImageIcon, Phone, MapPin, Music } from 'lucide-react';
 import { SubChat, ApiConfig, Conversation, Message, DocumentMessage } from '../types';
 import WordStyleDocumentCard from './WordStyleDocumentCard';
 import MoneyTransferModal from './MoneyTransferModal';
 import SendDocumentModal from './SendDocumentModal';
+import MusicShareModal from './MusicShareModal';
+import type { MusicInfo } from '../utils/musicService';
 
 interface SubChatWindowProps {
   subChat: SubChat;
@@ -45,9 +47,7 @@ const SubChatWindow: React.FC<SubChatWindowProps> = ({
   const imageInputRef = useRef<HTMLInputElement>(null);
   const videoInputRef = useRef<HTMLInputElement>(null);
   
-  // 多媒体相关状态
-  const [showVideoDescModal, setShowVideoDescModal] = useState(false);
-  const [videoDescInput, setVideoDescInput] = useState('');
+  // 多媒体相关状态  
   const [showStickerModal, setShowStickerModal] = useState(false);
   const [stickerDescInput, setStickerDescInput] = useState('');
   
@@ -65,6 +65,17 @@ const SubChatWindow: React.FC<SubChatWindowProps> = ({
   const [showSendingHint, setShowSendingHint] = useState(false);
   const [showTyping, setShowTyping] = useState(false);
   const [pendingVideoFile, setPendingVideoFile] = useState<File | null>(null);
+  const [showVideoDescModal, setShowVideoDescModal] = useState(false);
+  const [videoDescInput, setVideoDescInput] = useState('');
+  
+  // 🎵 音乐分享功能
+  const [showMusicShareModal, setShowMusicShareModal] = useState(false);
+  
+  // 🔍 搜索功能 - 暂未实现
+  // const [showSearchModal, setShowSearchModal] = useState(false);
+  
+  // 📊 活动轨迹功能 - 暂未实现 
+  // const [showActivityModal, setShowActivityModal] = useState(false);
   
   // 功能模态框状态
   const [showMoneyTransferModal, setShowMoneyTransferModal] = useState(false);
@@ -379,6 +390,25 @@ const SubChatWindow: React.FC<SubChatWindowProps> = ({
     setAudioBlob(null);
     setVoiceTranscript('');
     setRecordingTime(0);
+  };
+
+  // 🎵 音乐分享处理
+  const handleMusicShare = (musicInfo: MusicInfo) => {
+    const musicMessage: Message = {
+      id: `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+      role: 'user',
+      content: '', // 不显示多余文本
+      timestamp: Date.now(),
+      mediaType: 'sticker', // 使用sticker类型显示音乐卡片
+      mediaDescription: `分享音乐: ${musicInfo.title} - ${musicInfo.artist}`,
+      // 可以添加音乐相关的自定义字段
+    };
+    
+    _onUpdateSubChat(subChat.id, {
+      messages: [...subChat.messages, musicMessage]
+    });
+    
+    setShowMusicShareModal(false);
   };
 
   const handleSendVideo = () => {
@@ -738,6 +768,11 @@ const SubChatWindow: React.FC<SubChatWindowProps> = ({
                 <FileText className="w-4 h-4 text-purple-600" />
               </div>
             </button>
+            <button onClick={() => setShowMusicShareModal(true)} className="flex-shrink-0">
+              <div className="w-9 h-9 rounded-full bg-white border border-purple-300 flex items-center justify-center hover:border-purple-400 transition-colors">
+                <Music className="w-4 h-4 text-purple-600" />
+              </div>
+            </button>
           </div>
           
           {/* 隐藏的文件输入 */}
@@ -979,6 +1014,53 @@ const SubChatWindow: React.FC<SubChatWindowProps> = ({
           </div>
         </div>
       )}
+
+      {/* 📹 视频描述模态框 */}
+      {showVideoDescModal && (
+        <div className="absolute inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl p-6 w-full max-w-sm shadow-2xl">
+            <h3 className="text-lg font-semibold text-gray-900 mb-4">视频内容描述</h3>
+            <p className="text-sm text-gray-600 mb-4">
+              请简单描述视频内容，AI会基于描述理解并回复。
+            </p>
+            <textarea
+              value={videoDescInput}
+              onChange={(e) => setVideoDescInput(e.target.value)}
+              placeholder="例如：我录了一个跳舞的视频"
+              rows={4}
+              className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500 resize-none text-sm"
+              autoFocus
+            />
+            <div className="flex gap-3 mt-4">
+              <button
+                onClick={() => {
+                  setShowVideoDescModal(false);
+                  setVideoDescInput('');
+                  setPendingVideoFile(null);
+                }}
+                className="flex-1 px-4 py-2.5 border border-gray-300 text-gray-700 rounded-xl hover:bg-gray-50 transition-colors font-medium"
+              >
+                取消
+              </button>
+              <button
+                onClick={handleSendVideo}
+                disabled={!videoDescInput.trim()}
+                className="flex-1 px-4 py-2.5 bg-purple-600 text-white rounded-xl hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors font-medium"
+              >
+                发送
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 🎵 音乐分享模态框 */}
+      <MusicShareModal
+        isOpen={showMusicShareModal}
+        onClose={() => setShowMusicShareModal(false)}
+        onShareMusic={handleMusicShare}
+        characterName={conversation.characterSettings?.nickname || conversation.name}
+      />
       
       {/* 调整大小拖拽区域 */}
       <div 
