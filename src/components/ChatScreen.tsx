@@ -5169,16 +5169,27 @@ ${doc.content}`;
         conversation={conversation}
         onClose={() => setShowSearchModal(false)}
         onMessageClick={(messageId) => {
-          // 滚动到指定消息
-          const messageElement = document.getElementById(`message-${messageId}`);
-          if (messageElement) {
-            messageElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
-            // 高亮显示该消息
-            messageElement.classList.add('bg-yellow-100');
-            setTimeout(() => {
-              messageElement.classList.remove('bg-yellow-100');
-            }, 2000);
-          }
+          // 先关闭搜索模态框
+          setShowSearchModal(false);
+          
+          // 等待模态框关闭动画完成后再滚动
+          setTimeout(() => {
+            const messageElement = document.getElementById(`message-${messageId}`);
+            if (messageElement) {
+              // 滚动到指定消息
+              messageElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+              
+              // 高亮显示该消息
+              setTimeout(() => {
+                messageElement.classList.add('bg-yellow-100');
+                setTimeout(() => {
+                  messageElement.classList.remove('bg-yellow-100');
+                }, 2000);
+              }, 300);
+            } else {
+              console.warn(`未找到消息元素: message-${messageId}`);
+            }
+          }, 100);
         }}
       />
     )}
@@ -5275,7 +5286,6 @@ ${doc.content}`;
     {showForwardSelector && conversations && (
       <ForwardTargetSelector
         conversations={conversations}
-        currentConversationId={conversation.id}
         onConfirm={handleConfirmForward}
         onCancel={() => {
           setShowForwardSelector(false);

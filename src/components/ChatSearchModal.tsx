@@ -193,7 +193,7 @@ const ChatSearchModal: React.FC<ChatSearchModalProps> = ({ conversation, onClose
                   key={message.id}
                   onClick={() => {
                     onMessageClick(message.id);
-                    onClose();
+                    // 不在这里调用onClose()，由父组件的onMessageClick处理
                   }}
                   className="w-full px-4 py-3 bg-white hover:bg-gray-50 transition-colors text-left"
                 >
