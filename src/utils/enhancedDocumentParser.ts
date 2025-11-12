@@ -184,7 +184,7 @@ function tryExtractNaturalLanguage(content: string): DocumentMessage | null {
     let docContent = match1[2].trim();
     
     // 移除可能的"请查收"等问候语
-    const greetings = ['请查收', '供你参考', '希望对你有帮助'];
+    const greetings = ['请查收', '供你参考', '希望对你有帮助', '再看看', '请收下'];
     let greeting: string | undefined;
     for (const g of greetings) {
       if (docContent.startsWith(g)) {
@@ -192,6 +192,26 @@ function tryExtractNaturalLanguage(content: string): DocumentMessage | null {
         docContent = docContent.substring(g.length).trim();
         break;
       }
+    }
+    
+    // 🚨 检测到AI只发送了文档标题但没有正文内容的情况
+    if (docContent.length <= 10) {
+      console.warn(`⚠️ [文档解析] AI发送了文档标题"${title}"但缺少正文内容 (长度: ${docContent.length})`);
+      console.warn(`💡 [文档解析] 建议在系统提示中强调文档发送格式要求`);
+      
+      // 创建一个特殊的文档对象，包含错误提示
+      return {
+        title,
+        content: sanitizeHTML(`
+          <div style="color: #ff6b6b; background: #fff3f3; padding: 12px; border-radius: 8px; border-left: 4px solid #ff6b6b; margin: 8px 0;">
+            <h4 style="margin: 0 0 8px 0;">⚠️ 文档内容缺失</h4>
+            <p style="margin: 0 0 8px 0;">AI发送了文档标题但未提供正文内容。</p>
+            <p style="margin: 0; font-size: 12px; opacity: 0.8;">请要求AI重新发送完整的文档内容。</p>
+          </div>
+        `),
+        type: 'text',
+        greeting: greeting || '内容缺失'
+      };
     }
     
     if (docContent.length > 10) {
