@@ -10,6 +10,7 @@ import { MessageActionMenu } from './MessageActionMenu';
 import MessageSelectionToolbar from './MessageSelectionToolbar';
 import ForwardTargetSelector from './ForwardTargetSelector';
 import { createSingleForward, createMergedForward, getMessagePreview } from '../utils/messageForward';
+import { formatChatRecord } from '../utils/chatRecordFormatter';
 import type { MusicInfo } from '../utils/musicService';
 
 interface SubChatWindowProps {
@@ -290,8 +291,62 @@ const SubChatWindow: React.FC<SubChatWindowProps> = ({
     return result;
   };
 
+  // 🔧 统一的消息格式化函数（参考ChatScreen的formatMessageForAI）
   const formatHistoryMessageContent = (message: Message): string => {
     let content = message.content;
+    
+    // 处理转发消息 - 使用专业格式化（与主聊天保持一致）
+    if (message.forwarded) {
+      if (message.forwarded.type === 'merged' && message.forwarded.messages) {
+        // 合并转发：使用结构化聊天记录格式
+        const forwardedMessages = message.forwarded.messages.map(item => ({
+          id: `forwarded_${Date.now()}_${Math.random()}`,
+          role: item.senderName === '用户' ? 'user' as const : 'assistant' as const,
+          content: item.content,
+          timestamp: Date.now()
+        }));
+        
+        const formattedChatRecord = formatChatRecord(
+          forwardedMessages, 
+          message.forwarded.from.conversationName, 
+          message.forwarded.from.conversationType === 'group' ? 'subchat' : 'main'
+        );
+        
+        // 如果用户有额外的文字说明，保留它；否则用默认引导
+        const userText = message.content && message.content.trim() && message.content !== '转发了聊天记录' 
+          ? message.content 
+          : '请帮我看看这个聊天记录：';
+        
+        content = `${userText}\n\n${formattedChatRecord}`;
+      } else if (message.forwarded.type === 'single' && message.forwarded.originalMessage) {
+        // 单条转发：保持原格式但添加更多上下文
+        const original = message.forwarded.originalMessage;
+        content = `转发了来自【${message.forwarded.from.conversationName}】的消息:\n\n${original.content}`;
+      }
+    }
+    
+    // 处理文档消息
+    if (message.document) {
+      return `[发文档:${message.document.title}:${message.document.type}]`;
+    }
+    
+    // 处理转账/红包消息
+    if (message.moneyTransfer) {
+      const type = message.moneyTransfer.type === 'redPacket' ? '红包' : '转账';
+      if (message.role === 'assistant') {
+        // AI发的红包/转账
+        return message.moneyTransfer.type === 'redPacket' 
+          ? `[发红包:${message.moneyTransfer.amount}:${message.moneyTransfer.message}]`
+          : `[转账:${message.moneyTransfer.amount}:${message.moneyTransfer.message}]`;
+      } else {
+        // 用户发的，或AI接收/退回的
+        if (message.moneyTransfer.status === 'received') {
+          return `[接收${type}:${message.moneyTransfer.message}]`;
+        } else if (message.moneyTransfer.status === 'returned') {
+          return `[退回${type}:${message.moneyTransfer.message}]`;
+        }
+      }
+    }
     
     // 处理多媒体消息
     if (message.mediaType) {
@@ -311,19 +366,12 @@ const SubChatWindow: React.FC<SubChatWindowProps> = ({
       }
     }
     
-    // 处理红包转账
-    if (message.moneyTransfer) {
-      const { type, amount, message: msg } = message.moneyTransfer;
-      if (type === 'redPacket') {
-        content = `[红包:¥${amount}:${msg}]`;
-      } else if (type === 'transfer') {
-        content = `[转账:¥${amount}:${msg}]`;
-      }
-    }
-
-    // 处理文档消息
-    if (message.document) {
-      return `[发文档:${message.document.title}:${message.document.type}]`;
+    // 处理多媒体项目（与主聊天保持一致）
+    if (message.mediaItems && message.mediaItems.length > 0) {
+      const mediaDesc = message.mediaItems.map(item => 
+        `[${item.type}: ${item.description}]`
+      ).join(' ');
+      content = `${content} ${mediaDesc}`;
     }
     
     return content || '[消息]';
