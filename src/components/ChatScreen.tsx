@@ -26,6 +26,7 @@ import MessageSelectionToolbar from './MessageSelectionToolbar';
 import ForwardTargetSelector from './ForwardTargetSelector';
 import { MergedForwardViewer } from './MergedForwardCard';
 import { createSingleForward, createMergedForward, getMessagePreview } from '../utils/messageForward';
+import { formatChatRecord } from '../utils/chatRecordFormatter';
 // 子聊天相关导入
 import SubChatWindow from './SubChatWindow';
 import SubChatManager from './SubChatManager';
@@ -540,18 +541,28 @@ export default function ChatScreen({
   const formatMessageForAI = (msg: Message): string => {
     let content = msg.content;
     
-    // 处理转发消息
+    // 处理转发消息 - 使用专业格式化
     if (msg.forwarded) {
       if (msg.forwarded.type === 'merged' && msg.forwarded.messages) {
-        // 合并转发：展开聊天记录内容
-        const forwardedContent = msg.forwarded.messages.map(item => 
-          `${item.senderName}: ${item.content}`
-        ).join('\n');
-        content = `转发了聊天记录：\n${msg.forwarded.title || '聊天记录'}\n${forwardedContent}`;
+        // 合并转发：使用结构化聊天记录格式
+        const forwardedMessages = msg.forwarded.messages.map(item => ({
+          id: `forwarded_${Date.now()}_${Math.random()}`,
+          role: item.senderName === '用户' ? 'user' as const : 'assistant' as const,
+          content: item.content,
+          timestamp: Date.now()
+        }));
+        
+        const formattedChatRecord = formatChatRecord(
+          forwardedMessages, 
+          msg.forwarded.from.conversationName, 
+          msg.forwarded.from.conversationType === 'group' ? 'subchat' : 'main'
+        );
+        
+        content = `${msg.content}\n\n${formattedChatRecord}`;
       } else if (msg.forwarded.type === 'single' && msg.forwarded.originalMessage) {
-        // 单条转发：展开原始消息
+        // 单条转发：保持原格式但添加更多上下文
         const original = msg.forwarded.originalMessage;
-        content = `转发了消息: ${original.content}`;
+        content = `转发了来自【${msg.forwarded.from.conversationName}】的消息:\n\n${original.content}`;
       }
     }
     
@@ -2938,7 +2949,7 @@ ${SmartHTMLGenerator.getModuleInstructions()}
           .filter(m => m.role === 'user')
           .slice(-3);
         
-        let contextPrompt = systemPrompt + '\n\n【多媒体消息使用指南】\n- 可以发送图片、视频、语音、表情包、文档等\n- 使用格式：[图片:描述]、[视频:描述]、[语音:内容,时长]、[表情包:描述]\n\n⚠️ 视频和图片描述要求：\n- 禁止使用第一人称视角（"我"、"我的"等）\n- 使用第三人称或客观视角描述（"画面中"、"视频里"、"他/她"）\n- 自拍/出镜视频也要用第三人称（如"一个穿着...的女孩"）\n- 描述要详细生动，包含场景、人物、动作、环境等细节\n\n📄 文档发送的正确格式：\n**重要：发送文档时必须包含完整内容，不能只说标题！**\n\n正确示例：\n发送了文档《学习计划》请查收\n\n这是我为你制定的详细学习计划：\n\n一、学习目标\n1. 提高编程能力\n2. 掌握新技术栈\n\n二、时间安排\n- 每日2小时编码练习\n- 每周1次技术分享\n\n三、具体步骤\n...[详细内容]\n\n错误示例（禁止）：\n❌ "发送了文档《学习计划》请查收" （只有标题，没有正文）\n❌ "这是文档链接：..." （不要说链接）\n\n**🚨 发送文档时的强制要求：**\n1. 先说"发送了文档《标题》" + 问候语\n2. 然后换行提供完整的文档正文内容\n3. 内容要详细、有结构、有价值\n4. 🚫 **绝对禁止**只发标题不发内容！\n5. 🚫 **绝对禁止**说"请查看附件"或"请点击链接"\n6. ✅ **必须确保**在同一条消息中包含完整的文档正文\n\n⚠️ 如果你想发送文档，请在发送前自我检查：\n- 是否包含了完整的文档内容？\n- 内容是否超过50字？\n- 是否有清晰的结构？\n如果任何一项答案是否，请不要发送！';
+        let contextPrompt = systemPrompt + '\n\n【多媒体消息使用指南】\n- 可以发送图片、视频、语音、表情包、文档等\n- 使用格式：[图片:描述]、[视频:描述]、[语音:内容,时长]、[表情包:描述]\n\n⚠️ 视频和图片描述要求：\n- 禁止使用第一人称视角（"我"、"我的"等）\n- 使用第三人称或客观视角描述（"画面中"、"视频里"、"他/她"）\n- 自拍/出镜视频也要用第三人称（如"一个穿着...的女孩"）\n- 描述要详细生动，包含场景、人物、动作、环境等细节\n\n📄 文档发送的正确格式：\n**重要：发送文档时必须包含完整内容，不能只说标题！**\n\n正确示例：\n发送了文档《学习计划》请查收\n\n这是我为你制定的详细学习计划：\n\n一、学习目标\n1. 提高编程能力\n2. 掌握新技术栈\n\n二、时间安排\n- 每日2小时编码练习\n- 每周1次技术分享\n\n三、具体步骤\n...[详细内容]\n\n错误示例（禁止）：\n❌ "发送了文档《学习计划》请查收" （只有标题，没有正文）\n❌ "这是文档链接：..." （不要说链接）\n\n**🚨 发送文档时的强制要求：**\n1. 先说"发送了文档《标题》" + 问候语\n2. 然后换行提供完整的文档正文内容\n3. 内容要详细、有结构、有价值\n4. 🚫 **绝对禁止**只发标题不发内容！\n5. 🚫 **绝对禁止**说"请查看附件"或"请点击链接"\n6. ✅ **必须确保**在同一条消息中包含完整的文档正文\n\n⚠️ 如果你想发送文档，请在发送前自我检查：\n- 是否包含了完整的文档内容？\n- 内容是否超过50字？\n- 是否有清晰的结构？\n如果任何一项答案是否，请不要发送！\n\n📋 转发聊天记录处理指南：\n**当用户转发聊天记录时，你会收到以下格式的内容：**\n\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n📋 转发的聊天记录\n📍 来源：[对话名称]\n📅 时间：[时间戳]\n💬 包含 X 条消息\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n**🎯 处理转发消息的要求：**\n1. ✅ **认真阅读**转发的每条消息内容\n2. ✅ **理解上下文**和对话背景\n3. ✅ **提供有针对性**的回复或分析\n4. ✅ **可以引用**转发内容中的具体信息\n5. ✅ **保持连贯性**，将转发内容与当前对话联系起来\n\n**💡 回复转发消息时可以：**\n- 总结转发内容的要点\n- 分析转发对话中的问题或情况\n- 提供建议或解决方案\n- 回答用户对转发内容的疑问\n- 扩展讨论相关话题\n\n**重要：转发的聊天记录是真实的对话内容，请认真对待并给出有价值的回复！**';
         
         // 如果最近有多条用户消息，添加提示
         if (recentUserMessages.length > 1) {
