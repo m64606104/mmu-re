@@ -11,6 +11,7 @@ import MessageSelectionToolbar from './MessageSelectionToolbar';
 import ForwardTargetSelector from './ForwardTargetSelector';
 import { createSingleForward, createMergedForward, getMessagePreview } from '../utils/messageForward';
 import { formatChatRecord } from '../utils/chatRecordFormatter';
+import { splitMessages } from '../utils/messageFormatter';
 import type { MusicInfo } from '../utils/musicService';
 
 interface SubChatWindowProps {
@@ -562,135 +563,147 @@ ${conversation.characterSettings.languageExample ? `语言示例：${conversatio
   const processSubChatAIResponse = (aiResponse: string) => {
     console.log('🤖 处理AI回复:', aiResponse);
     
-    let finalContent = aiResponse;
-    const baseId = `ai_${Date.now()}`;
-    const allExtraMessages: Message[] = [];
+    // 🔥 使用splitMessages分割消息（与主聊天保持一致）
+    const splitMsgs = splitMessages(aiResponse);
     
-    // 检测红包：[发红包:金额:留言]
-    const redPacketMatch = finalContent.match(/\[发红包:([\d.]+):([^\]]*)\]/);
-    if (redPacketMatch) {
-      const amount = parseFloat(redPacketMatch[1]);
-      const redPacketMsg = redPacketMatch[2];
-      finalContent = finalContent.replace(redPacketMatch[0], '').trim();
+    const allNewMessages: Message[] = [];
+    
+    splitMsgs.forEach((content, index) => {
+      const baseId = `ai_${Date.now()}_${index}`;
+      let finalContent = content;
+      const extraMessages: Message[] = [];
       
-      allExtraMessages.push({
-        id: `${baseId}_redpacket`,
-        role: 'assistant',
-        content: '',
-        timestamp: Date.now() + 100 + allExtraMessages.length * 10,
-        moneyTransfer: {
-          type: 'redPacket',
-          amount,
-          message: redPacketMsg,
-          status: 'pending'
-        }
-      });
-    }
+      // 检测红包：[发红包:金额:留言]
+      const redPacketMatch = finalContent.match(/\[发红包:([\d.]+):([^\]]*)\]/);
+      if (redPacketMatch) {
+        const amount = parseFloat(redPacketMatch[1]);
+        const redPacketMsg = redPacketMatch[2];
+        finalContent = finalContent.replace(redPacketMatch[0], '').trim();
+        
+        extraMessages.push({
+          id: `${baseId}_redpacket`,
+          role: 'assistant',
+          content: '',
+          timestamp: Date.now() + 100 + extraMessages.length * 10,
+          moneyTransfer: {
+            type: 'redPacket',
+            amount,
+            message: redPacketMsg,
+            status: 'pending'
+          }
+        });
+      }
 
-    // 检测转账：[转账:金额:备注]
-    const transferMatch = finalContent.match(/\[转账:([\d.]+):([^\]]*)\]/);
-    if (transferMatch) {
-      const amount = parseFloat(transferMatch[1]);
-      const transferMsg = transferMatch[2];
-      finalContent = finalContent.replace(transferMatch[0], '').trim();
+      // 检测转账：[转账:金额:备注]
+      const transferMatch = finalContent.match(/\[转账:([\d.]+):([^\]]*)\]/);
+      if (transferMatch) {
+        const amount = parseFloat(transferMatch[1]);
+        const transferMsg = transferMatch[2];
+        finalContent = finalContent.replace(transferMatch[0], '').trim();
+        
+        extraMessages.push({
+          id: `${baseId}_transfer`,
+          role: 'assistant',
+          content: '',
+          timestamp: Date.now() + 100 + extraMessages.length * 10,
+          moneyTransfer: {
+            type: 'transfer',
+            amount,
+            message: transferMsg,
+            status: 'pending'
+          }
+        });
+      }
+
+      // 检测红包/转账接收响应
+      const moneyResponseMatch = finalContent.match(/\[(接收|退回)(红包|转账):([^\]]*)\]/);
+      if (moneyResponseMatch) {
+        const action = moneyResponseMatch[1];
+        const type = moneyResponseMatch[2];
+        const message = moneyResponseMatch[3];
+        finalContent = finalContent.replace(moneyResponseMatch[0], '').trim();
+        
+        extraMessages.push({
+          id: `${baseId}_moneyresponse`,
+          role: 'assistant',
+          content: '',
+          timestamp: Date.now() + 100 + extraMessages.length * 10,
+          moneyTransfer: {
+            type: type === '红包' ? 'redPacket' : 'transfer',
+            amount: 0,
+            message: message,
+            status: action === '接收' ? 'received' : 'returned'
+          }
+        });
+      }
+
+      // 提取所有媒体项（支持多媒体混合）- 与主聊天保持一致
+      const mediaItems: any[] = [];
+      let cleanContent = finalContent;
       
-      allExtraMessages.push({
-        id: `${baseId}_transfer`,
-        role: 'assistant',
-        content: '',
-        timestamp: Date.now() + 100 + allExtraMessages.length * 10,
-        moneyTransfer: {
-          type: 'transfer',
-          amount,
-          message: transferMsg,
-          status: 'pending'
-        }
-      });
-    }
-
-    // 检测红包/转账接收响应
-    const moneyResponseMatch = finalContent.match(/\[(接收|退回)(红包|转账):([^\]]*)\]/);
-    if (moneyResponseMatch) {
-      const action = moneyResponseMatch[1];
-      const type = moneyResponseMatch[2];
-      const message = moneyResponseMatch[3];
-      finalContent = finalContent.replace(moneyResponseMatch[0], '').trim();
+      // 提取所有图片
+      const imageMatches = finalContent.matchAll(/\[图片[:：]([^\]]+)\]/g);
+      for (const match of imageMatches) {
+        mediaItems.push({
+          type: 'image',
+          description: match[1].trim()
+        });
+        cleanContent = cleanContent.replace(match[0], '').trim();
+      }
       
-      allExtraMessages.push({
-        id: `${baseId}_moneyresponse`,
-        role: 'assistant',
-        content: '',
-        timestamp: Date.now() + 100 + allExtraMessages.length * 10,
-        moneyTransfer: {
-          type: type === '红包' ? 'redPacket' : 'transfer',
-          amount: 0,
-          message: message,
-          status: action === '接收' ? 'received' : 'returned'
-        }
-      });
-    }
-
-    // 检测图片消息：[图片:描述]
-    const imageMatches = finalContent.matchAll(/\[图片:([^\]]+)\]/g);
-    for (const match of imageMatches) {
-      finalContent = finalContent.replace(match[0], '').trim();
-      allExtraMessages.push({
-        id: `${baseId}_image_${allExtraMessages.length}`,
-        role: 'assistant',
-        content: '[图片]',
-        timestamp: Date.now() + 100 + allExtraMessages.length * 10,
-        mediaType: 'image',
-        mediaDescription: match[1],
-        isMediaDescriptionOnly: true
-      });
-    }
-
-    // 检测语音消息：[语音:内容,时长X秒]
-    const voiceMatches = finalContent.matchAll(/\[语音:([^,\]]+)(?:,(\d+)秒)?\]/g);
-    for (const match of voiceMatches) {
-      finalContent = finalContent.replace(match[0], '').trim();
-      const voiceContent = match[1];
-      const duration = match[2] ? parseInt(match[2]) : 3;
+      // 提取所有视频
+      const videoMatches = finalContent.matchAll(/\[视频[:：]([^\]]+)\]/g);
+      for (const match of videoMatches) {
+        mediaItems.push({
+          type: 'video',
+          description: match[1].trim()
+        });
+        cleanContent = cleanContent.replace(match[0], '').trim();
+      }
       
-      allExtraMessages.push({
-        id: `${baseId}_voice_${allExtraMessages.length}`,
-        role: 'assistant',
-        content: '[语音]',
-        timestamp: Date.now() + 100 + allExtraMessages.length * 10,
-        mediaType: 'voice',
-        mediaDescription: `语音消息 ${duration}秒: ${voiceContent}`,
-        isMediaDescriptionOnly: true
-      });
-    }
+      // 提取所有语音
+      const voiceMatches = finalContent.matchAll(/\[语音[:：]([^,\]]+)(?:,(\d+)秒)?\]/g);
+      for (const match of voiceMatches) {
+        const voiceContent = match[1].trim();
+        const duration = match[2] ? parseInt(match[2]) : 3;
+        mediaItems.push({
+          type: 'voice',
+          description: `语音消息 ${duration}秒: ${voiceContent}`
+        });
+        cleanContent = cleanContent.replace(match[0], '').trim();
+      }
+      
+      // 提取所有表情包
+      const stickerMatches = finalContent.matchAll(/\[表情包[:：]([^\]]+)\]/g);
+      for (const match of stickerMatches) {
+        mediaItems.push({
+          type: 'sticker',
+          description: match[1].trim()
+        });
+        cleanContent = cleanContent.replace(match[0], '').trim();
+      }
 
-    // 检测表情包：[表情包:描述]
-    const stickerMatches = finalContent.matchAll(/\[表情包:([^\]]+)\]/g);
-    for (const match of stickerMatches) {
-      finalContent = finalContent.replace(match[0], '').trim();
-      allExtraMessages.push({
-        id: `${baseId}_sticker_${allExtraMessages.length}`,
-        role: 'assistant',
-        content: '[表情包]',
-        timestamp: Date.now() + 100 + allExtraMessages.length * 10,
-        mediaType: 'sticker',
-        mediaDescription: match[1],
-        isMediaDescriptionOnly: true
-      });
-    }
-
-    // 创建主要回复消息
-    const mainMessage: Message = {
-      id: baseId,
-      role: 'assistant',
-      content: finalContent || '😊',
-      timestamp: Date.now()
-    };
+      // 创建主要回复消息（每个分割片段对应一个气泡）
+      if (cleanContent || mediaItems.length > 0) {
+        const mainMessage: Message = {
+          id: baseId,
+          role: 'assistant',
+          content: cleanContent || '😊',
+          timestamp: Date.now() + index * 100,
+          ...(mediaItems.length > 0 && { mediaItems })
+        };
+        
+        allNewMessages.push(mainMessage);
+      }
+      
+      // 添加额外消息（红包、转账等）
+      allNewMessages.push(...extraMessages);
+    });
 
     // 更新消息列表
     const newMessages = [
       ...subChat.messages,
-      mainMessage,
-      ...allExtraMessages
+      ...allNewMessages
     ];
 
     _onUpdateSubChat(subChat.id, { messages: newMessages });
