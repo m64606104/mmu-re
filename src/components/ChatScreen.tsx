@@ -17,7 +17,8 @@ import MusicShareModal from './MusicShareModal';
 import MusicPlayingWidget from './MusicPlayingWidget';
 import MusicCard from './MusicCard';
 import { aiListeningSimulator, MusicInfo, MusicPlaybackState } from '../utils/musicService';
-import { MusicMessage } from '../types';
+import { MusicMessage, LyricsLine } from '../types';
+import { musicContextService } from '../utils/musicContextService';
 import ZhihuFeed from './ZhihuFeed';
 import WeiboFeed from './WeiboFeed';
 import SearchHistoryView from './SearchHistoryView';
@@ -1093,13 +1094,25 @@ ${recentMessages}
     }
   }, [conversation.id, conversation.type, conversation.characterSettings]);
 
-  // 🎵 音乐播放状态更新
+  // 🎵 音乐播放状态更新 - 同步到AI上下文服务
   useEffect(() => {
     if (!currentMusic) return;
 
     const updatePlaybackState = () => {
       const state = aiListeningSimulator.getCurrentState();
       setMusicPlaybackState(state);
+      
+      // 🎵 同步播放状态到音乐上下文服务
+      if (state) {
+        // 转换类型兼容
+        const audioState = {
+          isPlaying: state.isPlaying,
+          currentTime: state.currentTime,
+          duration: state.duration,
+          volume: 1 // 默认音量
+        };
+        musicContextService.updatePlaybackState(audioState);
+      }
     };
 
     // 立即更新一次
@@ -1598,17 +1611,20 @@ ${characterInfo?.languageStyle ? `语言风格：${characterInfo.languageStyle}`
     setShowToolbar(false);
   };
 
-  // 🎵 音乐分享处理函数
+  // 🎵 音乐分享处理函数 - 重写为上下文感知版本
   const handleMusicShare = (musicInfo: MusicInfo) => {
     console.log('🎵 分享音乐:', musicInfo);
+    
+    // 增强音乐信息，添加歌词支持
+    const enhancedMusicInfo = enhanceMusicWithLyrics(musicInfo);
     
     // 创建音乐消息
     const musicMessage: Message = {
       id: Date.now().toString(),
       role: 'user',
-      content: `分享了音乐`,
+      content: `分享了音乐《${enhancedMusicInfo.title}》`,
       timestamp: Date.now(),
-      music: musicInfo as MusicMessage
+      music: enhancedMusicInfo as MusicMessage
     };
 
     // 添加到聊天记录
@@ -1617,37 +1633,31 @@ ${characterInfo?.languageStyle ? `语言风格：${characterInfo.languageStyle}`
       lastMessageTime: Date.now(),
     });
 
-    // 开始AI"听"音乐
+    // 🎵 启动音乐上下文服务 - AI开始"感知"音乐
     setCurrentMusic(musicInfo);
-    aiListeningSimulator.startListening(musicInfo, (reaction) => {
-      console.log('🎭 AI听音乐反应:', reaction);
-      
-      // AI发送反应消息
-      const reactionMessage: Message = {
-        id: Date.now().toString() + '_reaction',
-        role: 'assistant',
-        content: reaction,
-        timestamp: Date.now(),
-      };
-
-      // 延迟发送，模拟真实反应时间
-      setTimeout(() => {
-        // 🔥 修复: 直接获取当前最新的conversation状态，不从localStorage重新读取
-        const storedConversations = localStorage.getItem('conversations');
-        if (storedConversations) {
-          const allConversations = JSON.parse(storedConversations) as Conversation[];
-          const currentConv = allConversations.find((c: Conversation) => c.id === conversation.id);
-          if (currentConv) {
-            onUpdateConversation(conversation.id, {
-              messages: [...currentConv.messages, reactionMessage],
-              lastMessageTime: Date.now(),
-            });
-          }
-        }
-      }, 1000 + Math.random() * 2000); // 1-3秒随机延迟
-    });
+    musicContextService.updateCurrentMusic(enhancedMusicInfo as MusicMessage);
+    
+    console.log('🎭 AI现在可以感知音乐状态，等待用户主动聊天...');
 
     setShowToolbar(false);
+  };
+
+  // 🎵 增强音乐信息，添加歌词和时间轴
+  const enhanceMusicWithLyrics = (musicInfo: MusicInfo): MusicInfo => {
+    const enhanced = { ...musicInfo };
+    
+    // 根据歌曲标题匹配预设歌词
+    const { sampleLyricsWithTime } = require('../utils/musicContextService');
+    const lyricsWithTime = sampleLyricsWithTime[enhanced.title];
+    
+    if (lyricsWithTime) {
+      (enhanced as any).lyricsWithTime = lyricsWithTime;
+      // 生成完整歌词文本
+      (enhanced as any).lyrics = lyricsWithTime.map((line: LyricsLine) => line.text).join('\n');
+      console.log(`🎵 为《${enhanced.title}》添加了歌词支持`);
+    }
+
+    return enhanced;
   };
 
   // 发送表情包消息
@@ -3089,7 +3099,11 @@ ${SmartHTMLGenerator.getModuleInstructions()}
         }
         
         // 将子对话上下文注入到系统提示中
-        const finalContextPrompt = contextPrompt + (subChatContext ? `\n\n${subChatContext}` : '');
+        const subContextPrompt = contextPrompt + (subChatContext ? `\n\n${subChatContext}` : '');
+        
+        // 🎵 添加音乐上下文 - 让AI感知当前播放的音乐
+        const musicContext = musicContextService.generateAIContextPrompt();
+        const finalContextPrompt = subContextPrompt + musicContext;
         
         messages = [
           { role: 'system', content: finalContextPrompt },
@@ -3133,6 +3147,16 @@ ${SmartHTMLGenerator.getModuleInstructions()}
 标题：${doc.title}
 内容：
 ${doc.content}`;
+              content = content ? content + extraInfo : extraInfo;
+            }
+            
+            // 🎵 注入音乐信息 - 让AI知道用户分享了什么音乐
+            if (m.music && m.role === 'user') {
+              const music = m.music;
+              const extraInfo = `\n[用户分享了音乐]
+歌曲：${music.title} - ${music.artist}${music.album ? `\n专辑：${music.album}` : ''}${music.genre ? `\n曲风：${music.genre}` : ''}${music.mood ? `\n情绪：${music.mood}` : ''}${music.lyrics ? `\n\n完整歌词：\n${music.lyrics}` : ''}
+
+🎵 这首歌现在开始播放，你可以和用户一起"听"这首歌并自然地讨论！`;
               content = content ? content + extraInfo : extraInfo;
             }
             

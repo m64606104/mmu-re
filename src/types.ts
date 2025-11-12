@@ -519,6 +519,14 @@ export interface MusicMessage {
   mood?: 'happy' | 'sad' | 'energetic' | 'calm' | 'romantic' | 'mysterious'; // 音乐情绪
   tempo?: 'slow' | 'medium' | 'fast'; // 节奏
   releaseYear?: number; // 发行年份
-  lyrics?: string; // 歌词
+  lyrics?: string; // 完整歌词
+  lyricsWithTime?: LyricsLine[]; // 带时间轴的歌词
   platform?: 'iTunes' | 'MusicBrainz' | 'LastFM' | 'Manual'; // 数据来源
+}
+
+// 🎵 歌词行结构（带时间轴）
+export interface LyricsLine {
+  time: number; // 开始时间（秒）
+  text: string; // 歌词文本
+  endTime?: number; // 结束时间（秒）
 }
