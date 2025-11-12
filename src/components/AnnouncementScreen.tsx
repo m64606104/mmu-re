@@ -54,6 +54,61 @@ export default function AnnouncementScreen({ onBack }: AnnouncementScreenProps) 
 
         {/* 公告列表 */}
         <div className="space-y-4">
+          {/* 11.13 更新 - 音乐功能与交互优化 */}
+          <div className="bg-gradient-to-br from-pink-500/20 to-rose-500/20 border-2 border-pink-400/50 rounded-xl p-4 shadow-lg mb-4">
+            <div className="flex items-start gap-3 mb-3">
+              <div className="w-10 h-10 rounded-full bg-gradient-to-br from-pink-500 to-rose-500 flex items-center justify-center flex-shrink-0">
+                <Bell className="w-5 h-5 text-white" />
+              </div>
+              <div className="flex-1">
+                <h3 className="text-lg font-bold text-white mb-1">🎵 音乐功能与交互大升级</h3>
+                <p className="text-xs text-gray-300">2024年11月13日 更新</p>
+              </div>
+            </div>
+            <div className="pl-13 space-y-3">
+              <div>
+                <h4 className="text-sm font-semibold text-pink-200 mb-1">🎵 AI音乐感知功能</h4>
+                <p className="text-gray-100 text-sm leading-relaxed">
+                  <strong>初步构建了听音乐功能</strong>，AI现在可以实时感知你正在播放的音乐，包括歌曲信息、歌词内容和播放进度。支持动态歌词获取，可以像真朋友一样和你讨论音乐内容。
+                </p>
+              </div>
+              
+              <div>
+                <h4 className="text-sm font-semibold text-rose-200 mb-1">📱 子对话窗口优化</h4>
+                <p className="text-gray-100 text-sm leading-relaxed">
+                  <strong>现在可以随意放大缩小和移动子对话</strong>，支持触摸操作，移动端体验更加流畅。子对话窗口支持自由调整大小和位置，适配不同使用场景。
+                </p>
+              </div>
+              
+              <div>
+                <h4 className="text-sm font-semibold text-purple-200 mb-1">🔍 聊天记录查找与筛选</h4>
+                <p className="text-gray-100 text-sm leading-relaxed">
+                  <strong>聊天记录查找和筛选功能</strong>，支持按内容类型、时间范围等多维度搜索，快速定位历史消息和重要内容。
+                </p>
+              </div>
+              
+              <div>
+                <h4 className="text-sm font-semibold text-indigo-200 mb-1">📤 智能聊天记录转发</h4>
+                <p className="text-gray-100 text-sm leading-relaxed">
+                  <strong>现在可以转发和合并转发聊天记录了</strong>，AI会智能识别并理解聊天记录的内容，支持多条消息合并转发，保持对话完整性和上下文理解。
+                </p>
+              </div>
+              
+              <div>
+                <h4 className="text-sm font-semibold text-teal-200 mb-1">🛠️ 代码修复与功能完善</h4>
+                <p className="text-gray-100 text-sm leading-relaxed">
+                  <strong>修复代码的过程顺手更新了几个新功能</strong>，包括界面交互优化、性能提升等多项改进，还有一些记不清的小功能优化。
+                </p>
+              </div>
+              
+              <div className="bg-pink-500/20 border border-pink-400/50 rounded-lg p-3 mt-2">
+                <p className="text-xs text-pink-100 leading-relaxed">
+                  🎵 <strong>音乐功能使用：</strong>点击聊天界面的音乐按钮，搜索或手动输入歌曲信息，AI将感知音乐状态并能自然讨论歌词内容
+                </p>
+              </div>
+            </div>
+          </div>
+
           {/* 11.11 更新 - Word 文档系统与优化 */}
           <div className="bg-gradient-to-br from-indigo-500/20 to-blue-500/20 border-2 border-indigo-400/50 rounded-xl p-4 shadow-lg mb-4">
             <div className="flex items-start gap-3 mb-3">
@@ -97,7 +152,7 @@ export default function AnnouncementScreen({ onBack }: AnnouncementScreenProps) 
               <div>
                 <h4 className="text-sm font-semibold text-pink-200 mb-1">📄 文档保存与转发</h4>
                 <p className="text-gray-100 text-sm leading-relaxed">
-                  <strong>增加了文档的保存、转发功能</strong>，Word 风格展示更专业美观，支持复制、下载等操作。
+                  <strong>增加了文档的保存、转发功能</strong>，支持复制、下载等操作。
                 </p>
               </div>
               
