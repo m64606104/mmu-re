@@ -3135,6 +3135,8 @@ ${doc.content}`;
             
             // 🔥 生成智能的上下文不回复提示，作为系统消息添加到聊天记录
             generateContextualHint(conversation).then(contextualHint => {
+              console.log('📝 生成智能提示 (系统消息):', contextualHint);
+              
               const systemMessage: Message = {
                 id: Date.now().toString(),
                 role: 'system',
@@ -3148,8 +3150,31 @@ ${doc.content}`;
                 const allConversations = JSON.parse(storedConversations) as Conversation[];
                 const currentConversation = allConversations.find((c: Conversation) => c.id === conversationId);
                 if (currentConversation) {
+                  console.log('💾 添加系统提示消息到聊天记录');
                   onUpdateConversation(conversationId, {
                     messages: [...currentConversation.messages, systemMessage],
+                    lastMessageTime: Date.now(),
+                  });
+                }
+              }
+            }).catch(error => {
+              console.error('生成智能提示失败:', error);
+              // 如果生成智能提示也失败了，就使用一个简单的系统消息
+              const aiName = conversation.characterSettings?.nickname || conversation.name;
+              const fallbackMessage: Message = {
+                id: Date.now().toString(),
+                role: 'system',
+                content: `${aiName} 看到了你的消息，但选择不回复`,
+                timestamp: Date.now(),
+              };
+              
+              const storedConversations = localStorage.getItem('conversations');
+              if (storedConversations) {
+                const allConversations = JSON.parse(storedConversations) as Conversation[];
+                const currentConversation = allConversations.find((c: Conversation) => c.id === conversationId);
+                if (currentConversation) {
+                  onUpdateConversation(conversationId, {
+                    messages: [...currentConversation.messages, fallbackMessage],
                     lastMessageTime: Date.now(),
                   });
                 }
