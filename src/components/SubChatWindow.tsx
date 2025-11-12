@@ -8,6 +8,8 @@ import SendDocumentModal from './SendDocumentModal';
 import MusicShareModal from './MusicShareModal';
 import { MessageActionMenu } from './MessageActionMenu';
 import MessageSelectionToolbar from './MessageSelectionToolbar';
+import ForwardTargetSelector from './ForwardTargetSelector';
+import { createSingleForward, createMergedForward, getMessagePreview } from '../utils/messageForward';
 import type { MusicInfo } from '../utils/musicService';
 
 interface SubChatWindowProps {
@@ -18,21 +20,27 @@ interface SubChatWindowProps {
   onMinimize: () => void;
   onSendMessage: (subChatId: string, content: string) => void;
   onUpdateSubChat: (subChatId: string, updates: Partial<SubChat>) => void;
-  isMinimized: boolean;
+  isMinimized?: boolean;
+  conversations?: Conversation[]; // 用于转发目标选择
+  onUpdateConversation?: (conversationId: string, updates: Partial<Conversation>) => void; // 用于转发
+  currentUserProfile?: { username?: string; avatar?: string }; // 用于转发时显示发送者信息
 }
 
-export default function SubChatWindow({ 
+const SubChatWindow: React.FC<SubChatWindowProps> = ({ 
   subChat, 
   conversation, 
-  apiConfig: _apiConfig,
+  apiConfig, 
   onClose, 
   onMinimize, 
-  onSendMessage: _onSendMessage,
-  onUpdateSubChat: _onUpdateSubChat,
-  isMinimized 
-}: SubChatWindowProps) {
+  onSendMessage, 
+  onUpdateSubChat: _onUpdateSubChat, 
+  isMinimized = false, 
+  conversations, 
+  onUpdateConversation, 
+  currentUserProfile 
+}) => {
   // 避免未使用参数警告
-  void _onSendMessage;
+  void onSendMessage;
 
   const [input, setInput] = useState('');
   const [showToolbar, setShowToolbar] = useState(false);
@@ -52,6 +60,10 @@ export default function SubChatWindow({
   // 多选相关状态
   const [isMultiSelectMode, setIsMultiSelectMode] = useState(false);
   const [selectedMessages, setSelectedMessages] = useState<string[]>([]);
+  
+  // 转发相关状态
+  const [showForwardSelector, setShowForwardSelector] = useState(false);
+  const [forwardingMessages, setForwardingMessages] = useState<Message[]>([]);
   
   // 窗口拖拽和调整大小相关状态
   const [position, setPosition] = useState({ x: window.innerWidth - 400, y: window.innerHeight - 520 });
@@ -433,7 +445,7 @@ ${conversation.characterSettings.languageExample ? `语言示例：${conversatio
         ];
 
         requestBody = {
-          model: _apiConfig.modelName,
+          model: apiConfig.modelName,
           messages,
           temperature: 0.4
         };
@@ -455,7 +467,7 @@ ${conversation.characterSettings.languageExample ? `语言示例：${conversatio
         ];
 
         requestBody = {
-          model: _apiConfig.modelName,
+          model: apiConfig.modelName,
           messages,
           temperature: 0.8,
           max_tokens: 4000
@@ -464,11 +476,11 @@ ${conversation.characterSettings.languageExample ? `语言示例：${conversatio
 
       // 5. 发送API请求
       console.log('📡 发送API请求...');
-      const response = await fetch(`${_apiConfig.baseUrl}/v1/chat/completions`, {
+      const response = await fetch(`${apiConfig.baseUrl}/v1/chat/completions`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${_apiConfig.apiKey}`,
+          'Authorization': `Bearer ${apiConfig.apiKey}`,
         },
         body: JSON.stringify(requestBody)
       });
@@ -748,8 +760,16 @@ ${conversation.characterSettings.languageExample ? `语言示例：${conversatio
   };
 
   const handleForwardSingleMessage = () => {
-    // 简化版转发 - 显示提示
-    alert('子对话转发功能开发中，敬请期待！');
+    if (!selectedMessageId || !conversations || !onUpdateConversation) {
+      alert('转发功能需要传入对话列表参数');
+      return;
+    }
+    
+    const message = subChat.messages.find(m => m.id === selectedMessageId);
+    if (!message) return;
+    
+    setForwardingMessages([message]);
+    setShowForwardSelector(true);
     setSelectedMessageId(null);
   };
 
@@ -823,10 +843,90 @@ ${conversation.characterSettings.languageExample ? `语言示例：${conversatio
   };
 
   const handleForwardMultiple = () => {
-    // 简化版批量转发
-    alert('子对话批量转发功能开发中，敬请期待！');
+    if (!conversations || !onUpdateConversation || selectedMessages.length === 0) {
+      alert(selectedMessages.length === 0 ? '请先选择要转发的消息' : '转发功能需要传入对话列表参数');
+      return;
+    }
+    
+    const messagesToForward = subChat.messages.filter(m => selectedMessages.includes(m.id));
+    setForwardingMessages(messagesToForward);
+    setShowForwardSelector(true);
     setIsMultiSelectMode(false);
     setSelectedMessages([]);
+  };
+
+  // 🔄 确认转发到目标会话
+  const handleConfirmForward = (targetConversationIds: string[], mergeForward: boolean) => {
+    if (forwardingMessages.length === 0 || !onUpdateConversation || !conversations) return;
+    
+    targetConversationIds.forEach(targetId => {
+      const targetConv = conversations.find(c => c.id === targetId);
+      if (!targetConv) return;
+      
+      let newMessage: Message;
+      
+      if (mergeForward && forwardingMessages.length > 1) {
+        // 合并转发
+        const senderNames = new Map<string, { name: string; avatar?: string }>();
+        forwardingMessages.forEach(msg => {
+          const name = msg.role === 'user' 
+            ? (currentUserProfile?.username || '我')
+            : (conversation.characterSettings?.nickname || conversation.name);
+          const avatar = msg.role === 'user'
+            ? (currentUserProfile?.avatar)
+            : (conversation.characterSettings?.avatar || conversation.avatar);
+          senderNames.set(msg.id, { name, avatar });
+        });
+        
+        const forwardedData = createMergedForward(
+          forwardingMessages,
+          {
+            id: subChat.conversationId,
+            name: `${conversation.characterSettings?.nickname || conversation.name} - ${subChat.name}`,
+            type: 'private'
+          },
+          senderNames
+        );
+        
+        newMessage = {
+          id: `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+          role: 'user',
+          content: '转发了聊天记录',
+          timestamp: Date.now(),
+          forwarded: forwardedData
+        };
+      } else {
+        // 单条转发
+        const msg = forwardingMessages[0];
+        const forwardedData = createSingleForward(
+          msg,
+          {
+            id: subChat.conversationId,
+            name: `${conversation.characterSettings?.nickname || conversation.name} - ${subChat.name}`,
+            type: 'private'
+          }
+        );
+        
+        newMessage = {
+          id: `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+          role: 'user',
+          content: forwardingMessages.length === 1 ? getMessagePreview(msg) : '转发了多条消息',
+          timestamp: Date.now(),
+          forwarded: forwardedData
+        };
+      }
+      
+      // 更新目标会话
+      onUpdateConversation(targetId, {
+        messages: [...targetConv.messages, newMessage]
+      });
+    });
+    
+    // 关闭选择器
+    setShowForwardSelector(false);
+    setForwardingMessages([]);
+    
+    alert(`✅ 成功转发到 ${targetConversationIds.length} 个对话`);
   };
 
   // 检查是否应该显示生成按钮
@@ -1748,6 +1848,20 @@ ${conversation.characterSettings.languageExample ? `语言示例：${conversatio
         {/* 调整大小图标 */}
         <div className="text-purple-700 text-xs leading-none">⤡</div>
       </div>
+      
+      {/* 📤 转发目标选择器 */}
+      {showForwardSelector && conversations && (
+        <ForwardTargetSelector
+          conversations={conversations}
+          onConfirm={handleConfirmForward}
+          onCancel={() => {
+            setShowForwardSelector(false);
+            setForwardingMessages([]);
+          }}
+        />
+      )}
     </div>
   );
-}
+};
+
+export default SubChatWindow;

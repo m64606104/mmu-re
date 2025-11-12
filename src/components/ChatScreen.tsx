@@ -5592,6 +5592,9 @@ ${doc.content}`;
               });
             }}
             isMinimized={minimizedSubChats.has(activeSubChatId)}
+            conversations={conversations}
+            onUpdateConversation={onUpdateConversation}
+            currentUserProfile={currentUserProfile}
           />
         );
       })()
