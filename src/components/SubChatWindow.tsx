@@ -6,6 +6,7 @@ import WordStyleDocumentCard from './WordStyleDocumentCard';
 import MoneyTransferModal from './MoneyTransferModal';
 import SendDocumentModal from './SendDocumentModal';
 import MusicShareModal from './MusicShareModal';
+import { parseEnhancedDocument } from '../utils/enhancedDocumentParser';
 import type { MusicInfo } from '../utils/musicService';
 
 interface SubChatWindowProps {
@@ -229,13 +230,237 @@ const SubChatWindow: React.FC<SubChatWindowProps> = ({
     setShowTyping(true);
     
     try {
-      // 触发AI生成回复（基于现有对话）
-      await onSendMessage(subChat.id, '');
+      // 🔥 复制ChatScreen的完整AI回复逻辑
+      await createGenerationTask(
+        conversation,
+        apiConfig,
+        subChat.messages,
+        (updates) => {
+          _onUpdateSubChat(subChat.id, updates);
+        },
+        null, // currentUserProfile
+        null  // conversations
+      );
     } finally {
       // 清理子页面的生成状态
       setIsGenerating(false);
       setShowSendingHint(false);
       setShowTyping(false);
+    }
+  };
+
+  // 🔥 复制ChatScreen中的createGenerationTask函数
+  const createGenerationTask = async (
+    conversation: Conversation,
+    apiConfig: ApiConfig,
+    currentMessages: Message[],
+    onUpdateConversation: (updates: Partial<{ messages: Message[] }>) => void,
+    currentUserProfile?: any,
+    conversations?: Conversation[]
+  ) => {
+    console.log('🚀 创建子对话生成任务...');
+    try {
+      // 1. 获取未处理的用户消息（没有AI回复的消息）
+      const unhandledUserMessages = getUnhandledUserMessages(currentMessages);
+      
+      if (unhandledUserMessages.length === 0) {
+        console.log('⚠️ 没有未处理的用户消息');
+        return;
+      }
+      
+      // 2. 检查多媒体消息类型
+      const hasImage = unhandledUserMessages.some(m => m.mediaType === 'image' && m.mediaUrl);
+      const hasVideo = unhandledUserMessages.some(m => m.mediaType === 'video' && m.mediaDescription);
+      const hasVoice = unhandledUserMessages.some(m => m.mediaType === 'voice' && m.mediaDescription);
+      
+      // 3. 构建系统提示词（简化版）
+      let systemPrompt = conversation.characterSettings
+        ? `你是${conversation.characterSettings.nickname}。
+${conversation.characterSettings.systemPrompt ? `人物设定：${conversation.characterSettings.systemPrompt}` : ''}
+${conversation.characterSettings.personality ? `性格特征：${conversation.characterSettings.personality}` : ''}
+${conversation.characterSettings.languageStyle ? `语言风格：${conversation.characterSettings.languageStyle}` : ''}
+${conversation.characterSettings.languageExample ? `语言示例：${conversation.characterSettings.languageExample}` : ''}
+
+【📱 多媒体消息功能】：
+你可以发送图片、视频、语音、表情包等多媒体内容，让对话更生动：
+
+1. 📷 图片消息：[图片:描述内容]
+2. 🎬 视频消息：[视频:描述内容]
+3. 🎤 语音消息：[语音:内容,时长X秒]
+4. 😊 表情包：[表情包:描述]
+
+【💰 红包、转账和礼物功能】：
+你可以在适当的场景下主动发送红包、转账或礼物：
+
+1️⃣ 发红包：[发红包:金额:留言]
+2️⃣ 转账：[转账:金额:备注] 
+3️⃣ 送礼物：[送礼物:商品名称:价格:留言]
+
+【红包接收响应】：
+当用户发红包/转账时，你可以：
+[接收红包:感谢留言] 或 [退回红包:理由]
+[接收转账:感谢留言] 或 [退回转账:理由]
+` : '请自然地回复用户的消息。';
+
+      // 4. 根据消息类型构建请求
+      let messages;
+      let requestBody;
+
+      if (hasImage) {
+        // 图片识别逻辑
+        const imageMessages = unhandledUserMessages.filter(m => m.mediaType === 'image' && m.mediaUrl);
+        const textMessages = unhandledUserMessages.filter(m => !m.mediaType);
+        
+        const recentMessages = currentMessages.slice(-5);
+        const historyMessages = recentMessages
+          .filter(m => !unhandledUserMessages.includes(m))
+          .map(m => ({
+            role: m.role,
+            content: formatHistoryMessageContent(m)
+          }));
+
+        const contentParts: any[] = [];
+        
+        // 添加所有图片
+        imageMessages.forEach(imgMsg => {
+          contentParts.push({
+            type: 'image_url',
+            image_url: {
+              url: imgMsg.mediaUrl
+            }
+          });
+        });
+        
+        // 添加文字消息
+        const combinedText = textMessages.map(m => m.content).filter(Boolean).join('\n');
+        if (combinedText) {
+          contentParts.push({
+            type: 'text',
+            text: combinedText
+          });
+        } else {
+          const imageCount = imageMessages.length;
+          const defaultText = imageCount > 1 ? `看这${imageCount}张图` : '看这张图';
+          contentParts.push({
+            type: 'text',
+            text: defaultText
+          });
+        }
+
+        messages = [
+          { role: 'system', content: systemPrompt + '\n\n【图片识别规则】：\n- 只描述你在图片中实际看到的内容\n- 禁止编造、猜测图片中不存在的元素\n- 像朋友间日常聊天一样回复，不要太正式\n- 可以回复文字，也可以回复图片/视频/语音/表情包/红包等' },
+          ...historyMessages,
+          {
+            role: 'user',
+            content: contentParts
+          }
+        ];
+
+        requestBody = {
+          model: apiConfig.modelName,
+          messages,
+          temperature: 0.4
+        };
+      } else if (hasVideo || hasVoice) {
+        // 视频/语音处理逻辑
+        const recentMessages = currentMessages.slice(-5);
+        const historyMessages = recentMessages
+          .filter(m => !unhandledUserMessages.includes(m))
+          .map(m => ({
+            role: m.role,
+            content: formatHistoryMessageContent(m)
+          }));
+
+        const textMessages = unhandledUserMessages.filter(m => !m.mediaType);
+        const combinedText = textMessages.map(m => m.content).filter(Boolean).join('\n');
+        
+        let mediaContent = '';
+        if (hasVideo) {
+          const videoMessage = unhandledUserMessages.find(m => m.mediaType === 'video');
+          mediaContent = videoMessage?.mediaDescription 
+            ? `（分享了视频：${videoMessage.mediaDescription}）`
+            : '';
+        } else if (hasVoice) {
+          const voiceMessage = unhandledUserMessages.find(m => m.mediaType === 'voice');
+          mediaContent = voiceMessage?.mediaDescription 
+            ? `（语音消息：${voiceMessage.mediaDescription}）`
+            : '';
+        }
+        
+        const finalContent = mediaContent + (combinedText ? '\n' + combinedText : '');
+
+        messages = [
+          { role: 'system', content: systemPrompt },
+          ...historyMessages,
+          {
+            role: 'user',
+            content: finalContent
+          }
+        ];
+
+        requestBody = {
+          model: apiConfig.modelName,
+          messages,
+          temperature: 0.7
+        };
+      } else {
+        // 纯文字消息处理
+        const recentMessages = currentMessages.slice(-10);
+        const processedMessages = recentMessages.map(m => ({
+          role: m.role,
+          content: formatHistoryMessageContent(m)
+        }));
+
+        messages = [
+          { role: 'system', content: systemPrompt },
+          ...processedMessages.slice(0, -unhandledUserMessages.length),
+          ...unhandledUserMessages.map(m => ({
+            role: 'user' as const,
+            content: m.content
+          }))
+        ];
+
+        requestBody = {
+          model: apiConfig.modelName,
+          messages,
+          temperature: 0.8,
+          max_tokens: 4000
+        };
+      }
+
+      // 5. 发送API请求
+      const response = await fetch(`${apiConfig.baseUrl}/v1/chat/completions`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${apiConfig.apiKey}`,
+        },
+        body: JSON.stringify(requestBody)
+      });
+
+      if (!response.ok) {
+        throw new Error(`API 请求失败: ${response.status}`);
+      }
+
+      const data = await response.json();
+      const aiResponse = data.choices?.[0]?.message?.content || '抱歉，我现在无法回复。';
+
+      // 6. 处理AI回复并生成消息
+      const processedResponse = processAIResponse(aiResponse, currentMessages, onUpdateConversation);
+      
+    } catch (error) {
+      console.error('❌ 子对话生成失败:', error);
+      // 添加错误消息
+      const errorMessage: Message = {
+        id: `error_${Date.now()}`,
+        role: 'assistant',
+        content: '抱歉，我现在有点忙，稍后再聊吧~',
+        timestamp: Date.now()
+      };
+      
+      onUpdateConversation({
+        messages: [...currentMessages, errorMessage]
+      });
     }
   };
 
