@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { X, Send, Minimize2, MessageCircle, Plus, Image, DollarSign, Zap, Smile, Video } from 'lucide-react';
+import { X, Send, Minimize2, MessageCircle, Plus, Image, DollarSign, Zap, Smile, Video, Move } from 'lucide-react';
 import { SubChat, ApiConfig, Conversation, Message } from '../types';
 
 interface SubChatWindowProps {
@@ -28,6 +28,15 @@ const SubChatWindow: React.FC<SubChatWindowProps> = ({
   const [isGenerating, setIsGenerating] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   
+  // 窗口拖拽和调整大小相关状态
+  const [position, setPosition] = useState({ x: window.innerWidth - 400, y: window.innerHeight - 520 });
+  const [size, setSize] = useState({ width: 380, height: 500 });
+  const [isDragging, setIsDragging] = useState(false);
+  const [isResizing, setIsResizing] = useState(false);
+  const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
+  const [resizeStart, setResizeStart] = useState({ x: 0, y: 0, width: 0, height: 0 });
+  const windowRef = useRef<HTMLDivElement>(null);
+  
   // 多媒体相关refs
   const imageInputRef = useRef<HTMLInputElement>(null);
   const videoInputRef = useRef<HTMLInputElement>(null);
@@ -43,19 +52,80 @@ const SubChatWindow: React.FC<SubChatWindowProps> = ({
     scrollToBottom();
   }, [subChat.messages]);
 
+  // 拖拽和调整大小的事件处理
+  useEffect(() => {
+    const handleMouseMove = (e: MouseEvent) => {
+      if (isDragging) {
+        const newX = e.clientX - dragStart.x;
+        const newY = e.clientY - dragStart.y;
+        setPosition({ 
+          x: Math.max(0, Math.min(window.innerWidth - size.width, newX)),
+          y: Math.max(0, Math.min(window.innerHeight - size.height, newY))
+        });
+      }
+      
+      if (isResizing) {
+        const newWidth = Math.max(300, resizeStart.width + (e.clientX - resizeStart.x));
+        const newHeight = Math.max(350, resizeStart.height + (e.clientY - resizeStart.y));
+        setSize({ width: newWidth, height: newHeight });
+      }
+    };
+
+    const handleMouseUp = () => {
+      setIsDragging(false);
+      setIsResizing(false);
+    };
+
+    if (isDragging || isResizing) {
+      document.addEventListener('mousemove', handleMouseMove);
+      document.addEventListener('mouseup', handleMouseUp);
+      
+      return () => {
+        document.removeEventListener('mousemove', handleMouseMove);
+        document.removeEventListener('mouseup', handleMouseUp);
+      };
+    }
+  }, [isDragging, isResizing, dragStart, resizeStart, size]);
+
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   };
 
-  const handleSend = async () => {
-    if (!input.trim() || isGenerating) return;
-    setIsGenerating(true);
-    try {
-      await onSendMessage(subChat.id, input.trim());
-      setInput('');
-    } finally {
-      setIsGenerating(false);
-    }
+  const handleDragStart = (e: React.MouseEvent) => {
+    setIsDragging(true);
+    setDragStart({
+      x: e.clientX - position.x,
+      y: e.clientY - position.y
+    });
+  };
+
+  const handleResizeStart = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setIsResizing(true);
+    setResizeStart({
+      x: e.clientX,
+      y: e.clientY,
+      width: size.width,
+      height: size.height
+    });
+  };
+
+  const handleSend = () => {
+    if (!input.trim()) return;
+    
+    // 创建用户消息并直接添加到对话中
+    const userMessage: Message = {
+      id: `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+      role: 'user',
+      content: input.trim(),
+      timestamp: Date.now(),
+    };
+    
+    _onUpdateSubChat(subChat.id, {
+      messages: [...subChat.messages, userMessage]
+    });
+    
+    setInput('');
   };
 
   const handleKeyPress = (e: React.KeyboardEvent) => {
@@ -67,6 +137,11 @@ const SubChatWindow: React.FC<SubChatWindowProps> = ({
 
   const handleGenerate = async () => {
     if (isGenerating || subChat.messages.length === 0) return;
+    
+    // 检查最后一条消息是否是用户消息
+    const lastMessage = subChat.messages[subChat.messages.length - 1];
+    if (lastMessage?.role !== 'user') return;
+    
     setIsGenerating(true);
     try {
       // 触发AI生成回复（基于现有对话）
@@ -74,6 +149,13 @@ const SubChatWindow: React.FC<SubChatWindowProps> = ({
     } finally {
       setIsGenerating(false);
     }
+  };
+
+  // 检查是否应该显示生成按钮
+  const shouldShowGenerateButton = () => {
+    if (subChat.messages.length === 0) return false;
+    const lastMessage = subChat.messages[subChat.messages.length - 1];
+    return lastMessage?.role === 'user';
   };
 
   // 多媒体处理函数
@@ -197,10 +279,23 @@ const SubChatWindow: React.FC<SubChatWindowProps> = ({
 
   // 正常显示状态
   return (
-    <div className="fixed bottom-4 right-4 w-[380px] h-[500px] bg-white rounded-2xl shadow-2xl z-40 flex flex-col overflow-hidden border-2 border-purple-200 animate-slide-up">
+    <div 
+      ref={windowRef}
+      className="fixed bg-white rounded-2xl shadow-2xl z-40 flex flex-col overflow-hidden border-2 border-purple-200 animate-slide-up select-none"
+      style={{
+        left: `${position.x}px`,
+        top: `${position.y}px`,
+        width: `${size.width}px`,
+        height: `${size.height}px`,
+      }}
+    >
       {/* 标题栏 */}
-      <div className="bg-gradient-to-r from-purple-500 to-blue-500 text-white px-4 py-3 flex items-center justify-between">
+      <div 
+        className="bg-gradient-to-r from-purple-500 to-blue-500 text-white px-4 py-3 flex items-center justify-between cursor-move"
+        onMouseDown={handleDragStart}
+      >
         <div className="flex items-center gap-2">
+          <Move className="w-4 h-4 opacity-70" />
           <MessageCircle className="w-5 h-5" />
           <div>
             <h3 className="font-semibold text-sm">{subChat.name}</h3>
@@ -214,6 +309,7 @@ const SubChatWindow: React.FC<SubChatWindowProps> = ({
             onClick={onMinimize}
             className="p-1.5 hover:bg-white/20 rounded-lg transition-colors"
             title="最小化"
+            onMouseDown={(e) => e.stopPropagation()}
           >
             <Minimize2 className="w-4 h-4" />
           </button>
@@ -221,6 +317,7 @@ const SubChatWindow: React.FC<SubChatWindowProps> = ({
             onClick={onClose}
             className="p-1.5 hover:bg-white/20 rounded-lg transition-colors"
             title="关闭"
+            onMouseDown={(e) => e.stopPropagation()}
           >
             <X className="w-4 h-4" />
           </button>
@@ -340,21 +437,23 @@ const SubChatWindow: React.FC<SubChatWindowProps> = ({
             rows={1}
             className="flex-1 px-3 py-2 border border-purple-200 rounded-xl resize-none focus:outline-none focus:ring-2 focus:ring-purple-400 focus:border-transparent text-sm"
             style={{ maxHeight: '80px' }}
-            disabled={isGenerating}
+            disabled={false}
           />
           
-          <button
-            onClick={handleGenerate}
-            disabled={isGenerating || subChat.messages.length === 0}
-            className="p-2.5 bg-gradient-to-r from-yellow-500 to-orange-500 hover:from-yellow-600 hover:to-orange-600 text-white rounded-xl transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-            title="AI生成"
-          >
-            <Zap className="w-4 h-4" />
-          </button>
+          {shouldShowGenerateButton() && (
+            <button
+              onClick={handleGenerate}
+              disabled={isGenerating}
+              className="p-2.5 bg-gradient-to-r from-yellow-500 to-orange-500 hover:from-yellow-600 hover:to-orange-600 text-white rounded-xl transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+              title="AI生成"
+            >
+              <Zap className="w-4 h-4" />
+            </button>
+          )}
           
           <button
             onClick={handleSend}
-            disabled={!input.trim() || isGenerating}
+            disabled={!input.trim()}
             className="p-2.5 bg-gradient-to-r from-purple-500 to-blue-500 hover:from-purple-600 hover:to-blue-600 text-white rounded-xl transition-all disabled:opacity-50 disabled:cursor-not-allowed"
           >
             <Send className="w-4 h-4" />
@@ -441,6 +540,13 @@ const SubChatWindow: React.FC<SubChatWindowProps> = ({
           </div>
         </div>
       )}
+      
+      {/* 调整大小拖拽区域 */}
+      <div 
+        className="absolute bottom-0 right-0 w-4 h-4 cursor-nw-resize bg-purple-300 opacity-50 hover:opacity-75 transition-opacity"
+        onMouseDown={handleResizeStart}
+        title="拖拽调整大小"
+      />
     </div>
   );
 };
