@@ -134,15 +134,24 @@ export const splitMessages = (message: string): string[] => {
     return urlPlaceholder;
   });
   
-  // 🔒 保护引号内的内容（包括引号中的标点符号）
-  // 支持: "xxx"、「xxx」、『xxx』、【xxx】
-  const quotePattern = /([""「『【])([^""」』】]+)([""」』】])/g;
-  const quotedContents: string[] = [];
-  const quotePlaceholder = '___QUOTE_PLACEHOLDER___';
-  textWithPlaceholders = textWithPlaceholders.replace(quotePattern, (match) => {
-    quotedContents.push(match); // 保存整个引号及其内容
-    return quotePlaceholder;
-  });
+  // 🔒 保护引号、括号内的内容（包括其中的标点符号）
+  // 支持: "xxx"、「xxx」、『xxx』、【xxx】、(xxx)、[xxx]、{xxx}
+  const protectedContentPatterns = [
+    /([""「『【])([^""」『】]*?)([""」『】])/g,  // 中文引号
+    /(\()([^()]*?)(\))/g,                      // 圆括号
+    /(\[)([^\[\]]*?)(\])/g,                    // 方括号
+    /(\{)([^{}]*?)(\})/g,                      // 花括号
+  ];
+  
+  const protectedContents: string[] = [];
+  const protectedPlaceholder = '___PROTECTED_CONTENT___';
+  
+  for (const pattern of protectedContentPatterns) {
+    textWithPlaceholders = textWithPlaceholders.replace(pattern, (match) => {
+      protectedContents.push(match); // 保存整个括号/引号及其内容
+      return protectedPlaceholder;
+    });
+  }
   
   // 主要分割符：句号、问号、感叹号、换行
   const primaryDelimiters = /([。！？!?.\n]+)/g;
@@ -169,12 +178,12 @@ export const splitMessages = (message: string): string[] => {
     segment = segment.trim();
     if (!segment) continue;
     
-    // 检查是否包含URL占位符或引号占位符
+    // 检查是否包含URL占位符或受保护内容占位符
     const hasURL = segment.includes(urlPlaceholder);
-    const hasQuote = segment.includes(quotePlaceholder);
+    const hasProtected = segment.includes(protectedPlaceholder);
     
-    // 如果有URL或引号占位符，保持完整性，不分割
-    if (hasURL || hasQuote) {
+    // 如果有URL或受保护内容占位符，保持完整性，不分割
+    if (hasURL || hasProtected) {
       messages.push(segment);
       continue;
     }
@@ -228,8 +237,10 @@ export const splitMessages = (message: string): string[] => {
   for (let i = 0; i < messages.length; i++) {
     const msg = messages[i].trim();
     
-    // 检查是否是单独的数字序号（1. 2. 3. 等）
-    if (/^\d+[.。]$/.test(msg) && i + 1 < messages.length) {
+    // 检查是否是单独的数字序号（包括各种格式）
+    const isNumberSequence = /^(?:\d+[.。]|[①②③④⑤⑥⑦⑧⑨⑩⑪⑫⑬⑭⑮⑯⑰⑱⑲⑳]|[➊➋➌➍➎➏➐➑➒➓]|[❶❷❸❹❺❻❼❽❾❿]|[⓵⓶⓷⓸⓹⓺⓻⓼⓽⓾]|[Ⅰ-Ⅻ]|[ⅰ-ⅻ])$/;
+    
+    if (isNumberSequence.test(msg) && i + 1 < messages.length) {
       // 与下一条消息合并
       const nextMsg = messages[i + 1];
       finalMessages.push(msg + ' ' + nextMsg);
@@ -239,10 +250,10 @@ export const splitMessages = (message: string): string[] => {
     }
   }
   
-  // 第四步：恢复URL占位符、引号内容和受保护内容
+  // 第四步：恢复URL占位符、受保护内容和特殊格式内容
   let urlIndex = 0;
-  let quoteIndex = 0;
-  let protectedIndex = 0;
+  let protectedContentIndex = 0;
+  let protectedFormatIndex = 0;
   const restoredMessages = finalMessages.map(msg => {
     // 先恢复URL
     let restored = msg.replace(new RegExp(urlPlaceholder, 'g'), () => {
@@ -250,17 +261,17 @@ export const splitMessages = (message: string): string[] => {
       urlIndex++;
       return url || '';
     });
-    // 恢复引号内容
-    restored = restored.replace(new RegExp(quotePlaceholder, 'g'), () => {
-      const quoted = quotedContents[quoteIndex];
-      quoteIndex++;
-      return quoted || '';
-    });
-    // 最后恢复受保护的内容（红包、转账等）
-    restored = restored.replace(/___PROTECTED___/g, () => {
-      const protectedContent = protectedParts[protectedIndex];
-      protectedIndex++;
+    // 恢复受保护的内容（引号、括号等）
+    restored = restored.replace(new RegExp(protectedPlaceholder, 'g'), () => {
+      const protectedContent = protectedContents[protectedContentIndex];
+      protectedContentIndex++;
       return protectedContent || '';
+    });
+    // 最后恢复受保护的格式内容（红包、转账等）
+    restored = restored.replace(/___PROTECTED___/g, () => {
+      const protectedFormat = protectedParts[protectedFormatIndex];
+      protectedFormatIndex++;
+      return protectedFormat || '';
     });
     return restored;
   });
@@ -271,19 +282,19 @@ export const splitMessages = (message: string): string[] => {
     const msg = restoredMessages[i].trim();
     if (!msg) continue;
     
-    // 检查是否只有引号或标点符号
-    const isOnlyPunctuation = /^[“”「」『』【】。！？!?.,，；;]+$/.test(msg);
+    // 检查是否只有引号、括号或标点符号
+    const isOnlyPunctuation = /^[""「」『』【】()（）\[\]{}。！？!?.,，；;]+$/.test(msg);
     
     if (isOnlyPunctuation) {
-      // 如果是单独的引号或标点，尝试合并到上一个消息
+      // 如果是单独的引号、括号或标点，尝试合并到上一个消息
       if (smartFixedMessages.length > 0) {
         const lastMsg = smartFixedMessages[smartFixedMessages.length - 1];
         
-        // 检查上一个消息是否缺少闭合引号
-        const hasOpenQuote = /[“「『【]/.test(lastMsg) && !/[”」』】]/.test(lastMsg);
+        // 检查上一个消息是否缺少闭合符号
+        const hasOpenSymbol = /["「『【(（\[{]/.test(lastMsg) && !/["」』】)）\]}]/.test(lastMsg);
         
-        if (hasOpenQuote && /[”」』】]/.test(msg)) {
-          // 上一个消息有开引号没有闭引号，而当前是闭引号，合并
+        if (hasOpenSymbol && /["」』】)）\]}]/.test(msg)) {
+          // 上一个消息有开符号没有闭符号，而当前是闭符号，合并
           smartFixedMessages[smartFixedMessages.length - 1] = lastMsg + msg;
         } else {
           // 其他情况，直接合并
@@ -294,36 +305,59 @@ export const splitMessages = (message: string): string[] => {
         continue;
       }
     } else {
-      // 检查是否缺少闭合引号
-      const openQuotes = (msg.match(/[“「『【]/g) || []).length;
-      const closeQuotes = (msg.match(/[”」』】]/g) || []).length;
+      // 🔧 增强的成对符号检查
+      const symbolPairs = [
+        { open: /"/g, close: /"/g, map: { '"': '"' } },
+        { open: /"/g, close: /"/g, map: { '"': '"' } },
+        { open: /"/g, close: /"/g, map: { '"': '"' } },
+        { open: /「/g, close: /」/g, map: { '「': '」' } },
+        { open: /『/g, close: /』/g, map: { '『': '』' } },
+        { open: /【/g, close: /】/g, map: { '【': '】' } },
+        { open: /[(（]/g, close: /[)）]/g, map: { '(': ')', '（': '）' } },
+        { open: /\[/g, close: /\]/g, map: { '[': ']' } },
+        { open: /{/g, close: /}/g, map: { '{': '}' } },
+      ];
       
-      if (openQuotes > closeQuotes) {
-        // 有未闭合的引号，检查下一个消息是否是闭合引号
-        if (i + 1 < restoredMessages.length) {
-          const nextMsg = restoredMessages[i + 1].trim();
-          if (/^[”」』】]/.test(nextMsg)) {
-            // 下一个消息以闭引号开头，合并
-            smartFixedMessages.push(msg + nextMsg);
-            i++; // 跳过下一个
-            continue;
+      let needsFixing = false;
+      let fixedMsg = msg;
+      
+      for (const pair of symbolPairs) {
+        const openMatches = (msg.match(pair.open) || []).length;
+        const closeMatches = (msg.match(pair.close) || []).length;
+        
+        if (openMatches > closeMatches) {
+          // 有未闭合的符号，检查下一个消息是否是闭合符号
+          if (i + 1 < restoredMessages.length) {
+            const nextMsg = restoredMessages[i + 1].trim();
+            const nextHasClose = pair.close.test(nextMsg);
+            
+            if (nextHasClose && /^[""」』】)）\]}]/.test(nextMsg)) {
+              // 下一个消息以闭符号开头，合并
+              smartFixedMessages.push(msg + nextMsg);
+              i++; // 跳过下一个
+              needsFixing = true;
+              break;
+            }
+          }
+          
+          // 如果没有找到闭合符号，自动补齐最后一个开符号
+          const openSymbols = msg.match(pair.open) || [];
+          if (openSymbols.length > 0) {
+            const lastOpenSymbol = openSymbols[openSymbols.length - 1];
+            const closeSymbol = (pair.map as any)[lastOpenSymbol];
+            if (closeSymbol) {
+              fixedMsg = msg + closeSymbol;
+              needsFixing = true;
+              break;
+            }
           }
         }
-        // 如果没有找到闭合引号，自动补齐
-        const lastOpenQuote = msg.match(/[“「『【]/g)?.slice(-1)[0];
-        const closeQuoteMap: Record<string, string> = {
-          '“': '”',
-          '「': '」',
-          '『': '』',
-          '【': '】'
-        };
-        if (lastOpenQuote && closeQuoteMap[lastOpenQuote]) {
-          smartFixedMessages.push(msg + closeQuoteMap[lastOpenQuote]);
-        } else {
-          smartFixedMessages.push(msg);
-        }
-      } else {
+      }
+      
+      if (!needsFixing) {
         smartFixedMessages.push(msg);
+      } else {
+        smartFixedMessages.push(fixedMsg);
       }
     }
   }
