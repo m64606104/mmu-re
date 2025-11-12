@@ -77,26 +77,40 @@ const WordStyleDocumentModal: React.FC<WordStyleDocumentModalProps> = ({
     <div className="fixed inset-0 z-50 bg-gray-100 flex flex-col">
       {/* 顶部工具栏（Word 风格） */}
       <div className="bg-white border-b shadow-sm">
-        {/* 主工具栏 */}
-        <div className="px-6 py-3 flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            {/* 返回按钮 */}
+        {/* 顶部标题栏 */}
+        <div className="px-6 py-4 flex items-center justify-between">
+          <div className="flex items-center gap-4 flex-1 min-w-0">
             <button
               onClick={onClose}
-              className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+              className="p-2 hover:bg-gray-100 rounded-lg transition-colors flex-shrink-0"
               title="关闭"
             >
-              <X className="w-5 h-5 text-gray-600" />
+              <X className="w-5 h-5 text-gray-500" />
             </button>
             
-            {/* 文档标题 */}
-            <div>
-              <h1 className="text-lg font-semibold text-gray-900">
-                {formattedDocument.title}
-              </h1>
-              <p className="text-xs text-gray-500">
-                {document.type === 'code' ? '代码文档' : document.type === 'markdown' ? 'Markdown 文档' : '文本文档'}
-              </p>
+            {/* 美化的标题显示区域 */}
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-3">
+                <div className={`w-3 h-3 rounded-full ${
+                  document.type === 'code' ? 'bg-green-500' : 
+                  document.type === 'markdown' ? 'bg-purple-500' : 
+                  'bg-blue-500'
+                }`} />
+                <h2 className="text-lg font-bold text-gray-900 truncate" style={{
+                  fontFamily: '"PingFang SC", "Helvetica Neue", "Microsoft YaHei", sans-serif'
+                }}>
+                  {document.title}
+                </h2>
+                <span className={`px-2 py-1 text-xs font-medium rounded-full ${
+                  document.type === 'code' ? 'bg-green-100 text-green-700' : 
+                  document.type === 'markdown' ? 'bg-purple-100 text-purple-700' : 
+                  'bg-blue-100 text-blue-700'
+                }`}>
+                  {document.type === 'code' ? '代码文档' : 
+                   document.type === 'markdown' ? 'Markdown' : 
+                   '文本文档'}
+                </span>
+              </div>
             </div>
           </div>
           

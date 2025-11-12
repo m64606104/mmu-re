@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { ChevronLeft, Send, Mic, Sparkles, Smile, BellOff, Bell, Pause, Play, Image as ImageIcon, Video, Phone, MapPin, FileText, Plus, CreditCard, Search, MessageCircle } from 'lucide-react';
+import { ChevronLeft, Send, Mic, Sparkles, Smile, BellOff, Bell, Pause, Play, Image as ImageIcon, Video, Phone, MapPin, FileText, Plus, CreditCard, Search, MessageCircle, MessageSquare, Eye } from 'lucide-react';
 import { Conversation, Message, ApiConfig, UserProfile, DocumentMessage } from '../types';
 import MoneyTransferModal from './MoneyTransferModal';
 import SendDocumentModal from './SendDocumentModal';
@@ -4464,6 +4464,56 @@ ${doc.content}`;
                           <Smile className="w-8 h-8 text-blue-400 mb-2" strokeWidth={1.5} />
                           <p className="text-xs text-gray-700 leading-tight">{message.mediaDescription}</p>
                         </div>
+                      </div>
+                    )}
+                    
+                    {/* 🔄 转发消息显示 */}
+                    {message.forwarded && (
+                      <div className="mt-2">
+                        {message.forwarded.type === 'merged' && message.forwarded.messages && (
+                          <div 
+                            onClick={() => setViewingMergedForward(message.forwarded)}
+                            className="bg-white border border-gray-200 rounded-lg p-3 cursor-pointer hover:shadow-md transition-shadow"
+                          >
+                            <div className="flex items-center gap-2 mb-2">
+                              <MessageSquare className="w-4 h-4 text-gray-500" />
+                              <span className="text-sm text-gray-600 font-medium">聊天记录</span>
+                              <span className="text-xs text-gray-400">({message.forwarded.messages.length}条消息)</span>
+                            </div>
+                            <div className="text-sm font-medium text-gray-800 mb-1">
+                              {message.forwarded.title || '转发的聊天记录'}
+                            </div>
+                            <div className="text-xs text-gray-500 space-y-1">
+                              {message.forwarded.messages.slice(0, 3).map((msg, idx) => (
+                                <div key={idx} className="truncate">
+                                  <span className="font-medium">{msg.senderName}:</span> {msg.content}
+                                </div>
+                              ))}
+                              {message.forwarded.messages.length > 3 && (
+                                <div className="text-gray-400">...还有{message.forwarded.messages.length - 3}条消息</div>
+                              )}
+                            </div>
+                            <div className="text-xs text-gray-400 mt-2 flex items-center gap-1">
+                              来自：{message.forwarded.from.conversationName}
+                              <Eye className="w-3 h-3" />
+                              <span>点击查看</span>
+                            </div>
+                          </div>
+                        )}
+                        {message.forwarded.type === 'single' && message.forwarded.originalMessage && (
+                          <div className="bg-white border border-gray-200 rounded-lg p-3">
+                            <div className="flex items-center gap-2 mb-2">
+                              <MessageSquare className="w-4 h-4 text-gray-500" />
+                              <span className="text-sm text-gray-600 font-medium">转发消息</span>
+                            </div>
+                            <div className="text-sm text-gray-800">
+                              {message.forwarded.originalMessage.content}
+                            </div>
+                            <div className="text-xs text-gray-400 mt-2">
+                              来自：{message.forwarded.from.conversationName}
+                            </div>
+                          </div>
+                        )}
                       </div>
                     )}
                     

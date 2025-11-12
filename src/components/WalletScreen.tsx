@@ -88,14 +88,15 @@ const WalletScreen: React.FC<WalletScreenProps> = ({ onBack, onNavigateToShop, c
               {viewingAI ? `${viewingAI.name}的钱包` : '钱包'}
             </h1>
           </div>
-          {/* 眼睛图标 - 只在用户钱包显示 */}
+          {/* AI钱包查看按钮 - 只在用户钱包显示 */}
           {!viewingAI && aiConversations.length > 0 && (
             <button
               onClick={() => setShowAISelector(true)}
-              className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+              className="flex items-center gap-2 px-3 py-2 bg-blue-50 hover:bg-blue-100 text-blue-600 rounded-lg transition-colors"
               title="查看AI钱包"
             >
-              <Eye className="w-5 h-5 text-gray-600" />
+              <Eye className="w-4 h-4" />
+              <span className="text-sm font-medium">AI钱包</span>
             </button>
           )}
         </div>
@@ -120,6 +121,26 @@ const WalletScreen: React.FC<WalletScreenProps> = ({ onBack, onNavigateToShop, c
             </div>
           </div>
         </div>
+
+        {/* AI钱包快捷入口 - 只在用户钱包显示 */}
+        {!viewingAI && aiConversations.length > 0 && (
+          <div className="px-4 pb-4">
+            <div className="bg-gradient-to-br from-purple-500 to-blue-600 rounded-2xl p-4 text-white shadow-lg">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="text-lg font-bold mb-1">AI钱包管理</h3>
+                  <p className="text-sm opacity-90">查看{aiConversations.length}个AI的财务状况</p>
+                </div>
+                <button
+                  onClick={() => setShowAISelector(true)}
+                  className="bg-white/20 hover:bg-white/30 backdrop-blur-sm rounded-xl p-3 transition-colors"
+                >
+                  <Eye className="w-6 h-6" />
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* 购物服务 - 只在用户钱包显示 */}
         {!viewingAI && (
