@@ -1632,11 +1632,18 @@ ${characterInfo?.languageStyle ? `语言风格：${characterInfo.languageStyle}`
 
       // 延迟发送，模拟真实反应时间
       setTimeout(() => {
-        onUpdateConversation(conversation.id, {
-          messages: [...JSON.parse(localStorage.getItem('conversations') || '[]')
-            .find((c: Conversation) => c.id === conversation.id)?.messages || [], reactionMessage],
-          lastMessageTime: Date.now(),
-        });
+        // 🔥 修复: 直接获取当前最新的conversation状态，不从localStorage重新读取
+        const storedConversations = localStorage.getItem('conversations');
+        if (storedConversations) {
+          const allConversations = JSON.parse(storedConversations) as Conversation[];
+          const currentConv = allConversations.find((c: Conversation) => c.id === conversation.id);
+          if (currentConv) {
+            onUpdateConversation(conversation.id, {
+              messages: [...currentConv.messages, reactionMessage],
+              lastMessageTime: Date.now(),
+            });
+          }
+        }
       }, 1000 + Math.random() * 2000); // 1-3秒随机延迟
     });
 
@@ -4276,6 +4283,8 @@ ${doc.content}`;
                         <MusicCard
                           music={message.music}
                           className="w-full"
+                          showPlayButton={true}
+                          enableRealAudio={true}
                         />
                       </div>
                     )}

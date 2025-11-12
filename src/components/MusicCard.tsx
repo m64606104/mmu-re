@@ -3,9 +3,10 @@
  * 参考微信等聊天应用的音乐卡片设计
  */
 
-import React from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { Music, Play, Pause } from 'lucide-react';
 import { MusicMessage } from '../types';
+import { AudioPlayer, AudioPlayerState } from '../utils/audioPlayer';
 
 interface MusicCardProps {
   music: MusicMessage;
@@ -13,6 +14,7 @@ interface MusicCardProps {
   onPlayPause?: () => void;
   showPlayButton?: boolean;
   className?: string;
+  enableRealAudio?: boolean; // 🎵 启用真实音频播放
 }
 
 const MusicCard: React.FC<MusicCardProps> = ({
@@ -20,8 +22,83 @@ const MusicCard: React.FC<MusicCardProps> = ({
   isPlaying = false,
   onPlayPause,
   showPlayButton = false,
-  className = ''
+  className = '',
+  enableRealAudio = false
 }) => {
+  const [audioState, setAudioState] = useState<AudioPlayerState>({ 
+    isPlaying: false, 
+    currentTime: 0, 
+    duration: 0, 
+    volume: 1 
+  });
+  const audioPlayerRef = useRef<AudioPlayer | null>(null);
+  const [audioError, setAudioError] = useState<string | null>(null);
+
+  // 🎵 初始化音频播放器
+  useEffect(() => {
+    if (enableRealAudio) {
+      audioPlayerRef.current = new AudioPlayer(setAudioState);
+      
+      // 尝试加载音频
+      const audioUrl = getAudioUrlForMusic(music);
+      if (audioUrl) {
+        audioPlayerRef.current.loadAudio(audioUrl).catch(error => {
+          console.error('加载音频失败:', error);
+          setAudioError('无法播放此音乐');
+        });
+      } else {
+        setAudioError('暂无音频文件');
+      }
+    }
+
+    return () => {
+      if (audioPlayerRef.current) {
+        audioPlayerRef.current.destroy();
+      }
+    };
+  }, [enableRealAudio, music]);
+
+  // 🎵 处理播放/暂停
+  const handleRealPlayPause = async () => {
+    if (!audioPlayerRef.current) return;
+
+    try {
+      if (audioState.isPlaying) {
+        audioPlayerRef.current.pause();
+      } else {
+        await audioPlayerRef.current.play();
+      }
+    } catch (error) {
+      console.error('播放控制失败:', error);
+      setAudioError('播放失败');
+    }
+  };
+
+  // 🎵 获取音频URL
+  const getAudioUrlForMusic = (music: MusicMessage): string | null => {
+    // 方案1: 如果有直接的音频URL
+    if ((music as any).audioUrl) {
+      return (music as any).audioUrl;
+    }
+    
+    // 方案2: 使用示例音频文件
+    const sampleAudios: Record<string, string> = {
+      happy: 'https://www.soundjay.com/misc/sounds-808.wav',
+      sad: 'https://www.soundjay.com/misc/sounds-808.wav', 
+      energetic: 'https://www.soundjay.com/misc/sounds-808.wav',
+      calm: 'https://www.soundjay.com/misc/sounds-808.wav',
+      romantic: 'https://www.soundjay.com/misc/sounds-808.wav',
+      mysterious: 'https://www.soundjay.com/misc/sounds-808.wav',
+      default: 'https://www.soundjay.com/misc/sounds-808.wav'
+    };
+    
+    return sampleAudios[music.mood || 'default'] || sampleAudios.default;
+  };
+
+  // 🎵 最终的播放控制
+  const finalPlayPause = enableRealAudio ? handleRealPlayPause : onPlayPause;
+  const finalIsPlaying = enableRealAudio ? audioState.isPlaying : isPlaying;
+
   const formatDuration = (seconds?: number): string => {
     if (!seconds) return '';
     const mins = Math.floor(seconds / 60);
@@ -73,13 +150,19 @@ const MusicCard: React.FC<MusicCardProps> = ({
           {/* 播放按钮覆盖层 */}
           {showPlayButton && (
             <button
-              onClick={onPlayPause}
+              onClick={finalPlayPause}
               className="absolute inset-0 bg-black/30 rounded-lg flex items-center justify-center opacity-0 hover:opacity-100 transition-opacity"
+              title={enableRealAudio ? '点击播放实际音频' : '播放模拟'}
             >
-              {isPlaying ? (
+              {finalIsPlaying ? (
                 <Pause className="w-5 h-5 text-white" />
               ) : (
                 <Play className="w-5 h-5 text-white ml-0.5" />
+              )}
+              {audioError && enableRealAudio && (
+                <div className="absolute -bottom-6 left-1/2 transform -translate-x-1/2 text-xs text-red-400 bg-black/50 px-2 py-1 rounded whitespace-nowrap">
+                  {audioError}
+                </div>
               )}
             </button>
           )}
