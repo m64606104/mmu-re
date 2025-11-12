@@ -398,6 +398,18 @@ export default function SettingsScreen({ apiConfig, onUpdateConfig, onBack }: Se
             </div>
           )}
 
+          {/* 友情提示 */}
+          <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 mb-4">
+            <div className="flex items-start gap-2">
+              <div className="text-amber-500 mt-0.5">⚠️</div>
+              <div className="text-sm text-amber-800">
+                <p className="font-medium mb-1">友情提示</p>
+                <p className="mb-2">请不要选择带"思考"功能的模型，这些模型会返回思考内容，影响正常聊天体验。</p>
+                <p>建议使用带联网（search）的对话模型对话体验更佳，以及部分小众内容或者网络资料繁杂的内容可以使用资料库功能自定义上传资料，让AI更贴合你的需要。</p>
+              </div>
+            </div>
+          </div>
+
           {/* 测试连接按钮 */}
           <button
             onClick={testConnection}

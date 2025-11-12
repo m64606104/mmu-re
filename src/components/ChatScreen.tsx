@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { ChevronLeft, Send, Mic, Sparkles, Smile, BellOff, Bell, Pause, Play, Image as ImageIcon, Video, Phone, MapPin, FileText, Plus, CreditCard, Search, MessageCircle } from 'lucide-react';
-import { Conversation, Message, ApiConfig, UserProfile } from '../types';
+import { Conversation, Message, ApiConfig, UserProfile, DocumentMessage } from '../types';
 import MoneyTransferModal from './MoneyTransferModal';
 import SendDocumentModal from './SendDocumentModal';
 import DocumentLibraryModal from './DocumentLibraryModal';
@@ -24,10 +24,11 @@ import ActivityLogModal from './ActivityLogModal';
 import MessageSelectionToolbar from './MessageSelectionToolbar';
 import ForwardTargetSelector from './ForwardTargetSelector';
 import { MergedForwardViewer } from './MergedForwardCard';
-import { extractMessagesToDocument, createSingleForward, createMergedForward, getMessagePreview } from '../utils/messageForward';
+import { createSingleForward, createMergedForward, getMessagePreview } from '../utils/messageForward';
 // 子聊天相关导入
 import SubChatWindow from './SubChatWindow';
 import SubChatManager from './SubChatManager';
+import ChatExtractPreview from './ChatExtractPreview';
 import {
   createSubChat,
   addMessageToSubChat,
@@ -98,7 +99,9 @@ const backgroundTaskManager = {
       if (!assistantMessage || assistantMessage.trim() === '' || 
           assistantMessage.trim() === '[不回复]' || assistantMessage.includes('[不回复]')) {
         console.log('💭 AI选择不回复此消息（API调用成功，但AI决定不回复）');
-        callback([], conversation.id);
+        
+        // 🔥 标记为AI选择不回复，让后续逻辑处理智能提示
+        callback([], conversation.id, 'AI_NO_REPLY');
         return;
       }
 
@@ -265,7 +268,7 @@ const backgroundTaskManager = {
           allExtraMessages.push({
             id: `${baseId}_redpacket`,
             role: 'assistant',
-            content: '发出了一个红包',
+            content: '', // AI发送红包时也不显示文本，只显示红包卡片
             timestamp: Date.now() + 100 + allExtraMessages.length * 10,
             moneyTransfer: {
               type: 'redPacket',
@@ -307,7 +310,7 @@ const backgroundTaskManager = {
           allExtraMessages.push({
             id: `${baseId}_transfer`,
             role: 'assistant',
-            content: '向你转账',
+            content: '', // AI转账时也不显示文本，只显示转账卡片
             timestamp: Date.now() + 100 + allExtraMessages.length * 10,
             moneyTransfer: {
               type: 'transfer',
@@ -411,7 +414,7 @@ const backgroundTaskManager = {
             allExtraMessages.push({
               id: `${baseId}_gift`,
               role: 'assistant',
-              content: `给你的礼物`,
+              content: '', // AI送礼物时不显示默认文本，只显示礼物卡片
               timestamp: Date.now() + 100 + allExtraMessages.length * 10,
               order: {
                 type: 'gift',
@@ -531,6 +534,59 @@ export default function ChatScreen({
   onRequestAIMoment,
 }: ChatScreenProps) {
   const { showToast } = useToast();
+  
+  // 格式化消息给AI，包括转发内容
+  const formatMessageForAI = (msg: Message): string => {
+    let content = msg.content;
+    
+    // 处理转发消息
+    if (msg.forwarded) {
+      if (msg.forwarded.type === 'merged' && msg.forwarded.messages) {
+        // 合并转发：展开聊天记录内容
+        const forwardedContent = msg.forwarded.messages.map(item => 
+          `${item.senderName}: ${item.content}`
+        ).join('\n');
+        content = `转发了聊天记录：\n${msg.forwarded.title || '聊天记录'}\n${forwardedContent}`;
+      } else if (msg.forwarded.type === 'single' && msg.forwarded.originalMessage) {
+        // 单条转发：展开原始消息
+        const original = msg.forwarded.originalMessage;
+        content = `转发了消息: ${original.content}`;
+      }
+    }
+    
+    // 处理文档消息
+    if (msg.document) {
+      return `[发文档:${msg.document.title}:${msg.document.type}]`;
+    }
+    
+    // 处理转账/红包消息
+    if (msg.moneyTransfer) {
+      const type = msg.moneyTransfer.type === 'redPacket' ? '红包' : '转账';
+      if (msg.role === 'assistant') {
+        // AI发的红包/转账
+        return msg.moneyTransfer.type === 'redPacket' 
+          ? `[发红包:${msg.moneyTransfer.amount}:${msg.moneyTransfer.message}]`
+          : `[转账:${msg.moneyTransfer.amount}:${msg.moneyTransfer.message}]`;
+      } else {
+        // 用户发的，或AI接收/退回的
+        if (msg.moneyTransfer.status === 'received') {
+          return `[接收${type}:${msg.moneyTransfer.message}]`;
+        } else if (msg.moneyTransfer.status === 'returned') {
+          return `[退回${type}:${msg.moneyTransfer.message}]`;
+        }
+      }
+    }
+    
+    // 处理多媒体
+    if (msg.mediaItems && msg.mediaItems.length > 0) {
+      const mediaDesc = msg.mediaItems.map(item => 
+        `[${item.type}: ${item.description}]`
+      ).join(' ');
+      content = `${content} ${mediaDesc}`;
+    }
+    
+    return content;
+  };
   const [currentInput, setCurrentInput] = useState('');
   const [isGenerating, setIsGenerating] = useState(false);
   const [showToolbar, setShowToolbar] = useState(false);
@@ -580,6 +636,10 @@ export default function ChatScreen({
   const [showSubChatManager, setShowSubChatManager] = useState(false);
   const [activeSubChatId, setActiveSubChatId] = useState<string | null>(null);
   const [minimizedSubChats, setMinimizedSubChats] = useState<Set<string>>(new Set());
+  
+  // 聊天记录提取预览相关状态
+  const [showExtractPreview, setShowExtractPreview] = useState(false);
+  const [extractingMessages, setExtractingMessages] = useState<Message[]>([]);
   
   // 计算子聊天统计
   const subChatUnreadCount = getTotalUnreadCount(conversation);
@@ -826,7 +886,7 @@ ${recentMessages}
     setSelectedMessages([]);
   };
 
-  // 📤 提取选中消息为文档
+  // 📤 提取选中消息为文档 - 显示预览
   const handleExtractToDocument = () => {
     if (selectedMessages.length === 0) return;
     
@@ -835,20 +895,24 @@ ${recentMessages}
       selectedMessages.includes(m.id)
     );
     
-    // 提取为文档
-    const doc = extractMessagesToDocument(
-      selectedMsgs,
-      conversation.characterSettings?.nickname || conversation.name,
-      currentUserProfile?.username || '我'
-    );
+    // 设置提取状态并显示预览弹窗
+    setExtractingMessages(selectedMsgs);
+    setShowExtractPreview(true);
     
+    // 退出多选模式
+    setIsMultiSelectMode(false);
+    setSelectedMessages([]);
+  };
+
+  // 📄 保存提取的文档
+  const handleSaveExtractedDocument = (document: DocumentMessage) => {
     // 创建文档消息
     const newMessage: Message = {
       id: `msg_${Date.now()}`,
       role: 'assistant',
-      content: doc.greeting || '已为您提取聊天记录',
+      content: document.greeting || '已为您提取聊天记录',
       timestamp: Date.now(),
-      document: doc
+      document
     };
     
     // 添加到会话
@@ -856,11 +920,11 @@ ${recentMessages}
       messages: [...conversation.messages, newMessage]
     });
     
-    // 退出多选模式
-    setIsMultiSelectMode(false);
-    setSelectedMessages([]);
+    // 关闭预览弹窗
+    setShowExtractPreview(false);
+    setExtractingMessages([]);
     
-    showToast('已提取为文档', 'success');
+    showToast('文档已保存到聊天记录', 'success');
   };
 
   // 📤 转发选中消息
@@ -1130,23 +1194,27 @@ ${recentMessages}
     const subChat = (conversation.subChats || []).find(sc => sc.id === subChatId);
     if (!subChat) return;
     
-    // 1. 创建用户消息
-    const userMessage: Message = {
-      id: `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-      role: 'user',
-      content,
-      timestamp: Date.now(),
-    };
+    let updatedSubChat = subChat;
     
-    // 2. 添加到子聊天
-    let updatedSubChat = addMessageToSubChat(subChat, userMessage);
-    
-    // 3. 更新对话
-    onUpdateConversation(conversation.id, {
-      subChats: (conversation.subChats || []).map(sc =>
-        sc.id === subChatId ? updatedSubChat : sc
-      ),
-    });
+    // 如果有用户输入内容，先添加用户消息
+    if (content.trim()) {
+      const userMessage: Message = {
+        id: `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+        role: 'user',
+        content: content.trim(),
+        timestamp: Date.now(),
+      };
+      
+      // 添加到子聊天
+      updatedSubChat = addMessageToSubChat(subChat, userMessage);
+      
+      // 更新对话
+      onUpdateConversation(conversation.id, {
+        subChats: (conversation.subChats || []).map(sc =>
+          sc.id === subChatId ? updatedSubChat : sc
+        ),
+      });
+    }
     
     // 4. 调用AI生成回复
     setIsGenerating(true);
@@ -1155,12 +1223,39 @@ ${recentMessages}
       const characterName = conversation.characterSettings?.nickname || conversation.name;
       const characterPersonality = conversation.characterSettings?.personality || '';
       
-      // 简化的system prompt
-      const systemPrompt = `你是${characterName}。${characterPersonality ? `性格：${characterPersonality}` : ''}
-
-这是一个子聊天对话，消息历史独立于主聊天。请根据当前对话内容自然回复。`;
+      // 增强的system prompt - 包含角色的完整设定
+      const characterInfo = conversation.characterSettings;
+      const systemPrompt = `你是${characterName}。
       
-      const response = await fetch(apiConfig.baseUrl, {
+${characterPersonality ? `性格：${characterPersonality}` : ''}
+${characterInfo?.memoryEvents ? `重要记忆：${characterInfo.memoryEvents}` : ''}
+${characterInfo?.languageStyle ? `语言风格：${characterInfo.languageStyle}` : ''}
+
+这是一个子聊天窗口，你可以看到主聊天的完整历史和当前子聊天的内容。
+子聊天名称：${updatedSubChat.name}
+请保持角色一致性，自然回复当前对话。`;
+
+      // 构建完整的消息历史：主聊天 + 子聊天标记 + 子聊天消息
+      const messages = [
+        { role: 'system', content: systemPrompt },
+        // 1. 包含主聊天的所有消息
+        ...conversation.messages.map(msg => ({
+          role: msg.role,
+          content: formatMessageForAI(msg),
+        })),
+        // 2. 标记子聊天开始
+        { 
+          role: 'system', 
+          content: `[开始子聊天窗口: ${updatedSubChat.name}]` 
+        },
+        // 3. 子聊天的消息
+        ...updatedSubChat.messages.map(msg => ({
+          role: msg.role,
+          content: formatMessageForAI(msg),
+        })),
+      ];
+      
+      const response = await fetch(`${apiConfig.baseUrl}/v1/chat/completions`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -1168,13 +1263,7 @@ ${recentMessages}
         },
         body: JSON.stringify({
           model: apiConfig.modelName,
-          messages: [
-            { role: 'system', content: systemPrompt },
-            ...updatedSubChat.messages.map(msg => ({
-              role: msg.role,
-              content: msg.content,
-            })),
-          ],
+          messages,
           temperature: 0.8,
         }),
       });
@@ -1536,18 +1625,26 @@ ${recentMessages}
       messages: updatedMessages
     });
     
-    // 发送确认消息
-    const confirmMessage: Message = {
-      id: `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-      role: 'user',
-      content: message.order.type === 'gift' ? '谢谢！我收下了～' : '已帮你付款啦！',
-      timestamp: Date.now()
-    };
-    
-    onUpdateConversation(conversation.id, {
-      messages: [...updatedMessages, confirmMessage],
-      lastMessageTime: Date.now()
-    });
+    // 发送确认消息（只在代付时发送，礼物接收不发送强制文本）
+    if (message.order.type !== 'gift') {
+      const confirmMessage: Message = {
+        id: `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+        role: 'user',
+        content: '已帮你付款啦！',
+        timestamp: Date.now()
+      };
+      
+      onUpdateConversation(conversation.id, {
+        messages: [...updatedMessages, confirmMessage],
+        lastMessageTime: Date.now()
+      });
+    } else {
+      // 礼物接收时不发送强制文本，只更新订单状态
+      onUpdateConversation(conversation.id, {
+        messages: updatedMessages,
+        lastMessageTime: Date.now()
+      });
+    }
     
     // 显示Toast提示
     showToast(
@@ -1587,18 +1684,26 @@ ${recentMessages}
       messages: updatedMessages
     });
     
-    // 发送拒绝消息
-    const rejectMessage: Message = {
-      id: `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-      role: 'user',
-      content: message.order.type === 'gift' ? '不好意思，太贵重了' : '抱歉，暂时无法帮忙',
-      timestamp: Date.now()
-    };
-    
-    onUpdateConversation(conversation.id, {
-      messages: [...updatedMessages, rejectMessage],
-      lastMessageTime: Date.now()
-    });
+    // 发送拒绝消息（只在代付时发送，礼物拒绝不发送强制文本）
+    if (message.order.type !== 'gift') {
+      const rejectMessage: Message = {
+        id: `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+        role: 'user',
+        content: '抱歉，暂时无法帮忙',
+        timestamp: Date.now()
+      };
+      
+      onUpdateConversation(conversation.id, {
+        messages: [...updatedMessages, rejectMessage],
+        lastMessageTime: Date.now()
+      });
+    } else {
+      // 礼物拒绝时不发送强制文本，只更新订单状态
+      onUpdateConversation(conversation.id, {
+        messages: updatedMessages,
+        lastMessageTime: Date.now()
+      });
+    }
     
     // 显示Toast提示
     showToast(
@@ -1931,29 +2036,8 @@ ${recentMessages}
     try {
       // 🔧 辅助函数：格式化历史消息内容（避免格式泄露）
       const formatHistoryMessageContent = (msg: Message): string => {
-        // 如果是文档消息，使用正确的格式标记（不包含内容，避免token浪费）
-        if (msg.document) {
-          return `[发文档:${msg.document.title}:${msg.document.type}]`;
-        }
-        // 如果是转账/红包消息，使用正确的格式标记
-        if (msg.moneyTransfer) {
-          const type = msg.moneyTransfer.type === 'redPacket' ? '红包' : '转账';
-          if (msg.role === 'assistant') {
-            // AI发的红包/转账
-            return msg.moneyTransfer.type === 'redPacket' 
-              ? `[发红包:${msg.moneyTransfer.amount}:${msg.moneyTransfer.message}]`
-              : `[转账:${msg.moneyTransfer.amount}:${msg.moneyTransfer.message}]`;
-          } else {
-            // 用户发的，或AI接收/退回的
-            if (msg.moneyTransfer.status === 'received') {
-              return `[接收${type}:${msg.moneyTransfer.message}]`;
-            } else if (msg.moneyTransfer.status === 'returned') {
-              return `[退回${type}:${msg.moneyTransfer.message}]`;
-            }
-          }
-        }
-        // 其他消息返回原始内容
-        return msg.content;
+        // 使用统一的格式化函数（包含转发内容处理）
+        return formatMessageForAI(msg);
       };
 
       // 获取最近的用户消息（支持混合消息类型）
@@ -2955,8 +3039,8 @@ ${doc.content}`;
           
           // 🔥 关键修复：区分API失败和AI不回复
           if (newMessages.length === 0) {
-            // 情况1：API调用失败（有error）
-            if (error) {
+            // 情况1：API调用失败（有error且不是AI_NO_REPLY）
+            if (error && error !== 'AI_NO_REPLY') {
               console.error('❌ API调用失败:', error);
               
               // 显示详细的错误提示弹窗
@@ -2986,7 +3070,7 @@ ${doc.content}`;
               return;
             }
             
-            // 情况2：AI选择不回复（无error）
+            // 情况2：AI选择不回复（error === 'AI_NO_REPLY' 或无error）
             console.log('💬 AI选择不回复');
             
             // 🔥 生成智能的上下文不回复提示，作为系统消息添加到聊天记录
@@ -3415,40 +3499,7 @@ ${doc.content}`;
         return;
       }
       
-      // 检查AI是否选择不回复
-      if (assistantMessage.trim() === '[不回复]' || assistantMessage.includes('[不回复]')) {
-        console.log('💬 AI选择不回复此消息');
-        setShowSendingHint(false);
-        setShowTyping(false);
-        setIsGenerating(false);
-        
-        // 异步生成并显示提示（用户在页面时显示浮动提示框）
-        generateContextualHint(conversation).then(contextualHint => {
-          setTimeout(() => {
-            const hint = document.createElement('div');
-            hint.textContent = contextualHint;
-            hint.style.cssText = `
-              position: fixed;
-              top: 50%;
-              left: 50%;
-              transform: translate(-50%, -50%);
-              background: rgba(0, 0, 0, 0.75);
-              color: white;
-              padding: 12px 24px;
-              border-radius: 8px;
-              font-size: 14px;
-              z-index: 10000;
-              animation: fadeInOut 2.5s ease-in-out;
-              max-width: 80%;
-              text-align: center;
-            `;
-            document.body.appendChild(hint);
-            setTimeout(() => hint.remove(), 2500);
-          }, 300);
-        });
-        
-        return;
-      }
+      // AI不回复的情况现在由backgroundTaskManager统一处理，这里不需要重复检查
 
       // 智能切分消息
       const splitMsgs = splitMessages(assistantMessage);
@@ -3970,7 +4021,7 @@ ${doc.content}`;
                           )}
                           {message.moneyTransfer.status === 'returned' && (
                             <div className="text-xs opacity-75">
-                              心意我领啦，钱钱快收回去~
+                              已退回
                             </div>
                           )}
                         </div>
@@ -3999,13 +4050,10 @@ ${doc.content}`;
                       </div>
                     )}
                     
-                    {/* 🔥 红包/转账的文字回复（新增：显示AI的感谢等回复） */}
-                    {message.moneyTransfer && message.content && message.content.trim() && (
-                      <div className={`rounded-2xl px-4 py-2.5 ${
-                        message.role === 'user'
-                          ? 'bg-white border border-gray-200'
-                          : 'bg-white border border-gray-200'
-                      }`}>
+                    {/* 🔥 红包/转账的文字回复（只显示AI的感谢等回复，不显示用户的默认文本） */}
+                    {message.moneyTransfer && message.content && message.content.trim() && 
+                     message.role === 'assistant' && (
+                      <div className="rounded-2xl px-4 py-2.5 bg-white border border-gray-200">
                         <p className="text-[15px] leading-relaxed whitespace-pre-wrap break-words">{message.content}</p>
                       </div>
                     )}
@@ -4653,6 +4701,14 @@ ${doc.content}`;
                   <FileText className="w-4 h-4 text-gray-600" />
                 </div>
               </button>
+              <button 
+                className="flex-shrink-0"
+                onClick={() => setShowSubChatManager(true)}
+              >
+                <div className="w-9 h-9 rounded-full bg-white border border-purple-300 flex items-center justify-center hover:border-purple-400 transition-colors hover:bg-purple-50">
+                  <MessageCircle className="w-4 h-4 text-purple-600" />
+                </div>
+              </button>
             </div>
           </div>
         )}
@@ -4971,7 +5027,7 @@ ${doc.content}`;
             const newMessage: Message = {
               id: `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
               role: 'user',
-              content: type === 'redPacket' ? '发出了一个红包' : '向你转账',
+              content: '', // 用户发送红包时不显示文本，只显示红包卡片
               timestamp: Date.now(),
               moneyTransfer: {
                 type,
@@ -5300,6 +5356,20 @@ ${doc.content}`;
       <MergedForwardViewer
         forwardedMessage={viewingMergedForward}
         onClose={() => setViewingMergedForward(null)}
+      />
+    )}
+
+    {/* 📄 聊天记录提取预览 */}
+    {showExtractPreview && extractingMessages.length > 0 && (
+      <ChatExtractPreview
+        messages={extractingMessages}
+        conversationName={conversation.characterSettings?.nickname || conversation.name}
+        userName={currentUserProfile?.username || '我'}
+        onSave={handleSaveExtractedDocument}
+        onCancel={() => {
+          setShowExtractPreview(false);
+          setExtractingMessages([]);
+        }}
       />
     )}
     </>

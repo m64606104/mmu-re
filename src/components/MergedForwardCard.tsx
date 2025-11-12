@@ -28,15 +28,20 @@ const MergedForwardCard: React.FC<MergedForwardCardProps> = ({
   return (
     <div
       onClick={onClick}
-      className="bg-white rounded-lg border border-gray-200 p-3 cursor-pointer hover:bg-gray-50 transition-colors shadow-sm"
+      className="bg-gradient-to-br from-green-50 to-green-100 rounded-lg border border-green-200 p-4 cursor-pointer hover:bg-gradient-to-br hover:from-green-100 hover:to-green-150 transition-all shadow-sm"
     >
-      {/* 标题 */}
-      <div className="flex items-center justify-between mb-2 pb-2 border-b border-gray-100">
+      {/* 标题 - 微信风格 */}
+      <div className="flex items-center justify-between mb-3">
         <div className="flex items-center gap-2">
+          <div className="w-5 h-5 bg-green-500 rounded-sm flex items-center justify-center">
+            <span className="text-white text-xs font-bold">聊</span>
+          </div>
           <span className="text-sm font-medium text-gray-900">{title}</span>
-          <span className="text-xs text-gray-500">({messages.length}条)</span>
         </div>
-        <ChevronRight className="w-4 h-4 text-gray-400" />
+        <div className="flex items-center gap-1 text-xs text-gray-500">
+          <span>{messages.length}条记录</span>
+          <ChevronRight className="w-4 h-4" />
+        </div>
       </div>
 
       {/* 消息预览 */}
