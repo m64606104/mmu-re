@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { ChevronLeft, Check, Loader2, Download, Upload, Database } from 'lucide-react';
 import { ApiConfig } from '../types';
+import { smartLoad, smartSave } from '../utils/storage';
 
 interface SettingsScreenProps {
   apiConfig: ApiConfig;
@@ -118,9 +119,11 @@ export default function SettingsScreen({ apiConfig, onUpdateConfig, onBack }: Se
   };
 
   // 导出全部数据
-  const handleExportAllData = () => {
+  const handleExportAllData = async () => {
     try {
-      // 收集所有localStorage数据
+      console.log('🔄 开始导出全部数据...');
+      
+      // 收集所有数据
       const allData: { [key: string]: any } = {};
       
       // 🔍 统计各类数据
@@ -136,10 +139,30 @@ export default function SettingsScreen({ apiConfig, onUpdateConfig, onBack }: Se
         relationships: 0      // 关系数
       };
       
-      // 遍历localStorage获取所有数据
+      // 🎯 **优先从智能存储获取重要数据**
+      console.log('📂 从智能存储获取conversations...');
+      const conversationsData = await smartLoad('conversations');
+      if (conversationsData) {
+        allData['conversations'] = conversationsData;
+        if (Array.isArray(conversationsData)) {
+          stats.conversations = conversationsData.length;
+          stats.messages = conversationsData.reduce((sum: number, conv: any) => 
+            sum + (conv.messages?.length || 0), 0);
+          stats.profiles = conversationsData.filter((c: any) => c.characterSettings).length;
+        }
+        console.log('✅ conversations数据获取成功:', stats.conversations, '个对话');
+      }
+      
+      // 🗂️ **遍历localStorage获取其他数据**
+      console.log('🗂️ 遍历localStorage...');
       for (let i = 0; i < localStorage.length; i++) {
         const key = localStorage.key(i);
         if (key) {
+          // 跳过已经从智能存储获取的数据
+          if (key === 'conversations' && conversationsData) {
+            continue;
+          }
+          
           const value = localStorage.getItem(key);
           if (value) {
             try {
@@ -148,12 +171,7 @@ export default function SettingsScreen({ apiConfig, onUpdateConfig, onBack }: Se
               allData[key] = parsed;
               
               // 📊 统计数据量
-              if (key === 'conversations' && Array.isArray(parsed)) {
-                stats.conversations = parsed.length;
-                stats.messages = parsed.reduce((sum: number, conv: any) => 
-                  sum + (conv.messages?.length || 0), 0);
-                stats.profiles = parsed.filter((c: any) => c.characterSettings).length;
-              } else if (key.startsWith('moments_') && parsed.posts) {
+              if (key.startsWith('moments_') && parsed.posts) {
                 stats.moments += parsed.posts.length;
               } else if (key === 'contacts' && Array.isArray(parsed)) {
                 stats.contacts = parsed.length;
@@ -176,12 +194,15 @@ export default function SettingsScreen({ apiConfig, onUpdateConfig, onBack }: Se
         }
       }
 
+      console.log('📊 统计信息:', stats);
+
       // 添加元数据
       const exportData = {
         exportDate: new Date().toISOString(),
         appVersion: '1.0.0',
         dataType: 'full-backup',
-        stats: stats,  // 添加统计信息
+        storageType: 'smart-storage-compatible', // 标记支持智能存储
+        stats: stats,
         data: allData
       };
 
@@ -191,7 +212,7 @@ export default function SettingsScreen({ apiConfig, onUpdateConfig, onBack }: Se
       const url = URL.createObjectURL(dataBlob);
       const link = document.createElement('a');
       link.href = url;
-      link.download = `momoyu_全数据备份_${new Date().toLocaleDateString()}.json`;
+      link.download = `momoyu_全数据备份_${new Date().toLocaleDateString().replace(/\//g, '-')}.json`;
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
@@ -209,11 +230,13 @@ export default function SettingsScreen({ apiConfig, onUpdateConfig, onBack }: Se
         `• 关系网络: ${stats.relationships} 条\n` +
         `• 背景图片: ${stats.images} 张\n` +
         `• 其他设置和数据\n\n` +
-        `💾 文件已保存到下载文件夹`;
+        `💾 文件已保存到下载文件夹\n` +
+        `🔧 支持智能存储系统`;
       
       alert(message);
+      console.log('✅ 数据导出完成');
     } catch (error) {
-      console.error('导出失败:', error);
+      console.error('❌ 导出失败:', error);
       alert('❌ 导出失败，请重试\n\n错误: ' + error);
     }
   };
@@ -224,7 +247,7 @@ export default function SettingsScreen({ apiConfig, onUpdateConfig, onBack }: Se
     if (!file) return;
 
     const reader = new FileReader();
-    reader.onload = (event) => {
+    reader.onload = async (event) => {
       try {
         const importedData = JSON.parse(event.target?.result as string);
         
@@ -264,25 +287,56 @@ export default function SettingsScreen({ apiConfig, onUpdateConfig, onBack }: Se
           return;
         }
 
-        // 清空localStorage
+        // 🗂️ 清空所有存储
         localStorage.clear();
+        
+        // 🔧 如果支持智能存储，也清空IndexedDB
+        if (importedData.storageType === 'smart-storage-compatible') {
+          try {
+            // 删除IndexedDB中的conversations数据
+            await smartSave('conversations', null);
+            console.log('✅ 已清空IndexedDB数据');
+          } catch (error) {
+            console.warn('清空IndexedDB失败:', error);
+          }
+        }
 
-        // 恢复所有数据
+        // 🔄 恢复所有数据
         const data = importedData.data;
         let importedCount = 0;
+        let conversationsRestored = false;
+        
         for (const key in data) {
           const value = data[key];
-          if (typeof value === 'object') {
-            localStorage.setItem(key, JSON.stringify(value));
+          
+          // 🎯 conversations数据使用智能存储
+          if (key === 'conversations' && importedData.storageType === 'smart-storage-compatible') {
+            try {
+              await smartSave('conversations', value);
+              conversationsRestored = true;
+              console.log('✅ conversations数据已恢复到智能存储');
+            } catch (error) {
+              console.error('智能存储恢复失败，回退到localStorage:', error);
+              localStorage.setItem(key, JSON.stringify(value));
+            }
           } else {
-            localStorage.setItem(key, value);
+            // 🗂️ 其他数据恢复到localStorage
+            if (typeof value === 'object') {
+              localStorage.setItem(key, JSON.stringify(value));
+            } else {
+              localStorage.setItem(key, value);
+            }
           }
           importedCount++;
         }
 
-        alert(`✅ 数据导入成功！\n\n` +
+        const successMsg = `✅ 数据导入成功！\n\n` +
           `已恢复 ${importedCount} 项数据\n` +
-          `页面将刷新以应用更改。`);
+          `${conversationsRestored ? '• 对话数据已恢复到智能存储\n' : ''}` +
+          `• 所有其他数据已恢复\n\n` +
+          `页面将刷新以应用更改。`;
+        
+        alert(successMsg);
         
         // 刷新页面
         setTimeout(() => {
