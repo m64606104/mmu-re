@@ -48,11 +48,23 @@ const SubChatWindow: React.FC<SubChatWindowProps> = ({
   // 多媒体相关状态
   const [showVideoDescModal, setShowVideoDescModal] = useState(false);
   const [videoDescInput, setVideoDescInput] = useState('');
-  const [pendingVideoFile, setPendingVideoFile] = useState<File | null>(null);
   const [showStickerModal, setShowStickerModal] = useState(false);
   const [stickerDescInput, setStickerDescInput] = useState('');
-  const [showVoiceModal, setShowVoiceModal] = useState(false);
-  const [voiceDescInput, setVoiceDescInput] = useState('');
+  
+  // 🎤 语音录音相关状态
+  const [isRecording, setIsRecording] = useState(false);
+  const [recordingTime, setRecordingTime] = useState(0);
+  const [audioBlob, setAudioBlob] = useState<Blob | null>(null);
+  const [showVoiceConfirmModal, setShowVoiceConfirmModal] = useState(false);
+  const [voiceTranscript, setVoiceTranscript] = useState('');
+  // const [isTranscribing, setIsTranscribing] = useState(false); // 暂不使用
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const recordingTimerRef = useRef<NodeJS.Timeout | null>(null);
+  
+  // 📤 发送状态管理 - 子页面独立状态
+  const [showSendingHint, setShowSendingHint] = useState(false);
+  const [showTyping, setShowTyping] = useState(false);
+  const [pendingVideoFile, setPendingVideoFile] = useState<File | null>(null);
   
   // 功能模态框状态
   const [showMoneyTransferModal, setShowMoneyTransferModal] = useState(false);
@@ -193,19 +205,26 @@ const SubChatWindow: React.FC<SubChatWindowProps> = ({
     }
   };
 
-  const handleGenerate = async () => {
-    if (isGenerating || subChat.messages.length === 0) return;
+  const handleGenerateReply = async () => {
+    // 检查是否有用户消息
+    if (subChat.messages.length === 0) return;
     
-    // 检查最后一条消息是否是用户消息
     const lastMessage = subChat.messages[subChat.messages.length - 1];
     if (lastMessage?.role !== 'user') return;
     
+    // 在子页面显示生成状态
     setIsGenerating(true);
+    setShowSendingHint(true);
+    setShowTyping(true);
+    
     try {
       // 触发AI生成回复（基于现有对话）
       await onSendMessage(subChat.id, '');
     } finally {
+      // 清理子页面的生成状态
       setIsGenerating(false);
+      setShowSendingHint(false);
+      setShowTyping(false);
     }
   };
 
@@ -225,11 +244,11 @@ const SubChatWindow: React.FC<SubChatWindowProps> = ({
     reader.onload = (event) => {
       const imageDataUrl = event.target?.result as string;
       
-      // 创建图片消息
+      // 创建图片消息 - 🔥 不设置content避免多余文本
       const imageMessage: Message = {
         id: `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
         role: 'user',
-        content: '发送了一张图片',
+        content: '', // 🔥 空content，避免显示多余的"发送了一张图片"文本
         timestamp: Date.now(),
         mediaType: 'image',
         mediaDescription: '用户上传的图片',
@@ -266,9 +285,100 @@ const SubChatWindow: React.FC<SubChatWindowProps> = ({
     setShowToolbar(false);
   };
 
-  const handleVoiceClick = () => {
-    setShowVoiceModal(true);
+  // 🎤 语音录音功能
+  const handleVoiceClick = async () => {
     setShowToolbar(false);
+    
+    if (isRecording) {
+      // 停止录音
+      stopRecording();
+    } else {
+      // 开始录音
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        const mediaRecorder = new MediaRecorder(stream);
+        mediaRecorderRef.current = mediaRecorder;
+        
+        const audioChunks: Blob[] = [];
+        
+        mediaRecorder.ondataavailable = (event) => {
+          audioChunks.push(event.data);
+        };
+        
+        mediaRecorder.onstop = () => {
+          const audioBlob = new Blob(audioChunks, { type: 'audio/wav' });
+          setAudioBlob(audioBlob);
+          setShowVoiceConfirmModal(true);
+          
+          // 停止所有音轨
+          stream.getTracks().forEach(track => track.stop());
+        };
+        
+        mediaRecorder.start();
+        setIsRecording(true);
+        setRecordingTime(0);
+        
+        // 开始计时
+        recordingTimerRef.current = setInterval(() => {
+          setRecordingTime(prev => prev + 1);
+        }, 1000);
+        
+      } catch (error) {
+        console.error('录音启动失败:', error);
+        alert('录音功能需要麦克风权限');
+      }
+    }
+  };
+  
+  const stopRecording = () => {
+    if (mediaRecorderRef.current && isRecording) {
+      mediaRecorderRef.current.stop();
+      setIsRecording(false);
+      
+      if (recordingTimerRef.current) {
+        clearInterval(recordingTimerRef.current);
+        recordingTimerRef.current = null;
+      }
+    }
+  };
+  
+  const handleSendVoice = () => {
+    if (!audioBlob) return;
+    
+    // 创建语音消息
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const audioDataUrl = event.target?.result as string;
+      
+      const voiceMessage: Message = {
+        id: `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+        role: 'user',
+        content: voiceTranscript || `发送了一段 ${recordingTime}s 的语音`,
+        timestamp: Date.now(),
+        mediaType: 'voice',
+        mediaUrl: audioDataUrl,
+        mediaDescription: `语音消息 ${recordingTime}s`
+      };
+      
+      _onUpdateSubChat(subChat.id, {
+        messages: [...subChat.messages, voiceMessage]
+      });
+      
+      // 清理状态
+      setShowVoiceConfirmModal(false);
+      setAudioBlob(null);
+      setVoiceTranscript('');
+      setRecordingTime(0);
+    };
+    
+    reader.readAsDataURL(audioBlob);
+  };
+  
+  const handleCancelVoice = () => {
+    setShowVoiceConfirmModal(false);
+    setAudioBlob(null);
+    setVoiceTranscript('');
+    setRecordingTime(0);
   };
 
   const handleSendVideo = () => {
@@ -553,6 +663,32 @@ const SubChatWindow: React.FC<SubChatWindowProps> = ({
                 </div>
               </div>
             ))}
+            
+            {/* 🔥 子页面发送状态提示 */}
+            {showSendingHint && (
+              <div className="flex justify-center py-2">
+                <div className="bg-gray-100 px-3 py-1 rounded-full text-xs text-gray-600">
+                  发送中...
+                </div>
+              </div>
+            )}
+            
+            {/* 🔥 子页面AI输入状态 */}
+            {showTyping && (
+              <div className="flex justify-start mb-4">
+                <div className="bg-gray-200 rounded-2xl px-4 py-3 max-w-[75%]">
+                  <div className="flex items-center gap-1">
+                    <div className="flex space-x-1">
+                      <div className="w-2 h-2 bg-gray-500 rounded-full animate-bounce"></div>
+                      <div className="w-2 h-2 bg-gray-500 rounded-full animate-bounce delay-100"></div>
+                      <div className="w-2 h-2 bg-gray-500 rounded-full animate-bounce delay-200"></div>
+                    </div>
+                    <span className="text-xs text-gray-600 ml-2">AI正在输入...</span>
+                  </div>
+                </div>
+              </div>
+            )}
+            
             <div ref={messagesEndRef} />
           </div>
         )}
@@ -646,7 +782,7 @@ const SubChatWindow: React.FC<SubChatWindowProps> = ({
           
           {shouldShowGenerateButton() && (
             <button
-              onClick={handleGenerate}
+              onClick={handleGenerateReply}
               disabled={isGenerating}
               className="p-2.5 bg-gradient-to-r from-yellow-500 to-orange-500 hover:from-yellow-600 hover:to-orange-600 text-white rounded-xl transition-all disabled:opacity-50 disabled:cursor-not-allowed"
               title="AI生成"
@@ -745,63 +881,6 @@ const SubChatWindow: React.FC<SubChatWindowProps> = ({
         </div>
       )}
 
-      {/* 语音输入弹窗 */}
-      {showVoiceModal && (
-        <div className="absolute inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl p-6 w-full max-w-sm shadow-2xl">
-            <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
-              <Mic className="w-5 h-5 text-purple-500" />
-              发送语音
-            </h3>
-            <p className="text-sm text-gray-600 mb-4">
-              请用文字描述语音内容，AI会理解并做出相应回复。
-            </p>
-            <textarea
-              value={voiceDescInput}
-              onChange={(e) => setVoiceDescInput(e.target.value)}
-              placeholder="例如：我录了一段唱歌的语音，很开心的调子"
-              rows={4}
-              className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500 resize-none text-sm"
-              autoFocus
-            />
-            <div className="flex gap-3 mt-4">
-              <button
-                onClick={() => {
-                  setShowVoiceModal(false);
-                  setVoiceDescInput('');
-                }}
-                className="flex-1 px-4 py-2.5 border border-gray-300 text-gray-700 rounded-xl hover:bg-gray-50 transition-colors font-medium"
-              >
-                取消
-              </button>
-              <button
-                onClick={() => {
-                  if (!voiceDescInput.trim()) return;
-                  const voiceMessage: Message = {
-                    id: `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-                    role: 'user',
-                    content: voiceDescInput.trim(),
-                    timestamp: Date.now(),
-                    mediaType: 'voice',
-                    mediaDescription: voiceDescInput.trim(),
-                    voiceDuration: Math.floor(Math.random() * 30) + 5
-                  };
-                  _onUpdateSubChat(subChat.id, {
-                    messages: [...subChat.messages, voiceMessage]
-                  });
-                  setShowVoiceModal(false);
-                  setVoiceDescInput('');
-                }}
-                disabled={!voiceDescInput.trim()}
-                className="flex-1 px-4 py-2.5 bg-purple-500 text-white rounded-xl hover:bg-purple-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed font-medium"
-              >
-                发送
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
       {/* 红包转账弹窗 */}
       {showMoneyTransferModal && (
         <MoneyTransferModal
@@ -865,6 +944,38 @@ const SubChatWindow: React.FC<SubChatWindowProps> = ({
               </button>
             </div>
             <div className="prose prose-sm max-w-none" dangerouslySetInnerHTML={{ __html: viewingDocument.content }} />
+          </div>
+        </div>
+      )}
+
+      {/* 🎤 语音确认模态框 */}
+      {showVoiceConfirmModal && audioBlob && (
+        <div className="absolute inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-2xl p-6 shadow-2xl max-w-md w-full mx-4">
+            <div className="text-center">
+              <div className="w-16 h-16 bg-purple-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                <Mic className="w-8 h-8 text-purple-600" />
+              </div>
+              <h3 className="text-lg font-semibold text-gray-900 mb-2">语音录制完成</h3>
+              <p className="text-gray-600 mb-4">录制时长：{recordingTime}秒</p>
+              
+              <div className="space-y-3">
+                <div className="flex gap-3">
+                  <button
+                    onClick={handleCancelVoice}
+                    className="flex-1 px-4 py-2 text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors"
+                  >
+                    重新录制
+                  </button>
+                  <button
+                    onClick={handleSendVoice}
+                    className="flex-1 px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors"
+                  >
+                    发送语音
+                  </button>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       )}
