@@ -9,6 +9,7 @@ import { Conversation } from '../types';
 
 interface ForwardTargetSelectorProps {
   conversations: Conversation[];
+  currentConversationId?: string; // 当前会话ID，用于标记
   onConfirm: (selectedIds: string[], mergeForward: boolean) => void;
   onCancel: () => void;
   allowMultiple?: boolean; // 是否允许选择多个目标
@@ -17,6 +18,7 @@ interface ForwardTargetSelectorProps {
 
 const ForwardTargetSelector: React.FC<ForwardTargetSelectorProps> = ({
   conversations,
+  currentConversationId,
   onConfirm,
   onCancel,
   allowMultiple = true,
@@ -106,6 +108,7 @@ const ForwardTargetSelector: React.FC<ForwardTargetSelectorProps> = ({
           ) : (
             filteredConversations.map((conv) => {
               const isSelected = selectedIds.has(conv.id);
+              const isCurrentConv = conv.id === currentConversationId;
               const displayName = conv.characterSettings?.nickname || conv.name;
               const avatar = conv.characterSettings?.avatar || conv.avatar || '👤';
 
@@ -126,9 +129,17 @@ const ForwardTargetSelector: React.FC<ForwardTargetSelectorProps> = ({
 
                   {/* 信息 */}
                   <div className="flex-1 text-left">
-                    <div className="font-medium text-gray-900">{displayName}</div>
+                    <div className="font-medium text-gray-900">
+                      {displayName}
+                      {isCurrentConv && (
+                        <span className="ml-2 text-xs text-blue-600 bg-blue-50 px-2 py-0.5 rounded">
+                          当前会话
+                        </span>
+                      )}
+                    </div>
                     <div className="text-sm text-gray-500">
                       {conv.type === 'group' ? '群聊' : '私聊'}
+                      {isCurrentConv && ' • 转发给自己'}
                     </div>
                   </div>
 

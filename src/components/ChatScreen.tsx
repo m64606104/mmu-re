@@ -5274,7 +5274,8 @@ ${doc.content}`;
     {/* 📤 转发目标选择器 */}
     {showForwardSelector && conversations && (
       <ForwardTargetSelector
-        conversations={conversations.filter(c => c.id !== conversation.id)}
+        conversations={conversations}
+        currentConversationId={conversation.id}
         onConfirm={handleConfirmForward}
         onCancel={() => {
           setShowForwardSelector(false);
