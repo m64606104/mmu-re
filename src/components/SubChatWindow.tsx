@@ -6,6 +6,8 @@ import WordStyleDocumentCard from './WordStyleDocumentCard';
 import MoneyTransferModal from './MoneyTransferModal';
 import SendDocumentModal from './SendDocumentModal';
 import MusicShareModal from './MusicShareModal';
+import { MessageActionMenu } from './MessageActionMenu';
+import MessageSelectionToolbar from './MessageSelectionToolbar';
 import type { MusicInfo } from '../utils/musicService';
 
 interface SubChatWindowProps {
@@ -36,6 +38,20 @@ export default function SubChatWindow({
   const [showToolbar, setShowToolbar] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  
+  // 消息操作相关状态
+  const [selectedMessageId, setSelectedMessageId] = useState<string | null>(null);
+  const [menuPosition, setMenuPosition] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
+  const [quotedMessage, setQuotedMessage] = useState<Message | null>(null);
+  const [messageBeingEdited, setMessageBeingEdited] = useState<Message | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
+  
+  // 用于防止删除操作过程中的状态问题
+  void isDeleting;
+  
+  // 多选相关状态
+  const [isMultiSelectMode, setIsMultiSelectMode] = useState(false);
+  const [selectedMessages, setSelectedMessages] = useState<string[]>([]);
   
   // 窗口拖拽和调整大小相关状态
   const [position, setPosition] = useState({ x: window.innerWidth - 400, y: window.innerHeight - 520 });
@@ -196,20 +212,41 @@ export default function SubChatWindow({
 
   const handleSend = () => {
     if (!input.trim()) return;
-    
-    // 创建用户消息并直接添加到对话中
-    const userMessage: Message = {
-      id: `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+
+    // 如果在编辑模式，保存编辑
+    if (messageBeingEdited) {
+      const updatedMessages = subChat.messages.map(m =>
+        m.id === messageBeingEdited.id
+          ? { ...m, content: input.trim(), edited: true }
+          : m
+      );
+      _onUpdateSubChat(subChat.id, { messages: updatedMessages });
+      setMessageBeingEdited(null);
+      setInput('');
+      return;
+    }
+
+    const newMessage: Message = {
+      id: `msg_${Date.now()}`,
       role: 'user',
       content: input.trim(),
       timestamp: Date.now(),
+      // 如果有引用消息，添加到消息中
+      ...(quotedMessage && quotedMessage.role !== 'system' && {
+        replyTo: {
+          id: quotedMessage.id,
+          content: quotedMessage.content,
+          role: quotedMessage.role as 'user' | 'assistant'
+        }
+      })
     };
-    
+
     _onUpdateSubChat(subChat.id, {
-      messages: [...subChat.messages, userMessage]
+      messages: [...subChat.messages, newMessage]
     });
     
     setInput('');
+    setQuotedMessage(null); // 清除引用
   };
 
   const handleKeyPress = (e: React.KeyboardEvent) => {
@@ -597,6 +634,137 @@ ${conversation.characterSettings.languageExample ? `语言示例：${conversatio
     ];
 
     _onUpdateSubChat(subChat.id, { messages: newMessages });
+  };
+
+  // 🔥 消息操作处理函数 - 复制ChatScreen的实现
+  const handleMessageClick = (messageId: string, event: React.MouseEvent) => {
+    // 如果点击的是操作按钮或媒体控件，不处理
+    const target = event.target as HTMLElement;
+    if (target.closest('.message-action-btn') || 
+        target.closest('audio') || 
+        target.closest('video') || 
+        target.closest('button') ||
+        target.tagName === 'IMG') {
+      return;
+    }
+    
+    // 获取点击位置，显示菜单
+    const rect = (event.currentTarget as HTMLElement).getBoundingClientRect();
+    const x = rect.left + rect.width / 2;
+    const y = rect.top;
+    
+    setSelectedMessageId(messageId);
+    setMenuPosition({ x, y });
+  };
+
+  const handleCloseMenu = () => {
+    setSelectedMessageId(null);
+  };
+
+  const handleDeleteMessage = () => {
+    if (!selectedMessageId) return;
+    
+    setIsDeleting(true);
+    const updatedMessages = subChat.messages.filter(m => m.id !== selectedMessageId);
+    _onUpdateSubChat(subChat.id, { messages: updatedMessages });
+    setSelectedMessageId(null);
+    setIsDeleting(false);
+  };
+
+  const handleEditMessage = () => {
+    if (!selectedMessageId) return;
+    
+    const message = subChat.messages.find(m => m.id === selectedMessageId);
+    if (!message) return;
+    
+    setMessageBeingEdited(message);
+    setInput(message.content);
+    setSelectedMessageId(null);
+    
+    // 聚焦输入框
+    setTimeout(() => {
+      const inputElement = document.querySelector('.subchat-input') as HTMLInputElement;
+      if (inputElement) {
+        inputElement.focus();
+        inputElement.setSelectionRange(inputElement.value.length, inputElement.value.length);
+      }
+    }, 100);
+  };
+
+  const handleQuoteMessage = () => {
+    if (!selectedMessageId) return;
+    
+    const message = subChat.messages.find(m => m.id === selectedMessageId);
+    if (!message) return;
+    
+    setQuotedMessage(message);
+    setSelectedMessageId(null);
+    
+    setTimeout(() => {
+      const inputElement = document.querySelector('.subchat-input') as HTMLInputElement;
+      if (inputElement) {
+        inputElement.focus();
+      }
+    }, 100);
+  };
+
+  const handleCancelQuote = () => {
+    setQuotedMessage(null);
+  };
+
+  const handleCancelEdit = () => {
+    setMessageBeingEdited(null);
+    setInput('');
+  };
+
+  const handleEnterMultiSelect = () => {
+    setIsMultiSelectMode(true);
+    setSelectedMessages([selectedMessageId!]);
+    setSelectedMessageId(null);
+  };
+
+  const toggleMessageSelection = (messageId: string) => {
+    setSelectedMessages(prev => 
+      prev.includes(messageId)
+        ? prev.filter(id => id !== messageId)
+        : [...prev, messageId]
+    );
+  };
+
+  const handleCancelMultiSelect = () => {
+    setIsMultiSelectMode(false);
+    setSelectedMessages([]);
+  };
+
+  const handleBatchDelete = () => {
+    if (selectedMessages.length === 0) return;
+    
+    setIsDeleting(true);
+    const updatedMessages = subChat.messages.filter(m => !selectedMessages.includes(m.id));
+    _onUpdateSubChat(subChat.id, { messages: updatedMessages });
+    setSelectedMessages([]);
+    setIsMultiSelectMode(false);
+    setIsDeleting(false);
+  };
+
+  const handleForwardSingleMessage = () => {
+    // 简化版转发 - 显示提示
+    alert('子对话转发功能开发中，敬请期待！');
+    setSelectedMessageId(null);
+  };
+
+  const handleExtractToDocument = () => {
+    // 简化版文档提取
+    alert('子对话文档提取功能开发中，敬请期待！');
+    setIsMultiSelectMode(false);
+    setSelectedMessages([]);
+  };
+
+  const handleForwardMultiple = () => {
+    // 简化版批量转发
+    alert('子对话批量转发功能开发中，敬请期待！');
+    setIsMultiSelectMode(false);
+    setSelectedMessages([]);
   };
 
   // 检查是否应该显示生成按钮
@@ -1031,7 +1199,17 @@ ${conversation.characterSettings.languageExample ? `语言示例：${conversatio
                   {/* 文本内容 */}
                   {!message.document && !message.moneyTransfer && message.content && message.content.trim() && (
                     <div
-                      className={`rounded-2xl px-3 py-2 ${
+                      onClick={(e) => {
+                        if (isMultiSelectMode) {
+                          toggleMessageSelection(message.id);
+                        } else {
+                          handleMessageClick(message.id, e);
+                        }
+                      }}
+                      className={`rounded-2xl px-3 py-2 cursor-pointer relative ${
+                        isMultiSelectMode && selectedMessages.includes(message.id) 
+                          ? 'ring-2 ring-blue-500 bg-blue-50 ' : ''
+                      }${
                         message.role === 'user'
                           ? 'bg-gradient-to-r from-purple-500 to-blue-500 text-white'
                           : 'bg-white border border-purple-100 text-gray-800'
@@ -1153,6 +1331,50 @@ ${conversation.characterSettings.languageExample ? `语言示例：${conversatio
         </div>
       )}
 
+      {/* 🔥 引用消息显示 */}
+      {quotedMessage && (
+        <div className="border-t border-purple-100 px-3 pt-2 bg-gray-50">
+          <div className="flex items-center justify-between bg-white rounded-lg p-2 border-l-4 border-purple-400">
+            <div className="flex-1">
+              <div className="text-xs text-purple-600 font-medium mb-1">
+                回复 {quotedMessage.role === 'user' ? '我' : conversation.characterSettings?.nickname || '助手'}:
+              </div>
+              <div className="text-sm text-gray-600 line-clamp-2">
+                {quotedMessage.content || '[多媒体消息]'}
+              </div>
+            </div>
+            <button
+              onClick={handleCancelQuote}
+              className="ml-2 p-1 text-gray-400 hover:text-gray-600 rounded"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* 🔥 编辑消息显示 */}
+      {messageBeingEdited && (
+        <div className="border-t border-purple-100 px-3 pt-2 bg-blue-50">
+          <div className="flex items-center justify-between bg-white rounded-lg p-2 border-l-4 border-blue-400">
+            <div className="flex-1">
+              <div className="text-xs text-blue-600 font-medium mb-1">
+                编辑消息:
+              </div>
+              <div className="text-sm text-gray-600 line-clamp-2">
+                {messageBeingEdited.content}
+              </div>
+            </div>
+            <button
+              onClick={handleCancelEdit}
+              className="ml-2 p-1 text-gray-400 hover:text-gray-600 rounded"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* 输入区域 */}
       <div className="border-t border-purple-100 p-3 bg-white">
         <div className="flex items-end gap-2">
@@ -1168,9 +1390,9 @@ ${conversation.characterSettings.languageExample ? `语言示例：${conversatio
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyPress={handleKeyPress}
-            placeholder="输入消息..."
+            placeholder={messageBeingEdited ? "编辑消息..." : quotedMessage ? "回复消息..." : "输入消息..."}
             rows={1}
-            className="flex-1 px-3 py-2 border border-purple-200 rounded-xl resize-none focus:outline-none focus:ring-2 focus:ring-purple-400 focus:border-transparent text-sm"
+            className="subchat-input flex-1 px-3 py-2 border border-purple-200 rounded-xl resize-none focus:outline-none focus:ring-2 focus:ring-purple-400 focus:border-transparent text-sm"
             style={{ maxHeight: '80px' }}
             disabled={false}
           />
@@ -1421,6 +1643,29 @@ ${conversation.characterSettings.languageExample ? `语言示例：${conversatio
         onShareMusic={handleMusicShare}
         characterName={conversation.characterSettings?.nickname || conversation.name}
       />
+
+      {/* 🔥 消息操作菜单 */}
+      <MessageActionMenu
+        isVisible={selectedMessageId !== null}
+        position={menuPosition}
+        onQuote={handleQuoteMessage}
+        onEdit={handleEditMessage}
+        onDelete={handleDeleteMessage}
+        onMultiSelect={handleEnterMultiSelect}
+        onForward={handleForwardSingleMessage}
+        onClose={handleCloseMenu}
+      />
+
+      {/* 🔥 多选工具栏 */}
+      {isMultiSelectMode && (
+        <MessageSelectionToolbar
+          selectedCount={selectedMessages.length}
+          onCancel={handleCancelMultiSelect}
+          onExtractDocument={handleExtractToDocument}
+          onForward={handleForwardMultiple}
+          onDelete={handleBatchDelete}
+        />
+      )}
       
       {/* 调整大小拖拽区域 */}
       <div 
