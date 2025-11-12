@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { X, Plus, MessageCircle, Trash2, Edit2, Check } from 'lucide-react';
+import React, { useState, useRef } from 'react';
+import { X, Plus, MessageCircle, Trash2, Edit2, Check, Upload } from 'lucide-react';
 import { SubChat } from '../types';
 
 interface SubChatManagerProps {
@@ -9,6 +9,7 @@ interface SubChatManagerProps {
   onCreateSubChat: (name: string) => void;
   onRenameSubChat: (subChatId: string, newName: string) => void;
   onDeleteSubChat: (subChatId: string) => void;
+  onImportSubChat: (subChatData: any) => void;
 }
 
 const SubChatManager: React.FC<SubChatManagerProps> = ({
@@ -18,17 +19,54 @@ const SubChatManager: React.FC<SubChatManagerProps> = ({
   onCreateSubChat,
   onRenameSubChat,
   onDeleteSubChat,
+  onImportSubChat,
 }) => {
   const [newChatName, setNewChatName] = useState('');
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editName, setEditName] = useState('');
   const [showCreateForm, setShowCreateForm] = useState(false);
+  const importInputRef = useRef<HTMLInputElement>(null);
 
   const handleCreate = () => {
     if (!newChatName.trim()) return;
     onCreateSubChat(newChatName.trim());
     setNewChatName('');
     setShowCreateForm(false);
+  };
+
+  // 处理子聊天导入
+  const handleImportFile = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      try {
+        const content = e.target?.result as string;
+        const data = JSON.parse(content);
+        
+        // 验证文件格式
+        if (!data.type || data.type !== 'subchat' || !data.subChat || !data.messages) {
+          alert('❌ 文件格式错误，请选择正确的子聊天导出文件');
+          return;
+        }
+        
+        // 调用导入回调
+        onImportSubChat(data);
+        alert(`✅ 成功导入子聊天「${data.subChat.name}」\n包含 ${data.messages.length} 条消息记录`);
+        
+      } catch (error) {
+        console.error('导入子聊天失败:', error);
+        alert('❌ 文件解析失败，请检查文件格式');
+      }
+    };
+    
+    reader.readAsText(file);
+    
+    // 清空input以允许重复选择同一文件
+    if (importInputRef.current) {
+      importInputRef.current.value = '';
+    }
   };
 
   const handleRename = (subChatId: string) => {
@@ -68,13 +106,31 @@ const SubChatManager: React.FC<SubChatManagerProps> = ({
         <div className="flex-1 overflow-y-auto p-4">
           {/* 创建新子聊天 */}
           {!showCreateForm ? (
-            <button
-              onClick={() => setShowCreateForm(true)}
-              className="w-full py-3 border-2 border-dashed border-purple-300 rounded-xl text-purple-600 hover:bg-purple-50 transition-colors flex items-center justify-center gap-2 mb-4"
-            >
-              <Plus className="w-5 h-5" />
-              <span className="font-medium">创建新子聊天</span>
-            </button>
+            <div className="space-y-3 mb-4">
+              <button
+                onClick={() => setShowCreateForm(true)}
+                className="w-full py-3 border-2 border-dashed border-purple-300 rounded-xl text-purple-600 hover:bg-purple-50 transition-colors flex items-center justify-center gap-2"
+              >
+                <Plus className="w-5 h-5" />
+                <span className="font-medium">创建新子聊天</span>
+              </button>
+              
+              <button
+                onClick={() => importInputRef.current?.click()}
+                className="w-full py-3 border-2 border-dashed border-blue-300 rounded-xl text-blue-600 hover:bg-blue-50 transition-colors flex items-center justify-center gap-2"
+              >
+                <Upload className="w-5 h-5" />
+                <span className="font-medium">导入子聊天</span>
+              </button>
+              
+              <input
+                ref={importInputRef}
+                type="file"
+                accept=".json"
+                onChange={handleImportFile}
+                className="hidden"
+              />
+            </div>
           ) : (
             <div className="mb-4 p-4 bg-purple-50 rounded-xl border border-purple-200">
               <h3 className="text-sm font-semibold text-purple-900 mb-2">创建新子聊天</h3>

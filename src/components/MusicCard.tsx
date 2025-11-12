@@ -7,6 +7,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { Music, Play, Pause } from 'lucide-react';
 import { MusicMessage } from '../types';
 import { AudioPlayer, AudioPlayerState } from '../utils/audioPlayer';
+import { generateAudioForMood } from '../utils/audioGenerator';
 
 interface MusicCardProps {
   music: MusicMessage;
@@ -39,16 +40,22 @@ const MusicCard: React.FC<MusicCardProps> = ({
     if (enableRealAudio) {
       audioPlayerRef.current = new AudioPlayer(setAudioState);
       
-      // 尝试加载音频
-      const audioUrl = getAudioUrlForMusic(music);
-      if (audioUrl) {
-        audioPlayerRef.current.loadAudio(audioUrl).catch(error => {
+      // 异步加载音频
+      const loadAudio = async () => {
+        try {
+          const audioUrl = await getAudioUrlForMusic(music);
+          if (audioUrl && audioPlayerRef.current) {
+            await audioPlayerRef.current.loadAudio(audioUrl);
+          } else {
+            setAudioError('暂无音频文件');
+          }
+        } catch (error) {
           console.error('加载音频失败:', error);
           setAudioError('无法播放此音乐');
-        });
-      } else {
-        setAudioError('暂无音频文件');
-      }
+        }
+      };
+      
+      loadAudio();
     }
 
     return () => {
@@ -75,24 +82,24 @@ const MusicCard: React.FC<MusicCardProps> = ({
   };
 
   // 🎵 获取音频URL
-  const getAudioUrlForMusic = (music: MusicMessage): string | null => {
+  const getAudioUrlForMusic = async (music: MusicMessage): Promise<string | null> => {
     // 方案1: 如果有直接的音频URL
     if ((music as any).audioUrl) {
       return (music as any).audioUrl;
     }
     
-    // 方案2: 使用示例音频文件
-    const sampleAudios: Record<string, string> = {
-      happy: 'https://www.soundjay.com/misc/sounds-808.wav',
-      sad: 'https://www.soundjay.com/misc/sounds-808.wav', 
-      energetic: 'https://www.soundjay.com/misc/sounds-808.wav',
-      calm: 'https://www.soundjay.com/misc/sounds-808.wav',
-      romantic: 'https://www.soundjay.com/misc/sounds-808.wav',
-      mysterious: 'https://www.soundjay.com/misc/sounds-808.wav',
-      default: 'https://www.soundjay.com/misc/sounds-808.wav'
-    };
+    // 方案2: 检查是否有audioFile（Blob URL）
+    if ((music as any).audioFile) {
+      return URL.createObjectURL((music as any).audioFile);
+    }
     
-    return sampleAudios[music.mood || 'default'] || sampleAudios.default;
+    // 方案3: 使用Web Audio API生成示例音频
+    try {
+      return await generateAudioForMood(music.mood || 'happy');
+    } catch (error) {
+      console.warn('生成示例音频失败:', error);
+      return null;
+    }
   };
 
   // 🎵 最终的播放控制

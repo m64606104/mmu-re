@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { X, Send, Minimize2, MessageCircle, Plus, Zap, Smile, Video, Move, 
-  Mic, FileText, CreditCard, Image as ImageIcon, Phone, MapPin, Music } from 'lucide-react';
+  Mic, FileText, CreditCard, Image as ImageIcon, Phone, MapPin, Music, Download } from 'lucide-react';
 import { SubChat, ApiConfig, Conversation, Message, DocumentMessage } from '../types';
 import WordStyleDocumentCard from './WordStyleDocumentCard';
 import MoneyTransferModal from './MoneyTransferModal';
@@ -753,6 +753,68 @@ ${conversation.characterSettings.languageExample ? `语言示例：${conversatio
     setSelectedMessageId(null);
   };
 
+  // 🔥 导出子聊天功能
+  const handleExportSubChat = () => {
+    try {
+      const exportData = {
+        version: '2.0',
+        type: 'subchat',
+        exportTime: new Date().toISOString(),
+        
+        // 子聊天基本信息
+        subChat: {
+          id: subChat.id,
+          name: subChat.name,
+          purpose: subChat.purpose,
+          createdAt: subChat.createdAt,
+          lastMessageTime: subChat.lastMessageTime,
+          status: subChat.status,
+          conversationId: subChat.conversationId,
+          initiator: subChat.initiator,
+          isActive: subChat.isActive,
+          unreadCount: subChat.unreadCount,
+        },
+        
+        // 完整消息记录
+        messages: subChat.messages,
+        
+        // 相关对话信息（用于导入时的上下文）
+        parentConversation: {
+          id: conversation.id,
+          name: conversation.name,
+          characterSettings: {
+            nickname: conversation.characterSettings?.nickname,
+            personality: conversation.characterSettings?.personality,
+          }
+        },
+        
+        // 统计信息
+        stats: {
+          messagesCount: subChat.messages.length,
+          userMessagesCount: subChat.messages.filter(m => m.role === 'user').length,
+          aiMessagesCount: subChat.messages.filter(m => m.role === 'assistant').length,
+        }
+      };
+      
+      // 生成文件
+      const dataStr = JSON.stringify(exportData, null, 2);
+      const dataBlob = new Blob([dataStr], { type: 'application/json' });
+      const url = URL.createObjectURL(dataBlob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `subchat_${subChat.name}_${new Date().toISOString().split('T')[0]}.json`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+      
+      alert(`✅ 子聊天「${subChat.name}」已导出成功！\n包含 ${subChat.messages.length} 条消息记录`);
+    } catch (error) {
+      console.error('导出子聊天失败:', error);
+      alert('❌ 导出失败，请重试');
+    }
+  };
+
   const handleExtractToDocument = () => {
     // 简化版文档提取
     alert('子对话文档提取功能开发中，敬请期待！');
@@ -1040,6 +1102,14 @@ ${conversation.characterSettings.languageExample ? `语言示例：${conversatio
           </div>
         </div>
         <div className="flex items-center gap-2">
+          <button
+            onClick={handleExportSubChat}
+            className="p-1.5 hover:bg-white/20 rounded-lg transition-colors"
+            title="导出子聊天"
+            onMouseDown={(e) => e.stopPropagation()}
+          >
+            <Download className="w-4 h-4" />
+          </button>
           <button
             onClick={onMinimize}
             className="p-1.5 hover:bg-white/20 rounded-lg transition-colors"

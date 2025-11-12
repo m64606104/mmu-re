@@ -48,7 +48,8 @@ export default function CharacterSettingsScreen({
   const [momentsType, setMomentsType] = useState<'text' | 'image'>('text');
   const [imageCount, setImageCount] = useState(1);
   const [showMigration, setShowMigration] = useState(false);
-  const [includeMessages, setIncludeMessages] = useState(true);
+  const [includeMessages, setIncludeMessages] = useState(false);
+  const [includeSubChats, setIncludeSubChats] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const chatImportRef = useRef<HTMLInputElement>(null);
   
@@ -459,6 +460,9 @@ export default function CharacterSettingsScreen({
         
         // 消息记录（可选）
         messages: includeMessages ? conversation.messages : [],
+        
+        // 子聊天记录（可选）
+        subChats: includeSubChats ? (conversation.subChats || []) : [],
         
         // 统计信息
         stats: stats,
@@ -1255,6 +1259,28 @@ export default function CharacterSettingsScreen({
               </div>
               <p className="text-xs text-gray-500">
                 {includeMessages ? '✅ 将导出所有聊天消息（文件较大）' : '💡 仅导出角色核心数据（推荐）'}
+              </p>
+            </div>
+            
+            {/* 子聊天选项 */}
+            <div className="mb-6">
+              <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg mb-3">
+                <span className="text-sm text-gray-700">包含子聊天记录</span>
+                <button
+                  onClick={() => setIncludeSubChats(!includeSubChats)}
+                  className={`relative w-12 h-6 rounded-full transition-colors ${
+                    includeSubChats ? 'bg-purple-500' : 'bg-gray-300'
+                  }`}
+                >
+                  <div
+                    className={`absolute top-1 left-1 w-4 h-4 bg-white rounded-full transition-transform ${
+                      includeSubChats ? 'translate-x-6' : ''
+                    }`}
+                  />
+                </button>
+              </div>
+              <p className="text-xs text-gray-500">
+                {includeSubChats ? `✅ 将导出 ${(conversation.subChats || []).length} 个子聊天的完整记录` : '💡 不包含子聊天记录'}
               </p>
             </div>
 

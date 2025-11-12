@@ -2,8 +2,8 @@
  * 音乐分享弹窗 - 让用户可以分享音乐给AI
  */
 
-import React, { useState, useEffect } from 'react';
-import { X, Music, Search, FileText } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import { X, Music, Search, FileText, Upload } from 'lucide-react';
 import { musicInfoService, MusicInfo } from '../utils/musicService';
 import { enhanceMusicWithLyrics } from '../utils/lyricsService';
 
@@ -24,7 +24,7 @@ const MusicShareModal: React.FC<MusicShareModalProps> = ({
   const [searchResults, setSearchResults] = useState<MusicInfo[]>([]);
   const [isSearching, setIsSearching] = useState(false);
   const [selectedMusic, setSelectedMusic] = useState<MusicInfo | null>(null);
-  const [manualMode, setManualMode] = useState(false);
+  // const [manualMode, setManualMode] = useState(false); // 现在使用uploadMode替代
   
   // 手动输入模式的状态
   const [manualTitle, setManualTitle] = useState('');
@@ -33,6 +33,13 @@ const MusicShareModal: React.FC<MusicShareModalProps> = ({
   const [showLyricsInput, setShowLyricsInput] = useState(false);
   const [manualMood, setManualMood] = useState<MusicInfo['mood']>('happy');
   const [manualDuration, setManualDuration] = useState('180');
+  
+  // 🎵 本地音频上传和URL输入状态
+  const [uploadMode, setUploadMode] = useState<'search' | 'manual' | 'upload' | 'url'>('search');
+  const [audioFile, setAudioFile] = useState<File | null>(null);
+  const [audioUrl, setAudioUrl] = useState('');
+  const audioInputRef = useRef<HTMLInputElement>(null);
+  const [audioPreview, setAudioPreview] = useState<string | null>(null);
 
   useEffect(() => {
     if (!isOpen) {
@@ -44,13 +51,17 @@ const MusicShareModal: React.FC<MusicShareModalProps> = ({
     setSearchQuery('');
     setSearchResults([]);
     setSelectedMusic(null);
-    setManualMode(false);
+    // setManualMode(false); // 不再需要
     setManualTitle('');
     setManualArtist('');
     setManualLyrics('');
     setShowLyricsInput(false);
     setManualMood('happy');
     setManualDuration('180');
+    setUploadMode('search');
+    setAudioFile(null);
+    setAudioUrl('');
+    setAudioPreview(null);
   };
 
   const handleSearch = async () => {
@@ -63,12 +74,12 @@ const MusicShareModal: React.FC<MusicShareModalProps> = ({
       
       if (results.length === 0) {
         // 如果没有找到结果，建议使用手动输入
-        setManualMode(true);
+        setUploadMode('manual');
         setManualTitle(searchQuery);
       }
     } catch (error) {
       console.error('音乐搜索失败:', error);
-      setManualMode(true);
+      setUploadMode('manual');
       setManualTitle(searchQuery);
     } finally {
       setIsSearching(false);
@@ -77,6 +88,29 @@ const MusicShareModal: React.FC<MusicShareModalProps> = ({
 
   const handleSelectMusic = (music: MusicInfo) => {
     setSelectedMusic(music);
+  };
+
+  // 🎵 处理音频文件上传
+  const handleAudioFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (file) {
+      // 检查文件类型
+      if (!file.type.startsWith('audio/')) {
+        alert('请选择音频文件！');
+        return;
+      }
+      
+      setAudioFile(file);
+      // 创建预览URL
+      const previewUrl = URL.createObjectURL(file);
+      setAudioPreview(previewUrl);
+      
+      // 自动填充文件名作为歌曲标题
+      if (!manualTitle.trim()) {
+        const fileName = file.name.replace(/\.[^/.]+$/, ''); // 移除扩展名
+        setManualTitle(fileName);
+      }
+    }
   };
 
   const handleShareManual = async () => {
@@ -89,19 +123,23 @@ const MusicShareModal: React.FC<MusicShareModalProps> = ({
       manualLyrics.trim() || undefined
     );
     
-    const musicInfo: MusicInfo = {
+    const musicInfo: MusicInfo & { audioUrl?: string; audioFile?: File } = {
       title: manualTitle,
       artist: manualArtist,
       mood: manualMood,
       duration: parseInt(manualDuration) || 180,
       // 添加歌词信息
       ...(lyricsInfo.lyrics && { lyrics: lyricsInfo.lyrics }),
-      ...(lyricsInfo.lyricsWithTime && { lyricsWithTime: lyricsInfo.lyricsWithTime })
+      ...(lyricsInfo.lyricsWithTime && { lyricsWithTime: lyricsInfo.lyricsWithTime }),
+      // 🎵 添加音频源
+      ...(audioPreview && { audioUrl: audioPreview }),
+      ...(audioFile && { audioFile }),
+      ...(audioUrl.trim() && { audioUrl: audioUrl.trim() })
     };
     
     console.log(`🎵 分享音乐 (歌词来源: ${lyricsInfo.source}):`, musicInfo.title);
     
-    onShareMusic(musicInfo);
+    onShareMusic(musicInfo as MusicInfo);
     onClose();
   };
 
@@ -160,7 +198,7 @@ const MusicShareModal: React.FC<MusicShareModalProps> = ({
 
         {/* Content */}
         <div className="flex-1 overflow-y-auto p-6">
-          {!manualMode ? (
+          {uploadMode === 'search' ? (
             <>
               {/* 搜索区域 */}
               <div className="mb-6">
@@ -181,12 +219,28 @@ const MusicShareModal: React.FC<MusicShareModalProps> = ({
                     <Search className="w-5 h-5" />
                   </button>
                 </div>
-                <button
-                  onClick={() => setManualMode(true)}
-                  className="mt-2 text-sm text-purple-600 hover:text-purple-700 transition-colors"
-                >
-                  找不到？手动输入音乐信息
-                </button>
+                <div className="mt-2 flex gap-2 text-sm">
+                  <button
+                    onClick={() => setUploadMode('manual')}
+                    className="text-purple-600 hover:text-purple-700 transition-colors"
+                  >
+                    手动输入
+                  </button>
+                  <span className="text-gray-300">|</span>
+                  <button
+                    onClick={() => setUploadMode('upload')}
+                    className="text-purple-600 hover:text-purple-700 transition-colors"
+                  >
+                    上传音频
+                  </button>
+                  <span className="text-gray-300">|</span>
+                  <button
+                    onClick={() => setUploadMode('url')}
+                    className="text-purple-600 hover:text-purple-700 transition-colors"
+                  >
+                    音频链接
+                  </button>
+                </div>
               </div>
 
               {/* 搜索结果 */}
@@ -243,13 +297,141 @@ const MusicShareModal: React.FC<MusicShareModalProps> = ({
                 </div>
               )}
             </>
+          ) : uploadMode === 'upload' ? (
+            /* 音频文件上传模式 */
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <h4 className="font-medium text-gray-900">上传音频文件</h4>
+                <button
+                  onClick={() => setUploadMode('search')}
+                  className="text-sm text-purple-600 hover:text-purple-700"
+                >
+                  返回搜索
+                </button>
+              </div>
+              
+              {/* 文件上传区域 */}
+              <div 
+                onClick={() => audioInputRef.current?.click()}
+                className="border-2 border-dashed border-purple-300 rounded-lg p-6 text-center cursor-pointer hover:border-purple-400 hover:bg-purple-50 transition-colors"
+              >
+                {audioFile ? (
+                  <div>
+                    <Music className="w-8 h-8 text-purple-600 mx-auto mb-2" />
+                    <p className="text-sm font-medium text-gray-900">{audioFile.name}</p>
+                    <p className="text-xs text-gray-600 mt-1">{(audioFile.size / 1024 / 1024).toFixed(2)} MB</p>
+                    {audioPreview && (
+                      <audio 
+                        controls 
+                        className="mt-3 w-full" 
+                        src={audioPreview}
+                        style={{ maxWidth: '300px' }}
+                      />
+                    )}
+                  </div>
+                ) : (
+                  <div>
+                    <Upload className="w-8 h-8 text-gray-400 mx-auto mb-2" />
+                    <p className="text-sm text-gray-600">点击选择音频文件</p>
+                    <p className="text-xs text-gray-500 mt-1">支持 MP3, WAV, AAC, M4A 等格式</p>
+                  </div>
+                )}
+              </div>
+              
+              <input
+                ref={audioInputRef}
+                type="file"
+                accept="audio/*"
+                onChange={handleAudioFileUpload}
+                className="hidden"
+              />
+              
+              {/* 基本信息输入 */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">歌名 *</label>
+                <input
+                  type="text"
+                  value={manualTitle}
+                  onChange={(e) => setManualTitle(e.target.value)}
+                  placeholder="输入歌名"
+                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"
+                />
+              </div>
+              
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">歌手 *</label>
+                <input
+                  type="text"
+                  value={manualArtist}
+                  onChange={(e) => setManualArtist(e.target.value)}
+                  placeholder="输入歌手名"
+                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"
+                />
+              </div>
+            </div>
+          ) : uploadMode === 'url' ? (
+            /* 音频URL输入模式 */
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <h4 className="font-medium text-gray-900">输入音频链接</h4>
+                <button
+                  onClick={() => setUploadMode('search')}
+                  className="text-sm text-purple-600 hover:text-purple-700"
+                >
+                  返回搜索
+                </button>
+              </div>
+              
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">音频URL *</label>
+                <input
+                  type="url"
+                  value={audioUrl}
+                  onChange={(e) => setAudioUrl(e.target.value)}
+                  placeholder="https://example.com/music.mp3"
+                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"
+                />
+                {audioUrl.trim() && (
+                  <div className="mt-2">
+                    <audio 
+                      controls 
+                      className="w-full" 
+                      src={audioUrl}
+                      onError={() => alert('音频链接无效或无法访问')}
+                    />
+                  </div>
+                )}
+              </div>
+              
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">歌名 *</label>
+                <input
+                  type="text"
+                  value={manualTitle}
+                  onChange={(e) => setManualTitle(e.target.value)}
+                  placeholder="输入歌名"
+                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"
+                />
+              </div>
+              
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">歌手 *</label>
+                <input
+                  type="text"
+                  value={manualArtist}
+                  onChange={(e) => setManualArtist(e.target.value)}
+                  placeholder="输入歌手名"
+                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"
+                />
+              </div>
+            </div>
           ) : (
             /* 手动输入模式 */
             <div className="space-y-4">
               <div className="flex items-center justify-between">
                 <h4 className="font-medium text-gray-900">手动输入音乐信息</h4>
                 <button
-                  onClick={() => setManualMode(false)}
+                  onClick={() => setUploadMode('search')}
                   className="text-sm text-purple-600 hover:text-purple-700"
                 >
                   返回搜索
@@ -348,10 +530,10 @@ const MusicShareModal: React.FC<MusicShareModalProps> = ({
             >
               取消
             </button>
-            {manualMode ? (
+            {uploadMode !== 'search' ? (
               <button
                 onClick={handleShareManual}
-                disabled={!manualTitle.trim() || !manualArtist.trim()}
+                disabled={!manualTitle.trim() || !manualArtist.trim() || (uploadMode === 'url' && !audioUrl.trim())}
                 className="flex-1 px-4 py-3 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 分享音乐

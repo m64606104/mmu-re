@@ -42,7 +42,7 @@ import {
   addMessageToSubChat,
   updateSubChatInConversation,
   addSubChatToConversation,
-  removeSubChatFromConversation,
+  // removeSubChatFromConversation, // 未使用，暂时注释
   getTotalUnreadCount,
   getPendingSubChatsCount,
 } from '../utils/subChatManager';
@@ -1186,13 +1186,7 @@ ${recentMessages}
    * 删除子聊天
    */
   const handleDeleteSubChat = (subChatId: string) => {
-    const updatedConversation = removeSubChatFromConversation(conversation, subChatId);
-    
-    onUpdateConversation(conversation.id, {
-      subChats: updatedConversation.subChats,
-    });
-    
-    // 如果是当前打开的，关闭它
+    // 如果当前正在查看这个子聊天，先关闭它
     if (activeSubChatId === subChatId) {
       setActiveSubChatId(null);
     }
@@ -1203,6 +1197,52 @@ ${recentMessages}
       newSet.delete(subChatId);
       return newSet;
     });
+    
+    // 从对话中删除子聊天
+    const updatedSubChats = (conversation.subChats || []).filter(sc => sc.id !== subChatId);
+    onUpdateConversation(conversation.id, { subChats: updatedSubChats });
+  };
+
+  /**
+   * 导入子聊天
+   */
+  const handleImportSubChat = (importData: any) => {
+    try {
+      // 生成新的ID避免冲突
+      const newSubChatId = `imported_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+      
+      // 创建新的子聊天对象
+      const importedSubChat = {
+        ...importData.subChat,
+        id: newSubChatId,
+        conversationId: conversation.id, // 更新为当前对话ID
+        createdAt: Date.now(),
+        lastMessageTime: Date.now(),
+        unreadCount: 0,
+        isActive: false,
+        status: 'active' as const,
+      };
+      
+      // 更新消息ID避免冲突
+      const importedMessages = importData.messages.map((msg: any) => ({
+        ...msg,
+        id: `imported_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+      }));
+      
+      importedSubChat.messages = importedMessages;
+      
+      // 添加到当前对话的子聊天列表
+      const updatedSubChats = [...(conversation.subChats || []), importedSubChat];
+      onUpdateConversation(conversation.id, { subChats: updatedSubChats });
+      
+      // 自动打开导入的子聊天
+      setActiveSubChatId(newSubChatId);
+      setShowSubChatManager(false);
+      
+    } catch (error) {
+      console.error('导入子聊天处理失败:', error);
+      alert('❌ 导入处理失败，请重试');
+    }
   };
 
   /**
@@ -5520,6 +5560,7 @@ ${doc.content}`;
         onCreateSubChat={handleCreateUserSubChat}
         onRenameSubChat={handleRenameSubChat}
         onDeleteSubChat={handleDeleteSubChat}
+        onImportSubChat={handleImportSubChat}
       />
     )}
 
