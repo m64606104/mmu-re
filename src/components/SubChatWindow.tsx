@@ -1,6 +1,10 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { X, Send, Minimize2, MessageCircle, Plus, Image, DollarSign, Zap, Smile, Video, Move } from 'lucide-react';
-import { SubChat, ApiConfig, Conversation, Message } from '../types';
+import { X, Send, Minimize2, MessageCircle, Plus, Image, DollarSign, Zap, Smile, Video, Move, 
+         Mic, FileText, Phone, MapPin, CreditCard, ImageIcon } from 'lucide-react';
+import { SubChat, ApiConfig, Conversation, Message, DocumentMessage } from '../types';
+import WordStyleDocumentCard from './WordStyleDocumentCard';
+import MoneyTransferModal from './MoneyTransferModal';
+import SendDocumentModal from './SendDocumentModal';
 
 interface SubChatWindowProps {
   subChat: SubChat;
@@ -47,6 +51,18 @@ const SubChatWindow: React.FC<SubChatWindowProps> = ({
   const [pendingVideoFile, setPendingVideoFile] = useState<File | null>(null);
   const [showStickerModal, setShowStickerModal] = useState(false);
   const [stickerDescInput, setStickerDescInput] = useState('');
+  const [showVoiceModal, setShowVoiceModal] = useState(false);
+  const [voiceDescInput, setVoiceDescInput] = useState('');
+  
+  // 功能模态框状态
+  const [showMoneyTransferModal, setShowMoneyTransferModal] = useState(false);
+  const [showSendDocumentModal, setShowSendDocumentModal] = useState(false);
+  const [viewingDocument, setViewingDocument] = useState<DocumentMessage | null>(null);
+  
+  // 语音播放相关
+  const [viewingVoice, setViewingVoice] = useState<string[]>([]);
+  const [playingVoice, setPlayingVoice] = useState<string | null>(null);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
 
   useEffect(() => {
     scrollToBottom();
@@ -208,6 +224,11 @@ const SubChatWindow: React.FC<SubChatWindowProps> = ({
     setShowToolbar(false);
   };
 
+  const handleVoiceClick = () => {
+    setShowVoiceModal(true);
+    setShowToolbar(false);
+  };
+
   const handleSendVideo = () => {
     if (!pendingVideoFile || !videoDescInput.trim()) return;
 
@@ -343,24 +364,146 @@ const SubChatWindow: React.FC<SubChatWindowProps> = ({
                 key={message.id}
                 className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}
               >
-                <div
-                  className={`max-w-[75%] rounded-2xl px-3 py-2 ${
-                    message.role === 'user'
-                      ? 'bg-gradient-to-r from-purple-500 to-blue-500 text-white'
-                      : 'bg-white border border-purple-100 text-gray-800'
-                  }`}
-                >
-                  <p className="text-sm whitespace-pre-wrap break-words">
-                    {message.content}
-                  </p>
-                  <p className={`text-[10px] mt-1 ${
-                    message.role === 'user' ? 'text-white/70' : 'text-gray-400'
-                  }`}>
-                    {new Date(message.timestamp).toLocaleTimeString('zh-CN', {
-                      hour: '2-digit',
-                      minute: '2-digit',
-                    })}
-                  </p>
+                <div className={`max-w-[75%] ${message.role === 'user' ? 'ml-4' : 'mr-4'}`}>
+                  {/* 文档显示 */}
+                  {message.document && (
+                    <div className="mb-2">
+                      <WordStyleDocumentCard
+                        document={message.document}
+                        compact={true}
+                        onClick={() => setViewingDocument(message.document || null)}
+                        onSave={() => {
+                          // 简化版本，只显示提示
+                          alert('文档已保存到资料库');
+                        }}
+                        onForward={() => {
+                          alert('转发功能暂不支持');
+                        }}
+                      />
+                    </div>
+                  )}
+                  
+                  {/* 红包/转账显示 */}
+                  {message.moneyTransfer && (
+                    <div className={`p-0 rounded-2xl overflow-hidden mb-2 ${
+                      message.role === 'user' 
+                        ? 'bg-gradient-to-br from-yellow-400 to-orange-400' 
+                        : 'bg-gradient-to-br from-yellow-500 to-orange-500'
+                    }`}>
+                      <div className="p-4 text-white">
+                        <div className="flex items-center gap-2 mb-2">
+                          <span className="text-2xl">
+                            {message.moneyTransfer.type === 'redPacket' ? '🧧' : '💸'}
+                          </span>
+                          <div className="text-lg font-bold">
+                            {message.moneyTransfer.type === 'redPacket' ? '红包' : '转账'}
+                          </div>
+                        </div>
+                        <div className="text-2xl font-bold mb-2">
+                          ¥{(message.moneyTransfer.originalAmount || message.moneyTransfer.amount).toFixed(2)}
+                        </div>
+                        {message.moneyTransfer.message && (
+                          <div className="text-sm opacity-90 mb-2">
+                            {message.moneyTransfer.message}
+                          </div>
+                        )}
+                        {message.moneyTransfer.status === 'pending' && message.role === 'user' && (
+                          <div className="text-xs opacity-75">
+                            等待对方领取
+                          </div>
+                        )}
+                        {message.moneyTransfer.status === 'received' && (
+                          <div className="text-xs opacity-75">
+                            已{message.moneyTransfer.type === 'redPacket' ? '领取' : '收款'}
+                          </div>
+                        )}
+                        {message.moneyTransfer.status === 'returned' && (
+                          <div className="text-xs opacity-75">
+                            已退回
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                  
+                  {/* 多媒体显示 */}
+                  {message.mediaType === 'image' && message.mediaUrl && (
+                    <img 
+                      src={message.mediaUrl} 
+                      alt="图片" 
+                      className="w-full max-w-[200px] rounded-2xl mb-2"
+                    />
+                  )}
+                  {message.mediaType === 'video' && message.mediaUrl && (
+                    <video 
+                      src={message.mediaUrl} 
+                      controls 
+                      className="w-full max-w-[200px] rounded-2xl mb-2"
+                    />
+                  )}
+                  {message.mediaType === 'voice' && message.mediaUrl && (
+                    <div className="mb-2">
+                      <div 
+                        onClick={() => setViewingVoice(prev => 
+                          prev.includes(message.id) 
+                            ? prev.filter(id => id !== message.id)
+                            : [...prev, message.id]
+                        )}
+                        className="cursor-pointer flex items-center gap-2 px-3 py-2 bg-gray-50 rounded-xl min-w-[120px] max-w-[200px]"
+                      >
+                        <Mic className="w-4 h-4 text-gray-600 flex-shrink-0" />
+                        <div className="flex-1 flex items-center gap-0.5">
+                          <div className="flex gap-0.5">
+                            {[...Array(15)].map((_, i) => (
+                              <div 
+                                key={i} 
+                                className="w-0.5 bg-gray-400 rounded-full"
+                                style={{ height: `${Math.random() * 12 + 4}px` }}
+                              />
+                            ))}
+                          </div>
+                        </div>
+                        <span className="text-xs text-gray-600 flex-shrink-0 mr-1">{message.voiceDuration || 0}"</span>
+                      </div>
+                      {viewingVoice.includes(message.id) && message.mediaDescription && (
+                        <div className="mt-2 px-4 py-2 bg-gray-50 rounded-xl border border-gray-200">
+                          <p className="text-[13px] text-gray-700">{message.mediaDescription}</p>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                  {message.mediaType === 'sticker' && (
+                    <div className="relative w-[120px] h-[120px] rounded-2xl overflow-hidden bg-purple-100/40 backdrop-blur-sm border border-purple-200 mb-2">
+                      <div className="absolute inset-0 bg-gradient-to-br from-purple-50/30 to-purple-100/30" />
+                      <div className="absolute inset-0 flex flex-col items-center justify-center p-3 text-center">
+                        <Smile className="w-8 h-8 text-purple-400 mb-2" strokeWidth={1.5} />
+                        <p className="text-xs text-gray-700 leading-tight">{message.mediaDescription}</p>
+                      </div>
+                    </div>
+                  )}
+                  
+                  {/* 文本内容 */}
+                  {!message.document && !message.moneyTransfer && message.content && message.content.trim() && (
+                    <div
+                      className={`rounded-2xl px-3 py-2 ${
+                        message.role === 'user'
+                          ? 'bg-gradient-to-r from-purple-500 to-blue-500 text-white'
+                          : 'bg-white border border-purple-100 text-gray-800'
+                      }`}
+                    >
+                      <p className="text-sm whitespace-pre-wrap break-words">
+                        {message.content}
+                      </p>
+                      <p className={`text-[10px] mt-1 ${
+                        message.role === 'user' ? 'text-white/70' : 'text-gray-400'
+                      }`}>
+                        {new Date(message.timestamp).toLocaleTimeString('zh-CN', {
+                          hour: '2-digit',
+                          minute: '2-digit',
+                        })}
+                      </p>
+                    </div>
+                  )}
                 </div>
               </div>
             ))}
@@ -372,31 +515,46 @@ const SubChatWindow: React.FC<SubChatWindowProps> = ({
       {/* 工具栏 */}
       {showToolbar && (
         <div className="border-t border-purple-100 p-3 bg-gradient-to-r from-purple-50 to-blue-50">
-          <div className="grid grid-cols-4 gap-2">
-            <button 
-              onClick={() => imageInputRef.current?.click()}
-              className="flex flex-col items-center justify-center p-2 rounded-lg hover:bg-white/50 transition-colors"
-            >
-              <Image className="w-5 h-5 text-purple-600 mb-1" />
-              <span className="text-xs text-purple-600">图片</span>
+          <div className="flex gap-2 items-center overflow-x-auto">
+            <button onClick={() => imageInputRef.current?.click()} className="flex-shrink-0">
+              <div className="w-9 h-9 rounded-full bg-white border border-purple-300 flex items-center justify-center hover:border-purple-400 transition-colors">
+                <ImageIcon className="w-4 h-4 text-purple-600" />
+              </div>
             </button>
-            <button 
-              onClick={() => videoInputRef.current?.click()}
-              className="flex flex-col items-center justify-center p-2 rounded-lg hover:bg-white/50 transition-colors"
-            >
-              <Video className="w-5 h-5 text-purple-600 mb-1" />
-              <span className="text-xs text-purple-600">视频</span>
+            <button onClick={() => videoInputRef.current?.click()} className="flex-shrink-0">
+              <div className="w-9 h-9 rounded-full bg-white border border-purple-300 flex items-center justify-center hover:border-purple-400 transition-colors">
+                <Video className="w-4 h-4 text-purple-600" />
+              </div>
             </button>
-            <button 
-              onClick={handleStickerClick}
-              className="flex flex-col items-center justify-center p-2 rounded-lg hover:bg-white/50 transition-colors"
-            >
-              <Smile className="w-5 h-5 text-purple-600 mb-1" />
-              <span className="text-xs text-purple-600">表情</span>
+            <button onClick={handleVoiceClick} className="flex-shrink-0">
+              <div className="w-9 h-9 rounded-full bg-white border border-purple-300 flex items-center justify-center hover:border-purple-400 transition-colors">
+                <Mic className="w-4 h-4 text-purple-600" />
+              </div>
             </button>
-            <button className="flex flex-col items-center justify-center p-2 rounded-lg hover:bg-white/50 transition-colors">
-              <DollarSign className="w-5 h-5 text-purple-600 mb-1" />
-              <span className="text-xs text-purple-600">红包</span>
+            <button onClick={handleStickerClick} className="flex-shrink-0">
+              <div className="w-9 h-9 rounded-full bg-white border border-purple-300 flex items-center justify-center hover:border-purple-400 transition-colors">
+                <Smile className="w-4 h-4 text-purple-600" />
+              </div>
+            </button>
+            <button className="flex-shrink-0">
+              <div className="w-9 h-9 rounded-full bg-white border border-purple-300 flex items-center justify-center hover:border-purple-400 transition-colors">
+                <Phone className="w-4 h-4 text-purple-600" />
+              </div>
+            </button>
+            <button className="flex-shrink-0">
+              <div className="w-9 h-9 rounded-full bg-white border border-purple-300 flex items-center justify-center hover:border-purple-400 transition-colors">
+                <MapPin className="w-4 h-4 text-purple-600" />
+              </div>
+            </button>
+            <button onClick={() => setShowMoneyTransferModal(true)} className="flex-shrink-0">
+              <div className="w-9 h-9 rounded-full bg-white border border-purple-300 flex items-center justify-center hover:border-purple-400 transition-colors">
+                <CreditCard className="w-4 h-4 text-purple-600" />
+              </div>
+            </button>
+            <button onClick={() => setShowSendDocumentModal(true)} className="flex-shrink-0">
+              <div className="w-9 h-9 rounded-full bg-white border border-purple-300 flex items-center justify-center hover:border-purple-400 transition-colors">
+                <FileText className="w-4 h-4 text-purple-600" />
+              </div>
             </button>
           </div>
           
@@ -537,6 +695,130 @@ const SubChatWindow: React.FC<SubChatWindowProps> = ({
                 发送
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* 语音输入弹窗 */}
+      {showVoiceModal && (
+        <div className="absolute inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl p-6 w-full max-w-sm shadow-2xl">
+            <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
+              <Mic className="w-5 h-5 text-purple-500" />
+              发送语音
+            </h3>
+            <p className="text-sm text-gray-600 mb-4">
+              请用文字描述语音内容，AI会理解并做出相应回复。
+            </p>
+            <textarea
+              value={voiceDescInput}
+              onChange={(e) => setVoiceDescInput(e.target.value)}
+              placeholder="例如：我录了一段唱歌的语音，很开心的调子"
+              rows={4}
+              className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500 resize-none text-sm"
+              autoFocus
+            />
+            <div className="flex gap-3 mt-4">
+              <button
+                onClick={() => {
+                  setShowVoiceModal(false);
+                  setVoiceDescInput('');
+                }}
+                className="flex-1 px-4 py-2.5 border border-gray-300 text-gray-700 rounded-xl hover:bg-gray-50 transition-colors font-medium"
+              >
+                取消
+              </button>
+              <button
+                onClick={() => {
+                  if (!voiceDescInput.trim()) return;
+                  const voiceMessage: Message = {
+                    id: `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+                    role: 'user',
+                    content: voiceDescInput.trim(),
+                    timestamp: Date.now(),
+                    mediaType: 'voice',
+                    mediaDescription: voiceDescInput.trim(),
+                    voiceDuration: Math.floor(Math.random() * 30) + 5
+                  };
+                  _onUpdateSubChat(subChat.id, {
+                    messages: [...subChat.messages, voiceMessage]
+                  });
+                  setShowVoiceModal(false);
+                  setVoiceDescInput('');
+                }}
+                disabled={!voiceDescInput.trim()}
+                className="flex-1 px-4 py-2.5 bg-purple-500 text-white rounded-xl hover:bg-purple-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed font-medium"
+              >
+                发送
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 红包转账弹窗 */}
+      {showMoneyTransferModal && (
+        <MoneyTransferModal
+          onClose={() => setShowMoneyTransferModal(false)}
+          onSend={(amount, type, message) => {
+            const moneyMessage: Message = {
+              id: `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+              role: 'user',
+              content: '',
+              timestamp: Date.now(),
+              moneyTransfer: {
+                type,
+                amount,
+                message: message || '',
+                status: 'pending'
+              }
+            };
+            _onUpdateSubChat(subChat.id, {
+              messages: [...subChat.messages, moneyMessage]
+            });
+            setShowMoneyTransferModal(false);
+          }}
+        />
+      )}
+
+      {/* 发送文档弹窗 */}
+      {showSendDocumentModal && (
+        <SendDocumentModal
+          onClose={() => setShowSendDocumentModal(false)}
+          onSend={(title, content, greeting, type) => {
+            const docMessage: Message = {
+              id: `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+              role: 'user',
+              content: greeting,
+              timestamp: Date.now(),
+              document: {
+                title,
+                content,
+                type
+              }
+            };
+            _onUpdateSubChat(subChat.id, {
+              messages: [...subChat.messages, docMessage]
+            });
+            setShowSendDocumentModal(false);
+          }}
+        />
+      )}
+
+      {/* 文档查看弹窗 */}
+      {viewingDocument && (
+        <div className="absolute inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl p-6 max-w-2xl max-h-[80vh] overflow-y-auto shadow-2xl w-full">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-semibold text-gray-900">{viewingDocument.title}</h3>
+              <button
+                onClick={() => setViewingDocument(null)}
+                className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="prose prose-sm max-w-none" dangerouslySetInnerHTML={{ __html: viewingDocument.content }} />
           </div>
         </div>
       )}
