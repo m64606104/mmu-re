@@ -743,8 +743,8 @@ ${recentMessages}
     onUpdateConversation(conversation.id, { messages: updatedMessages });
     setSelectedMessageId(null);
     
-    // 删除后恢复标记
-    setTimeout(() => setIsDeleting(false), 100);
+    // 删除完成后立即恢复标记
+    setIsDeleting(false);
   };
 
   // 编辑消息（所有消息都可编辑）
@@ -817,7 +817,7 @@ ${recentMessages}
     setSelectedMessages([]);
     setIsMultiSelectMode(false);
     
-    setTimeout(() => setIsDeleting(false), 100);
+    setIsDeleting(false);
   };
 
   // 取消多选模式
@@ -1247,8 +1247,8 @@ ${recentMessages}
         (inputRef.current as unknown as HTMLTextAreaElement).style.height = '24px';
       }
       
-      // 编辑后恢复标记
-      setTimeout(() => setIsEditing(false), 100);
+      // 编辑完成后立即恢复标记
+      setIsEditing(false);
       return;
     }
 

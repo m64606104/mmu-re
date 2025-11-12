@@ -1,7 +1,8 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { X, Save, Forward, Download, Copy, Check } from 'lucide-react';
 import { DocumentMessage } from '../types';
 import { extractDocumentText } from '../utils/enhancedDocumentParser';
+import { formatDocumentForDisplay, generateTitleStyle, generateContentStyle } from '../utils/documentFormatter';
 
 interface WordStyleDocumentModalProps {
   document: DocumentMessage;
@@ -27,6 +28,11 @@ const WordStyleDocumentModal: React.FC<WordStyleDocumentModalProps> = ({
   onForward
 }) => {
   const [copied, setCopied] = useState(false);
+  
+  // 格式化文档用于显示（在封装后进行格式处理）
+  const formattedDocument = useMemo(() => {
+    return formatDocumentForDisplay(document);
+  }, [document]);
   
   // 格式化时间
   const formatTime = (ts?: number) => {
@@ -86,7 +92,7 @@ const WordStyleDocumentModal: React.FC<WordStyleDocumentModalProps> = ({
             {/* 文档标题 */}
             <div>
               <h1 className="text-lg font-semibold text-gray-900">
-                {document.title}
+                {formattedDocument.title}
               </h1>
               <p className="text-xs text-gray-500">
                 {document.type === 'code' ? '代码文档' : document.type === 'markdown' ? 'Markdown 文档' : '文本文档'}
@@ -187,20 +193,29 @@ const WordStyleDocumentModal: React.FC<WordStyleDocumentModalProps> = ({
                 'bg-blue-500'
               } rounded-full mb-8`} />
               
-              {/* 标题 */}
-              <h1 className="text-3xl font-bold text-gray-900 mb-8 text-center">
-                {document.title}
-              </h1>
+              {/* 标题 - 书面风格 */}
+              <div className="text-center mb-12">
+                <h1 
+                  className="text-4xl font-bold mb-4"
+                  style={{
+                    ...generateTitleStyle(formattedDocument.title, document.type),
+                    fontFamily: '"Times New Roman", "SimSun", serif',
+                  }}
+                >
+                  {formattedDocument.title}
+                </h1>
+                {/* 标题装饰线 */}
+                <div className="mx-auto w-24 h-0.5 bg-gradient-to-r from-transparent via-gray-400 to-transparent"></div>
+              </div>
               
-              {/* 内容 */}
+              {/* 内容 - 应用格式化后的内容 */}
               <div 
-                className="prose prose-sm md:prose-base max-w-none"
-                dangerouslySetInnerHTML={{ __html: document.content }}
+                className="prose prose-lg max-w-none"
+                dangerouslySetInnerHTML={{ __html: formattedDocument.content }}
                 style={{
-                  lineHeight: '1.8',
-                  fontSize: '16px',
-                  color: '#1f2937',
-                  fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Microsoft YaHei", sans-serif'
+                  ...generateContentStyle(),
+                  letterSpacing: '0.02em',
+                  textAlign: 'justify',
                 }}
               />
             </div>
