@@ -12,6 +12,7 @@ const SUBCHAT_STORAGE_KEY = 'subchat_data';
  */
 export const createSubChat = (
   name: string,
+  conversationId: string,
   initiator: 'user' | 'ai',
   purpose?: string
 ): SubChat => {
@@ -26,6 +27,7 @@ export const createSubChat = (
     initiator,
     purpose,
     status: initiator === 'ai' ? 'pending' : 'active',
+    conversationId,
   };
 };
 

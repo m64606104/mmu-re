@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { X, MessageCircle, Send, Check, User, Bot, ArrowRight, Forward } from 'lucide-react';
 import { SubChat, Message, Conversation } from '../types';
 

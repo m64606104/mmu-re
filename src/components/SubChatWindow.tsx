@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { X, Send, Minimize2, MessageCircle, Plus, Image, DollarSign, Zap, Smile, Video, Move, 
-         Mic, FileText, Phone, MapPin, CreditCard, ImageIcon } from 'lucide-react';
+import { X, Send, Minimize2, MessageCircle, Plus, Zap, Smile, Video, Move, 
+  Mic, FileText, CreditCard, Image as ImageIcon, Phone, MapPin } from 'lucide-react';
 import { SubChat, ApiConfig, Conversation, Message, DocumentMessage } from '../types';
 import WordStyleDocumentCard from './WordStyleDocumentCard';
 import MoneyTransferModal from './MoneyTransferModal';
@@ -61,8 +61,8 @@ const SubChatWindow: React.FC<SubChatWindowProps> = ({
   
   // 语音播放相关
   const [viewingVoice, setViewingVoice] = useState<string[]>([]);
-  const [playingVoice, setPlayingVoice] = useState<string | null>(null);
-  const audioRef = useRef<HTMLAudioElement | null>(null);
+  // const [playingVoice, setPlayingVoice] = useState<string | null>(null);
+  // const audioRef = useRef<HTMLAudioElement | null>(null);
 
   useEffect(() => {
     scrollToBottom();

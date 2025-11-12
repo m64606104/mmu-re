@@ -1,4 +1,4 @@
-import { SubChat, Message, Conversation } from '../types';
+import { SubChat, Message } from '../types';
 
 /**
  * 子对话记忆管理器
@@ -143,7 +143,7 @@ export class SubChatMemoryManager {
    * 提取关键话题
    */
   private extractKeyTopics(messages: Message[]): string[] {
-    const topics = new Set<string>();
+    // const topics = new Set<string>();
     const contentText = messages.map(m => m.content).join(' ');
     
     // 简单的关键词提取（可以后续用更复杂的NLP算法）
@@ -194,27 +194,6 @@ export class SubChatMemoryManager {
    */
   private async generateAISummary(subChat: SubChat, messages: Message[]): Promise<string> {
     try {
-      // 构建摘要请求
-      const conversationText = messages.map(m => 
-        `${m.role === 'user' ? '用户' : 'AI'}：${m.content}`
-      ).join('\n');
-
-      const prompt = `请为以下子对话生成一个简洁的摘要（不超过100字）：
-
-子对话名称：${subChat.name}
-子对话目的：${subChat.purpose || '未指定'}
-
-对话内容：
-${conversationText}
-
-要求：
-1. 总结主要讨论内容和结论
-2. 突出重要决定和关键信息
-3. 保持简洁，方便在主对话中引用
-4. 使用第三人称描述
-
-摘要：`;
-
       // 这里应该调用AI API，但为了避免依赖，先用简化版本
       return this.generateSimpleSummary(subChat, messages);
 

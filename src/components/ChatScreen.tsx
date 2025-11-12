@@ -1073,7 +1073,7 @@ ${recentMessages}
    * 创建用户发起的子聊天
    */
   const handleCreateUserSubChat = (name: string) => {
-    const newSubChat = createSubChat(name, 'user');
+    const newSubChat = createSubChat(name, conversation.id, 'user');
     const updatedConversation = addSubChatToConversation(conversation, newSubChat);
     onUpdateConversation(conversation.id, {
       subChats: updatedConversation.subChats,
@@ -1306,7 +1306,7 @@ ${characterInfo?.languageStyle ? `语言风格：${characterInfo.languageStyle}`
    * AI发起子聊天（从解析逻辑调用）
    */
   const handleAIInitiateSubChat = (purpose: string, suggestedName: string) => {
-    const newSubChat = createSubChat(suggestedName, 'ai', purpose);
+    const newSubChat = createSubChat(suggestedName, conversation.id, 'ai', purpose);
     const updatedConversation = addSubChatToConversation(conversation, newSubChat);
     
     onUpdateConversation(conversation.id, {
