@@ -345,40 +345,146 @@ function App() {
   // 导入角色数据
   const handleImportCharacter = useCallback((data: any) => {
     try {
+      console.log('🔄 开始导入角色数据...', data);
+      
+      // 生成新的对话ID
+      const newConversationId = Date.now().toString();
+      
+      // 创建新对话，保持原有ID结构但使用新ID
       const newConversation: Conversation = {
-        id: Date.now().toString(),
-        type: 'private',
-        name: data.character.name,
-        avatar: data.character.avatar,
-        lastMessageTime: Date.now(),
+        id: newConversationId,
+        type: data.character?.type || 'private',
+        name: data.character?.name || '未知角色',
+        avatar: data.character?.avatar,
+        lastMessageTime: data.character?.lastMessageTime || Date.now(),
         unreadCount: 0,
         messages: data.messages || [],
-        characterSettings: data.character.characterSettings,
-        enabledFeatures: data.character.enabledFeatures || ['memory-system'], // 默认启用记忆系统
+        characterSettings: data.character?.characterSettings,
+        enabledFeatures: data.character?.enabledFeatures || ['memory-system'],
+        // 保留群聊相关数据
+        groupRemark: data.character?.groupRemark,
+        members: data.character?.members,
+        isMuted: data.character?.isMuted || false,
+        // 保留AI状态信息
+        aiStatus: data.character?.aiStatus,
       };
       
-      // 添加对话
-      setConversations(prev => [...prev, newConversation]);
+      console.log('✅ 创建新对话:', newConversation);
       
-      // 导入记忆库
-      if (data.memories && data.memories.length > 0) {
-        const memoryKey = `memory_bank_${newConversation.id}`;
-        localStorage.setItem(memoryKey, JSON.stringify(data.memories));
+      // 🧠 导入记忆库数据（完整MemoryBank）
+      if (data.memoryBank && data.memoryBank.memories) {
+        console.log('🧠 导入记忆库数据...');
+        const memoryBanksData = localStorage.getItem('chat_memory_banks');
+        const allMemoryBanks = memoryBanksData ? JSON.parse(memoryBanksData) : [];
+        
+        // 创建新的记忆库
+        const newMemoryBank = {
+          ...data.memoryBank,
+          conversationId: newConversationId, // 使用新的对话ID
+          updatedAt: Date.now(),
+        };
+        
+        allMemoryBanks.push(newMemoryBank);
+        localStorage.setItem('chat_memory_banks', JSON.stringify(allMemoryBanks));
+        console.log('✅ 记忆库导入成功，记忆条数:', newMemoryBank.memories?.length || 0);
       }
       
-      // 提示成功
-      alert(
-        `✅ 导入成功！\n\n` +
-        `角色：${data.character.name}\n` +
-        `记忆条数：${data.memories?.length || 0}\n` +
-        `消息数量：${data.messages?.length || 0}`
-      );
+      // 📸 导入朋友圈数据
+      if (data.moments) {
+        console.log('📸 导入朋友圈数据...');
+        const momentsKey = `moments_${newConversationId}`;
+        localStorage.setItem(momentsKey, JSON.stringify(data.moments));
+        console.log('✅ 朋友圈导入成功，朋友圈条数:', data.moments.posts?.length || 0);
+      }
+      
+      // 💰 导入AI财务数据
+      if (data.finance) {
+        console.log('💰 导入AI财务数据...');
+        const financeKey = `ai_finance_${newConversationId}`;
+        localStorage.setItem(financeKey, JSON.stringify(data.finance));
+        console.log('✅ AI财务数据导入成功');
+      }
+      
+      // 🔗 导入关系网络数据
+      if (data.relationships && data.relationships.length > 0) {
+        console.log('🔗 导入关系网络数据...');
+        const relationshipsData = localStorage.getItem('relationships');
+        const allRelationships = relationshipsData ? JSON.parse(relationshipsData) : [];
+        
+        // 更新关系中的ID引用
+        const updatedRelationships = data.relationships.map((rel: any) => ({
+          ...rel,
+          id: Date.now().toString() + Math.random().toString(36).substr(2, 9),
+          personId: rel.personId === data.character?.id ? newConversationId : rel.personId,
+          targetId: rel.targetId === data.character?.id ? newConversationId : rel.targetId,
+          updatedAt: Date.now(),
+        }));
+        
+        allRelationships.push(...updatedRelationships);
+        localStorage.setItem('relationships', JSON.stringify(allRelationships));
+        console.log('✅ 关系网络导入成功，关系数量:', updatedRelationships.length);
+      }
+      
+      // 📚 导入文档库数据
+      if (data.documents && data.documents.length > 0) {
+        console.log('📚 导入文档库数据...');
+        const documentLibraryData = localStorage.getItem('document_library');
+        const allDocuments = documentLibraryData ? JSON.parse(documentLibraryData) : [];
+        
+        // 更新文档的关联ID
+        const updatedDocuments = data.documents.map((doc: any) => ({
+          ...doc,
+          id: Date.now().toString() + Math.random().toString(36).substr(2, 9),
+          conversationId: newConversationId, // 关联到新对话
+          uploadedAt: Date.now(),
+        }));
+        
+        allDocuments.push(...updatedDocuments);
+        localStorage.setItem('document_library', JSON.stringify(allDocuments));
+        console.log('✅ 文档库导入成功，文档数量:', updatedDocuments.length);
+      }
+      
+      // 添加对话到列表
+      setConversations(prev => [...prev, newConversation]);
+      console.log('✅ 对话添加成功');
+      
+      // 📊 统计导入信息
+      const importStats = {
+        character: data.character?.name || '未知角色',
+        messages: data.messages?.length || 0,
+        memories: data.memoryBank?.memories?.length || 0,
+        moments: data.moments?.posts?.length || 0,
+        knowledgeBase: data.character?.characterSettings?.knowledgeBase?.length || 0,
+        documents: data.documents?.length || 0,
+        relationships: data.relationships?.length || 0,
+        hasFinance: !!data.finance,
+        hasAIStatus: !!data.character?.aiStatus,
+        version: data.version || '1.0',
+      };
+      
+      // 显示详细导入结果
+      const successMessage = `✅ 角色导入成功！\n\n` +
+        `👤 角色：${importStats.character}\n` +
+        `📄 数据版本：${importStats.version}\n\n` +
+        `📊 导入内容：\n` +
+        `• 角色设置：完整\n` +
+        `• 知识库：${importStats.knowledgeBase} 份\n` +
+        `• 文档库：${importStats.documents} 份\n` +
+        `• 记忆库：${importStats.memories} 条\n` +
+        `• 朋友圈：${importStats.moments} 条\n` +
+        `• 关系网络：${importStats.relationships} 个\n` +
+        `• AI状态：${importStats.hasAIStatus ? '已恢复' : '无'}\n` +
+        `• 财务数据：${importStats.hasFinance ? '已恢复' : '无'}\n` +
+        `• 消息记录：${importStats.messages} 条\n\n` +
+        `🎉 所有数据已完整导入！`;
+      
+      alert(successMessage);
       
       // 导航到聊天界面
-      navigateTo('chat', newConversation.id);
+      navigateTo('chat', newConversationId);
     } catch (error) {
-      console.error('导入失败:', error);
-      alert('❌ 导入失败，请检查文件格式');
+      console.error('❌ 导入失败:', error);
+      alert(`❌ 导入失败\n\n错误信息：${error}\n\n请检查：\n1. 文件是否完整\n2. 文件格式是否正确\n3. 是否为最新版本导出的数据`);
     }
   }, [navigateTo]);
 
