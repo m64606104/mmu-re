@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { X, Send, Minimize2, MessageCircle, Plus, Image, Mic, FileText, DollarSign, Zap, Smile, Video } from 'lucide-react';
+import { X, Send, Minimize2, MessageCircle, Plus, Image, DollarSign, Zap, Smile, Video } from 'lucide-react';
 import { SubChat, ApiConfig, Conversation, Message } from '../types';
 
 interface SubChatWindowProps {
