@@ -22,16 +22,30 @@ export function formatChatRecord(
   sourceType: 'main' | 'subchat'
 ): string {
   const sourceTypeText = sourceType === 'main' ? '主对话' : '子对话';
+  
+  // 分析参与者信息
+  const participants = new Set<string>();
+  messages.forEach(msg => {
+    const senderName = msg.role === 'user' ? '用户' : (sourceName || 'AI助手');
+    participants.add(senderName);
+  });
+  
   const header = `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 📋 转发的聊天记录
 📍 来源：${sourceTypeText}「${sourceName}」
-📅 时间：${new Date().toLocaleString()}
-💬 包含 ${messages.length} 条消息
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`;
+📅 时间范围：${new Date(messages[0]?.timestamp || Date.now()).toLocaleString()} - ${new Date(messages[messages.length - 1]?.timestamp || Date.now()).toLocaleString()}
+👥 参与者：${Array.from(participants).join('、')} (共${participants.size}人)
+💬 对话内容：共 ${messages.length} 条消息
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+📝 以下是完整的对话记录，请仔细阅读每条消息：`;
 
   const formattedMessages = messages.map((message, index) => {
-    const senderName = message.role === 'user' ? '用户' : 'AI助手';
-    const timestamp = new Date(message.timestamp).toLocaleString();
+    const senderName = message.role === 'user' ? '用户' : (sourceName || 'AI助手');
+    const timestamp = new Date(message.timestamp).toLocaleTimeString('zh-CN', {
+      hour: '2-digit',
+      minute: '2-digit'
+    });
     
     let content = '';
     
@@ -93,18 +107,25 @@ export function formatChatRecord(
       }
     }
     
-    // 构建消息文本
-    let messageText = `${index + 1}. ${senderName} ${timestamp}`;
+    // 构建更自然的消息格式，像真实聊天记录
+    const messageNumber = `[${index + 1}/${messages.length}]`;
+    let messageText = `${messageNumber} ${timestamp} ${senderName}:`;
     
     if (content || attachments.length > 0) {
-      messageText += '\n';
       if (content) {
-        messageText += `   ${content}`;
+        // 如果内容较长，进行适当换行
+        const formattedContent = content.length > 100 
+          ? content.replace(/。/g, '。\n     ').trim()
+          : content;
+        messageText += `\n     ${formattedContent}`;
       }
+      
       if (attachments.length > 0) {
-        if (content) messageText += '\n';
-        messageText += attachments.map(att => `   ${att}`).join('\n');
+        messageText += content ? '\n' : '';
+        messageText += `\n     ${attachments.join('\n     ')}`;
       }
+    } else {
+      messageText += '\n     (此消息无文本内容)';
     }
     
     return messageText;
