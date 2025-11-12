@@ -47,6 +47,8 @@ export interface Message {
   order?: OrderMessage;
   // 🔗 链接预览支持（新系统，替代旧的document）
   linkPreview?: LinkPreviewMessage;
+  // 📤 转发消息支持
+  forwarded?: ForwardedMessage;
   // 🎭 可视化内容模块（小红书、知乎、微博、搜索记录等）
   socialFeed?: SocialFeedMessage;
 }
@@ -471,4 +473,34 @@ export interface OfficialAccountSettings {
   articles: OfficialArticle[]; // 历史文章列表
   lastPublishTime?: number; // 最后发布时间
   nextPublishTime?: number; // 下次计划发布时间
+}
+
+// ==========================================
+// 📤 消息转发相关类型
+// ==========================================
+
+// 转发消息类型
+export interface ForwardedMessage {
+  type: 'single' | 'merged'; // 单条转发或合并转发
+  from: {
+    conversationId: string; // 来源会话ID
+    conversationName: string; // 来源会话名称
+    conversationType: 'private' | 'group'; // 会话类型
+  };
+  // 单条转发
+  originalMessage?: Message; // 原始消息（单条转发）
+  // 合并转发
+  messages?: ForwardedMessageItem[]; // 消息列表（合并转发）
+  title?: string; // 合并转发标题（如"聊天记录"）
+  timestamp: number; // 转发时间
+}
+
+// 合并转发中的单条消息
+export interface ForwardedMessageItem {
+  senderName: string; // 发送者名称
+  senderAvatar?: string; // 发送者头像
+  content: string; // 消息内容
+  timestamp: number; // 原始时间
+  mediaType?: 'image' | 'video' | 'voice' | 'sticker' | 'file'; // 媒体类型
+  mediaUrl?: string; // 媒体URL
 }

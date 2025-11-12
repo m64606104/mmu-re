@@ -20,6 +20,11 @@ import { SmartHTMLGenerator } from '../utils/smartHTMLGenerator';
 import { SavedDocument } from '../utils/documentLibrary';
 import { sendMoney, receiveMoney, getBalance, aiPayForUser, refundGift, getAIBalance, addAITransaction } from '../utils/wallet';
 import ActivityLogModal from './ActivityLogModal';
+// 消息转发和多选相关导入
+import MessageSelectionToolbar from './MessageSelectionToolbar';
+import ForwardTargetSelector from './ForwardTargetSelector';
+import { MergedForwardViewer } from './MergedForwardCard';
+import { extractMessagesToDocument, createSingleForward, createMergedForward, getMessagePreview } from '../utils/messageForward';
 // 子聊天相关导入
 import SubChatWindow from './SubChatWindow';
 import SubChatManager from './SubChatManager';
@@ -566,6 +571,11 @@ export default function ChatScreen({
   const [isMultiSelectMode, setIsMultiSelectMode] = useState(false);
   const [selectedMessages, setSelectedMessages] = useState<string[]>([]);
   
+  // 📤 消息转发状态
+  const [showForwardSelector, setShowForwardSelector] = useState(false);
+  const [forwardingMessages, setForwardingMessages] = useState<Message[]>([]);
+  const [viewingMergedForward, setViewingMergedForward] = useState<Message['forwarded'] | null>(null);
+  
   // 💬 子聊天相关状态
   const [showSubChatManager, setShowSubChatManager] = useState(false);
   const [activeSubChatId, setActiveSubChatId] = useState<string | null>(null);
@@ -814,6 +824,134 @@ ${recentMessages}
   const handleCancelMultiSelect = () => {
     setIsMultiSelectMode(false);
     setSelectedMessages([]);
+  };
+
+  // 📤 提取选中消息为文档
+  const handleExtractToDocument = () => {
+    if (selectedMessages.length === 0) return;
+    
+    // 获取选中的消息对象
+    const selectedMsgs = conversation.messages.filter(m => 
+      selectedMessages.includes(m.id)
+    );
+    
+    // 提取为文档
+    const doc = extractMessagesToDocument(
+      selectedMsgs,
+      conversation.characterSettings?.nickname || conversation.name,
+      currentUserProfile?.username || '我'
+    );
+    
+    // 创建文档消息
+    const newMessage: Message = {
+      id: `msg_${Date.now()}`,
+      role: 'assistant',
+      content: doc.greeting || '已为您提取聊天记录',
+      timestamp: Date.now(),
+      document: doc
+    };
+    
+    // 添加到会话
+    onUpdateConversation(conversation.id, {
+      messages: [...conversation.messages, newMessage]
+    });
+    
+    // 退出多选模式
+    setIsMultiSelectMode(false);
+    setSelectedMessages([]);
+    
+    showToast('已提取为文档', 'success');
+  };
+
+  // 📤 转发选中消息
+  const handleForwardMessages = () => {
+    if (selectedMessages.length === 0) return;
+    
+    // 获取选中的消息对象
+    const selectedMsgs = conversation.messages.filter(m => 
+      selectedMessages.includes(m.id)
+    );
+    
+    setForwardingMessages(selectedMsgs);
+    setShowForwardSelector(true);
+  };
+
+  // 📤 确认转发到目标会话
+  const handleConfirmForward = (targetConversationIds: string[], mergeForward: boolean) => {
+    if (forwardingMessages.length === 0) return;
+    
+    targetConversationIds.forEach(targetId => {
+      const targetConv = conversations?.find(c => c.id === targetId);
+      if (!targetConv) return;
+      
+      let newMessage: Message;
+      
+      if (mergeForward && forwardingMessages.length > 1) {
+        // 合并转发
+        const senderNames = new Map<string, { name: string; avatar?: string }>();
+        forwardingMessages.forEach(msg => {
+          const name = msg.role === 'user' 
+            ? (currentUserProfile?.username || '我')
+            : (conversation.characterSettings?.nickname || conversation.name);
+          const avatar = msg.role === 'user'
+            ? (currentUserProfile?.avatar)
+            : (conversation.characterSettings?.avatar || conversation.avatar);
+          senderNames.set(msg.id, { name, avatar });
+        });
+        
+        const forwardedData = createMergedForward(
+          forwardingMessages,
+          {
+            id: conversation.id,
+            name: conversation.characterSettings?.nickname || conversation.name,
+            type: conversation.type
+          },
+          senderNames
+        );
+        
+        newMessage = {
+          id: `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+          role: 'user',
+          content: '转发了聊天记录',
+          timestamp: Date.now(),
+          forwarded: forwardedData
+        };
+      } else {
+        // 单条转发
+        const msg = forwardingMessages[0];
+        const forwardedData = createSingleForward(
+          msg,
+          {
+            id: conversation.id,
+            name: conversation.characterSettings?.nickname || conversation.name,
+            type: conversation.type
+          }
+        );
+        
+        newMessage = {
+          id: `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+          role: 'user',
+          content: forwardingMessages.length === 1 ? getMessagePreview(msg) : '转发了多条消息',
+          timestamp: Date.now(),
+          forwarded: forwardedData
+        };
+      }
+      
+      // 更新目标会话
+      onUpdateConversation(targetId, {
+        messages: [...targetConv.messages, newMessage]
+      });
+    });
+    
+    // 关闭选择器
+    setShowForwardSelector(false);
+    setForwardingMessages([]);
+    
+    // 退出多选模式
+    setIsMultiSelectMode(false);
+    setSelectedMessages([]);
+    
+    showToast(`已转发到${targetConversationIds.length}个会话`, 'success');
   };
 
   // 旧的消息操作函数已删除，使用新实现
@@ -5108,6 +5246,38 @@ ${doc.content}`;
         />
       );
     })}
+
+    {/* 📤 消息多选工具栏 */}
+    {isMultiSelectMode && (
+      <MessageSelectionToolbar
+        selectedCount={selectedMessages.length}
+        onCancel={handleCancelMultiSelect}
+        onExtractDocument={handleExtractToDocument}
+        onForward={handleForwardMessages}
+        onDelete={handleBatchDelete}
+      />
+    )}
+
+    {/* 📤 转发目标选择器 */}
+    {showForwardSelector && conversations && (
+      <ForwardTargetSelector
+        conversations={conversations.filter(c => c.id !== conversation.id)}
+        onConfirm={handleConfirmForward}
+        onCancel={() => {
+          setShowForwardSelector(false);
+          setForwardingMessages([]);
+        }}
+        defaultMerge={forwardingMessages.length > 1}
+      />
+    )}
+
+    {/* 📤 合并转发查看器 */}
+    {viewingMergedForward && (
+      <MergedForwardViewer
+        forwardedMessage={viewingMergedForward}
+        onClose={() => setViewingMergedForward(null)}
+      />
+    )}
     </>
   );
 }
