@@ -8,6 +8,7 @@ import WordStyleDocumentCard from './WordStyleDocumentCard';
 import WordStyleDocumentModal from './WordStyleDocumentModal';
 import SelectContactModal from './SelectContactModal';
 import { parseEnhancedDocument } from '../utils/enhancedDocumentParser';
+import { subChatMemoryManager } from '../utils/subChatMemoryManager';
 import { saveDocument as saveToLibrary } from '../utils/documentLibrary';
 import WeChatLinkPreview from './WeChatLinkPreview';
 import { SmartLinkParser } from '../utils/smartLinkParser';
@@ -2944,6 +2945,38 @@ ${SmartHTMLGenerator.getModuleInstructions()}
           contextPrompt += '\n\n【当前对话情境】：\n用户最近发了多条消息，请根据优先级判断标准，优先回复重要的、有趣的话题。可以合并回复，也可以选择性跳过某些消息。';
         }
         
+        // 🧠 检测是否涉及子对话内容并注入相关上下文
+        const lastUserMessage = conversation.messages[conversation.messages.length - 1];
+        let subChatContext = '';
+        
+        if (lastUserMessage && lastUserMessage.role === 'user') {
+          try {
+            // 获取所有子对话
+            const storedSubChats = localStorage.getItem('subChats');
+            const subChats = storedSubChats ? JSON.parse(storedSubChats) : [];
+            
+            // 确保所有子对话都有最新摘要
+            await Promise.all(subChats.map(async (subChat: any) => {
+              if (subChat.conversationId === conversation.id) {
+                await subChatMemoryManager.generateSubChatSummary(subChat);
+              }
+            }));
+            
+            // 检测相关子对话
+            const relevantSubChats = subChatMemoryManager.detectSubChatReferences(
+              lastUserMessage.content, 
+              subChats.filter((sc: any) => sc.conversationId === conversation.id)
+            );
+            
+            if (relevantSubChats.length > 0) {
+              subChatContext = subChatMemoryManager.generateContextForMainChat(relevantSubChats);
+              console.log(`🧠 检测到相关子对话上下文，注入${relevantSubChats.length}个子对话的信息`);
+            }
+          } catch (error) {
+            console.error('子对话上下文注入失败:', error);
+          }
+        }
+
         // 📝 自定义上下文数量（根据配置开关）
         const contextConfigEnabled = conversation.characterSettings?.contextConfig?.enabled || false;
         const contextMessageCount = conversation.characterSettings?.contextConfig?.messageCount || 20;
@@ -2959,8 +2992,11 @@ ${SmartHTMLGenerator.getModuleInstructions()}
           contextMessages = conversation.messages;
         }
         
+        // 将子对话上下文注入到系统提示中
+        const finalContextPrompt = contextPrompt + (subChatContext ? `\n\n${subChatContext}` : '');
+        
         messages = [
-          { role: 'system', content: contextPrompt },
+          { role: 'system', content: finalContextPrompt },
           ...contextMessages.map(m => {
             // 如果消息包含引用，添加引用信息到内容中
             let content = m.content;
