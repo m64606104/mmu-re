@@ -68,12 +68,22 @@ const SubChatWindow: React.FC<SubChatWindowProps> = ({
     scrollToBottom();
   }, [subChat.messages]);
 
-  // 拖拽和调整大小的事件处理
+  // 拖拽和调整大小的事件处理 - 支持鼠标和触摸
   useEffect(() => {
-    const handleMouseMove = (e: MouseEvent) => {
+    const getClientPos = (e: MouseEvent | TouchEvent) => {
+      if ('touches' in e && e.touches.length > 0) {
+        return { clientX: e.touches[0].clientX, clientY: e.touches[0].clientY };
+      }
+      return { clientX: (e as MouseEvent).clientX, clientY: (e as MouseEvent).clientY };
+    };
+
+    const handleMove = (e: MouseEvent | TouchEvent) => {
+      e.preventDefault(); // 防止触摸滚动
+      const { clientX, clientY } = getClientPos(e);
+      
       if (isDragging) {
-        const newX = e.clientX - dragStart.x;
-        const newY = e.clientY - dragStart.y;
+        const newX = clientX - dragStart.x;
+        const newY = clientY - dragStart.y;
         setPosition({ 
           x: Math.max(0, Math.min(window.innerWidth - size.width, newX)),
           y: Math.max(0, Math.min(window.innerHeight - size.height, newY))
@@ -81,24 +91,33 @@ const SubChatWindow: React.FC<SubChatWindowProps> = ({
       }
       
       if (isResizing) {
-        const newWidth = Math.max(300, resizeStart.width + (e.clientX - resizeStart.x));
-        const newHeight = Math.max(350, resizeStart.height + (e.clientY - resizeStart.y));
+        const newWidth = Math.max(300, resizeStart.width + (clientX - resizeStart.x));
+        const newHeight = Math.max(350, resizeStart.height + (clientY - resizeStart.y));
         setSize({ width: newWidth, height: newHeight });
       }
     };
 
-    const handleMouseUp = () => {
+    const handleEnd = () => {
       setIsDragging(false);
       setIsResizing(false);
     };
 
     if (isDragging || isResizing) {
-      document.addEventListener('mousemove', handleMouseMove);
-      document.addEventListener('mouseup', handleMouseUp);
+      // 鼠标事件
+      document.addEventListener('mousemove', handleMove);
+      document.addEventListener('mouseup', handleEnd);
+      
+      // 触摸事件
+      document.addEventListener('touchmove', handleMove, { passive: false });
+      document.addEventListener('touchend', handleEnd);
+      document.addEventListener('touchcancel', handleEnd);
       
       return () => {
-        document.removeEventListener('mousemove', handleMouseMove);
-        document.removeEventListener('mouseup', handleMouseUp);
+        document.removeEventListener('mousemove', handleMove);
+        document.removeEventListener('mouseup', handleEnd);
+        document.removeEventListener('touchmove', handleMove);
+        document.removeEventListener('touchend', handleEnd);
+        document.removeEventListener('touchcancel', handleEnd);
       };
     }
   }, [isDragging, isResizing, dragStart, resizeStart, size]);
@@ -107,20 +126,43 @@ const SubChatWindow: React.FC<SubChatWindowProps> = ({
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   };
 
-  const handleDragStart = (e: React.MouseEvent) => {
+  const handleDragStart = (e: React.MouseEvent | React.TouchEvent) => {
+    e.preventDefault();
+    
+    let clientX, clientY;
+    if ('touches' in e && e.touches.length > 0) {
+      clientX = e.touches[0].clientX;
+      clientY = e.touches[0].clientY;
+    } else {
+      const mouseEvent = e as React.MouseEvent;
+      clientX = mouseEvent.clientX;
+      clientY = mouseEvent.clientY;
+    }
+    
     setIsDragging(true);
     setDragStart({
-      x: e.clientX - position.x,
-      y: e.clientY - position.y
+      x: clientX - position.x,
+      y: clientY - position.y
     });
   };
 
-  const handleResizeStart = (e: React.MouseEvent) => {
+  const handleResizeStart = (e: React.MouseEvent | React.TouchEvent) => {
     e.stopPropagation();
+    
+    let clientX, clientY;
+    if ('touches' in e && e.touches.length > 0) {
+      clientX = e.touches[0].clientX;
+      clientY = e.touches[0].clientY;
+    } else {
+      const mouseEvent = e as React.MouseEvent;
+      clientX = mouseEvent.clientX;
+      clientY = mouseEvent.clientY;
+    }
+    
     setIsResizing(true);
     setResizeStart({
-      x: e.clientX,
-      y: e.clientY,
+      x: clientX,
+      y: clientY,
       width: size.width,
       height: size.height
     });
@@ -312,8 +354,10 @@ const SubChatWindow: React.FC<SubChatWindowProps> = ({
     >
       {/* 标题栏 */}
       <div 
-        className="bg-gradient-to-r from-purple-500 to-blue-500 text-white px-4 py-3 flex items-center justify-between cursor-move"
+        className="bg-gradient-to-r from-purple-500 to-blue-500 text-white px-4 py-3 flex items-center justify-between cursor-move select-none"
         onMouseDown={handleDragStart}
+        onTouchStart={handleDragStart}
+        style={{ touchAction: 'none' }}
       >
         <div className="flex items-center gap-2">
           <Move className="w-4 h-4 opacity-70" />
@@ -321,7 +365,9 @@ const SubChatWindow: React.FC<SubChatWindowProps> = ({
           <div>
             <h3 className="font-semibold text-sm">{subChat.name}</h3>
             <p className="text-xs opacity-90">
-              与 {conversation.characterSettings?.nickname || conversation.name} 的子对话
+              与 {conversation.characterSettings?.nickname || conversation.name} 的子对话 
+              <span className="hidden sm:inline">• 可拖拽移动</span>
+              <span className="sm:hidden">• 可触摸拖拽</span>
             </p>
           </div>
         </div>
@@ -825,10 +871,15 @@ const SubChatWindow: React.FC<SubChatWindowProps> = ({
       
       {/* 调整大小拖拽区域 */}
       <div 
-        className="absolute bottom-0 right-0 w-4 h-4 cursor-nw-resize bg-purple-300 opacity-50 hover:opacity-75 transition-opacity"
+        className="absolute bottom-0 right-0 w-6 h-6 cursor-nw-resize bg-purple-300 opacity-50 hover:opacity-75 active:opacity-100 transition-opacity select-none flex items-center justify-center"
         onMouseDown={handleResizeStart}
+        onTouchStart={handleResizeStart}
+        style={{ touchAction: 'none' }}
         title="拖拽调整大小"
-      />
+      >
+        {/* 调整大小图标 */}
+        <div className="text-purple-700 text-xs leading-none">⤡</div>
+      </div>
     </div>
   );
 };
