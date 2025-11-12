@@ -3,7 +3,7 @@
  */
 
 import React, { useState, useEffect } from 'react';
-import { Music, Play, Pause, Volume2, X } from 'lucide-react';
+import { Music, Volume2, X } from 'lucide-react';
 import { MusicInfo, MusicPlaybackState } from '../utils/musicService';
 
 interface MusicPlayingWidgetProps {

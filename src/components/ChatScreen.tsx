@@ -15,7 +15,9 @@ import { SmartLinkParser } from '../utils/smartLinkParser';
 import XiaohongshuFeed from './XiaohongshuFeed';
 import MusicShareModal from './MusicShareModal';
 import MusicPlayingWidget from './MusicPlayingWidget';
+import MusicCard from './MusicCard';
 import { aiListeningSimulator, MusicInfo, MusicPlaybackState } from '../utils/musicService';
+import { MusicMessage } from '../types';
 import ZhihuFeed from './ZhihuFeed';
 import WeiboFeed from './WeiboFeed';
 import SearchHistoryView from './SearchHistoryView';
@@ -1091,6 +1093,24 @@ ${recentMessages}
     }
   }, [conversation.id, conversation.type, conversation.characterSettings]);
 
+  // 🎵 音乐播放状态更新
+  useEffect(() => {
+    if (!currentMusic) return;
+
+    const updatePlaybackState = () => {
+      const state = aiListeningSimulator.getCurrentState();
+      setMusicPlaybackState(state);
+    };
+
+    // 立即更新一次
+    updatePlaybackState();
+
+    // 每秒更新播放状态
+    const interval = setInterval(updatePlaybackState, 1000);
+
+    return () => clearInterval(interval);
+  }, [currentMusic]);
+
   // ============ 💬 子聊天功能处理函数 ============
   
   /**
@@ -1575,6 +1595,51 @@ ${characterInfo?.languageStyle ? `语言风格：${characterInfo.languageStyle}`
   // 打开表情包输入弹窗
   const handleStickerClick = () => {
     setShowStickerModal(true);
+    setShowToolbar(false);
+  };
+
+  // 🎵 音乐分享处理函数
+  const handleMusicShare = (musicInfo: MusicInfo) => {
+    console.log('🎵 分享音乐:', musicInfo);
+    
+    // 创建音乐消息
+    const musicMessage: Message = {
+      id: Date.now().toString(),
+      role: 'user',
+      content: `分享了音乐`,
+      timestamp: Date.now(),
+      music: musicInfo as MusicMessage
+    };
+
+    // 添加到聊天记录
+    onUpdateConversation(conversation.id, {
+      messages: [...conversation.messages, musicMessage],
+      lastMessageTime: Date.now(),
+    });
+
+    // 开始AI"听"音乐
+    setCurrentMusic(musicInfo);
+    aiListeningSimulator.startListening(musicInfo, (reaction) => {
+      console.log('🎭 AI听音乐反应:', reaction);
+      
+      // AI发送反应消息
+      const reactionMessage: Message = {
+        id: Date.now().toString() + '_reaction',
+        role: 'assistant',
+        content: reaction,
+        timestamp: Date.now(),
+      };
+
+      // 延迟发送，模拟真实反应时间
+      setTimeout(() => {
+        onUpdateConversation(conversation.id, {
+          messages: [...JSON.parse(localStorage.getItem('conversations') || '[]')
+            .find((c: Conversation) => c.id === conversation.id)?.messages || [], reactionMessage],
+          lastMessageTime: Date.now(),
+        });
+      }, 1000 + Math.random() * 2000); // 1-3秒随机延迟
+    });
+
     setShowToolbar(false);
   };
 
@@ -4205,6 +4270,16 @@ ${doc.content}`;
                       />
                     )}
                     
+                    {/* 🎵 音乐卡片 */}
+                    {message.music && (
+                      <div className="max-w-[300px]">
+                        <MusicCard
+                          music={message.music}
+                          className="w-full"
+                        />
+                      </div>
+                    )}
+                    
                     {/* 订单消息气泡（礼物/代付请求） - 根据source显示不同样式 */}
                     {message.order && (
                       <div className="rounded-2xl overflow-hidden max-w-[300px]">
@@ -4808,6 +4883,15 @@ ${doc.content}`;
               >
                 <div className="w-9 h-9 rounded-full bg-white border border-gray-300 flex items-center justify-center hover:border-gray-400 transition-colors">
                   <Smile className="w-4 h-4 text-gray-600" />
+                </div>
+              </button>
+              <button 
+                className="flex-shrink-0"
+                onClick={() => setShowMusicShareModal(true)}
+                title="分享音乐"
+              >
+                <div className="w-9 h-9 rounded-full bg-white border border-gray-300 flex items-center justify-center hover:border-gray-400 transition-colors">
+                  <Music className="w-4 h-4 text-gray-600" />
                 </div>
               </button>
               <button className="flex-shrink-0">
@@ -5506,6 +5590,30 @@ ${doc.content}`;
           setExtractingMessages([]);
         }}
       />
+    )}
+
+    {/* 🎵 音乐分享弹窗 */}
+    <MusicShareModal
+      isOpen={showMusicShareModal}
+      onClose={() => setShowMusicShareModal(false)}
+      onShareMusic={handleMusicShare}
+      characterName={conversation.characterSettings?.nickname || conversation.name}
+    />
+
+    {/* 🎵 音乐播放状态显示 */}
+    {currentMusic && musicPlaybackState && (
+      <div className="fixed top-20 left-4 right-4 z-40">
+        <MusicPlayingWidget
+          musicInfo={currentMusic}
+          playbackState={musicPlaybackState}
+          characterName={conversation.characterSettings?.nickname || conversation.name}
+          onStop={() => {
+            aiListeningSimulator.stopListening();
+            setCurrentMusic(null);
+            setMusicPlaybackState(null);
+          }}
+        />
+      </div>
     )}
     </>
   );

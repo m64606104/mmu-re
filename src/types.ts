@@ -51,6 +51,8 @@ export interface Message {
   forwarded?: ForwardedMessage;
   // 🎭 可视化内容模块（小红书、知乎、微博、搜索记录等）
   socialFeed?: SocialFeedMessage;
+  // 🎵 音乐分享支持
+  music?: MusicMessage;
 }
 
 // 💰 红包/转账类型
@@ -504,4 +506,19 @@ export interface ForwardedMessageItem {
   timestamp: number; // 原始时间
   mediaType?: 'image' | 'video' | 'voice' | 'sticker' | 'file'; // 媒体类型
   mediaUrl?: string; // 媒体URL
+}
+
+// 🎵 音乐消息类型
+export interface MusicMessage {
+  title: string; // 歌曲名称
+  artist: string; // 歌手/艺术家
+  album?: string; // 专辑名称
+  duration?: number; // 时长（秒）
+  coverUrl?: string; // 封面图片URL
+  genre?: string; // 流派/类型
+  mood?: 'happy' | 'sad' | 'energetic' | 'calm' | 'romantic' | 'mysterious'; // 音乐情绪
+  tempo?: 'slow' | 'medium' | 'fast'; // 节奏
+  releaseYear?: number; // 发行年份
+  lyrics?: string; // 歌词
+  platform?: 'iTunes' | 'MusicBrainz' | 'LastFM' | 'Manual'; // 数据来源
 }

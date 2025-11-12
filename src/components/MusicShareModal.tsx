@@ -3,8 +3,8 @@
  */
 
 import React, { useState, useEffect } from 'react';
-import { X, Music, Search, Play, Pause, Volume2 } from 'lucide-react';
-import { musicInfoService, aiListeningSimulator, MusicInfo } from '../utils/musicService';
+import { X, Music, Search } from 'lucide-react';
+import { musicInfoService, MusicInfo } from '../utils/musicService';
 
 interface MusicShareModalProps {
   isOpen: boolean;
