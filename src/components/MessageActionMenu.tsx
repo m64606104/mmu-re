@@ -4,7 +4,7 @@
  */
 
 import React from 'react';
-import { Reply, Edit2, Trash2, CheckSquare } from 'lucide-react';
+import { Reply, Edit2, Trash2, CheckSquare, Share2 } from 'lucide-react';
 
 interface MessageActionMenuProps {
   isVisible: boolean;
@@ -13,6 +13,7 @@ interface MessageActionMenuProps {
   onEdit: () => void;
   onDelete: () => void;
   onMultiSelect: () => void;
+  onForward?: () => void; // 转发功能
   onClose: () => void;
 }
 
@@ -23,6 +24,7 @@ export const MessageActionMenu: React.FC<MessageActionMenuProps> = ({
   onEdit,
   onDelete,
   onMultiSelect,
+  onForward,
   onClose,
 }) => {
   if (!isVisible) return null;
@@ -55,6 +57,20 @@ export const MessageActionMenu: React.FC<MessageActionMenuProps> = ({
           <Reply size={18} className="text-blue-500" />
           <span className="text-sm font-medium text-gray-700">引用</span>
         </button>
+
+        {/* 转发按钮 */}
+        {onForward && (
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              onForward();
+            }}
+            className="flex items-center gap-2 px-4 py-3 hover:bg-gray-50 transition-colors border-r border-gray-200"
+          >
+            <Share2 size={18} className="text-indigo-500" />
+            <span className="text-sm font-medium text-gray-700">转发</span>
+          </button>
+        )}
 
         {/* 编辑按钮（所有消息都可编辑） */}
         <button

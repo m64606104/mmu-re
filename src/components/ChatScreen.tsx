@@ -954,6 +954,18 @@ ${recentMessages}
     showToast(`已转发到${targetConversationIds.length}个会话`, 'success');
   };
 
+  // 📤 从长按菜单转发单条消息
+  const handleForwardSingleMessage = () => {
+    if (!selectedMessageId) return;
+    
+    const message = conversation.messages.find(m => m.id === selectedMessageId);
+    if (!message) return;
+    
+    setForwardingMessages([message]);
+    setShowForwardSelector(true);
+    setSelectedMessageId(null);
+  };
+
   // 旧的消息操作函数已删除，使用新实现
 
   // 追踪组件挂载状态（用户是否还在页面）
@@ -4937,6 +4949,7 @@ ${doc.content}`;
       onEdit={handleEditMessage}
       onDelete={handleDeleteMessage}
       onMultiSelect={handleEnterMultiSelect}
+      onForward={handleForwardSingleMessage}
       onClose={handleCloseMenu}
     />
 
