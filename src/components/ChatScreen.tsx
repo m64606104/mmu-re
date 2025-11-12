@@ -17,7 +17,7 @@ import MusicShareModal from './MusicShareModal';
 import MusicPlayingWidget from './MusicPlayingWidget';
 import MusicCard from './MusicCard';
 import { aiListeningSimulator, MusicInfo, MusicPlaybackState } from '../utils/musicService';
-import { MusicMessage, LyricsLine } from '../types';
+import { MusicMessage } from '../types';
 import { musicContextService } from '../utils/musicContextService';
 import ZhihuFeed from './ZhihuFeed';
 import WeiboFeed from './WeiboFeed';
@@ -1612,11 +1612,11 @@ ${characterInfo?.languageStyle ? `语言风格：${characterInfo.languageStyle}`
   };
 
   // 🎵 音乐分享处理函数 - 重写为上下文感知版本
-  const handleMusicShare = (musicInfo: MusicInfo) => {
+  const handleMusicShare = async (musicInfo: MusicInfo) => {
     console.log('🎵 分享音乐:', musicInfo);
     
     // 增强音乐信息，添加歌词支持
-    const enhancedMusicInfo = enhanceMusicWithLyrics(musicInfo);
+    const enhancedMusicInfo = await enhanceMusicWithLyrics(musicInfo);
     
     // 创建音乐消息
     const musicMessage: Message = {
@@ -1642,22 +1642,31 @@ ${characterInfo?.languageStyle ? `语言风格：${characterInfo.languageStyle}`
     setShowToolbar(false);
   };
 
-  // 🎵 增强音乐信息，添加歌词和时间轴
-  const enhanceMusicWithLyrics = (musicInfo: MusicInfo): MusicInfo => {
-    const enhanced = { ...musicInfo };
-    
-    // 根据歌曲标题匹配预设歌词
-    const { sampleLyricsWithTime } = require('../utils/musicContextService');
-    const lyricsWithTime = sampleLyricsWithTime[enhanced.title];
-    
-    if (lyricsWithTime) {
-      (enhanced as any).lyricsWithTime = lyricsWithTime;
-      // 生成完整歌词文本
-      (enhanced as any).lyrics = lyricsWithTime.map((line: LyricsLine) => line.text).join('\n');
-      console.log(`🎵 为《${enhanced.title}》添加了歌词支持`);
+  // 🎵 增强音乐信息，添加歌词和时间轴 - 使用新的动态歌词服务
+  const enhanceMusicWithLyrics = async (musicInfo: MusicInfo): Promise<MusicInfo> => {
+    // 如果音乐信息中已经有歌词，直接返回
+    if ((musicInfo as any).lyrics) {
+      console.log(`🎵 音乐《${musicInfo.title}》已包含歌词`);
+      return musicInfo;
     }
 
-    return enhanced;
+    // 动态获取歌词
+    try {
+      const { enhanceMusicWithLyrics: getLyrics } = await import('../utils/lyricsService');
+      const lyricsInfo = await getLyrics(musicInfo.title, musicInfo.artist);
+      
+      const enhanced = {
+        ...musicInfo,
+        ...(lyricsInfo.lyrics && { lyrics: lyricsInfo.lyrics }),
+        ...(lyricsInfo.lyricsWithTime && { lyricsWithTime: lyricsInfo.lyricsWithTime })
+      };
+
+      console.log(`🎵 为《${enhanced.title}》获取歌词 (来源: ${lyricsInfo.source})`);
+      return enhanced;
+    } catch (error) {
+      console.error('获取歌词失败:', error);
+      return musicInfo;
+    }
   };
 
   // 发送表情包消息

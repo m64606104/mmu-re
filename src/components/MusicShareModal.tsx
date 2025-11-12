@@ -3,8 +3,9 @@
  */
 
 import React, { useState, useEffect } from 'react';
-import { X, Music, Search } from 'lucide-react';
+import { X, Music, Search, FileText } from 'lucide-react';
 import { musicInfoService, MusicInfo } from '../utils/musicService';
+import { enhanceMusicWithLyrics } from '../utils/lyricsService';
 
 interface MusicShareModalProps {
   isOpen: boolean;
@@ -28,6 +29,8 @@ const MusicShareModal: React.FC<MusicShareModalProps> = ({
   // 手动输入模式的状态
   const [manualTitle, setManualTitle] = useState('');
   const [manualArtist, setManualArtist] = useState('');
+  const [manualLyrics, setManualLyrics] = useState('');
+  const [showLyricsInput, setShowLyricsInput] = useState(false);
   const [manualMood, setManualMood] = useState<MusicInfo['mood']>('happy');
   const [manualDuration, setManualDuration] = useState('180');
 
@@ -41,8 +44,11 @@ const MusicShareModal: React.FC<MusicShareModalProps> = ({
     setSearchQuery('');
     setSearchResults([]);
     setSelectedMusic(null);
+    setManualMode(false);
     setManualTitle('');
     setManualArtist('');
+    setManualLyrics('');
+    setShowLyricsInput(false);
     setManualMood('happy');
     setManualDuration('180');
   };
@@ -73,15 +79,27 @@ const MusicShareModal: React.FC<MusicShareModalProps> = ({
     setSelectedMusic(music);
   };
 
-  const handleShareManual = () => {
+  const handleShareManual = async () => {
     if (!manualTitle.trim() || !manualArtist.trim()) return;
+    
+    // 🎵 动态获取歌词
+    const lyricsInfo = await enhanceMusicWithLyrics(
+      manualTitle, 
+      manualArtist, 
+      manualLyrics.trim() || undefined
+    );
     
     const musicInfo: MusicInfo = {
       title: manualTitle,
       artist: manualArtist,
       mood: manualMood,
-      duration: parseInt(manualDuration) || 180
+      duration: parseInt(manualDuration) || 180,
+      // 添加歌词信息
+      ...(lyricsInfo.lyrics && { lyrics: lyricsInfo.lyrics }),
+      ...(lyricsInfo.lyricsWithTime && { lyricsWithTime: lyricsInfo.lyricsWithTime })
     };
+    
+    console.log(`🎵 分享音乐 (歌词来源: ${lyricsInfo.source}):`, musicInfo.title);
     
     onShareMusic(musicInfo);
     onClose();
@@ -258,6 +276,35 @@ const MusicShareModal: React.FC<MusicShareModalProps> = ({
                   placeholder="输入歌手名"
                   className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"
                 />
+              </div>
+
+              {/* 歌词输入区域 */}
+              <div className="border-t pt-4">
+                <div className="flex items-center justify-between mb-2">
+                  <label className="block text-sm font-medium text-gray-700">歌词 (可选)</label>
+                  <button
+                    type="button"
+                    onClick={() => setShowLyricsInput(!showLyricsInput)}
+                    className="flex items-center gap-1 text-sm text-purple-600 hover:text-purple-700"
+                  >
+                    <FileText className="w-4 h-4" />
+                    {showLyricsInput ? '隐藏歌词' : '添加歌词'}
+                  </button>
+                </div>
+                
+                {showLyricsInput && (
+                  <div className="space-y-2">
+                    <textarea
+                      value={manualLyrics}
+                      onChange={(e) => setManualLyrics(e.target.value)}
+                      placeholder="输入歌词内容，或使用时间标记格式：&#10;[00:12] 第一句歌词&#10;[00:20] 第二句歌词&#10;&#10;如果不输入，系统会尝试自动获取歌词"
+                      className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 resize-y min-h-[100px]"
+                    />
+                    <p className="text-xs text-gray-500">
+                      💡 支持时间标记格式 [mm:ss] 或纯文本。留空将自动尝试获取歌词。
+                    </p>
+                  </div>
+                )}
               </div>
 
               <div>
