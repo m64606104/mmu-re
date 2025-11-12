@@ -222,6 +222,7 @@ export interface SubChat {
   initiator: 'user' | 'ai'; // 发起方（用户或AI）
   purpose?: string; // AI发起时的目的说明（如"想私下聊聊"）
   status: 'pending' | 'active' | 'closed'; // 待接受、进行中、已关闭
+  conversationId: string; // 所属主对话ID
 }
 
 // 子聊天请求类型（AI发起时）
