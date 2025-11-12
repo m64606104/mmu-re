@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { ChevronLeft, Send, Mic, Sparkles, Smile, BellOff, Bell, Pause, Play, Image as ImageIcon, Video, Phone, MapPin, FileText, Plus, CreditCard, Search, MessageCircle, MessageSquare, Eye } from 'lucide-react';
+import { ChevronLeft, Send, Mic, Sparkles, Smile, BellOff, Bell, Pause, Play, Image as ImageIcon, Video, Phone, MapPin, FileText, Plus, CreditCard, Search, MessageCircle, MessageSquare, Eye, Music } from 'lucide-react';
 import { Conversation, Message, ApiConfig, UserProfile, DocumentMessage } from '../types';
 import MoneyTransferModal from './MoneyTransferModal';
 import SendDocumentModal from './SendDocumentModal';
@@ -13,6 +13,9 @@ import { saveDocument as saveToLibrary } from '../utils/documentLibrary';
 import WeChatLinkPreview from './WeChatLinkPreview';
 import { SmartLinkParser } from '../utils/smartLinkParser';
 import XiaohongshuFeed from './XiaohongshuFeed';
+import MusicShareModal from './MusicShareModal';
+import MusicPlayingWidget from './MusicPlayingWidget';
+import { aiListeningSimulator, MusicInfo, MusicPlaybackState } from '../utils/musicService';
 import ZhihuFeed from './ZhihuFeed';
 import WeiboFeed from './WeiboFeed';
 import SearchHistoryView from './SearchHistoryView';
@@ -748,6 +751,11 @@ ${recentMessages}
   
   // 搜索相关state
   const [showSearchModal, setShowSearchModal] = useState(false);
+  
+  // 🎵 音乐相关state
+  const [showMusicShareModal, setShowMusicShareModal] = useState(false);
+  const [currentMusic, setCurrentMusic] = useState<MusicInfo | null>(null);
+  const [musicPlaybackState, setMusicPlaybackState] = useState<MusicPlaybackState | null>(null);
   
   // 语音相关state
   const [isRecording, setIsRecording] = useState(false);

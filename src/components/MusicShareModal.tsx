@@ -1,0 +1,328 @@
+/**
+ * 音乐分享弹窗 - 让用户可以分享音乐给AI
+ */
+
+import React, { useState, useEffect } from 'react';
+import { X, Music, Search, Play, Pause, Volume2 } from 'lucide-react';
+import { musicInfoService, aiListeningSimulator, MusicInfo } from '../utils/musicService';
+
+interface MusicShareModalProps {
+  isOpen: boolean;
+  onClose: () => void;
+  onShareMusic: (musicInfo: MusicInfo) => void;
+  characterName: string;
+}
+
+const MusicShareModal: React.FC<MusicShareModalProps> = ({
+  isOpen,
+  onClose,
+  onShareMusic,
+  characterName
+}) => {
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchResults, setSearchResults] = useState<MusicInfo[]>([]);
+  const [isSearching, setIsSearching] = useState(false);
+  const [selectedMusic, setSelectedMusic] = useState<MusicInfo | null>(null);
+  const [manualMode, setManualMode] = useState(false);
+  
+  // 手动输入模式的状态
+  const [manualTitle, setManualTitle] = useState('');
+  const [manualArtist, setManualArtist] = useState('');
+  const [manualMood, setManualMood] = useState<MusicInfo['mood']>('happy');
+  const [manualDuration, setManualDuration] = useState('180');
+
+  useEffect(() => {
+    if (!isOpen) {
+      resetForm();
+    }
+  }, [isOpen]);
+
+  const resetForm = () => {
+    setSearchQuery('');
+    setSearchResults([]);
+    setSelectedMusic(null);
+    setManualTitle('');
+    setManualArtist('');
+    setManualMood('happy');
+    setManualDuration('180');
+  };
+
+  const handleSearch = async () => {
+    if (!searchQuery.trim()) return;
+    
+    setIsSearching(true);
+    try {
+      const results = await musicInfoService.smartSearch(searchQuery);
+      setSearchResults(results);
+      
+      if (results.length === 0) {
+        // 如果没有找到结果，建议使用手动输入
+        setManualMode(true);
+        setManualTitle(searchQuery);
+      }
+    } catch (error) {
+      console.error('音乐搜索失败:', error);
+      setManualMode(true);
+      setManualTitle(searchQuery);
+    } finally {
+      setIsSearching(false);
+    }
+  };
+
+  const handleSelectMusic = (music: MusicInfo) => {
+    setSelectedMusic(music);
+  };
+
+  const handleShareManual = () => {
+    if (!manualTitle.trim() || !manualArtist.trim()) return;
+    
+    const musicInfo: MusicInfo = {
+      title: manualTitle,
+      artist: manualArtist,
+      mood: manualMood,
+      duration: parseInt(manualDuration) || 180
+    };
+    
+    onShareMusic(musicInfo);
+    onClose();
+  };
+
+  const handleShare = () => {
+    if (selectedMusic) {
+      onShareMusic(selectedMusic);
+      onClose();
+    }
+  };
+
+  const getMoodColor = (mood?: MusicInfo['mood']) => {
+    switch (mood) {
+      case 'happy': return 'bg-yellow-100 text-yellow-700';
+      case 'sad': return 'bg-blue-100 text-blue-700';
+      case 'energetic': return 'bg-red-100 text-red-700';
+      case 'calm': return 'bg-green-100 text-green-700';
+      case 'romantic': return 'bg-pink-100 text-pink-700';
+      case 'mysterious': return 'bg-purple-100 text-purple-700';
+      default: return 'bg-gray-100 text-gray-700';
+    }
+  };
+
+  const getMoodText = (mood?: MusicInfo['mood']) => {
+    switch (mood) {
+      case 'happy': return '欢快';
+      case 'sad': return '忧伤';
+      case 'energetic': return '激情';
+      case 'calm': return '平静';
+      case 'romantic': return '浪漫';
+      case 'mysterious': return '神秘';
+      default: return '未知';
+    }
+  };
+
+  if (!isOpen) return null;
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-2xl w-full max-w-md max-h-[80vh] flex flex-col shadow-2xl">
+        {/* Header */}
+        <div className="flex items-center justify-between p-6 border-b">
+          <div className="flex items-center gap-3">
+            <Music className="w-6 h-6 text-purple-600" />
+            <div>
+              <h3 className="text-lg font-semibold text-gray-900">分享音乐</h3>
+              <p className="text-sm text-gray-600">让{characterName}和你一起听音乐</p>
+            </div>
+          </div>
+          <button
+            onClick={onClose}
+            className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+          >
+            <X className="w-5 h-5 text-gray-500" />
+          </button>
+        </div>
+
+        {/* Content */}
+        <div className="flex-1 overflow-y-auto p-6">
+          {!manualMode ? (
+            <>
+              {/* 搜索区域 */}
+              <div className="mb-6">
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    placeholder="搜索歌名、歌手..."
+                    className="flex-1 px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                    onKeyPress={(e) => e.key === 'Enter' && handleSearch()}
+                  />
+                  <button
+                    onClick={handleSearch}
+                    disabled={isSearching}
+                    className="px-4 py-3 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors disabled:opacity-50"
+                  >
+                    <Search className="w-5 h-5" />
+                  </button>
+                </div>
+                <button
+                  onClick={() => setManualMode(true)}
+                  className="mt-2 text-sm text-purple-600 hover:text-purple-700 transition-colors"
+                >
+                  找不到？手动输入音乐信息
+                </button>
+              </div>
+
+              {/* 搜索结果 */}
+              {isSearching && (
+                <div className="text-center py-8">
+                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-purple-600 mx-auto mb-2"></div>
+                  <p className="text-gray-500">搜索中...</p>
+                </div>
+              )}
+
+              {searchResults.length > 0 && (
+                <div className="space-y-3">
+                  <h4 className="font-medium text-gray-900">搜索结果</h4>
+                  {searchResults.map((music, index) => (
+                    <div
+                      key={index}
+                      onClick={() => handleSelectMusic(music)}
+                      className={`p-4 border rounded-lg cursor-pointer transition-colors ${
+                        selectedMusic === music
+                          ? 'border-purple-500 bg-purple-50'
+                          : 'border-gray-200 hover:border-purple-300 hover:bg-gray-50'
+                      }`}
+                    >
+                      <div className="flex items-start justify-between">
+                        <div className="flex-1 min-w-0">
+                          <h5 className="font-medium text-gray-900 truncate">{music.title}</h5>
+                          <p className="text-sm text-gray-600 truncate">{music.artist}</p>
+                          {music.album && (
+                            <p className="text-xs text-gray-500 truncate">{music.album}</p>
+                          )}
+                          <div className="flex items-center gap-2 mt-2">
+                            {music.duration && (
+                              <span className="text-xs text-gray-500">
+                                {Math.floor(music.duration / 60)}:{(music.duration % 60).toString().padStart(2, '0')}
+                              </span>
+                            )}
+                            {music.mood && (
+                              <span className={`px-2 py-1 rounded-full text-xs ${getMoodColor(music.mood)}`}>
+                                {getMoodText(music.mood)}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                        {selectedMusic === music && (
+                          <div className="ml-2">
+                            <div className="w-5 h-5 bg-purple-600 rounded-full flex items-center justify-center">
+                              <div className="w-2 h-2 bg-white rounded-full"></div>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </>
+          ) : (
+            /* 手动输入模式 */
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <h4 className="font-medium text-gray-900">手动输入音乐信息</h4>
+                <button
+                  onClick={() => setManualMode(false)}
+                  className="text-sm text-purple-600 hover:text-purple-700"
+                >
+                  返回搜索
+                </button>
+              </div>
+              
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">歌名 *</label>
+                <input
+                  type="text"
+                  value={manualTitle}
+                  onChange={(e) => setManualTitle(e.target.value)}
+                  placeholder="输入歌名"
+                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">歌手 *</label>
+                <input
+                  type="text"
+                  value={manualArtist}
+                  onChange={(e) => setManualArtist(e.target.value)}
+                  placeholder="输入歌手名"
+                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">音乐情绪</label>
+                <select
+                  value={manualMood}
+                  onChange={(e) => setManualMood(e.target.value as MusicInfo['mood'])}
+                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"
+                >
+                  <option value="happy">欢快</option>
+                  <option value="sad">忧伤</option>
+                  <option value="energetic">激情</option>
+                  <option value="calm">平静</option>
+                  <option value="romantic">浪漫</option>
+                  <option value="mysterious">神秘</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">时长 (秒)</label>
+                <input
+                  type="number"
+                  value={manualDuration}
+                  onChange={(e) => setManualDuration(e.target.value)}
+                  placeholder="180"
+                  min="30"
+                  max="600"
+                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"
+                />
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Footer */}
+        <div className="p-6 border-t bg-gray-50">
+          <div className="flex gap-3">
+            <button
+              onClick={onClose}
+              className="flex-1 px-4 py-3 text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+            >
+              取消
+            </button>
+            {manualMode ? (
+              <button
+                onClick={handleShareManual}
+                disabled={!manualTitle.trim() || !manualArtist.trim()}
+                className="flex-1 px-4 py-3 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                分享音乐
+              </button>
+            ) : (
+              <button
+                onClick={handleShare}
+                disabled={!selectedMusic}
+                className="flex-1 px-4 py-3 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                分享音乐
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+export default MusicShareModal;
