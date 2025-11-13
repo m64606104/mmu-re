@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { X, Send, Minimize2, MessageCircle, Plus, Zap, Smile, Video, Move, 
   Mic, FileText, CreditCard, Image as ImageIcon, Phone, MapPin, Music, Download } from 'lucide-react';
 import { SubChat, ApiConfig, Conversation, Message, DocumentMessage } from '../types';
@@ -67,6 +67,26 @@ const SubChatWindow: React.FC<SubChatWindowProps> = ({
   const [showForwardSelector, setShowForwardSelector] = useState(false);
   const [forwardingMessages, setForwardingMessages] = useState<Message[]>([]);
   
+  // 🚀 消息窗口优化：子聊天性能优化
+  const [messageWindow, setMessageWindow] = useState<{
+    startIndex: number; // 窗口起始索引
+    size: number;       // 窗口大小
+  }>(() => {
+    // 初始状态：显示最新30条消息（子聊天通常消息较少）
+    const initialSize = 30;
+    const totalMessages = subChat.messages.length;
+    return {
+      startIndex: Math.max(0, totalMessages - initialSize),
+      size: Math.min(initialSize, totalMessages)
+    };
+  });
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
+  const [shouldScrollToBottom, setShouldScrollToBottom] = useState(true);
+  const [isUserScrolling, setIsUserScrolling] = useState(false);
+  const messagesContainerRef = useRef<HTMLDivElement>(null);
+  const lastMessageCountRef = useRef(0);
+  const scrollTimeoutRef = useRef<NodeJS.Timeout>();
+  
   // 窗口拖拽和调整大小相关状态
   const [position, setPosition] = useState({ x: window.innerWidth - 400, y: window.innerHeight - 520 });
   const [size, setSize] = useState({ width: 380, height: 500 });
@@ -120,9 +140,170 @@ const SubChatWindow: React.FC<SubChatWindowProps> = ({
   // const [playingVoice, setPlayingVoice] = useState<string | null>(null);
   // const audioRef = useRef<HTMLAudioElement | null>(null);
 
+  // 🎯 智能滚动处理逻辑
+  
+  // 检查用户是否在底部
+  const isAtBottom = useCallback(() => {
+    const container = messagesContainerRef.current;
+    if (!container) return true;
+    const threshold = 50; // 50px的误差范围（子聊天窗口较小）
+    return container.scrollHeight - container.scrollTop - container.clientHeight < threshold;
+  }, []);
+  
+  // 智能滚动到底部
+  const smartScrollToBottom = useCallback((smooth = false) => {
+    const container = messagesContainerRef.current;
+    if (container) {
+      if (smooth) {
+        container.scrollTo({ top: container.scrollHeight, behavior: 'smooth' });
+      } else {
+        container.scrollTop = container.scrollHeight;
+      }
+    }
+  }, []);
+  
+  // 滚动加载更多消息
+  const handleScroll = useCallback(() => {
+    const container = messagesContainerRef.current;
+    if (!container || isLoadingMore) return;
+    
+    // 标记用户正在滚动
+    setIsUserScrolling(true);
+    
+    // 检查是否应该自动滚动到底部（用户在底部附近）
+    setShouldScrollToBottom(isAtBottom());
+    
+    // 清除之前的定时器
+    if (scrollTimeoutRef.current) {
+      clearTimeout(scrollTimeoutRef.current);
+    }
+    
+    // 延迟重置滚动状态
+    scrollTimeoutRef.current = setTimeout(() => {
+      setIsUserScrolling(false);
+    }, 1500); // 1.5秒后重置（子聊天响应更快）
+    
+    // 🔼 向上滚动：加载更早的消息
+    if (container.scrollTop < 50 && messageWindow.startIndex > 0) {
+      setIsLoadingMore(true);
+      
+      setTimeout(() => {
+        const loadMore = 20; // 子聊天每次加载20条
+        const newStartIndex = Math.max(0, messageWindow.startIndex - loadMore);
+        const addedMessages = messageWindow.startIndex - newStartIndex;
+        const prevScrollHeight = container.scrollHeight;
+        
+        setMessageWindow(prev => ({
+          startIndex: newStartIndex,
+          size: prev.size + addedMessages
+        }));
+        setIsLoadingMore(false);
+        
+        // 保持滚动位置，避免跳动
+        requestAnimationFrame(() => {
+          if (container) {
+            const newScrollHeight = container.scrollHeight;
+            container.scrollTop = newScrollHeight - prevScrollHeight;
+          }
+        });
+      }, 200); // 子聊天加载更快
+    }
+    
+    // 🔽 向下滚动：加载更新的消息（如果不在末尾）
+    const maxScrollTop = container.scrollHeight - container.clientHeight;
+    const isNearBottom = container.scrollTop > maxScrollTop - 50;
+    const windowEndIndex = messageWindow.startIndex + messageWindow.size;
+    
+    if (isNearBottom && windowEndIndex < subChat.messages.length) {
+      setIsLoadingMore(true);
+      
+      setTimeout(() => {
+        const loadMore = 20;
+        const maxSize = subChat.messages.length - messageWindow.startIndex;
+        const newSize = Math.min(messageWindow.size + loadMore, maxSize);
+        
+        setMessageWindow(prev => ({
+          ...prev,
+          size: newSize
+        }));
+        setIsLoadingMore(false);
+      }, 200);
+    }
+  }, [messageWindow, subChat.messages.length, isLoadingMore, isAtBottom]);
+  
+  // 监听滚动事件
   useEffect(() => {
-    scrollToBottom();
-  }, [subChat.messages]);
+    const container = messagesContainerRef.current;
+    if (container) {
+      container.addEventListener('scroll', handleScroll);
+      return () => {
+        container.removeEventListener('scroll', handleScroll);
+        if (scrollTimeoutRef.current) {
+          clearTimeout(scrollTimeoutRef.current);
+        }
+      };
+    }
+  }, [handleScroll]);
+  
+  // 处理新消息和状态重置
+  useEffect(() => {
+    const currentMessageCount = subChat.messages.length;
+    const prevMessageCount = lastMessageCountRef.current;
+    
+    // 子聊天切换时重置状态
+    if (prevMessageCount === 0 || currentMessageCount < prevMessageCount) {
+      console.log('🔄 切换子聊天，重置消息窗口状态');
+      const initialSize = 30;
+      setMessageWindow({
+        startIndex: Math.max(0, currentMessageCount - initialSize),
+        size: Math.min(initialSize, currentMessageCount)
+      });
+      setShouldScrollToBottom(true);
+      setIsUserScrolling(false);
+      
+      setTimeout(() => smartScrollToBottom(), 50);
+    }
+    // 有新消息时：智能滚动处理
+    else if (currentMessageCount > prevMessageCount) {
+      console.log('📨 子聊天检测到新消息，智能处理滚动');
+      
+      // 如果用户在底部附近，自动调整窗口显示新消息
+      if (shouldScrollToBottom) {
+        setMessageWindow(prev => {
+          const windowEndIndex = prev.startIndex + prev.size;
+          const isShowingLatest = windowEndIndex >= prevMessageCount;
+          
+          if (isShowingLatest) {
+            // 扩展窗口以包含新消息
+            return {
+              startIndex: prev.startIndex,
+              size: prev.size + (currentMessageCount - prevMessageCount)
+            };
+          } else {
+            // 保持窗口大小，但移动到最新位置
+            return {
+              startIndex: Math.max(0, currentMessageCount - prev.size),
+              size: Math.min(prev.size, currentMessageCount)
+            };
+          }
+        });
+        setTimeout(() => smartScrollToBottom(true), 50);
+      }
+    }
+    
+    // 更新消息数量记录
+    lastMessageCountRef.current = currentMessageCount;
+  }, [subChat.messages.length, subChat.id, shouldScrollToBottom, smartScrollToBottom]);
+
+  // 初始滚动到底部
+  useEffect(() => {
+    const container = messagesContainerRef.current;
+    if (container) {
+      requestAnimationFrame(() => {
+        container.scrollTop = container.scrollHeight;
+      });
+    }
+  }, [subChat.id]);
 
   // 拖拽和调整大小的事件处理 - 支持鼠标和触摸
   useEffect(() => {
@@ -178,9 +359,6 @@ const SubChatWindow: React.FC<SubChatWindowProps> = ({
     }
   }, [isDragging, isResizing, dragStart, resizeStart, size]);
 
-  const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  };
 
   const handleDragStart = (e: React.MouseEvent | React.TouchEvent) => {
     e.preventDefault();
@@ -1291,7 +1469,10 @@ ${conversation.characterSettings.languageExample ? `语言示例：${conversatio
       </div>
 
       {/* 消息区域 */}
-      <div className="flex-1 overflow-y-auto p-4 bg-gradient-to-b from-purple-50/30 to-blue-50/30">
+      <div 
+        ref={messagesContainerRef}
+        className="flex-1 overflow-y-auto p-4 bg-gradient-to-b from-purple-50/30 to-blue-50/30"
+      >
         {subChat.messages.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full text-gray-400">
             <MessageCircle className="w-16 h-16 mb-3 opacity-50" />
@@ -1304,7 +1485,27 @@ ${conversation.characterSettings.languageExample ? `语言示例：${conversatio
           </div>
         ) : (
           <div className="space-y-3">
-            {subChat.messages.map((message) => (
+            {/* 🚀 滚动加载：顶部加载指示器 */}
+            {isLoadingMore && (
+              <div className="flex justify-center py-3">
+                <div className="flex items-center gap-2 text-gray-500 text-xs">
+                  <div className="w-3 h-3 border-2 border-gray-300 border-t-purple-500 rounded-full animate-spin"></div>
+                  <span>加载更多消息中...</span>
+                </div>
+              </div>
+            )}
+            
+            {/* 是否还有更多历史消息提示 */}
+            {!isLoadingMore && messageWindow.startIndex > 0 && (
+              <div className="flex justify-center py-2">
+                <div className="text-xs text-gray-400 bg-gray-100 px-2 py-1 rounded-full">
+                  还有 {messageWindow.startIndex} 条历史消息，向上滑动加载更多
+                </div>
+              </div>
+            )}
+            
+            {/* 根据消息窗口显示消息 */}
+            {subChat.messages.slice(messageWindow.startIndex, messageWindow.startIndex + messageWindow.size).map((message) => (
               <div
                 key={message.id}
                 className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}
@@ -1489,6 +1690,36 @@ ${conversation.characterSettings.languageExample ? `语言示例：${conversatio
             )}
             
             <div ref={messagesEndRef} />
+            
+            {/* 🚀 返回底部按钮 - 当用户不在底部时显示 */}
+            {!shouldScrollToBottom && isUserScrolling && (
+              <div className="fixed bottom-20 right-4 z-50">
+                <button
+                  onClick={() => {
+                    console.log('🔄 子聊天：用户点击返回底部');
+                    
+                    // 智能重置：回到底部时重置为合理的消息窗口
+                    const resetSize = Math.min(50, subChat.messages.length); // 子聊天最多50条
+                    const newWindow = {
+                      startIndex: Math.max(0, subChat.messages.length - resetSize),
+                      size: resetSize
+                    };
+                    
+                    setMessageWindow(newWindow);
+                    setShouldScrollToBottom(true);
+                    setIsUserScrolling(false);
+                    
+                    setTimeout(() => smartScrollToBottom(true), 50);
+                  }}
+                  className="bg-purple-500 hover:bg-purple-600 text-white p-2 rounded-full shadow-lg transition-colors flex items-center gap-1"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 14l-7 7m0 0l-7-7m7 7V3" />
+                  </svg>
+                  <span className="text-xs">回到底部</span>
+                </button>
+              </div>
+            )}
           </div>
         )}
       </div>

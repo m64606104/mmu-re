@@ -764,8 +764,19 @@ ${recentMessages}
   const [currentMusic, setCurrentMusic] = useState<MusicInfo | null>(null);
   const [musicPlaybackState, setMusicPlaybackState] = useState<MusicPlaybackState | null>(null);
   
-  // 🚀 性能优化：消息分页加载 (类似微信的滚动加载)
-  const [loadedMessageCount, setLoadedMessageCount] = useState(50);
+  // 🚀 性能优化：消息窗口加载 (智能显示目标消息及上下文)
+  const [messageWindow, setMessageWindow] = useState<{
+    startIndex: number; // 窗口起始索引
+    size: number;       // 窗口大小
+  }>(() => {
+    // 初始状态：显示最新50条消息
+    const initialSize = 50;
+    const totalMessages = conversation.messages.length;
+    return {
+      startIndex: Math.max(0, totalMessages - initialSize),
+      size: Math.min(initialSize, totalMessages)
+    };
+  });
   const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [shouldScrollToBottom, setShouldScrollToBottom] = useState(true);
   const [isUserScrolling, setIsUserScrolling] = useState(false);
@@ -816,16 +827,20 @@ ${recentMessages}
       setIsUserScrolling(false);
     }, 2000); // 2秒后重置
     
-    // 当滚动到顶部附近时加载更多消息
-    if (container.scrollTop < 100 && loadedMessageCount < conversation.messages.length) {
+    // 🔼 向上滚动：加载更早的消息
+    if (container.scrollTop < 100 && messageWindow.startIndex > 0) {
       setIsLoadingMore(true);
       
-      // 模拟加载延迟，提升用户体验
       setTimeout(() => {
-        const newCount = Math.min(loadedMessageCount + 30, conversation.messages.length);
+        const loadMore = 30;
+        const newStartIndex = Math.max(0, messageWindow.startIndex - loadMore);
+        const addedMessages = messageWindow.startIndex - newStartIndex;
         const prevScrollHeight = container.scrollHeight;
         
-        setLoadedMessageCount(newCount);
+        setMessageWindow(prev => ({
+          startIndex: newStartIndex,
+          size: prev.size + addedMessages
+        }));
         setIsLoadingMore(false);
         
         // 保持滚动位置，避免跳动
@@ -837,7 +852,28 @@ ${recentMessages}
         });
       }, 300);
     }
-  }, [loadedMessageCount, conversation.messages.length, isLoadingMore, isAtBottom]);
+    
+    // 🔽 向下滚动：加载更新的消息（如果不在末尾）
+    const maxScrollTop = container.scrollHeight - container.clientHeight;
+    const isNearBottom = container.scrollTop > maxScrollTop - 100;
+    const windowEndIndex = messageWindow.startIndex + messageWindow.size;
+    
+    if (isNearBottom && windowEndIndex < conversation.messages.length) {
+      setIsLoadingMore(true);
+      
+      setTimeout(() => {
+        const loadMore = 30;
+        const maxSize = conversation.messages.length - messageWindow.startIndex;
+        const newSize = Math.min(messageWindow.size + loadMore, maxSize);
+        
+        setMessageWindow(prev => ({
+          ...prev,
+          size: newSize
+        }));
+        setIsLoadingMore(false);
+      }, 300);
+    }
+  }, [messageWindow, conversation.messages.length, isLoadingMore, isAtBottom]);
   
   // 监听滚动事件
   useEffect(() => {
@@ -861,8 +897,12 @@ ${recentMessages}
     
     // 1️⃣ 切换对话时：重置状态并滚动到底部
     if (prevMessageCount === 0 || currentMessageCount < prevMessageCount) {
-      console.log('🔄 切换对话，重置消息加载状态');
-      setLoadedMessageCount(50); // 重置为初始状态
+      console.log('🔄 切换对话，重置消息窗口状态');
+      const initialSize = 50;
+      setMessageWindow({
+        startIndex: Math.max(0, currentMessageCount - initialSize),
+        size: Math.min(initialSize, currentMessageCount)
+      });
       setShouldScrollToBottom(true);
       setIsUserScrolling(false);
       
@@ -872,13 +912,29 @@ ${recentMessages}
     else if (currentMessageCount > prevMessageCount) {
       console.log('📨 检测到新消息，智能处理滚动');
       
-      // 如果用户在底部附近，自动滚动到底部并确保新消息可见
+      // 如果用户在底部附近，自动调整窗口显示新消息
       if (shouldScrollToBottom) {
-        // 确保加载的消息数量包含新消息
-        setLoadedMessageCount(prev => Math.max(prev, 50));
+        setMessageWindow(prev => {
+          const windowEndIndex = prev.startIndex + prev.size;
+          const isShowingLatest = windowEndIndex >= prevMessageCount;
+          
+          if (isShowingLatest) {
+            // 扩展窗口以包含新消息
+            return {
+              startIndex: prev.startIndex,
+              size: prev.size + (currentMessageCount - prevMessageCount)
+            };
+          } else {
+            // 保持窗口大小，但移动到最新位置
+            return {
+              startIndex: Math.max(0, currentMessageCount - prev.size),
+              size: Math.min(prev.size, currentMessageCount)
+            };
+          }
+        });
         setTimeout(() => smartScrollToBottom(true), 100);
       }
-      // 如果用户在查看历史消息，不自动滚动，但更新消息计数
+      // 如果用户在查看历史消息，不自动滚动，保持当前窗口
     }
     
     // 更新消息数量记录
@@ -4307,18 +4363,18 @@ ${doc.content}`;
         )}
         
         {/* 是否还有更多历史消息提示 */}
-        {!isLoadingMore && loadedMessageCount < conversation.messages.length && (
+        {!isLoadingMore && messageWindow.startIndex > 0 && (
           <div className="flex justify-center py-2">
             <div className="text-xs text-gray-400 bg-gray-100 px-3 py-1 rounded-full">
-              还有 {conversation.messages.length - loadedMessageCount} 条历史消息，向上滑动加载更多
+              还有 {messageWindow.startIndex} 条历史消息，向上滑动加载更多
             </div>
           </div>
         )}
         
-        {/* 根据加载数量显示消息 */}
-        {conversation.messages.slice(-loadedMessageCount).map((message, index) => {
+        {/* 根据消息窗口显示消息 */}
+        {conversation.messages.slice(messageWindow.startIndex, messageWindow.startIndex + messageWindow.size).map((message, index) => {
           // 获取当前显示的消息数组，用于正确计算时间显示
-          const displayMessages = conversation.messages.slice(-loadedMessageCount);
+          const displayMessages = conversation.messages.slice(messageWindow.startIndex, messageWindow.startIndex + messageWindow.size);
           
           // 微信风格：超过5分钟才显示时间
           const showTime = index === 0 || 
@@ -5100,11 +5156,23 @@ ${doc.content}`;
           <div className="fixed bottom-20 right-4 z-50">
             <button
               onClick={() => {
-                // 回到底部时，加载足够的消息显示最新内容
-                const newCount = Math.max(loadedMessageCount, 50);
-                setLoadedMessageCount(newCount);
+                console.log('🔄 用户点击返回底部，智能重置消息窗口');
+                
+                // 🚀 智能重置：回到底部时重置为合理的消息窗口
+                const resetSize = Math.min(100, conversation.messages.length); // 最多100条最新消息
+                const newWindow = {
+                  startIndex: Math.max(0, conversation.messages.length - resetSize),
+                  size: resetSize
+                };
+                
+                console.log(`📊 重置消息窗口：显示从索引 ${newWindow.startIndex} 开始的 ${newWindow.size} 条消息`);
+                
+                setMessageWindow(newWindow);
                 setShouldScrollToBottom(true);
-                smartScrollToBottom(true);
+                setIsUserScrolling(false); // 重置滚动状态
+                
+                // 延迟滚动，确保DOM更新
+                setTimeout(() => smartScrollToBottom(true), 100);
               }}
               className="bg-blue-500 hover:bg-blue-600 text-white p-3 rounded-full shadow-lg transition-colors flex items-center gap-2"
             >
@@ -5761,27 +5829,75 @@ ${doc.content}`;
         conversation={conversation}
         onClose={() => setShowSearchModal(false)}
         onMessageClick={(messageId) => {
+          console.log(`🔍 点击搜索结果，准备跳转到消息: ${messageId}`);
+          
           // 先关闭搜索模态框
           setShowSearchModal(false);
           
-          // 等待模态框关闭动画完成后再滚动
+          // 找到目标消息在完整消息列表中的位置
+          const messageIndex = conversation.messages.findIndex(msg => msg.id === messageId);
+          if (messageIndex === -1) {
+            console.warn(`未找到目标消息: ${messageId}`);
+            return;
+          }
+          
+          console.log(`📍 目标消息索引: ${messageIndex}/${conversation.messages.length}`);
+          
+          // 🎯 智能消息窗口定位：只显示目标消息及其上下文
+          const totalMessages = conversation.messages.length;
+          const contextSize = 100; // 上下文窗口大小（目标消息前后各50条）
+          
+          console.log(`🎯 使用消息窗口策略：目标消息索引 ${messageIndex}，上下文窗口 ${contextSize} 条`);
+          
+          // 计算窗口位置：以目标消息为中心
+          const halfContext = Math.floor(contextSize / 2);
+          let windowStartIndex = Math.max(0, messageIndex - halfContext);
+          let windowSize = Math.min(contextSize, totalMessages - windowStartIndex);
+          
+          // 如果窗口太小（接近末尾），调整起始位置
+          if (windowSize < contextSize && windowStartIndex > 0) {
+            windowStartIndex = Math.max(0, totalMessages - contextSize);
+            windowSize = totalMessages - windowStartIndex;
+          }
+          
+          console.log(`📊 消息窗口：从索引 ${windowStartIndex} 开始，显示 ${windowSize} 条消息`);
+          console.log(`💡 资源节约：原本需要显示 ${totalMessages} 条，现在只显示 ${windowSize} 条`);
+          
+          // 更新消息窗口
+          setMessageWindow({
+            startIndex: windowStartIndex,
+            size: windowSize
+          });
+          
+          // 等待DOM更新后进行滚动和高亮
           setTimeout(() => {
             const messageElement = document.getElementById(`message-${messageId}`);
             if (messageElement) {
-              // 滚动到指定消息
+              console.log('✅ 找到消息元素，开始滚动和高亮');
+              
+              // 滚动到指定消息（居中显示）
               messageElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
               
               // 高亮显示该消息
               setTimeout(() => {
-                messageElement.classList.add('bg-yellow-100');
+                messageElement.style.backgroundColor = '#fef3c7'; // 黄色背景
+                messageElement.style.transition = 'background-color 0.3s';
+                
+                // 2秒后移除高亮
                 setTimeout(() => {
-                  messageElement.classList.remove('bg-yellow-100');
+                  messageElement.style.backgroundColor = '';
                 }, 2000);
               }, 300);
+              
+              // 标记用户不在底部（因为跳转到了历史消息）
+              setShouldScrollToBottom(false);
+              setIsUserScrolling(true);
+              
+              console.log('🎯 搜索跳转完成');
             } else {
-              console.warn(`未找到消息元素: message-${messageId}`);
+              console.warn(`❌ 消息加载后仍未找到DOM元素: message-${messageId}`);
             }
-          }, 100);
+          }, 200); // 增加等待时间确保DOM更新
         }}
       />
     )}
