@@ -28,6 +28,7 @@ import SearchHistoryView from './SearchHistoryView';
 import ChatSearchModal from './ChatSearchModal';
 import { SmartHTMLGenerator } from '../utils/smartHTMLGenerator';
 import { SavedDocument } from '../utils/documentLibrary';
+import OptimizedMessageList from './OptimizedMessageList';
 import { sendMoney, receiveMoney, getBalance, aiPayForUser, refundGift, getAIBalance, addAITransaction } from '../utils/wallet';
 import ActivityLogModal from './ActivityLogModal';
 // 消息转发和多选相关导入
@@ -775,6 +776,16 @@ ${recentMessages}
   const recordingTimerRef = useRef<NodeJS.Timeout | null>(null);
   
   // 旧的消息操作状态已移除，使用新的实现（selectedMessageId, menuPosition等）
+  
+  // 🚀 性能优化开关 - 可以动态控制是否使用优化渲染
+  const useOptimizedRendering = conversation.messages.length > 20; // 超过20条消息时启用优化
+  
+  // 🔍 性能监控 - 严格限制在开发环境
+  useEffect(() => {
+    if (process.env.NODE_ENV === 'development' && typeof window !== 'undefined') {
+      console.log(`🚀 ChatScreen渲染模式: ${useOptimizedRendering ? '优化渲染' : '标准渲染'} (${conversation.messages.length}条消息)`);
+    }
+  }, [useOptimizedRendering, conversation.messages.length]);
   
   // 获取用户资料
   const getUserProfile = () => {
@@ -4156,14 +4167,36 @@ ${doc.content}`;
               </svg>
             </button>
           )}
+          
+          {/* 🚀 性能状态指示器 - 开发环境显示 */}
+          {process.env.NODE_ENV === 'development' && (
+            <div className="flex items-center gap-1 px-2 py-1 bg-blue-50 rounded-full text-xs text-blue-600 border border-blue-200">
+              <div className={`w-2 h-2 rounded-full ${useOptimizedRendering ? 'bg-green-500' : 'bg-yellow-500'}`}></div>
+              <span>{useOptimizedRendering ? '优化' : '标准'}</span>
+              <span className="text-gray-500">({conversation.messages.length})</span>
+            </div>
+          )}
         </div>
       </div>
 
-      {/* Messages - 固定布局，添加顶部和底部padding */}
+      {/* Messages - 智能性能渲染 */}
       <div 
-        className="absolute top-[60px] bottom-[60px] left-0 right-0 overflow-y-auto p-4 space-y-3"
+        className="absolute top-[60px] bottom-[60px] left-0 right-0 overflow-y-auto"
       >
-        {conversation.messages.map((message, index) => {
+        {useOptimizedRendering ? (
+          <OptimizedMessageList
+            messages={conversation.messages}
+            conversation={conversation}
+            isMultiSelectMode={isMultiSelectMode}
+            selectedMessages={selectedMessages}
+            onMessageClick={handleMessageClick}
+            onToggleSelection={toggleMessageSelection}
+            userBadge={getUserBadge()}
+            className="p-4 space-y-3"
+          />
+        ) : (
+          <div className="p-4 space-y-3">
+            {conversation.messages.map((message, index) => {
           // 微信风格：超过5分钟才显示时间
           const showTime = index === 0 || 
             (conversation.messages[index - 1] && 
@@ -4889,6 +4922,8 @@ ${doc.content}`;
             </div>
           );
         })}
+          </div>
+        )}
 
         {showSendingHint && (
           <div className="flex justify-center my-2">
