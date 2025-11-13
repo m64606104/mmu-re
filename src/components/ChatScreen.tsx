@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { ChevronLeft, Send, Mic, Sparkles, Smile, BellOff, Bell, Pause, Play, Image as ImageIcon, Video, Phone, MapPin, FileText, Plus, CreditCard, Search, MessageCircle, MessageSquare, Eye, Music } from 'lucide-react';
 import { Conversation, Message, ApiConfig, UserProfile, DocumentMessage } from '../types';
 import MoneyTransferModal from './MoneyTransferModal';
@@ -28,9 +28,6 @@ import SearchHistoryView from './SearchHistoryView';
 import ChatSearchModal from './ChatSearchModal';
 import { SmartHTMLGenerator } from '../utils/smartHTMLGenerator';
 import { SavedDocument } from '../utils/documentLibrary';
-import OptimizedMessageList from './OptimizedMessageList';
-import { aiSubChatSuggestion, SubChatSuggestion } from '../utils/aiSubChatSuggestion';
-import SubChatSuggestionModal from './SubChatSuggestionModal';
 import { sendMoney, receiveMoney, getBalance, aiPayForUser, refundGift, getAIBalance, addAITransaction } from '../utils/wallet';
 import ActivityLogModal from './ActivityLogModal';
 // 消息转发和多选相关导入
@@ -767,6 +764,138 @@ ${recentMessages}
   const [currentMusic, setCurrentMusic] = useState<MusicInfo | null>(null);
   const [musicPlaybackState, setMusicPlaybackState] = useState<MusicPlaybackState | null>(null);
   
+  // 🚀 性能优化：消息分页加载 (类似微信的滚动加载)
+  const [loadedMessageCount, setLoadedMessageCount] = useState(50);
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
+  const [shouldScrollToBottom, setShouldScrollToBottom] = useState(true);
+  const [isUserScrolling, setIsUserScrolling] = useState(false);
+  const messagesContainerRef = useRef<HTMLDivElement>(null);
+  const lastMessageCountRef = useRef(0);
+  
+  // 检查用户是否在底部
+  const isAtBottom = useCallback(() => {
+    const container = messagesContainerRef.current;
+    if (!container) return true;
+    const threshold = 100; // 100px的误差范围
+    return container.scrollHeight - container.scrollTop - container.clientHeight < threshold;
+  }, []);
+  
+  // 智能滚动到底部
+  const smartScrollToBottom = useCallback((smooth = false) => {
+    const container = messagesContainerRef.current;
+    if (container) {
+      if (smooth) {
+        container.scrollTo({ top: container.scrollHeight, behavior: 'smooth' });
+      } else {
+        container.scrollTop = container.scrollHeight;
+      }
+    }
+  }, []);
+  
+  // 延迟重置滚动状态
+  const scrollTimeoutRef = useRef<NodeJS.Timeout>();
+  
+  // 滚动加载更多消息
+  const handleScroll = useCallback(() => {
+    const container = messagesContainerRef.current;
+    if (!container || isLoadingMore) return;
+    
+    // 标记用户正在滚动
+    setIsUserScrolling(true);
+    
+    // 检查是否应该自动滚动到底部（用户在底部附近）
+    setShouldScrollToBottom(isAtBottom());
+    
+    // 清除之前的定时器
+    if (scrollTimeoutRef.current) {
+      clearTimeout(scrollTimeoutRef.current);
+    }
+    
+    // 延迟重置滚动状态，让"返回底部"按钮有时间显示
+    scrollTimeoutRef.current = setTimeout(() => {
+      setIsUserScrolling(false);
+    }, 2000); // 2秒后重置
+    
+    // 当滚动到顶部附近时加载更多消息
+    if (container.scrollTop < 100 && loadedMessageCount < conversation.messages.length) {
+      setIsLoadingMore(true);
+      
+      // 模拟加载延迟，提升用户体验
+      setTimeout(() => {
+        const newCount = Math.min(loadedMessageCount + 30, conversation.messages.length);
+        const prevScrollHeight = container.scrollHeight;
+        
+        setLoadedMessageCount(newCount);
+        setIsLoadingMore(false);
+        
+        // 保持滚动位置，避免跳动
+        requestAnimationFrame(() => {
+          if (container) {
+            const newScrollHeight = container.scrollHeight;
+            container.scrollTop = newScrollHeight - prevScrollHeight;
+          }
+        });
+      }, 300);
+    }
+  }, [loadedMessageCount, conversation.messages.length, isLoadingMore, isAtBottom]);
+  
+  // 监听滚动事件
+  useEffect(() => {
+    const container = messagesContainerRef.current;
+    if (container) {
+      container.addEventListener('scroll', handleScroll);
+      return () => {
+        container.removeEventListener('scroll', handleScroll);
+        // 清理滚动定时器
+        if (scrollTimeoutRef.current) {
+          clearTimeout(scrollTimeoutRef.current);
+        }
+      };
+    }
+  }, [handleScroll]);
+  
+  // 处理新消息和状态重置
+  useEffect(() => {
+    const currentMessageCount = conversation.messages.length;
+    const prevMessageCount = lastMessageCountRef.current;
+    
+    // 1️⃣ 切换对话时：重置状态并滚动到底部
+    if (prevMessageCount === 0 || currentMessageCount < prevMessageCount) {
+      console.log('🔄 切换对话，重置消息加载状态');
+      setLoadedMessageCount(50); // 重置为初始状态
+      setShouldScrollToBottom(true);
+      setIsUserScrolling(false);
+      
+      setTimeout(() => smartScrollToBottom(), 100);
+    }
+    // 2️⃣ 有新消息时：智能滚动处理
+    else if (currentMessageCount > prevMessageCount) {
+      console.log('📨 检测到新消息，智能处理滚动');
+      
+      // 如果用户在底部附近，自动滚动到底部并确保新消息可见
+      if (shouldScrollToBottom) {
+        // 确保加载的消息数量包含新消息
+        setLoadedMessageCount(prev => Math.max(prev, 50));
+        setTimeout(() => smartScrollToBottom(true), 100);
+      }
+      // 如果用户在查看历史消息，不自动滚动，但更新消息计数
+    }
+    
+    // 更新消息数量记录
+    lastMessageCountRef.current = currentMessageCount;
+  }, [conversation.messages.length, conversation.id, shouldScrollToBottom, smartScrollToBottom]);
+  
+  // 初始滚动到底部，显示最新消息
+  useEffect(() => {
+    const container = messagesContainerRef.current;
+    if (container && conversation.id) {
+      // 延迟执行，确保DOM已渲染完成
+      requestAnimationFrame(() => {
+        container.scrollTop = container.scrollHeight;
+      });
+    }
+  }, [conversation.id]); // 切换对话时重新滚动到底部
+  
   // 语音相关state
   const [isRecording, setIsRecording] = useState(false);
   const [recordingTime, setRecordingTime] = useState(0);
@@ -777,21 +906,7 @@ ${recentMessages}
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const recordingTimerRef = useRef<NodeJS.Timeout | null>(null);
   
-  // 🤖 AI子聊天建议相关state
-  const [currentSubChatSuggestion, setCurrentSubChatSuggestion] = useState<SubChatSuggestion | null>(null);
-  const [showSubChatSuggestionModal, setShowSubChatSuggestionModal] = useState(false);
-  
   // 旧的消息操作状态已移除，使用新的实现（selectedMessageId, menuPosition等）
-  
-  // 🚀 性能优化开关 - 暂时禁用优化渲染，修复功能问题
-  const useOptimizedRendering = false; // 暂时禁用，确保所有功能正常
-  
-  // 🔍 性能监控 - 严格限制在开发环境
-  useEffect(() => {
-    if (process.env.NODE_ENV === 'development' && typeof window !== 'undefined') {
-      console.log(`🚀 ChatScreen渲染模式: ${useOptimizedRendering ? '优化渲染' : '标准渲染'} (${conversation.messages.length}条消息)`);
-    }
-  }, [useOptimizedRendering, conversation.messages.length]);
   
   // 获取用户资料
   const getUserProfile = () => {
@@ -816,37 +931,6 @@ ${recentMessages}
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   };
-
-  // 🚀 自动滚动到最新消息
-  useEffect(() => {
-    // 页面加载或消息更新时自动滚动到底部
-    const timer = setTimeout(() => {
-      scrollToBottom();
-    }, 100); // 延迟确保DOM更新完成
-    
-    return () => clearTimeout(timer);
-  }, [conversation.messages.length]); // 当消息数量变化时触发
-
-  // 🚀 页面初始加载时滚动到底部
-  useEffect(() => {
-    scrollToBottom();
-  }, []); // 组件挂载时执行一次
-
-  // 🤖 AI子聊天建议分析
-  useEffect(() => {
-    // 在消息更新后分析是否需要建议子聊天
-    if (conversation.messages.length >= 5) {
-      const timer = setTimeout(() => {
-        const suggestion = aiSubChatSuggestion.analyzeConversation(conversation);
-        if (suggestion && suggestion.confidence > 0.5) {
-          setCurrentSubChatSuggestion(suggestion);
-          setShowSubChatSuggestionModal(true);
-        }
-      }, 2000); // 延迟2秒分析，避免频繁触发
-      
-      return () => clearTimeout(timer);
-    }
-  }, [conversation.messages.length, conversation.id]); // 当消息数量或对话变化时触发
 
   // 消息点击处理 - 显示胶囊菜单
   const handleMessageClick = (messageId: string, event: React.MouseEvent) => {
@@ -1191,42 +1275,6 @@ ${recentMessages}
     // 自动打开新创建的子聊天
     setActiveSubChatId(newSubChat.id);
     setShowSubChatManager(false);
-  };
-
-  // 🤖 AI建议子聊天处理函数
-  const handleAcceptSubChatSuggestion = (name: string, suggestion: SubChatSuggestion) => {
-    // 创建AI建议的子聊天
-    const newSubChat = createSubChat(name, conversation.id, 'ai', `AI建议: ${suggestion.reason}`);
-    
-    // 将相关消息添加到子聊天中
-    const messagesWithTimestamp = suggestion.relevantMessages.map(msg => ({
-      ...msg,
-      timestamp: msg.timestamp || Date.now()
-    }));
-    
-    newSubChat.messages = messagesWithTimestamp;
-    
-    // 更新对话的子聊天列表
-    const updatedSubChats = [...(conversation.subChats || []), newSubChat];
-    onUpdateConversation(conversation.id, { subChats: updatedSubChats });
-    
-    // 关闭建议弹窗并打开新的子聊天
-    setShowSubChatSuggestionModal(false);
-    setCurrentSubChatSuggestion(null);
-    setActiveSubChatId(newSubChat.id);
-    
-    console.log(`🤖 已创建AI建议的子聊天: ${name}`);
-  };
-
-  const handleRejectSubChatSuggestion = () => {
-    setShowSubChatSuggestionModal(false);
-    setCurrentSubChatSuggestion(null);
-    console.log('🤖 用户拒绝了AI子聊天建议');
-  };
-
-  const handleCloseSubChatSuggestion = () => {
-    setShowSubChatSuggestionModal(false);
-    setCurrentSubChatSuggestion(null);
   };
 
   /**
@@ -4240,40 +4288,42 @@ ${doc.content}`;
               </svg>
             </button>
           )}
-          
-          {/* 🚀 性能状态指示器 - 开发环境显示 */}
-          {process.env.NODE_ENV === 'development' && (
-            <div className="flex items-center gap-1 px-2 py-1 bg-blue-50 rounded-full text-xs text-blue-600 border border-blue-200">
-              <div className={`w-2 h-2 rounded-full ${useOptimizedRendering ? 'bg-green-500' : 'bg-yellow-500'}`}></div>
-              <span>{useOptimizedRendering ? '优化' : '标准'}</span>
-              <span className="text-gray-500">({conversation.messages.length})</span>
-            </div>
-          )}
         </div>
       </div>
 
-      {/* Messages - 智能性能渲染 */}
+      {/* Messages - 固定布局，添加顶部和底部padding */}
       <div 
-        className="absolute top-[60px] bottom-[60px] left-0 right-0 overflow-y-auto"
+        ref={messagesContainerRef}
+        className="absolute top-[60px] bottom-[60px] left-0 right-0 overflow-y-auto p-4 space-y-3"
       >
-        {useOptimizedRendering ? (
-          <OptimizedMessageList
-            messages={conversation.messages}
-            conversation={conversation}
-            isMultiSelectMode={isMultiSelectMode}
-            selectedMessages={selectedMessages}
-            onMessageClick={handleMessageClick}
-            onToggleSelection={toggleMessageSelection}
-            userBadge={getUserBadge()}
-            className="p-4 space-y-3"
-          />
-        ) : (
-          <div className="p-4 space-y-3">
-            {conversation.messages.map((message, index) => {
+        {/* 🚀 滚动加载：顶部加载指示器 */}
+        {isLoadingMore && (
+          <div className="flex justify-center py-4">
+            <div className="flex items-center gap-2 text-gray-500 text-sm">
+              <div className="w-4 h-4 border-2 border-gray-300 border-t-blue-500 rounded-full animate-spin"></div>
+              <span>加载更多消息中...</span>
+            </div>
+          </div>
+        )}
+        
+        {/* 是否还有更多历史消息提示 */}
+        {!isLoadingMore && loadedMessageCount < conversation.messages.length && (
+          <div className="flex justify-center py-2">
+            <div className="text-xs text-gray-400 bg-gray-100 px-3 py-1 rounded-full">
+              还有 {conversation.messages.length - loadedMessageCount} 条历史消息，向上滑动加载更多
+            </div>
+          </div>
+        )}
+        
+        {/* 根据加载数量显示消息 */}
+        {conversation.messages.slice(-loadedMessageCount).map((message, index) => {
+          // 获取当前显示的消息数组，用于正确计算时间显示
+          const displayMessages = conversation.messages.slice(-loadedMessageCount);
+          
           // 微信风格：超过5分钟才显示时间
           const showTime = index === 0 || 
-            (conversation.messages[index - 1] && 
-             message.timestamp - conversation.messages[index - 1].timestamp > 5 * 60 * 1000);
+            (displayMessages[index - 1] && 
+             message.timestamp - displayMessages[index - 1].timestamp > 5 * 60 * 1000);
           
           return (
             <div key={message.id}>
@@ -4995,8 +5045,6 @@ ${doc.content}`;
             </div>
           );
         })}
-          </div>
-        )}
 
         {showSendingHint && (
           <div className="flex justify-center my-2">
@@ -5046,6 +5094,27 @@ ${doc.content}`;
         )}
 
         <div ref={messagesEndRef} />
+        
+        {/* 🚀 返回底部按钮 - 当用户不在底部时显示 */}
+        {!shouldScrollToBottom && isUserScrolling && (
+          <div className="fixed bottom-20 right-4 z-50">
+            <button
+              onClick={() => {
+                // 回到底部时，加载足够的消息显示最新内容
+                const newCount = Math.max(loadedMessageCount, 50);
+                setLoadedMessageCount(newCount);
+                setShouldScrollToBottom(true);
+                smartScrollToBottom(true);
+              }}
+              className="bg-blue-500 hover:bg-blue-600 text-white p-3 rounded-full shadow-lg transition-colors flex items-center gap-2"
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 14l-7 7m0 0l-7-7m7 7V3" />
+              </svg>
+              <span className="text-sm">回到底部</span>
+            </button>
+          </div>
+        )}
       </div>
 
       {/* Input area - 固定在底部 */}
@@ -5874,16 +5943,6 @@ ${doc.content}`;
           }}
         />
       </div>
-    )}
-
-    {/* 🤖 AI子聊天建议弹窗 */}
-    {showSubChatSuggestionModal && currentSubChatSuggestion && (
-      <SubChatSuggestionModal
-        suggestion={currentSubChatSuggestion}
-        onAccept={handleAcceptSubChatSuggestion}
-        onReject={handleRejectSubChatSuggestion}
-        onClose={handleCloseSubChatSuggestion}
-      />
     )}
     </>
   );
