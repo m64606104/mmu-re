@@ -29,6 +29,8 @@ import ChatSearchModal from './ChatSearchModal';
 import { SmartHTMLGenerator } from '../utils/smartHTMLGenerator';
 import { SavedDocument } from '../utils/documentLibrary';
 import OptimizedMessageList from './OptimizedMessageList';
+import { aiSubChatSuggestion, SubChatSuggestion } from '../utils/aiSubChatSuggestion';
+import SubChatSuggestionModal from './SubChatSuggestionModal';
 import { sendMoney, receiveMoney, getBalance, aiPayForUser, refundGift, getAIBalance, addAITransaction } from '../utils/wallet';
 import ActivityLogModal from './ActivityLogModal';
 // 消息转发和多选相关导入
@@ -775,6 +777,10 @@ ${recentMessages}
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const recordingTimerRef = useRef<NodeJS.Timeout | null>(null);
   
+  // 🤖 AI子聊天建议相关state
+  const [currentSubChatSuggestion, setCurrentSubChatSuggestion] = useState<SubChatSuggestion | null>(null);
+  const [showSubChatSuggestionModal, setShowSubChatSuggestionModal] = useState(false);
+  
   // 旧的消息操作状态已移除，使用新的实现（selectedMessageId, menuPosition等）
   
   // 🚀 性能优化开关 - 可以动态控制是否使用优化渲染
@@ -810,6 +816,37 @@ ${recentMessages}
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   };
+
+  // 🚀 自动滚动到最新消息
+  useEffect(() => {
+    // 页面加载或消息更新时自动滚动到底部
+    const timer = setTimeout(() => {
+      scrollToBottom();
+    }, 100); // 延迟确保DOM更新完成
+    
+    return () => clearTimeout(timer);
+  }, [conversation.messages.length]); // 当消息数量变化时触发
+
+  // 🚀 页面初始加载时滚动到底部
+  useEffect(() => {
+    scrollToBottom();
+  }, []); // 组件挂载时执行一次
+
+  // 🤖 AI子聊天建议分析
+  useEffect(() => {
+    // 在消息更新后分析是否需要建议子聊天
+    if (conversation.messages.length >= 5) {
+      const timer = setTimeout(() => {
+        const suggestion = aiSubChatSuggestion.analyzeConversation(conversation);
+        if (suggestion && suggestion.confidence > 0.5) {
+          setCurrentSubChatSuggestion(suggestion);
+          setShowSubChatSuggestionModal(true);
+        }
+      }, 2000); // 延迟2秒分析，避免频繁触发
+      
+      return () => clearTimeout(timer);
+    }
+  }, [conversation.messages.length, conversation.id]); // 当消息数量或对话变化时触发
 
   // 消息点击处理 - 显示胶囊菜单
   const handleMessageClick = (messageId: string, event: React.MouseEvent) => {
@@ -1154,6 +1191,42 @@ ${recentMessages}
     // 自动打开新创建的子聊天
     setActiveSubChatId(newSubChat.id);
     setShowSubChatManager(false);
+  };
+
+  // 🤖 AI建议子聊天处理函数
+  const handleAcceptSubChatSuggestion = (name: string, suggestion: SubChatSuggestion) => {
+    // 创建AI建议的子聊天
+    const newSubChat = createSubChat(name, conversation.id, 'ai', `AI建议: ${suggestion.reason}`);
+    
+    // 将相关消息添加到子聊天中
+    const messagesWithTimestamp = suggestion.relevantMessages.map(msg => ({
+      ...msg,
+      timestamp: msg.timestamp || Date.now()
+    }));
+    
+    newSubChat.messages = messagesWithTimestamp;
+    
+    // 更新对话的子聊天列表
+    const updatedSubChats = [...(conversation.subChats || []), newSubChat];
+    onUpdateConversation(conversation.id, { subChats: updatedSubChats });
+    
+    // 关闭建议弹窗并打开新的子聊天
+    setShowSubChatSuggestionModal(false);
+    setCurrentSubChatSuggestion(null);
+    setActiveSubChatId(newSubChat.id);
+    
+    console.log(`🤖 已创建AI建议的子聊天: ${name}`);
+  };
+
+  const handleRejectSubChatSuggestion = () => {
+    setShowSubChatSuggestionModal(false);
+    setCurrentSubChatSuggestion(null);
+    console.log('🤖 用户拒绝了AI子聊天建议');
+  };
+
+  const handleCloseSubChatSuggestion = () => {
+    setShowSubChatSuggestionModal(false);
+    setCurrentSubChatSuggestion(null);
   };
 
   /**
@@ -5801,6 +5874,16 @@ ${doc.content}`;
           }}
         />
       </div>
+    )}
+
+    {/* 🤖 AI子聊天建议弹窗 */}
+    {showSubChatSuggestionModal && currentSubChatSuggestion && (
+      <SubChatSuggestionModal
+        suggestion={currentSubChatSuggestion}
+        onAccept={handleAcceptSubChatSuggestion}
+        onReject={handleRejectSubChatSuggestion}
+        onClose={handleCloseSubChatSuggestion}
+      />
     )}
     </>
   );
