@@ -101,11 +101,11 @@ export function MomentsAutoGenerator({ conversations, apiConfig, onMomentGenerat
       checkAndGenerate();
     }, 60 * 1000); // 1分钟
 
-    // 之后每1小时检查一次（降低API请求频率）
+    // 之后每6小时检查一次（进一步降低检查频率）
     timerRef.current = setInterval(() => {
       console.log('⏰ 朋友圈定时检查触发');
       checkAndGenerate();
-    }, 60 * 60 * 1000); // 1小时
+    }, 6 * 60 * 60 * 1000); // 6小时
 
     return () => {
       clearTimeout(initialTimer);

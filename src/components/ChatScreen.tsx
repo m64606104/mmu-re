@@ -28,7 +28,8 @@ import SearchHistoryView from './SearchHistoryView';
 import ChatSearchModal from './ChatSearchModal';
 import { SmartHTMLGenerator } from '../utils/smartHTMLGenerator';
 import { SavedDocument } from '../utils/documentLibrary';
-import { sendMoney, receiveMoney, getBalance, aiPayForUser, refundGift, getAIBalance, addAITransaction } from '../utils/wallet';
+import { sendMoney, receiveMoney, getBalance, aiPayForUser, refundGift } from '../utils/wallet';
+import { addTransaction as addAIFinanceTransaction, getAIFinanceData } from '../utils/aiFinance';
 import ActivityLogModal from './ActivityLogModal';
 // 消息转发和多选相关导入
 import MessageSelectionToolbar from './MessageSelectionToolbar';
@@ -63,7 +64,6 @@ import {
 import { buildTimeAwarePrompt, UnrepliedMessageInfo } from '../utils/timeAwareness';
 import { getMomentsData } from '../utils/aiMomentsGenerator';
 import { getAIStatus } from '../utils/aiStatusManager';
-import { UnifiedBehaviorManager } from '../utils/aiUnifiedBehaviorManager';
 import { getErrorFromResponse, formatErrorMessage } from '../utils/apiErrorHandler';
 // @ts-ignore - 函数在backgroundTaskManager内部使用，TS静态分析无法识别
 import { splitMessages, cleanAIMessage } from '../utils/messageFormatter';
@@ -154,7 +154,8 @@ const backgroundTaskManager = {
       // 使用splitMessages分割消息（非社交平台内容）
       const splitMsgs = splitMessages(assistantMessage);
       
-      splitMsgs.forEach((content, index) => {
+      for (let index = 0; index < splitMsgs.length; index++) {
+        const content = splitMsgs[index];
         const baseId = Date.now().toString() + '_' + index;
         
         // 提取所有媒体项（支持多媒体混合）
@@ -406,20 +407,27 @@ const backgroundTaskManager = {
           
           console.log(`🎁 AI送礼物: ${productName} ¥${price}`);
           
-          // 💰 检查AI余额
-          const aiBalance = getAIBalance(conversation.id);
-          if (aiBalance >= price) {
-            // 余额足够，扣款并创建订单
-            addAITransaction(
+          // 💰 检查AI余额（使用新财务系统）
+          const aiFinanceData = await getAIFinanceData(conversation.id);
+          if (aiFinanceData.balance >= price) {
+            // 余额足够，扣款并创建订单（同步到新财务系统）
+            const success = await addAIFinanceTransaction(
               conversation.id,
               'expense',
               price,
-              'shopping',
+              '购物支出',
               `送礼物给用户: ${productName}`,
-              conversation.id
+              'user',
+              `gift_${Date.now()}`,
+              false
             );
             
-            console.log(`✅ AI余额扣款成功: ¥${price}, 剩余: ¥${aiBalance - price}`);
+            if (success) {
+              console.log(`✅ AI智能财务扣款成功: ¥${price}, 原余额: ¥${aiFinanceData.balance}`);
+            } else {
+              console.error(`❌ AI智能财务扣款失败`);
+              return; // 扣款失败，不创建礼物
+            }
             
             // 创建礼物订单消息
             allExtraMessages.push({
@@ -447,7 +455,7 @@ const backgroundTaskManager = {
             });
           } else {
             // 余额不足，创建提示消息而不是订单
-            console.log(`❌ AI余额不足: 需要¥${price}, 仅有¥${aiBalance}`);
+            console.log(`❌ AI智能财务余额不足: 需要¥${price}, 仅有¥${aiFinanceData.balance}`);
             // AI会在回复中说明余额不足，不创建订单
             // 标记已被移除，不会显示[送礼物:xxx]
           }
@@ -503,8 +511,7 @@ const backgroundTaskManager = {
           
           messages.push(message);
         }
-        
-      });
+      }
       
       // 添加所有额外的特殊消息（红包、转账、文档）
       messages.push(...allExtraMessages);
@@ -1716,7 +1723,7 @@ ${characterInfo?.languageStyle ? `语言风格：${characterInfo.languageStyle}`
   // 处理逻辑在 processAIMoneyResponse 函数中（line 1127）
 
   // 处理红包接收/退回
-  const handleReceiveMoney = (messageId: string, accept: boolean) => {
+  const handleReceiveMoney = async (messageId: string, accept: boolean) => {
     // 找到要处理的红包消息
     const targetMessage = conversation.messages.find(msg => msg.id === messageId);
     if (!targetMessage || !targetMessage.moneyTransfer) return;
@@ -1724,13 +1731,44 @@ ${characterInfo?.languageStyle ? `语言风格：${characterInfo.languageStyle}`
     const updatedMessages = conversation.messages.map(msg => {
       if (msg.id === messageId && msg.moneyTransfer) {
         if (accept) {
-          // 接收红包
+          // 接收红包 - 更新用户钱包
           receiveMoney(
             msg.moneyTransfer.amount,
             msg.moneyTransfer.type,
             conversation.id,
             msg.moneyTransfer.message
           );
+
+          // 🚀 如果是AI发送的红包/转账，同步到AI智能财务系统
+          if (targetMessage.role === 'assistant') {
+            addAIFinanceTransaction(
+              conversation.id,
+              'expense',  // AI支出
+              msg.moneyTransfer.amount,
+              msg.moneyTransfer.type === 'redPacket' ? '红包支出' : '转账支出',
+              `发给用户${msg.moneyTransfer.type === 'redPacket' ? '红包' : '转账'}: ${msg.moneyTransfer.message || '无留言'}`,
+              'user',
+              messageId,
+              false
+            ).catch(error => {
+              console.error('❌ 同步AI财务记录失败:', error);
+            });
+          }
+          // 🚀 如果是用户发送给AI的红包/转账，AI收到后记录收入
+          else if (targetMessage.role === 'user') {
+            addAIFinanceTransaction(
+              conversation.id,
+              'income',  // AI收入
+              msg.moneyTransfer.amount,
+              msg.moneyTransfer.type === 'redPacket' ? '红包收入' : '转账收入',
+              `收到用户${msg.moneyTransfer.type === 'redPacket' ? '红包' : '转账'}: ${msg.moneyTransfer.message || '无留言'}`,
+              'user',
+              messageId,
+              false
+            ).catch(error => {
+              console.error('❌ 同步AI财务记录失败:', error);
+            });
+          }
 
           return {
             ...msg,
@@ -2101,7 +2139,7 @@ ${characterInfo?.languageStyle ? `语言风格：${characterInfo.languageStyle}`
   };
 
   // 处理AI的订单响应（解析AI回复中的[接受礼物]等标记）
-  const processAIOrderResponse = (aiMessage: Message, currentMessages: Message[]) => {
+  const processAIOrderResponse = async (aiMessage: Message, currentMessages: Message[]) => {
     // 检测AI回复中的订单响应标记
     const responseMatch = aiMessage.content.match(/\[(接受礼物|退回礼物|同意代付|拒绝代付)\]/);
     if (!responseMatch) return;
@@ -2129,27 +2167,36 @@ ${characterInfo?.languageStyle ? `语言风格：${characterInfo.languageStyle}`
     if (responseType === '接受礼物') {
       newStatus = 'accepted';
     } else if (responseType === '同意代付') {
-      // 💰 检查AI余额是否足够代付
-      const aiBalance = getAIBalance(conversation.id);
+      // 💰 检查AI智能财务余额是否足够代付
+      const aiFinanceData = await getAIFinanceData(conversation.id);
       const orderAmount = recentOrderMessage.order.totalAmount;
       
-      if (aiBalance >= orderAmount) {
+      if (aiFinanceData.balance >= orderAmount) {
         // AI余额足够，扣款并同意代付
-        addAITransaction(
+        const success = await addAIFinanceTransaction(
           conversation.id,
           'expense',
           orderAmount,
-          'shopping',
+          '购物支出',
           `帮用户代付: ${recentOrderMessage.order.products.map(p => p.name).join('、')}`,
-          conversation.id
+          'user',
+          recentOrderMessage.id,
+          false
         );
-        newStatus = 'paid';
-        console.log(`✅ AI代付成功: ¥${orderAmount}, 剩余: ¥${aiBalance - orderAmount}`);
+        
+        if (success) {
+          newStatus = 'paid';
+          console.log(`✅ AI智能财务代付成功: ¥${orderAmount}, 原余额: ¥${aiFinanceData.balance}`);
+        } else {
+          newStatus = 'rejected';
+          console.log(`❌ AI智能财务代付失败`);
+          showToast(`AI代付失败，请稍后重试`, 'error');
+        }
       } else {
         // AI余额不足，拒绝代付
         newStatus = 'rejected';
-        console.log(`❌ AI余额不足无法代付: 需要¥${orderAmount}, 仅有¥${aiBalance}`);
-        showToast(`AI余额不足无法代付（需要¥${orderAmount}，仅有¥${aiBalance}）`, 'error');
+        console.log(`❌ AI智能财务余额不足无法代付: 需要¥${orderAmount}, 仅有¥${aiFinanceData.balance}`);
+        showToast(`AI余额不足无法代付（需要¥${orderAmount}，仅有¥${aiFinanceData.balance}）`, 'error');
       }
     } else if (responseType === '退回礼物' || responseType === '拒绝代付') {
       newStatus = 'rejected';
@@ -3608,7 +3655,7 @@ ${doc.content}`;
               
               // 🎁 处理订单响应（如果AI回复包含订单响应标记）
               if (newMessages[i].content) {
-                processAIOrderResponse(newMessages[i], currentMessages);
+                await processAIOrderResponse(newMessages[i], currentMessages);
               }
               
               // 💰 处理红包/转账响应（如果AI回复包含红包响应）
@@ -3710,15 +3757,15 @@ ${doc.content}`;
             });
             
             // 🎁 处理订单响应（用户离开的情况下也要处理）
-            newMessages.forEach(msg => {
+            for (const msg of newMessages) {
               if (msg.content) {
-                processAIOrderResponse(msg, currentMessages);
+                await processAIOrderResponse(msg, currentMessages);
               }
               // 💰 处理红包/转账响应
               if (msg.moneyTransfer) {
                 currentMessages = processAIMoneyResponse(msg, currentMessages);
               }
-            });
+            }
             
             // 🔥 更新到conversation
             onUpdateConversation(conversationId, {
@@ -3779,23 +3826,11 @@ ${doc.content}`;
           // 🚀 性能优化：完全后台异步处理，不阻塞主流程
           // 使用setTimeout确保在下一个事件循环中执行，不影响用户体验
           setTimeout(() => {
-            // 🎯 使用统一行为管理器记录AI消息并智能分析
-            if (conversation.type === 'private' && conversation.characterSettings && newMessages.length > 0) {
-              // 记录所有AI消息到行为时间线
-              newMessages.forEach(msg => {
-                if (msg.content) {
-                  UnifiedBehaviorManager.recordChatMessage(
-                    conversation.id, 
-                    msg.content,
-                    apiConfig
-                  ).then(() => {
-                    // 更新显示的AI状态
-                    return getAIStatus(conversation.id);
-                  }).then(status => {
-                    if (status && isComponentMountedRef.current) setAIStatus(status);
-                  }).catch(err => console.error('记录AI行为失败:', err));
-                }
-              });
+            // 更新AI状态显示
+            if (conversation.type === 'private' && conversation.characterSettings) {
+              getAIStatus(conversation.id).then(status => {
+                if (status && isComponentMountedRef.current) setAIStatus(status);
+              }).catch(err => console.error('获取AI状态失败:', err));
             }
             
             // 🧠 记忆总结完全后台处理

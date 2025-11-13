@@ -2,22 +2,116 @@
  * 朋友圈智能系统 2.0
  * 
  * 核心改进：
- * 1. 统一到行为管理系统
- * 2. 智能化prompt（去除硬编码示例）
- * 3. 社交关系驱动互动
- * 4. 事件驱动架构
+ * 1. 智能化prompt（去除硬编码示例）
+ * 2. 社交关系驱动互动
+ * 3. 事件驱动架构
  */
 
 import { Conversation, MomentPost, ApiConfig } from '../types';
-import { UnifiedBehaviorManager } from './aiUnifiedBehaviorManager';
+import TrendingContentGenerator from './trendingContentGenerator';
+import DiverseMomentsGenerator from './diverseMomentsGenerator';
 
 /**
  * 智能朋友圈生成器
- * 使用行为时间线上下文，生成更一致的朋友圈
+ * 根据角色设定和时间情境，生成合适的朋友圈
  */
 export class SmartMomentsGenerator {
   /**
-   * 构建智能Prompt（大幅简化）
+   * 构建多样化智能Prompt
+   */
+  static async buildDiversePrompt(
+    conversation: Conversation,
+    currentTime: Date
+  ): Promise<{ prompt: string; expectedFormat: any }> {
+    // 🎯 获取多样化内容建议
+    const diverseContent = DiverseMomentsGenerator.generateDiverseContent(conversation);
+    const { content: suggestedContent, format, theme } = diverseContent;
+    
+    const characterSettings = conversation.characterSettings;
+    const nickname = characterSettings?.nickname || conversation.name;
+    const hour = currentTime.getHours();
+    const minute = currentTime.getMinutes();
+    const dayOfWeek = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'][currentTime.getDay()];
+    
+    // 🎯 获取潮流内容建议作为备选
+    const trendingSuggestion = TrendingContentGenerator.generateContentSuggestion(
+      hour, 
+      characterSettings?.personality,
+      []
+    );
+    
+    // 根据格式调整prompt
+    let formatInstructions = '';
+    switch (format.type) {
+      case 'text_only':
+        formatInstructions = '• 这次发纯文字内容，不配图片\n• 文字要有深度和思考性';
+        break;
+      case 'single_image':
+        formatInstructions = '• 配1张图片\n• 文字简洁有力';
+        break;
+      case 'multi_image':
+        formatInstructions = `• 配${format.imageCount}张图片\n• 展示丰富的生活场景`;
+        break;
+      case 'news_sharing':
+        formatInstructions = '• 分享和评论时事热点\n• 体现你的观点和态度';
+        break;
+      case 'mood_check':
+        formatInstructions = '• 表达当下心情和感受\n• 真实自然的情感流露';
+        break;
+    }
+    
+    const prompt = `你是${nickname}。
+
+【角色信息】
+${characterSettings?.systemPrompt || ''}
+性格：${characterSettings?.personality || ''}
+说话风格：${characterSettings?.languageStyle || ''}
+
+【当前时间】
+${dayOfWeek} ${hour}:${minute.toString().padStart(2, '0')}
+
+【内容主题】
+本次发朋友圈的主题是：${theme}
+
+【格式要求】
+${formatInstructions}
+
+【内容建议】
+可以参考以下内容方向（选择性使用）：
+- 多样化建议：${suggestedContent}
+- 潮流元素：${trendingSuggestion.content}
+- 话题标签：${trendingSuggestion.hashtags.join(' ')}
+
+【核心要求】
+1. 内容要符合你的身份、性格，融入真实生活场景
+2. 避免与最近的朋友圈内容重复或相似
+3. 可以融入时下热梗，但要自然不刻意
+4. 根据时间情境调整内容风格
+5. 文字长度：${format.textLength === 'short' ? '1句话' : format.textLength === 'long' ? '3-4句话' : '1-2句话'}
+6. 图片数量：${format.imageCount}张
+7. 图片描述要详细生动（30-80字），包含场景细节、色彩、光影、氛围
+8. ⚠️ 禁止第一人称描述图片（用"画面中"、"一个女孩"等）
+
+【输出格式】
+时间：HH:MM
+
+朋友圈文字内容
+${format.imageCount > 0 ? Array(format.imageCount).fill(0).map((_, i) => `[图片${i + 1}:详细的图片描述]`).join('\n') : ''}
+
+现在生成：`;
+
+    return { 
+      prompt, 
+      expectedFormat: { 
+        theme, 
+        format,
+        imageCount: format.imageCount 
+      } 
+    };
+  }
+
+  /**
+   * 构建智能Prompt（简化版 - 保持向后兼容）
    */
   static async buildSmartPrompt(
     conversation: Conversation,
@@ -26,12 +120,16 @@ export class SmartMomentsGenerator {
     const characterSettings = conversation.characterSettings;
     const nickname = characterSettings?.nickname || conversation.name;
     
-    // 🎯 从行为时间线获取完整上下文
-    const behaviorContext = await UnifiedBehaviorManager.getContextForPrompt(conversation.id);
-    
     const hour = currentTime.getHours();
     const minute = currentTime.getMinutes();
     const dayOfWeek = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'][currentTime.getDay()];
+    
+    // 🎯 获取潮流内容建议
+    const trendingSuggestion = TrendingContentGenerator.generateContentSuggestion(
+      hour, 
+      characterSettings?.personality,
+      []
+    );
     
     // 🔥 极简Prompt - AI自己理解，不需要海量示例
     return `你是${nickname}。
@@ -41,21 +139,24 @@ ${characterSettings?.systemPrompt || ''}
 性格：${characterSettings?.personality || ''}
 说话风格：${characterSettings?.languageStyle || ''}
 
-${behaviorContext}
-
 【当前时间】
 ${dayOfWeek} ${hour}:${minute.toString().padStart(2, '0')}
 
+【潮流内容建议】
+${trendingSuggestion.content}
+推荐话题标签：${trendingSuggestion.hashtags.join(' ')}
+
 【任务】
-生成一条符合你身份和当前情境的朋友圈。
+生成一条符合你身份和当前情境的朋友圈。可以参考潮流内容建议，但要结合你的性格特点。
 
 【核心要求】
-1. 内容要符合你的身份、性格和最近的行为
+1. 内容要符合你的身份、性格，可以融入时下热梗和潮流元素
 2. 时间要符合当前情境（早上/中午/晚上等）
-3. 长度1-3句话，自然真实
-4. 可以配0-9张图片，根据内容决定
-5. 图片描述要详细生动（30-80字），包含场景细节、色彩、光影、氛围
-6. ⚠️ 禁止第一人称描述图片（用"画面中"、"一个女孩"等）
+3. 长度1-3句话，自然真实，有生活气息
+4. 可以使用网络用语，但要自然不刻意
+5. 可以配0-9张图片，根据内容决定
+6. 图片描述要详细生动（30-80字），包含场景细节、色彩、光影、氛围
+7. ⚠️ 禁止第一人称描述图片（用"画面中"、"一个女孩"等）
 
 【输出格式】
 时间：HH:MM
@@ -79,28 +180,22 @@ ${dayOfWeek} ${hour}:${minute.toString().padStart(2, '0')}
   static async shouldPostMoment(
     conversation: Conversation
   ): Promise<{ should: boolean; reason: string }> {
-    // 获取最近的行为
-    const timeline = UnifiedBehaviorManager.getTimeline(conversation.id, 24);
-    const recentMoments = timeline.filter(e => e.type === 'moment');
-    
-    // 今天发了几条
+    // 简单的发布频率控制
+    const now = Date.now();
     const today = new Date().toDateString();
-    const todayMoments = recentMoments.filter(e => 
-      new Date(e.timestamp).toDateString() === today
-    );
-
-    // 最近一条朋友圈是多久前
-    const lastMoment = recentMoments[0];
-    const hoursSinceLastMoment = lastMoment 
-      ? (Date.now() - lastMoment.timestamp) / (1000 * 60 * 60)
-      : 999;
+    const storageKey = `moments_count_${conversation.id}_${today}`;
+    const todayCount = parseInt(localStorage.getItem(storageKey) || '0');
+    
+    const lastPostKey = `last_moment_${conversation.id}`;
+    const lastPostTime = parseInt(localStorage.getItem(lastPostKey) || '0');
+    const hoursSinceLastPost = (now - lastPostTime) / (1000 * 60 * 60);
 
     // 简单规则：今天发了3条以上，或距离上次不到2小时，就不发了
-    if (todayMoments.length >= 3) {
+    if (todayCount >= 3) {
       return { should: false, reason: '今天已发够了' };
     }
     
-    if (hoursSinceLastMoment < 2) {
+    if (hoursSinceLastPost < 2) {
       return { should: false, reason: '距离上次太近' };
     }
 

@@ -246,7 +246,4 @@ export const scheduleStatusUpdate = (
 // - analyzeMessageAndUpdateStatus
 // - analyzeAndUpdateStatusFromAI
 // 
-// 现在使用更智能的AI统一行为管理系统：
-// - src/utils/aiUnifiedBehaviorManager.ts
-// - 使用AI自己理解上下文，而非规则匹配
-// - 支持聊天/朋友圈/论坛等所有功能的统一联动
+// AI状态管理现在使用简化的本地存储机制

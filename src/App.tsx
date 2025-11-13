@@ -193,6 +193,21 @@ function App() {
     return () => clearInterval(processIncomeInterval);
   }, []);
 
+  // 💸 定时处理AI日常支出（每6小时检查一次）
+  useEffect(() => {
+    const processExpenseInterval = setInterval(async () => {
+      try {
+        const { processAllAutoExpenses } = await import('./utils/aiFinance');
+        await processAllAutoExpenses();
+        console.log('✅ 定时处理AI日常支出完成');
+      } catch (error) {
+        console.error('⚠️ 定时处理AI日常支出失败:', error);
+      }
+    }, 6 * 60 * 60 * 1000); // 6小时
+
+    return () => clearInterval(processExpenseInterval);
+  }, []);
+
   useEffect(() => {
     // 🚀 性能优化：朋友圈数据也使用防抖保存
     const timeoutId = setTimeout(() => {
@@ -808,6 +823,7 @@ function App() {
               setCurrentShopType(shopType);
               navigateTo('shopping');
             }}
+            conversations={conversations}
           />
         );
       case 'shopping':

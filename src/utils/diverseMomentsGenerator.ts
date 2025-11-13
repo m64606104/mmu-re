@@ -1,0 +1,468 @@
+/**
+ * 多样化朋友圈生成器
+ * 解决AI朋友圈格式单一、内容重复的问题
+ */
+
+import { Conversation } from '../types';
+import TrendingContentGenerator from './trendingContentGenerator';
+import VirtualNewsGenerator from './virtualNewsGenerator';
+import WeiboStyleGenerator from './weiboStyleGenerator';
+
+export interface MomentsFormat {
+  type: 'text_only' | 'single_image' | 'multi_image' | 'news_sharing' | 'mood_check' | 'weibo_sharing';
+  textLength: 'short' | 'medium' | 'long';
+  imageCount: number;
+  hasHashtags: boolean;
+  contentStyle: 'casual' | 'formal' | 'trendy' | 'emotional' | 'informative';
+}
+
+export interface ContentVariation {
+  themes: string[];           // 记录最近使用的主题
+  formats: MomentsFormat[];   // 记录最近使用的格式
+  lastPostTime: number;       // 上次发布时间
+  diversityScore: number;     // 多样性分数 0-100
+}
+
+export class DiverseMomentsGenerator {
+  
+  /**
+   * 获取AI的内容变化记录
+   */
+  static getContentVariation(aiId: string): ContentVariation {
+    try {
+      const stored = localStorage.getItem(`content_variation_${aiId}`);
+      if (stored) {
+        return JSON.parse(stored);
+      }
+    } catch (error) {
+      console.error('获取内容变化记录失败:', error);
+    }
+    
+    return {
+      themes: [],
+      formats: [],
+      lastPostTime: 0,
+      diversityScore: 100
+    };
+  }
+  
+  /**
+   * 更新AI的内容变化记录
+   */
+  static updateContentVariation(aiId: string, theme: string, format: MomentsFormat): void {
+    const variation = this.getContentVariation(aiId);
+    
+    // 记录主题（最多保留10个）
+    variation.themes.unshift(theme);
+    if (variation.themes.length > 10) {
+      variation.themes = variation.themes.slice(0, 10);
+    }
+    
+    // 记录格式（最多保留5个）
+    variation.formats.unshift(format);
+    if (variation.formats.length > 5) {
+      variation.formats = variation.formats.slice(0, 5);
+    }
+    
+    variation.lastPostTime = Date.now();
+    variation.diversityScore = this.calculateDiversityScore(variation);
+    
+    try {
+      localStorage.setItem(`content_variation_${aiId}`, JSON.stringify(variation));
+    } catch (error) {
+      console.error('保存内容变化记录失败:', error);
+    }
+  }
+  
+  /**
+   * 计算多样性分数
+   */
+  static calculateDiversityScore(variation: ContentVariation): number {
+    let score = 100;
+    
+    // 主题重复度检查
+    const uniqueThemes = new Set(variation.themes);
+    const themeRepeat = 1 - (uniqueThemes.size / Math.max(variation.themes.length, 1));
+    score -= themeRepeat * 40;
+    
+    // 格式重复度检查
+    const formatTypes = variation.formats.map(f => f.type);
+    const uniqueFormats = new Set(formatTypes);
+    const formatRepeat = 1 - (uniqueFormats.size / Math.max(formatTypes.length, 1));
+    score -= formatRepeat * 30;
+    
+    // 时间间隔检查
+    const hoursSinceLastPost = (Date.now() - variation.lastPostTime) / (1000 * 60 * 60);
+    if (hoursSinceLastPost < 2) {
+      score -= 20; // 发布太频繁
+    }
+    
+    return Math.max(0, Math.min(100, score));
+  }
+  
+  /**
+   * 智能选择朋友圈格式
+   */
+  static selectOptimalFormat(conversation: Conversation): MomentsFormat {
+    const variation = this.getContentVariation(conversation.id);
+    const recentFormats = variation.formats.slice(0, 3); // 最近3次格式
+    
+    // 格式权重（基础概率）
+    const formatWeights = {
+      'text_only': 0.20,        // 20% - 纯文字
+      'single_image': 0.30,     // 30% - 单图
+      'multi_image': 0.18,      // 18% - 多图
+      'news_sharing': 0.12,     // 12% - 新闻分享
+      'mood_check': 0.05,       // 5% - 心情检查
+      'weibo_sharing': 0.15     // 15% - 微博分享
+    };
+    
+    // 降低最近使用过的格式权重
+    recentFormats.forEach(format => {
+      const formatType = format.type;
+      if (formatWeights[formatType]) {
+        formatWeights[formatType] *= 0.3; // 大幅降低重复概率
+      }
+    });
+    
+    // 根据AI性格调整权重
+    const personality = conversation.characterSettings?.personality || '';
+    if (personality.includes('活泼') || personality.includes('外向')) {
+      formatWeights.multi_image *= 1.5;
+      formatWeights.news_sharing *= 1.3;
+    }
+    
+    if (personality.includes('文艺') || personality.includes('内向')) {
+      formatWeights.text_only *= 1.4;
+      formatWeights.mood_check *= 2.0;
+    }
+    
+    if (personality.includes('科技') || personality.includes('知识')) {
+      formatWeights.news_sharing *= 2.0;
+    }
+    
+    // 根据时间调整权重
+    const hour = new Date().getHours();
+    if (hour >= 22 || hour <= 6) {
+      // 深夜/清晨更倾向于情感类内容
+      formatWeights.mood_check *= 2.0;
+      formatWeights.text_only *= 1.3;
+    } else if (hour >= 12 && hour <= 14) {
+      // 午餐时间更倾向于分享类内容
+      formatWeights.multi_image *= 1.4;
+      formatWeights.news_sharing *= 1.2;
+    }
+    
+    // 加权随机选择
+    const selectedType = this.weightedRandomSelect(formatWeights);
+    
+    return this.generateFormatDetails(selectedType, conversation);
+  }
+  
+  /**
+   * 生成格式详细配置
+   */
+  static generateFormatDetails(type: MomentsFormat['type'], conversation: Conversation): MomentsFormat {
+    const personality = conversation.characterSettings?.personality || '';
+    
+    let imageCount = 0;
+    let textLength: MomentsFormat['textLength'] = 'medium';
+    let hasHashtags = Math.random() < 0.6; // 60%概率带话题
+    let contentStyle: MomentsFormat['contentStyle'] = 'casual';
+    
+    switch (type) {
+      case 'text_only':
+        imageCount = 0;
+        textLength = Math.random() < 0.4 ? 'long' : 'medium';
+        contentStyle = personality.includes('文艺') ? 'emotional' : 'casual';
+        break;
+        
+      case 'single_image':
+        imageCount = 1;
+        textLength = 'short';
+        break;
+        
+      case 'multi_image':
+        imageCount = Math.random() < 0.3 ? 3 : (Math.random() < 0.6 ? 2 : Math.floor(Math.random() * 6) + 4); // 2-9张图
+        textLength = Math.random() < 0.7 ? 'short' : 'medium';
+        hasHashtags = true;
+        break;
+        
+      case 'news_sharing':
+        imageCount = 0;
+        textLength = 'medium';
+        contentStyle = 'informative';
+        hasHashtags = true;
+        break;
+        
+      case 'mood_check':
+        imageCount = Math.random() < 0.4 ? 1 : 0;
+        textLength = Math.random() < 0.6 ? 'short' : 'medium';
+        contentStyle = 'emotional';
+        break;
+        
+      case 'weibo_sharing':
+        imageCount = 1; // 微博截图
+        textLength = 'short';
+        contentStyle = 'informative';
+        hasHashtags = true;
+        break;
+    }
+    
+    return {
+      type,
+      textLength,
+      imageCount,
+      hasHashtags,
+      contentStyle
+    };
+  }
+  
+  /**
+   * 生成多样化朋友圈内容
+   */
+  static generateDiverseContent(conversation: Conversation): {
+    content: string;
+    imageDescriptions: string[];
+    theme: string;
+    format: MomentsFormat;
+  } {
+    const format = this.selectOptimalFormat(conversation);
+    const variation = this.getContentVariation(conversation.id);
+    
+    let content = '';
+    let imageDescriptions: string[] = [];
+    let theme = '';
+    
+    switch (format.type) {
+      case 'text_only':
+        ({ content, theme } = this.generateTextOnlyContent(conversation, format, variation.themes));
+        break;
+        
+      case 'single_image':
+      case 'multi_image':
+        ({ content, imageDescriptions, theme } = this.generateImageContent(conversation, format, variation.themes));
+        break;
+        
+      case 'news_sharing':
+        ({ content, theme } = this.generateNewsContent(conversation, format));
+        break;
+        
+      case 'mood_check':
+        ({ content, imageDescriptions, theme } = this.generateMoodContent(conversation, format));
+        break;
+        
+      case 'weibo_sharing':
+        ({ content, imageDescriptions, theme } = this.generateWeiboSharingContent(conversation, format));
+        break;
+    }
+    
+    // 添加话题标签
+    if (format.hasHashtags) {
+      const hashtags = this.generateHashtags(theme, format.contentStyle);
+      if (hashtags.length > 0 && !content.includes('#')) {
+        content += ` ${hashtags.slice(0, 2).join(' ')}`;
+      }
+    }
+    
+    return { content, imageDescriptions, theme, format };
+  }
+  
+  /**
+   * 生成纯文字内容
+   */
+  static generateTextOnlyContent(
+    conversation: Conversation, 
+    format: MomentsFormat, 
+    recentThemes: string[]
+  ): { content: string; theme: string } {
+    const personality = conversation.characterSettings?.personality || '';
+    const hour = new Date().getHours();
+    
+    // 选择主题（避免重复）
+    const availableThemes = [
+      '生活感悟', '工作心得', '阅读笔记', '音乐分享', '电影观后感', 
+      '旅行回忆', '美食体验', '学习收获', '友情感言', '时间管理'
+    ].filter(theme => !recentThemes.includes(theme));
+    
+    const theme = availableThemes.length > 0 
+      ? availableThemes[Math.floor(Math.random() * availableThemes.length)]
+      : '日常随想';
+    
+    const templates = this.getTextTemplates(theme, format.contentStyle, hour);
+    const template = templates[Math.floor(Math.random() * templates.length)];
+    
+    // 根据文本长度调整内容
+    let content = this.fillTemplate(template, personality);
+    
+    if (format.textLength === 'long') {
+      content += this.getExtendedThought(theme, personality);
+    } else if (format.textLength === 'short') {
+      content = content.split('。')[0] + '。';
+    }
+    
+    return { content, theme };
+  }
+  
+  /**
+   * 生成配图内容
+   */
+  static generateImageContent(
+    conversation: Conversation,
+    format: MomentsFormat,
+    recentThemes: string[]
+  ): { content: string; imageDescriptions: string[]; theme: string } {
+    const themes = ['美食', '风景', '日常', '穿搭', '宠物', '工作', '运动', '艺术'];
+    const availableThemes = themes.filter(theme => !recentThemes.includes(theme));
+    const theme = availableThemes.length > 0 
+      ? availableThemes[Math.floor(Math.random() * availableThemes.length)]
+      : themes[Math.floor(Math.random() * themes.length)];
+    
+    const { content, imageDescriptions } = this.generateImageBasedContent(theme, format.imageCount, conversation);
+    
+    return { content, imageDescriptions, theme };
+  }
+  
+  /**
+   * 生成新闻分享内容
+   */
+  static generateNewsContent(conversation: Conversation, format: MomentsFormat): { content: string; theme: string } {
+    const personality = conversation.characterSettings?.personality;
+    const news = VirtualNewsGenerator.getTodayRecommendedNews(personality, 1)[0];
+    
+    if (!news) {
+      // 降级到普通内容
+      return this.generateTextOnlyContent(conversation, format, []);
+    }
+    
+    const comment = VirtualNewsGenerator.generateNewsComment(news, personality);
+    const content = `${comment}\n\n📰 ${news.title}`;
+    
+    return { content, theme: '新闻分享' };
+  }
+  
+  /**
+   * 生成微博分享内容
+   */
+  static generateWeiboSharingContent(
+    conversation: Conversation,
+    format: MomentsFormat
+  ): { content: string; imageDescriptions: string[]; theme: string } {
+    const personality = conversation.characterSettings?.personality || '';
+    
+    // 生成微博内容
+    const weiboPost = WeiboStyleGenerator.generateWeiboPost();
+    const shareContent = WeiboStyleGenerator.generateMomentsShareContent(personality, weiboPost);
+    
+    return {
+      content: shareContent.content,
+      imageDescriptions: [shareContent.imageDescription],
+      theme: '微博分享'
+    };
+  }
+
+  /**
+   * 生成心情类内容
+   */
+  static generateMoodContent(
+    conversation: Conversation, 
+    format: MomentsFormat
+  ): { content: string; imageDescriptions: string[]; theme: string } {
+    const hour = new Date().getHours();
+    const personality = conversation.characterSettings?.personality || '';
+    
+    const moodTemplates = {
+      morning: ['新的一天，{mood}', '早晨的{feeling}', '今天想{activity}'],
+      afternoon: ['午后{feeling}', '{weather}的下午，{mood}', '今天{activity}'],  
+      evening: ['夜晚来临，{mood}', '今天{summary}', '{weather}的夜晚'],
+      night: ['夜深人静，{feeling}', '睡前{thoughts}', '今日总结：{summary}']
+    };
+    
+    const timeSlot = hour < 10 ? 'morning' : hour < 17 ? 'afternoon' : hour < 22 ? 'evening' : 'night';
+    const templates = moodTemplates[timeSlot];
+    const template = templates[Math.floor(Math.random() * templates.length)];
+    
+    const content = this.fillMoodTemplate(template, personality);
+    const imageDescriptions = format.imageCount > 0 ? [this.generateMoodImage(timeSlot)] : [];
+    
+    return { content, imageDescriptions, theme: '心情分享' };
+  }
+  
+  // 辅助方法（省略部分实现细节以节省空间）
+  private static weightedRandomSelect(weights: Record<string, number>): string {
+    const totalWeight = Object.values(weights).reduce((sum, weight) => sum + weight, 0);
+    let random = Math.random() * totalWeight;
+    
+    for (const [key, weight] of Object.entries(weights)) {
+      random -= weight;
+      if (random <= 0) return key;
+    }
+    
+    return Object.keys(weights)[0];
+  }
+  
+  private static getTextTemplates(theme: string, style: string, hour: number): string[] {
+    // 简化实现
+    return [
+      `关于${theme}，今天有些新的想法`,
+      `${theme}让我想到了很多`,
+      `分享一些关于${theme}的思考`
+    ];
+  }
+  
+  private static fillTemplate(template: string, personality: string): string {
+    // 简化实现
+    return template.replace(/\{[^}]+\}/g, '很好');
+  }
+  
+  private static getExtendedThought(theme: string, personality: string): string {
+    return ` 生活中总有这样那样的感悟，${theme}给了我很多启发。`;
+  }
+  
+  private static generateImageBasedContent(theme: string, imageCount: number, conversation: Conversation): {
+    content: string;
+    imageDescriptions: string[];
+  } {
+    const content = `今天的${theme}分享 ✨`;
+    const imageDescriptions = Array(imageCount).fill(0).map((_, i) => 
+      `精美的${theme}照片${i + 1}，构图优美，色彩丰富，充满生活气息`
+    );
+    
+    return { content, imageDescriptions };
+  }
+  
+  private static fillMoodTemplate(template: string, personality: string): string {
+    return template
+      .replace('{mood}', '心情不错')
+      .replace('{feeling}', '很舒适')
+      .replace('{activity}', '好好休息')
+      .replace('{weather}', '天气很好')
+      .replace('{summary}', '收获满满')
+      .replace('{thoughts}', '想法很多');
+  }
+  
+  private static generateMoodImage(timeSlot: string): string {
+    const imageMap = {
+      morning: '清晨的第一缕阳光透过窗帘洒在桌面上，温暖而宁静',
+      afternoon: '午后的阳光斜射进咖啡厅，营造出慵懒惬意的氛围',
+      evening: '夕阳西下，天空被染成温暖的橙红色，城市开始亮灯',
+      night: '夜空中的月亮皎洁明亮，几颗星星点缀其间'
+    };
+    
+    return imageMap[timeSlot as keyof typeof imageMap] || imageMap.evening;
+  }
+  
+  private static generateHashtags(theme: string, style: string): string[] {
+    const hashtagMap: Record<string, string[]> = {
+      '美食': ['#美食分享', '#今日美味', '#探店'],
+      '心情分享': ['#今日心情', '#生活感悟', '#小确幸'],
+      '新闻分享': ['#热点', '#时事', '#话题讨论'],
+      '微博分享': ['#微博热点', '#转发分享', '#有意思'],
+      '日常': ['#日常', '#生活记录', '#平凡的美好']
+    };
+    
+    return hashtagMap[theme] || ['#日常', '#生活'];
+  }
+}
+
+export default DiverseMomentsGenerator;

@@ -40,9 +40,11 @@ export class RealMusicService {
     // 并发调用多个API
     const searchPromises = [
       this.searchJamendo(query),
-      this.searchFreeMusicArchive(query),
-      this.searchAudiomack(query),
+      this.searchiTunes(query),
       this.searchLocal(query)
+      // 已禁用的API:
+      // this.searchFreeMusicArchive(query),
+      // this.searchAudiomack(query),
     ];
 
     const apiResults = await Promise.allSettled(searchPromises);
@@ -71,31 +73,43 @@ export class RealMusicService {
    */
   private async searchJamendo(query: string): Promise<RealMusicInfo[]> {
     try {
-      // Jamendo 提供免费的CC授权音乐
-      // const clientId = 'YOUR_JAMENDO_CLIENT_ID'; // 可选：注册获取专用ID
-      const publicClientId = '56d30c95'; // 公共测试用的ID
+      // 使用更新的Jamendo API端点和参数
+      const clientId = '56d30c95'; // 公共客户端ID
       
       const response = await fetch(
-        `https://api.jamendo.com/v3.0/tracks/?client_id=${publicClientId}&format=json&limit=10&search=${encodeURIComponent(query)}&include=musicinfo`
+        `https://api.jamendo.com/v3.0/tracks/?client_id=${clientId}&format=json&limit=10&search=${encodeURIComponent(query)}&include=musicinfo&audioformat=mp32`,
+        {
+          method: 'GET',
+          headers: {
+            'Accept': 'application/json',
+          }
+        }
       );
       
       if (!response.ok) {
-        throw new Error(`HTTP ${response.status}`);
+        console.warn(`Jamendo API响应 ${response.status}: ${response.statusText}`);
+        return [];
       }
       
       const data = await response.json();
+      console.log('Jamendo API响应:', data);
       
-      return (data.results || []).map((track: any): RealMusicInfo => ({
+      if (!data.results || data.results.length === 0) {
+        console.log('Jamendo: 没有找到结果');
+        return [];
+      }
+      
+      return data.results.map((track: any): RealMusicInfo => ({
         id: `jamendo_${track.id}`,
-        title: track.name,
-        artist: track.artist_name,
+        title: track.name || '未知标题',
+        artist: track.artist_name || '未知艺术家',
         album: track.album_name,
-        duration: track.duration,
-        audioUrl: track.audio, // 直接可用的音频URL
-        previewUrl: track.audiodownload, // 下载链接
-        coverUrl: track.album_image,
+        duration: parseInt(track.duration) || 0,
+        audioUrl: track.audio || track.audiodownload, // 使用可用的音频URL
+        previewUrl: track.audiodownload,
+        coverUrl: track.album_image || track.image,
         source: 'jamendo',
-        playable: true,
+        playable: !!(track.audio || track.audiodownload),
         genre: track.musicinfo?.tags?.genres?.[0]?.name
       }));
     } catch (error) {
@@ -105,34 +119,19 @@ export class RealMusicService {
   }
 
   /**
-   * Free Music Archive API
+   * Free Music Archive API (已废弃 - API服务已停止)
    * https://freemusicarchive.org/api
    */
-  private async searchFreeMusicArchive(query: string): Promise<RealMusicInfo[]> {
+  private async searchFreeMusicArchive(_query: string): Promise<RealMusicInfo[]> {
     try {
-      // FMA 提供高质量免费音乐
-      const response = await fetch(
-        `https://freemusicarchive.org/api/get/tracks.json?api_key=60BLHNQCAOUFPIBZ&limit=10&search=${encodeURIComponent(query)}`
-      );
+      console.log('🚫 Free Music Archive API已不再提供公共访问，跳过搜索');
+      return [];
       
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}`);
-      }
+      // FMA API 已经停止服务，保留代码仅供参考
+      // const response = await fetch(
+      //   `https://freemusicarchive.org/api/get/tracks.json?api_key=API_KEY&limit=10&search=${encodeURIComponent(query)}`
+      // );
       
-      const data = await response.json();
-      
-      return (data.dataset || []).map((track: any): RealMusicInfo => ({
-        id: `fma_${track.track_id}`,
-        title: track.track_title,
-        artist: track.artist_name,
-        album: track.album_title,
-        duration: parseInt(track.track_duration),
-        audioUrl: track.track_url, // 音频文件URL
-        coverUrl: track.album_image_file,
-        source: 'freemusicarchive',
-        playable: !!track.track_url,
-        genre: track.track_genres?.[0]?.genre_title
-      }));
     } catch (error) {
       console.error('Free Music Archive搜索失败:', error);
       return [];
@@ -140,35 +139,77 @@ export class RealMusicService {
   }
 
   /**
-   * Audiomack API (免费音乐流媒体)
+   * Audiomack API (已限制 - 需要认证)
    */
-  private async searchAudiomack(query: string): Promise<RealMusicInfo[]> {
+  private async searchAudiomack(_query: string): Promise<RealMusicInfo[]> {
     try {
-      // Audiomack 的公共搜索接口
+      console.log('🚫 Audiomack API需要认证，暂时跳过搜索');
+      return [];
+      
+      // Audiomack API 现在需要认证，保留代码仅供参考
+      // 用户可以申请API密钥后启用
+      // const response = await fetch(
+      //   `https://api.audiomack.com/v1/search/songs?q=${encodeURIComponent(query)}&limit=10`,
+      //   {
+      //     headers: {
+      //       'Authorization': 'Bearer YOUR_API_KEY'
+      //     }
+      //   }
+      // );
+      
+    } catch (error) {
+      console.error('Audiomack搜索失败:', error);
+      return [];
+    }
+  }
+
+  /**
+   * iTunes Search API - 免费且可靠的音乐搜索
+   * https://developer.apple.com/library/archive/documentation/AudioVideo/Conceptual/iTuneSearchAPI/
+   */
+  private async searchiTunes(query: string): Promise<RealMusicInfo[]> {
+    try {
+      console.log('🍎 搜索iTunes音乐库:', query);
+      
       const response = await fetch(
-        `https://api.audiomack.com/v1/search/songs?q=${encodeURIComponent(query)}&limit=10`
+        `https://itunes.apple.com/search?term=${encodeURIComponent(query)}&media=music&entity=song&limit=15&country=CN`,
+        {
+          method: 'GET',
+          headers: {
+            'Accept': 'application/json',
+          }
+        }
       );
       
       if (!response.ok) {
-        throw new Error(`HTTP ${response.status}`);
+        console.warn(`iTunes API响应 ${response.status}: ${response.statusText}`);
+        return [];
       }
       
       const data = await response.json();
+      console.log('iTunes API响应:', data);
       
-      return (data.results || []).map((track: any): RealMusicInfo => ({
-        id: `audiomack_${track.id}`,
-        title: track.title,
-        artist: track.artist,
-        album: track.album,
-        duration: track.duration,
-        previewUrl: track.preview_url, // 预览URL
-        coverUrl: track.image,
-        source: 'audiomack',
-        playable: !!track.preview_url,
-        genre: track.genre
+      if (!data.results || data.results.length === 0) {
+        console.log('iTunes: 没有找到结果');
+        return [];
+      }
+      
+      return data.results.map((track: any): RealMusicInfo => ({
+        id: `itunes_${track.trackId}`,
+        title: track.trackName || '未知标题',
+        artist: track.artistName || '未知艺术家',
+        album: track.collectionName,
+        duration: Math.round((track.trackTimeMillis || 0) / 1000),
+        previewUrl: track.previewUrl, // iTunes提供30秒预览
+        audioUrl: track.previewUrl, // 使用预览作为播放源
+        coverUrl: track.artworkUrl100?.replace('100x100', '300x300'), // 高分辨率封面
+        source: 'youtube', // 标记为外部源
+        playable: !!track.previewUrl,
+        genre: track.primaryGenreName,
+        releaseYear: track.releaseDate ? new Date(track.releaseDate).getFullYear() : undefined
       }));
     } catch (error) {
-      console.error('Audiomack搜索失败:', error);
+      console.error('iTunes搜索失败:', error);
       return [];
     }
   }
@@ -177,36 +218,64 @@ export class RealMusicService {
    * 本地音乐搜索（演示数据）
    */
   private async searchLocal(query: string): Promise<RealMusicInfo[]> {
-    // 模拟本地音乐库，包含一些测试用的音乐
-    const localMusic: RealMusicInfo[] = [
-      {
-        id: 'local_1',
-        title: 'Sample Happy Song',
-        artist: 'Demo Artist',
-        album: 'Demo Album',
-        duration: 180,
-        audioUrl: await this.generateSampleAudio('happy'),
-        source: 'local',
-        playable: true,
-        genre: 'Demo'
-      },
-      {
-        id: 'local_2',
-        title: 'Sample Calm Music',
-        artist: 'Demo Artist',
-        album: 'Demo Album',
-        duration: 200,
-        audioUrl: await this.generateSampleAudio('calm'),
-        source: 'local',
-        playable: true,
-        genre: 'Ambient'
-      }
+    console.log(`🎵 搜索本地演示音乐: ${query}`);
+    
+    // 模拟本地音乐库，包含更多测试用的音乐
+    const localMusicData = [
+      { id: 'local_1', title: 'Happy Melody', artist: 'Demo Artist', mood: 'happy', genre: 'Pop', duration: 180 },
+      { id: 'local_2', title: 'Calm Waters', artist: 'Ambient Master', mood: 'calm', genre: 'Ambient', duration: 240 },
+      { id: 'local_3', title: 'Upbeat Rhythm', artist: 'Energy Band', mood: 'energetic', genre: 'Electronic', duration: 200 },
+      { id: 'local_4', title: 'Peaceful Night', artist: 'Relax Studio', mood: 'peaceful', genre: 'Chill', duration: 300 },
+      { id: 'local_5', title: 'Morning Coffee', artist: 'Cafe Sounds', mood: 'morning', genre: 'Jazz', duration: 220 },
+      { id: 'local_6', title: 'Focus Flow', artist: 'Study Music', mood: 'focus', genre: 'Instrumental', duration: 360 }
     ];
 
-    return localMusic.filter(music =>
+    // 根据查询筛选
+    const filtered = localMusicData.filter(music =>
       music.title.toLowerCase().includes(query.toLowerCase()) ||
-      music.artist.toLowerCase().includes(query.toLowerCase())
+      music.artist.toLowerCase().includes(query.toLowerCase()) ||
+      music.genre.toLowerCase().includes(query.toLowerCase()) ||
+      music.mood.toLowerCase().includes(query.toLowerCase())
     );
+
+    // 如果没有匹配，返回前3个作为默认建议
+    const musicList = filtered.length > 0 ? filtered : localMusicData.slice(0, 3);
+
+    // 生成音频URL（异步生成可能会影响性能，这里使用预设URL）
+    const localMusic: RealMusicInfo[] = await Promise.all(
+      musicList.map(async (music) => ({
+        id: music.id,
+        title: music.title,
+        artist: music.artist,
+        album: 'Demo Collection',
+        duration: music.duration,
+        audioUrl: await this.generateSampleAudio(music.mood),
+        source: 'local' as const,
+        playable: true,
+        genre: music.genre,
+        coverUrl: this.generateCoverUrl(music.mood)
+      }))
+    );
+
+    console.log(`✅ 本地音乐搜索完成，返回${localMusic.length}个结果`);
+    return localMusic;
+  }
+
+  /**
+   * 生成封面图URL
+   */
+  private generateCoverUrl(mood: string): string {
+    const colors = {
+      happy: '4F46E5',      // 蓝紫色
+      calm: '10B981',       // 绿色
+      energetic: 'F59E0B',  // 橙色
+      peaceful: '8B5CF6',   // 紫色
+      morning: 'F97316',    // 橙红色
+      focus: '6B7280'       // 灰色
+    };
+    
+    const color = colors[mood as keyof typeof colors] || '6B7280';
+    return `https://via.placeholder.com/300x300/${color}/FFFFFF?text=${encodeURIComponent(mood.toUpperCase())}`;
   }
 
   /**

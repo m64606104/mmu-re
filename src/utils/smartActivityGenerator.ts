@@ -33,21 +33,12 @@ const buildActivityPrompt = async (
     roleType = '自由职业者';
   }
   
-  // 获取统一行为管理器的上下文
-  let behaviorContext = '';
-  try {
-    const { UnifiedBehaviorManager } = await import('./aiUnifiedBehaviorManager');
-    behaviorContext = await UnifiedBehaviorManager.getContextForPrompt(conversation.id);
-  } catch (err) {
-    console.log('获取行为上下文失败，使用默认模式');
-  }
   
   const prompt = `你是${nickname}，一个${roleType}。
 
 【角色信息】
 ${systemPrompt ? `背景：${systemPrompt}` : ''}
 ${personality ? `性格：${personality}` : ''}
-${behaviorContext ? `统一行为上下文：${behaviorContext}` : ''}
 
 【当前时间】
 ${dayOfWeek} ${timeStr}

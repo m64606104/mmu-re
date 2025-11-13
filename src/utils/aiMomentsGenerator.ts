@@ -8,6 +8,7 @@ import { smartLoad, smartSave } from './storage';
 import { getMemoryBank } from './memory';
 import { getErrorFromResponse, formatErrorMessage } from './apiErrorHandler';
 import { SmartMomentsGenerator } from './smartMomentsSystem';
+import { recordApiCall } from './apiUsageManager';
 
 const MOMENTS_STORAGE_KEY = 'moments_data';
 
@@ -92,7 +93,7 @@ export const getMomentsData = async (contactId: string): Promise<MomentsData> =>
       minInterval: 24, // 最少24小时
       maxInterval: 72, // 最多72小时（3天）
       minPostsPerDay: 1,
-      maxPostsPerDay: 5
+      maxPostsPerDay: 3  // 降低每日最大发布数量到3条
     }
   };
   
@@ -170,20 +171,34 @@ export const shouldGenerateMoment = async (contactId: string): Promise<{shouldGe
       return {shouldGenerate: false, count: 0};
     }
     
-    // 在最小和最大间隔之间随机决定是否生成
-    const randomThreshold = data.settings.minInterval + 
-      Math.random() * (data.settings.maxInterval - data.settings.minInterval);
+    // 更智能的概率计算：时间越长，生成概率越高
+    const timeFactor = Math.min(hoursSinceLastGeneration / data.settings.maxInterval, 1.0);
+    const baseChance = 0.3; // 基础30%概率
+    const timeBonus = timeFactor * 0.5; // 时间因子最多增加50%概率
+    const finalChance = Math.min(baseChance + timeBonus, 0.8); // 最高80%概率
     
-    if (hoursSinceLastGeneration >= randomThreshold) {
-      // 决定今天生成的数量（1-5条随机）
-      const targetCount = data.settings.minPostsPerDay + 
-        Math.floor(Math.random() * (data.settings.maxPostsPerDay - data.settings.minPostsPerDay + 1));
+    if (Math.random() < finalChance) {
+      // 更智能的数量决定：偏向少发朋友圈
+      const weights = [0.4, 0.35, 0.25]; // 1条:40%, 2条:35%, 3条:25%
+      let targetCount = 1;
+      const random = Math.random();
+      let cumulative = 0;
+      
+      for (let i = 0; i < weights.length; i++) {
+        cumulative += weights[i];
+        if (random < cumulative) {
+          targetCount = i + 1;
+          break;
+        }
+      }
+      
+      console.log(`📊 ${contactId} 今日朋友圈计划：${targetCount}条 (间隔${Math.round(hoursSinceLastGeneration)}小时后)`);
       
       // 标记需要生成计划
       data.lastGenerationDate = today;
       data.todayTargetCount = targetCount;
       data.todayGeneratedCount = 0;
-      data.todayPlans = []; // 将在生成时由AI规划
+      data.todayPlans = [];
       await saveMomentsData(data);
       
       // 返回需要生成第一条
@@ -194,8 +209,17 @@ export const shouldGenerateMoment = async (contactId: string): Promise<{shouldGe
   } else {
     // 同一天，检查是否还有待发布的朋友圈
     if (data.todayGeneratedCount < data.todayTargetCount) {
-      // 直接允许生成，由AI决定发布时间和内容
-      return {shouldGenerate: true, count: 1};
+      // 检查距离上次发布是否有足够间隔（至少2小时）
+      const hoursSinceLastPost = (now - data.lastGeneratedTime) / 3600000;
+      const minGapHours = 2 + Math.random() * 4; // 2-6小时随机间隔
+      
+      if (hoursSinceLastPost >= minGapHours) {
+        console.log(`⏰ ${contactId} 可以发布下一条朋友圈 (已间隔${Math.round(hoursSinceLastPost)}小时)`);
+        return {shouldGenerate: true, count: 1};
+      } else {
+        console.log(`⏳ ${contactId} 距离上次发布仅${Math.round(hoursSinceLastPost)}小时，需要等待更长间隔`);
+        return {shouldGenerate: false, count: 0};
+      }
     }
     
     return {shouldGenerate: false, count: 0};
@@ -433,8 +457,8 @@ export const generateAIMoment = async (
     
     console.log(`📅 今天已发 ${todayPosts.length} 条朋友圈`);
     
-    // 🎯 使用新的智能朋友圈生成系统（token节省80%）
-    const prompt = await SmartMomentsGenerator.buildSmartPrompt(conversation, new Date());
+    // 🎯 使用新的多样化朋友圈生成系统
+    const { prompt, expectedFormat } = await SmartMomentsGenerator.buildDiversePrompt(conversation, new Date());
     
     // 调用API
     const response = await fetch(`${apiConfig.baseUrl}/v1/chat/completions`, {
@@ -459,6 +483,9 @@ export const generateAIMoment = async (
     
     const data = await response.json();
     const content = data.choices?.[0]?.message?.content?.trim();
+    
+    // 📊 记录API调用
+    recordApiCall();
     
     if (!content) {
       console.error('❌ API返回内容为空');
@@ -605,13 +632,26 @@ export const generateAIMoment = async (
     // 保存到数据库
     await addMomentPost(conversation.id, post);
     
-    // 🎯 记录到统一行为管理器
-    const { UnifiedBehaviorManager } = await import('./aiUnifiedBehaviorManager');
-    await UnifiedBehaviorManager.recordMomentPost(
-      conversation.id,
-      cleanedContent,
-      imageDescriptions
-    );
+    // 记录朋友圈发布时间到本地存储
+    const lastPostKey = `last_moment_${conversation.id}`;
+    localStorage.setItem(lastPostKey, Date.now().toString());
+    
+    // 更新今日发布计数
+    const todayStr = new Date().toDateString();
+    const storageKey = `moments_count_${conversation.id}_${todayStr}`;
+    const todayCount = parseInt(localStorage.getItem(storageKey) || '0');
+    localStorage.setItem(storageKey, (todayCount + 1).toString());
+    
+    // 📊 更新AI内容变化记录（避免重复内容）
+    if (expectedFormat && expectedFormat.theme && expectedFormat.format) {
+      const { DiverseMomentsGenerator } = await import('./diverseMomentsGenerator');
+      DiverseMomentsGenerator.updateContentVariation(
+        conversation.id,
+        expectedFormat.theme,
+        expectedFormat.format
+      );
+      console.log(`📝 已记录内容变化: ${expectedFormat.theme} (${expectedFormat.format.type})`);
+    }
     
     // 💰 智能分析朋友圈内容，自动产生支出
     try {

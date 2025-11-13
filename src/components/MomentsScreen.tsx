@@ -216,32 +216,71 @@ export default function MomentsScreen({
 
   // 删除评论
   const handleDeleteComment = async (momentId: string, commentId: string) => {
+    console.log(`🗑️ 尝试删除评论: momentId=${momentId}, commentId=${commentId}`);
+    
     const aiMoment = aiMoments.find(m => m.id === momentId);
-    if (aiMoment && aiMoment.authorId) {
-      try {
-        // 从 localStorage 删除评论
-        const momentsKey = `moments_data`;
-        const stored = localStorage.getItem(momentsKey);
-        if (stored) {
-          const allMomentsData = JSON.parse(stored);
-          const momentData = allMomentsData.find((d: any) => d.contactId === aiMoment.authorId);
-          if (momentData) {
-            const post = momentData.posts.find((p: any) => p.id === momentId);
-            if (post) {
-              post.comments = post.comments.filter((c: any) => c.id !== commentId);
-              localStorage.setItem(momentsKey, JSON.stringify(allMomentsData));
-              
-              // 刷新显示
-              const updatedPosts = await getAllMomentPosts();
-              setAiMoments(updatedPosts);
-              console.log('✅ 评论已删除');
-            }
-          }
-        }
-      } catch (error) {
-        console.error('删除评论失败:', error);
-      }
+    if (!aiMoment) {
+      console.error('❌ 未找到朋友圈:', momentId);
+      setSelectedComment(null);
+      return;
     }
+    
+    if (!aiMoment.authorId) {
+      console.error('❌ 朋友圈缺少authorId:', aiMoment);
+      setSelectedComment(null);
+      return;
+    }
+    
+    try {
+      // 从 localStorage 删除评论
+      const momentsKey = `moments_data`;
+      const stored = localStorage.getItem(momentsKey);
+      if (!stored) {
+        console.error('❌ localStorage中没有朋友圈数据');
+        setSelectedComment(null);
+        return;
+      }
+      
+      const allMomentsData = JSON.parse(stored);
+      console.log('📊 当前朋友圈数据结构:', allMomentsData);
+      
+      const momentData = allMomentsData.find((d: any) => d.contactId === aiMoment.authorId);
+      if (!momentData) {
+        console.error('❌ 未找到对应的朋友圈数据:', aiMoment.authorId);
+        setSelectedComment(null);
+        return;
+      }
+      
+      const post = momentData.posts.find((p: any) => p.id === momentId);
+      if (!post) {
+        console.error('❌ 未找到对应的朋友圈帖子:', momentId);
+        setSelectedComment(null);
+        return;
+      }
+      
+      const commentsBefore = post.comments.length;
+      post.comments = post.comments.filter((c: any) => c.id !== commentId);
+      const commentsAfter = post.comments.length;
+      
+      console.log(`📊 评论数量变化: ${commentsBefore} -> ${commentsAfter}`);
+      
+      if (commentsBefore === commentsAfter) {
+        console.warn('⚠️ 评论数量没有变化，可能评论ID不匹配');
+        console.log('现有评论IDs:', post.comments.map((c: any) => c.id));
+        console.log('要删除的评论ID:', commentId);
+      }
+      
+      localStorage.setItem(momentsKey, JSON.stringify(allMomentsData));
+      
+      // 刷新显示
+      const updatedPosts = await getAllMomentPosts();
+      setAiMoments(updatedPosts);
+      console.log('✅ 评论删除完成，界面已刷新');
+      
+    } catch (error) {
+      console.error('❌ 删除评论失败:', error);
+    }
+    
     setSelectedComment(null);
   };
 

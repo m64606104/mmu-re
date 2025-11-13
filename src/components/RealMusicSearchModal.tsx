@@ -216,12 +216,18 @@ const RealMusicSearchModal: React.FC<RealMusicSearchModalProps> = ({
                 </div>
                 <div className="flex items-center gap-2">
                   <span className="w-2 h-2 bg-blue-400 rounded-full"></span>
-                  <span>Free Music Archive</span>
+                  <span>iTunes - 30秒预览</span>
                 </div>
                 <div className="flex items-center gap-2">
-                  <span className="w-2 h-2 bg-orange-400 rounded-full"></span>
-                  <span>Audiomack 预览</span>
+                  <span className="w-2 h-2 bg-purple-400 rounded-full"></span>
+                  <span>本地演示音乐</span>
                 </div>
+              </div>
+              
+              <div className="mt-3 p-2 bg-blue-50 rounded-lg">
+                <p className="text-xs text-blue-700">
+                  💡 提示：如果搜索结果较少，可以尝试英文关键词或歌手名
+                </p>
               </div>
             </div>
             

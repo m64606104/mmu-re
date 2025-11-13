@@ -8,8 +8,8 @@
  *    - 🐢 5分钟后：30-60分钟/次
  *    - 目的：极大降低API调用，仅保持基本活跃
  * 
- * 2. 朋友圈界面（快速刷新）
- *    - ⚡️ 30-60秒/次
+ * 2. 朋友圈界面（适度刷新）
+ *    - ⚡️ 10-15分钟/次
  *    - 退出立即停止
  *    - 目的：用户关注朋友圈时保持高互动
  * 
@@ -26,6 +26,8 @@
 import { useEffect, useRef } from 'react';
 import { Conversation, ApiConfig } from '../types';
 import { generateAIMomentsInteraction, generateCommentSectionInteraction } from '../utils/aiMomentsGenerator';
+import { canMakeApiCall } from '../utils/apiUsageManager';
+import { getAdjustedInterval } from '../utils/energySavingManager';
 
 interface AIMomentsInteractionManagerProps {
   conversations: Conversation[];
@@ -57,6 +59,13 @@ export function AIMomentsInteractionManager({
   // 智能触发互动（随机延迟，模拟真人）
   const triggerSmartInteraction = async () => {
     if (isProcessingRef.current) {
+      return;
+    }
+
+    // 检查API调用限制
+    const apiCheck = canMakeApiCall('medium');
+    if (!apiCheck.allowed) {
+      console.log(`🚦 API调用受限: ${apiCheck.reason}`);
       return;
     }
 
@@ -102,7 +111,8 @@ export function AIMomentsInteractionManager({
     
     // ⚡️ 朋友圈界面：适度刷新（正常人不会一直盯着看）
     if (isInMomentsScreen) {
-      return 180000 + Math.random() * 180000; // 3-6分钟
+      const baseInterval = 600000 + Math.random() * 300000; // 10-15分钟
+      return getAdjustedInterval(baseInterval, 'moments');
     }
     
     // 🛌 离开朋友圈后：极慢刷新
@@ -128,7 +138,7 @@ export function AIMomentsInteractionManager({
       momentsScreenEntryTime.current = Date.now();
       hasLeftMoments.current = false;
       console.log('📱 进入朋友圈界面，切换到适度刷新模式...');
-      console.log('⚡️ 刷新频率：3-6分钟/次');
+      console.log('⚡️ 刷新频率：10-15分钟/次');
       
       // 🔥 立即触发一次互动，然后开始快速刷新
       triggerSmartInteraction();
@@ -163,7 +173,7 @@ export function AIMomentsInteractionManager({
       console.log('📊 刷新策略（大幅降低API请求）：');
       console.log('  🐌 聊天界面前10分钟：5-10分钟/次');
       console.log('  🐢 聊天界面10分钟后：1-2小时/次');
-      console.log('  ⚡️ 朋友圈界面：3-6分钟/次');
+      console.log('  ⚡️ 朋友圈界面：10-15分钟/次');
       console.log('  🛌 离开朋友圈后：2-5小时/次');
       
       // 第一次触发：随机延迟10-30秒（避免启动时立即请求）
