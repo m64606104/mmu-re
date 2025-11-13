@@ -14,9 +14,12 @@ import WeChatLinkPreview from './WeChatLinkPreview';
 import { SmartLinkParser } from '../utils/smartLinkParser';
 import XiaohongshuFeed from './XiaohongshuFeed';
 import MusicShareModal from './MusicShareModal';
+import RealMusicSearchModal from './RealMusicSearchModal';
 import MusicPlayingWidget from './MusicPlayingWidget';
 import MusicCard from './MusicCard';
+import RealMusicCard from './RealMusicCard';
 import { aiListeningSimulator, MusicInfo, MusicPlaybackState } from '../utils/musicService';
+import { RealMusicInfo } from '../utils/realMusicService';
 import { MusicMessage } from '../types';
 import { musicContextService } from '../utils/musicContextService';
 import ZhihuFeed from './ZhihuFeed';
@@ -757,6 +760,7 @@ ${recentMessages}
   
   // 🎵 音乐相关state
   const [showMusicShareModal, setShowMusicShareModal] = useState(false);
+  const [showRealMusicModal, setShowRealMusicModal] = useState(false);
   const [currentMusic, setCurrentMusic] = useState<MusicInfo | null>(null);
   const [musicPlaybackState, setMusicPlaybackState] = useState<MusicPlaybackState | null>(null);
   
@@ -1679,6 +1683,46 @@ ${characterInfo?.languageStyle ? `语言风格：${characterInfo.languageStyle}`
     
     console.log('🎭 AI现在可以感知音乐状态，等待用户主动聊天...');
 
+    setShowToolbar(false);
+    setShowMusicShareModal(false);
+  };
+
+  // 🎵 真实音乐分享处理函数
+  const handleRealMusicShare = async (realMusicInfo: RealMusicInfo) => {
+    console.log('🎵 分享真实音乐:', realMusicInfo);
+    
+    // 转换为MusicMessage格式
+    const musicMessage: Message = {
+      id: Date.now().toString(),
+      role: 'user',
+      content: `分享了音乐《${realMusicInfo.title}》`,
+      timestamp: Date.now(),
+      music: {
+        id: realMusicInfo.id,
+        title: realMusicInfo.title,
+        artist: realMusicInfo.artist,
+        album: realMusicInfo.album,
+        duration: realMusicInfo.duration,
+        genre: realMusicInfo.genre,
+        releaseYear: realMusicInfo.releaseYear,
+        audioUrl: realMusicInfo.audioUrl,
+        previewUrl: realMusicInfo.previewUrl,
+        coverUrl: realMusicInfo.coverUrl,
+        source: realMusicInfo.source,
+        playable: realMusicInfo.playable,
+        lyrics: '',
+        isRealMusic: true // 标记为真实音乐
+      } as MusicMessage & { isRealMusic: boolean }
+    };
+
+    // 添加到聊天记录
+    onUpdateConversation(conversation.id, {
+      messages: [...conversation.messages, musicMessage],
+      lastMessageTime: Date.now(),
+    });
+
+    console.log('✅ 真实音乐已添加到聊天');
+    setShowRealMusicModal(false);
     setShowToolbar(false);
   };
 
@@ -4353,12 +4397,26 @@ ${doc.content}`;
                     {/* 🎵 音乐卡片 */}
                     {message.music && (
                       <div className="max-w-[300px]">
-                        <MusicCard
-                          music={message.music}
-                          className="w-full"
-                          showPlayButton={true}
-                          enableRealAudio={true}
-                        />
+                        {(message.music as any).isRealMusic ? (
+                          <RealMusicCard
+                            music={message.music as any}
+                            className="w-full"
+                            showGenerateButton={true}
+                            onGenerateAIResponse={() => {
+                              // 触发AI对这首歌的回复
+                              const prompt = `用户正在听《${message.music?.title}》- ${message.music?.artist}，请和用户聊聊这首歌。`;
+                              setCurrentInput(prompt);
+                              handleSendMessage();
+                            }}
+                          />
+                        ) : (
+                          <MusicCard
+                            music={message.music}
+                            className="w-full"
+                            showPlayButton={true}
+                            enableRealAudio={true}
+                          />
+                        )}
                       </div>
                     )}
                     
@@ -4969,8 +5027,8 @@ ${doc.content}`;
               </button>
               <button 
                 className="flex-shrink-0"
-                onClick={() => setShowMusicShareModal(true)}
-                title="分享音乐"
+                onClick={() => setShowRealMusicModal(true)}
+                title="搜索真实音乐"
               >
                 <div className="w-9 h-9 rounded-full bg-white border border-gray-300 flex items-center justify-center hover:border-gray-400 transition-colors">
                   <Music className="w-4 h-4 text-gray-600" />
@@ -5683,6 +5741,14 @@ ${doc.content}`;
       isOpen={showMusicShareModal}
       onClose={() => setShowMusicShareModal(false)}
       onShareMusic={handleMusicShare}
+      characterName={conversation.characterSettings?.nickname || conversation.name}
+    />
+
+    {/* 🎵 真实音乐搜索弹窗 */}
+    <RealMusicSearchModal
+      isOpen={showRealMusicModal}
+      onClose={() => setShowRealMusicModal(false)}
+      onSelectMusic={handleRealMusicShare}
       characterName={conversation.characterSettings?.nickname || conversation.name}
     />
 
