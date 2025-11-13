@@ -783,8 +783,8 @@ ${recentMessages}
   
   // 旧的消息操作状态已移除，使用新的实现（selectedMessageId, menuPosition等）
   
-  // 🚀 性能优化开关 - 可以动态控制是否使用优化渲染
-  const useOptimizedRendering = conversation.messages.length > 20; // 超过20条消息时启用优化
+  // 🚀 性能优化开关 - 暂时禁用优化渲染，修复功能问题
+  const useOptimizedRendering = false; // 暂时禁用，确保所有功能正常
   
   // 🔍 性能监控 - 严格限制在开发环境
   useEffect(() => {
