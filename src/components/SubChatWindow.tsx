@@ -12,6 +12,8 @@ import ForwardTargetSelector from './ForwardTargetSelector';
 import { createSingleForward, createMergedForward, getMessagePreview } from '../utils/messageForward';
 import { formatChatRecord } from '../utils/chatRecordFormatter';
 import { splitMessages } from '../utils/messageFormatter';
+import { subChatMemoryManager } from '../utils/subChatMemoryManager';
+import { subChatPurposeDetector } from '../utils/subChatPurposeDetector';
 import type { MusicInfo } from '../utils/musicService';
 
 interface SubChatWindowProps {
@@ -556,6 +558,36 @@ const SubChatWindow: React.FC<SubChatWindowProps> = ({
     return content || '[消息]';
   };
 
+  /**
+   * 构建主聊天上下文，确保子聊天记住主聊天的内容
+   */
+  const buildMainChatContext = (conversation: Conversation, subChat: SubChat): string => {
+    // 获取主聊天最近20条消息作为上下文
+    const recentMainMessages = conversation.messages.slice(-20);
+    const contextMessages = recentMainMessages.map(msg => {
+      const role = msg.role === 'user' ? '用户' : '我';
+      const content = msg.content || '[多媒体消息]';
+      return `${role}: ${content}`;
+    });
+    
+    // 检查是否有其他相关的子聊天摘要
+    const otherSubChats = (conversation.subChats || [])
+      .filter(sc => sc.id !== subChat.id && sc.messages.length > 0);
+    
+    let otherSubChatsContext = '';
+    if (otherSubChats.length > 0) {
+      otherSubChatsContext = '\n\n【其他相关子聊天】:\n' + 
+        otherSubChats.map(sc => `- ${sc.name}: ${sc.purpose || '未指定目的'}`).join('\n');
+    }
+    
+    return `
+【主聊天最近对话】:
+${contextMessages.join('\n')}
+${otherSubChatsContext}
+
+重要：你需要保持与主聊天内容的连贯性，在子聊天中可以引用主聊天提到的话题、人物、事件等。`;
+  };
+
   const handleGenerateReply = async () => {
     // 检查是否有用户消息
     if (subChat.messages.length === 0) return;
@@ -590,19 +622,74 @@ const SubChatWindow: React.FC<SubChatWindowProps> = ({
         console.log('⚠️ 没有未处理的用户消息');
         return;
       }
+
+      // 1.5. 检测用户是否说明了子聊天的目的（特别是前几条消息）
+      const isEarlyMessage = subChat.messages.length <= 5; // 前5条消息
+      let purposeDetected = false;
+      let detectedPurposeInfo = null;
+      
+      if (isEarlyMessage) {
+        for (const userMessage of unhandledUserMessages) {
+          const detectedPurpose = subChatPurposeDetector.detectPurposeFromMessage(userMessage, subChat);
+          if (detectedPurpose && detectedPurpose.confidence > 0.6) {
+            console.log('🎯 检测到子聊天目的:', detectedPurpose);
+            
+            // 更新子聊天的目的
+            _onUpdateSubChat(subChat.id, {
+              purpose: detectedPurpose.purpose
+            });
+            
+            purposeDetected = true;
+            detectedPurposeInfo = detectedPurpose;
+            break;
+          }
+        }
+      }
       
       // 2. 检查多媒体消息类型
       const hasImage = unhandledUserMessages.some((m: Message) => m.mediaType === 'image' && m.mediaUrl);
       // const hasVideo = unhandledUserMessages.some((m: Message) => m.mediaType === 'video' && m.mediaDescription);
       // const hasVoice = unhandledUserMessages.some((m: Message) => m.mediaType === 'voice' && m.mediaDescription);
       
-      // 3. 构建系统提示词
+      // 如果刚检测到目的，先生成理解回复
+      if (purposeDetected && detectedPurposeInfo) {
+        const understandingResponse = subChatPurposeDetector.generateUnderstandingResponse(
+          detectedPurposeInfo, 
+          subChat.name
+        );
+        
+        // 直接添加理解回复消息
+        const understandingMessage: Message = {
+          id: `understanding_${Date.now()}`,
+          role: 'assistant',
+          content: understandingResponse,
+          timestamp: Date.now()
+        };
+        
+        _onUpdateSubChat(subChat.id, {
+          messages: [...subChat.messages, understandingMessage]
+        });
+        
+        return; // 直接返回，不继续生成常规回复
+      }
+
+      // 3. 构建系统提示词，包含主聊天上下文
+      const mainChatContext = buildMainChatContext(conversation, subChat);
+      
       let systemPrompt = conversation.characterSettings
         ? `你是${conversation.characterSettings.nickname}。
 ${conversation.characterSettings.systemPrompt ? `人物设定：${conversation.characterSettings.systemPrompt}` : ''}
 ${conversation.characterSettings.personality ? `性格特征：${conversation.characterSettings.personality}` : ''}
 ${conversation.characterSettings.languageStyle ? `语言风格：${conversation.characterSettings.languageStyle}` : ''}
 ${conversation.characterSettings.languageExample ? `语言示例：${conversation.characterSettings.languageExample}` : ''}
+
+【🔗 对话连贯性】：
+这是一个子聊天对话，你需要知道主聊天的背景：
+${mainChatContext}
+
+【💬 子聊天目的】：
+${subChat.purpose || '用户希望在独立的空间进行对话'}
+${purposeDetected ? `\n\n⚠️ 重要：用户刚刚说明了这个子聊天的目的，你需要理解并确认这个目的，然后基于此目的和主聊天背景进行回复。` : ''}
 
 【📱 多媒体消息功能】：
 1. 📷 图片消息：[图片:描述内容]

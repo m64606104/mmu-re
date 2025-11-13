@@ -31,6 +31,11 @@ import { SavedDocument } from '../utils/documentLibrary';
 import { sendMoney, receiveMoney, getBalance, aiPayForUser, refundGift } from '../utils/wallet';
 import { addTransaction as addAIFinanceTransaction, getAIFinanceData } from '../utils/aiFinance';
 import ActivityLogModal from './ActivityLogModal';
+import SubChatWindow from './SubChatWindow';
+import SubChatManager from './SubChatManager';
+import SubChatSuggestionModal from './SubChatSuggestionModal';
+import { createSubChat, addSubChatToConversation, updateSubChatInConversation } from '../utils/subChatManager';
+import { aiSubChatInitiator, SubChatSuggestion } from '../utils/aiSubChatInitiator';
 // 消息转发和多选相关导入
 import MessageSelectionToolbar from './MessageSelectionToolbar';
 import ForwardTargetSelector from './ForwardTargetSelector';
@@ -38,14 +43,9 @@ import { MergedForwardViewer } from './MergedForwardCard';
 import { createSingleForward, createMergedForward, getMessagePreview } from '../utils/messageForward';
 import { formatChatRecord } from '../utils/chatRecordFormatter';
 // 子聊天相关导入
-import SubChatWindow from './SubChatWindow';
-import SubChatManager from './SubChatManager';
 import ChatExtractPreview from './ChatExtractPreview';
 import {
-  createSubChat,
   addMessageToSubChat,
-  updateSubChatInConversation,
-  addSubChatToConversation,
   // removeSubChatFromConversation, // 未使用，暂时注释
   getTotalUnreadCount,
   getPendingSubChatsCount,
@@ -397,6 +397,32 @@ const backgroundTaskManager = {
           });
         }
 
+        // 🧠 为主聊天添加子聊天记忆上下文（如果用户提到了子聊天内容）
+        // 注：这里需要根据实际的消息上下文来检测，暂时使用内容作为检测基础
+        if (content && conversation.subChats && conversation.subChats.length > 0) {
+          const relevantSubChats = subChatMemoryManager.detectSubChatReferences(content, conversation.subChats);
+          if (relevantSubChats.length > 0) {
+            console.log(`🔗 检测到用户提及子聊天内容，相关子聊天: ${relevantSubChats.map(sc => sc.name).join(', ')}`);
+            
+            // 为每个相关子聊天生成摘要
+            const subChatContexts = relevantSubChats.map(subChat => {
+              const lastMessages = subChat.messages.slice(-5); // 最近5条消息
+              const summary = lastMessages.map(msg => {
+                const role = msg.role === 'user' ? '用户' : '我';
+                return `${role}: ${msg.content}`;
+              }).join('\n');
+              
+              return `[子聊天"${subChat.name}"最近内容]
+目的: ${subChat.purpose || '未指定'}
+最近对话:
+${summary}`;
+            }).join('\n\n');
+            
+            // 在AI回复前添加子聊天上下文提示
+            console.log(`📝 添加子聊天上下文:\n${subChatContexts}`);
+          }
+        }
+
         // 检测AI送礼物：[送礼物:商品名称:价格:留言]
         const giftMatch = finalContent.match(/\[送礼物:([^:]+):(\d+(?:\.\d+)?):([^\]]*)\]/);
         if (giftMatch) {
@@ -669,6 +695,10 @@ export default function ChatScreen({
   const [showSubChatManager, setShowSubChatManager] = useState(false);
   const [activeSubChatId, setActiveSubChatId] = useState<string | null>(null);
   const [minimizedSubChats, setMinimizedSubChats] = useState<Set<string>>(new Set());
+  
+  // 🤖 AI主动发起子聊天相关状态
+  const [subChatSuggestion, setSubChatSuggestion] = useState<SubChatSuggestion | null>(null);
+  const [showSubChatSuggestionModal, setShowSubChatSuggestionModal] = useState(false);
   
   // 聊天记录提取预览相关状态
   const [showExtractPreview, setShowExtractPreview] = useState(false);
@@ -1599,18 +1629,53 @@ ${characterInfo?.languageStyle ? `语言风格：${characterInfo.languageStyle}`
   };
 
   /**
-   * AI发起子聊天（从解析逻辑调用）
+   * AI发起子聊天建议（显示弹窗让用户选择）
    */
   const handleAIInitiateSubChat = (purpose: string, suggestedName: string) => {
-    const newSubChat = createSubChat(suggestedName, conversation.id, 'ai', purpose);
+    // 创建子聊天建议
+    const suggestion: SubChatSuggestion = {
+      id: `ai_suggestion_${Date.now()}`,
+      purpose,
+      suggestedName,
+      reason: '基于当前对话内容，AI认为开启子聊天会更好',
+      priority: 'medium',
+      timestamp: Date.now()
+    };
+    
+    // 显示建议弹窗
+    setSubChatSuggestion(suggestion);
+    setShowSubChatSuggestionModal(true);
+  };
+
+  /**
+   * 处理用户接受AI的子聊天建议
+   */
+  const handleAcceptSubChatSuggestion = (name: string, purpose: string) => {
+    if (!subChatSuggestion) return;
+    
+    const newSubChat = createSubChat(name, conversation.id, 'ai', purpose);
     const updatedConversation = addSubChatToConversation(conversation, newSubChat);
     
     onUpdateConversation(conversation.id, {
       subChats: updatedConversation.subChats,
     });
     
-    // 显示通知
-    showToast(`AI想发起子聊天：${suggestedName}`, 'info');
+    // 自动打开新创建的子聊天
+    setActiveSubChatId(newSubChat.id);
+    
+    // 关闭建议弹窗
+    setShowSubChatSuggestionModal(false);
+    setSubChatSuggestion(null);
+    
+    showToast(`已创建子聊天：${name}`, 'success');
+  };
+
+  /**
+   * 处理用户拒绝AI的子聊天建议
+   */
+  const handleRejectSubChatSuggestion = () => {
+    setShowSubChatSuggestionModal(false);
+    setSubChatSuggestion(null);
   };
 
   const handleSendMessage = () => {
@@ -5186,9 +5251,9 @@ ${doc.content}`;
 
         <div ref={messagesEndRef} />
         
-        {/* 🚀 返回底部按钮 - 当用户不在底部时显示 */}
+        {/* 🚀 返回底部按钮 - 居中显示在手机容器中 */}
         {!shouldScrollToBottom && isUserScrolling && (
-          <div className="fixed bottom-20 right-4 z-50">
+          <div className="fixed bottom-24 left-1/2 transform -translate-x-1/2 z-50">
             <button
               onClick={() => {
                 console.log('🔄 用户点击返回底部，智能重置消息窗口');
@@ -5209,12 +5274,12 @@ ${doc.content}`;
                 // 延迟滚动，确保DOM更新
                 setTimeout(() => smartScrollToBottom(true), 100);
               }}
-              className="bg-blue-500 hover:bg-blue-600 text-white p-3 rounded-full shadow-lg transition-colors flex items-center gap-2"
+              className="bg-blue-500/90 hover:bg-blue-600 text-white p-2 rounded-full shadow-lg transition-all backdrop-blur-sm flex items-center gap-1.5"
             >
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 14l-7 7m0 0l-7-7m7 7V3" />
               </svg>
-              <span className="text-sm">回到底部</span>
+              <span className="text-xs">回到底部</span>
             </button>
           </div>
         )}
@@ -5947,6 +6012,16 @@ ${doc.content}`;
         onRenameSubChat={handleRenameSubChat}
         onDeleteSubChat={handleDeleteSubChat}
         onImportSubChat={handleImportSubChat}
+      />
+    )}
+
+    {/* 🤖 AI子聊天建议弹窗 */}
+    {showSubChatSuggestionModal && subChatSuggestion && (
+      <SubChatSuggestionModal
+        suggestion={subChatSuggestion}
+        onAccept={handleAcceptSubChatSuggestion}
+        onReject={handleRejectSubChatSuggestion}
+        characterName={conversation.characterSettings?.nickname || conversation.name}
       />
     )}
 
