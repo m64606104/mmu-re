@@ -16,13 +16,15 @@ interface ShoppingCartModalProps {
   onClose: () => void;
   shopType: 'food' | 'movie' | 'shopping';
   onPurchase: (items: CartItem[], totalAmount: number) => void;
+  onOpenPurchaseOptions: (cartBundle: any) => void; // 新增：打开购买选项
 }
 
 export default function ShoppingCartModal({
   isOpen,
   onClose,
   shopType,
-  onPurchase
+  onPurchase: _onPurchase, // 保留参数但标记为未使用，未来可能需要
+  onOpenPurchaseOptions
 }: ShoppingCartModalProps) {
   const [cartItems, setCartItems] = useState<CartItem[]>([]);
 
@@ -122,9 +124,26 @@ export default function ShoppingCartModal({
       return;
     }
 
+    // 创建购物车套餐商品
     const totalAmount = getTotalAmount();
-    onPurchase(cartItems, totalAmount);
-    clearCart();
+    const itemsCount = getTotalItems();
+    
+    // 生成购物车套餐的描述
+    const itemNames = cartItems.map(item => `${item.name} x${item.quantity}`).join('、');
+    const description = `购物车套餐包含：${itemNames}`;
+    
+    const cartBundle = {
+      id: `cart_bundle_${Date.now()}`,
+      name: `${currentShop.name}购物车套餐 (${itemsCount}件商品)`,
+      price: totalAmount,
+      image: 'https://via.placeholder.com/300x300?text=购物车套餐', // 可以用购物车图标
+      description: description,
+      isCartBundle: true,
+      cartItems: cartItems // 包含原始购物车商品信息
+    };
+
+    // 调用购买选项而不是直接购买
+    onOpenPurchaseOptions(cartBundle);
     onClose();
   };
 

@@ -287,7 +287,7 @@ const ShoppingScreen: React.FC<ShoppingScreenProps> = ({
     setShowPurchaseOptions(true);
   };
 
-  // 为自己购买
+  // 自己购买
   const handlePurchaseForSelf = (product: Product) => {
     const balance = getBalance();
     
@@ -298,8 +298,26 @@ const ShoppingScreen: React.FC<ShoppingScreenProps> = ({
 
     const success = purchaseProduct(product.price, product.name, currentShop.name);
     if (success) {
-      alert('购买成功！');
-      onPurchase();
+      // 如果是购物车套餐，清空购物车
+      if ((product as any).isCartBundle) {
+        clearCartForShop(shopType);
+        updateCartCount();
+      }
+      
+      onPurchase(); // 刷新钱包
+      alert(`购买成功！您已购买 ${product.name}`);
+    } else {
+      alert('购买失败，请重试');
+    }
+  };
+
+  // 清空指定商城的购物车
+  const clearCartForShop = (shopType: 'food' | 'movie' | 'shopping') => {
+    try {
+      const cartKey = `shopping_cart_${shopType}`;
+      localStorage.removeItem(cartKey);
+    } catch (error) {
+      console.error('清空购物车失败:', error);
     }
   };
 
@@ -312,11 +330,19 @@ const ShoppingScreen: React.FC<ShoppingScreenProps> = ({
       return;
     }
 
-    const success = purchaseProduct(product.price, `送给${recipientName}的礼物：${product.name}`, currentShop.name);
+    const success = purchaseProduct(product.price, product.name, currentShop.name);
     if (success) {
+      // 如果是购物车套餐，清空购物车
+      if ((product as any).isCartBundle) {
+        clearCartForShop(shopType);
+        updateCartCount();
+      }
+      
       onSendGiftToAI(product, recipientId, recipientName, shopType, message);
       onPurchase();
-      alert(`礼物已送给${recipientName}`);
+      alert(`已成功送给${recipientName}！`);
+    } else {
+      alert('购买失败，请重试');
     }
   };
 
@@ -325,6 +351,13 @@ const ShoppingScreen: React.FC<ShoppingScreenProps> = ({
     const aiConv = conversations.find(c => c.id === aiId);
     const aiName = aiConv?.characterSettings?.nickname || 'AI';
     onRequestAIPay(product, aiId, shopType);
+    
+    // 如果是购物车套餐，清空购物车（因为已经发送代付请求）
+    if ((product as any).isCartBundle) {
+      clearCartForShop(shopType);
+      updateCartCount();
+    }
+    
     alert(`已向${aiName}发送代付请求`);
   };
 
@@ -364,6 +397,12 @@ const ShoppingScreen: React.FC<ShoppingScreenProps> = ({
     } else {
       alert('购买失败，请重试');
     }
+  };
+
+  // 打开购物车购买选项
+  const handleCartPurchaseOptions = (cartBundle: any) => {
+    setSelectedProduct(cartBundle);
+    setShowPurchaseOptions(true);
   };
 
   // 直接购买
@@ -826,6 +865,7 @@ const ShoppingScreen: React.FC<ShoppingScreenProps> = ({
         onClose={() => setShowCart(false)}
         shopType={shopType}
         onPurchase={handleCartPurchase}
+        onOpenPurchaseOptions={handleCartPurchaseOptions}
       />
     </div>
   );
