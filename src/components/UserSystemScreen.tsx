@@ -14,15 +14,16 @@ import {
   type Friend
 } from '../utils/userSystem';
 import { 
-  getConversations, 
-  sendMessageToUser,
-  getChatHistory,
-  markConversationAsRead,
-  startMessageSync,
-  createInitialConversation,
-  type Conversation,
-  type UserMessage 
-} from '../utils/messageSystem';
+  getUserForumConversations,
+  postMessageToForum,
+  getForumMessages,
+  markForumAsRead,
+  joinForumByFriendCode,
+  getForumLatestMessage,
+  getForumUnreadCount,
+  type ForumConversation,
+  type ForumMessage 
+} from '../utils/forumMessageSystem';
 
 interface UserSystemScreenProps {
   onBack: () => void;
@@ -34,43 +35,45 @@ export default function UserSystemScreen({ onBack }: UserSystemScreenProps) {
   const [currentScreen, setCurrentScreen] = useState<Screen>('main');
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [friends, setFriends] = useState<Friend[]>([]);
-  const [conversations, setConversations] = useState<Conversation[]>([]);
+  const [forumConversations, setForumConversations] = useState<ForumConversation[]>([]);
   const [selectedFriend, setSelectedFriend] = useState<Friend | null>(null);
-  const [chatHistory, setChatHistory] = useState<UserMessage[]>([]);
+  const [selectedForum, setSelectedForum] = useState<ForumConversation | null>(null);
+  const [chatHistory, setChatHistory] = useState<ForumMessage[]>([]);
   const [messageInput, setMessageInput] = useState('');
+  const [copied, setCopied] = useState(false);
   
-  // 注册相关状态
-  const [nickname, setNickname] = useState('');
+  // 添加好友相关状态
   const [addFriendCode, setAddFriendCode] = useState('');
   const [addFriendNickname, setAddFriendNickname] = useState('');
-  const [copied, setCopied] = useState(false);
-
+  
+  // 注册相关状态
+  const [registerNickname, setRegisterNickname] = useState('');
+  
   useEffect(() => {
-    // 检查是否首次使用
-    if (isFirstTimeUser()) {
+    // 初始化用户系统
+    const user = getCurrentUser();
+    if (user) {
+      setCurrentUser(user);
+      loadFriendsAndForums();
+    } else if (isFirstTimeUser()) {
       setCurrentScreen('register');
-    } else {
-      setCurrentUser(getCurrentUser());
-      loadFriendsAndConversations();
-      startMessageSync();
     }
   }, []);
 
-  const loadFriendsAndConversations = () => {
+  const loadFriendsAndForums = () => {
     setFriends(getFriendsList());
-    setConversations(getConversations());
+    setForumConversations(getUserForumConversations());
   };
 
   const handleRegister = () => {
-    if (!nickname.trim()) {
+    if (!registerNickname.trim()) {
       alert('请输入昵称');
       return;
     }
 
-    const user = createUser(nickname.trim(), generateAvatar(nickname));
+    const user = createUser(registerNickname.trim(), generateAvatar(registerNickname));
     setCurrentUser(user);
     setCurrentScreen('main');
-    startMessageSync();
     alert(`注册成功！您的用户码是: ${user.userCode}`);
   };
 
@@ -92,14 +95,18 @@ export default function UserSystemScreen({ onBack }: UserSystemScreenProps) {
     );
 
     if (success) {
-      // 创建初始对话记录，这样用户就能在主界面看到新好友
-      createInitialConversation(addFriendCode.trim().toUpperCase());
+      // 使用论坛系统创建对话
+      const forum = joinForumByFriendCode(addFriendCode.trim().toUpperCase());
       
-      alert('添加好友成功！');
-      loadFriendsAndConversations();
-      setAddFriendCode('');
-      setAddFriendNickname('');
-      setCurrentScreen('main');
+      if (forum) {
+        alert('添加好友成功！');
+        loadFriendsAndForums();
+        setAddFriendCode('');
+        setAddFriendNickname('');
+        setCurrentScreen('main');
+      } else {
+        alert('创建聊天论坛失败');
+      }
     } else {
       alert('添加失败，可能已经是好友或用户码无效');
     }
@@ -107,20 +114,26 @@ export default function UserSystemScreen({ onBack }: UserSystemScreenProps) {
 
   const handleStartChat = (friend: Friend) => {
     setSelectedFriend(friend);
-    const history = getChatHistory(friend.userCode);
-    setChatHistory(history);
-    markConversationAsRead(friend.userCode);
-    loadFriendsAndConversations(); // 刷新未读数
+    
+    // 获取或创建论坛
+    const forum = joinForumByFriendCode(friend.userCode);
+    if (forum) {
+      setSelectedForum(forum);
+      const history = getForumMessages(forum.id);
+      setChatHistory(history);
+      markForumAsRead(forum.id);
+      loadFriendsAndForums(); // 刷新未读数
+    }
     setCurrentScreen('chat');
   };
 
   const handleSendMessage = () => {
-    if (!messageInput.trim() || !selectedFriend) return;
+    if (!messageInput.trim() || !selectedForum) return;
 
-    const message = sendMessageToUser(selectedFriend.userCode, messageInput.trim());
+    const message = postMessageToForum(selectedForum.id, messageInput.trim());
     if (message) {
       setChatHistory(prev => [...prev, message]);
-      loadFriendsAndConversations(); // 刷新对话列表
+      loadFriendsAndForums(); // 刷新对话列表
     }
     setMessageInput('');
   };
@@ -153,8 +166,8 @@ export default function UserSystemScreen({ onBack }: UserSystemScreenProps) {
               </label>
               <input
                 type="text"
-                value={nickname}
-                onChange={(e) => setNickname(e.target.value)}
+                value={registerNickname}
+                onChange={(e) => setRegisterNickname(e.target.value)}
                 placeholder="请输入昵称"
                 className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 maxLength={20}
@@ -163,7 +176,7 @@ export default function UserSystemScreen({ onBack }: UserSystemScreenProps) {
 
             <button
               onClick={handleRegister}
-              disabled={!nickname.trim()}
+              disabled={!registerNickname.trim()}
               className="w-full py-3 bg-blue-500 text-white rounded-xl font-semibold hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
             >
               开始使用
@@ -216,10 +229,14 @@ export default function UserSystemScreen({ onBack }: UserSystemScreenProps) {
           ) : (
             <div className="p-4 space-y-2">
               {friends.map((friend) => {
-                // 查找对应的对话记录
-                const conversation = conversations.find(c => 
-                  c.participants.includes(friend.userCode)
+                // 查找对应的论坛对话记录
+                const forum = forumConversations.find(f => 
+                  f.participants.includes(friend.userCode)
                 );
+                
+                // 获取最新消息和未读数
+                const latestMessage = forum ? getForumLatestMessage(forum.id) : null;
+                const unreadCount = forum ? getForumUnreadCount(forum.id) : 0;
 
                 return (
                   <div
@@ -237,18 +254,18 @@ export default function UserSystemScreen({ onBack }: UserSystemScreenProps) {
                         <div className="flex items-center justify-between">
                           <h3 className="font-semibold text-gray-800">{friend.nickname}</h3>
                           <span className="text-xs text-gray-500">
-                            {conversation?.lastMessage ? 
-                              new Date(conversation.lastMessage.timestamp).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' }) : 
+                            {latestMessage ? 
+                              new Date(latestMessage.timestamp).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' }) : 
                               '新好友'}
                           </span>
                         </div>
                         <div className="flex items-center justify-between mt-1">
                           <p className="text-sm text-gray-600 truncate">
-                            {conversation?.lastMessage?.content || '点击开始聊天'}
+                            {latestMessage?.content || '点击开始聊天'}
                           </p>
-                          {conversation && conversation.unreadCount > 0 && (
+                          {unreadCount > 0 && (
                             <span className="bg-red-500 text-white text-xs rounded-full px-2 py-1 min-w-[20px] text-center">
-                              {conversation.unreadCount}
+                              {unreadCount}
                             </span>
                           )}
                         </div>
@@ -402,18 +419,18 @@ export default function UserSystemScreen({ onBack }: UserSystemScreenProps) {
             chatHistory.map((message) => (
               <div
                 key={message.id}
-                className={`flex ${message.fromUserId === currentUser?.userCode ? 'justify-end' : 'justify-start'}`}
+                className={`flex ${message.authorCode === currentUser?.userCode ? 'justify-end' : 'justify-start'}`}
               >
                 <div
                   className={`max-w-[70%] px-4 py-2 rounded-2xl ${
-                    message.fromUserId === currentUser?.userCode
+                    message.authorCode === currentUser?.userCode
                       ? 'bg-blue-500 text-white'
                       : 'bg-white text-gray-800 shadow-sm'
                   }`}
                 >
                   <p>{message.content}</p>
                   <p className={`text-xs mt-1 ${
-                    message.fromUserId === currentUser?.userCode ? 'text-blue-100' : 'text-gray-500'
+                    message.authorCode === currentUser?.userCode ? 'text-blue-100' : 'text-gray-500'
                   }`}>
                     {new Date(message.timestamp).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })}
                   </p>
