@@ -136,9 +136,10 @@ export const splitMessages = (message: string): string[] => {
   
   // 🔒 保护引号、括号内的内容（包括其中的标点符号）
   // 支持: "xxx"、「xxx」、『xxx』、【xxx】、(xxx)、[xxx]、{xxx}
+  // ⚡ 增强保护逻辑：使用更严格的匹配模式
   const protectedContentPatterns = [
     /([""「『【])([^""」『】]*?)([""」『】])/g,  // 中文引号
-    /(\()([^()]*?)(\))/g,                      // 圆括号
+    /([（(])([^（()）]*?)([）)])/g,              // 圆括号 (增强匹配)
     /(\[)([^\[\]]*?)(\])/g,                    // 方括号
     /(\{)([^{}]*?)(\})/g,                      // 花括号
   ];
@@ -326,23 +327,17 @@ export const splitMessages = (message: string): string[] => {
         const closeMatches = (msg.match(pair.close) || []).length;
         
         if (openMatches > closeMatches) {
-          // 有未闭合的符号，检查下一个消息是否是闭合符号
-          if (i + 1 < restoredMessages.length) {
-            const nextMsg = restoredMessages[i + 1].trim();
-            const nextHasClose = pair.close.test(nextMsg);
-            
-            if (nextHasClose && /^[""」』】)）\]}]/.test(nextMsg)) {
-              // 下一个消息以闭符号开头，合并
-              smartFixedMessages.push(msg + nextMsg);
-              i++; // 跳过下一个
-              needsFixing = true;
-              break;
-            }
-          }
+          // ⚠️ 禁用自动合并逻辑，避免重复发送
+          // 有未闭合的符号时，仅在必要时自动补齐，不尝试与下一条消息合并
+          // 因为保护机制应该已经处理了完整的括号内容
           
-          // 如果没有找到闭合符号，自动补齐最后一个开符号
+          // 🔧 谨慎地自动补齐符号，仅当确定需要时
+          // 检查是否真的需要补齐（避免对已经完整的内容进行处理）
           const openSymbols = msg.match(pair.open) || [];
-          if (openSymbols.length > 0) {
+          const existingCloseSymbols = msg.match(pair.close) || [];
+          
+          // 只有当开符号明显多于闭符号时才补齐
+          if (openSymbols.length > existingCloseSymbols.length) {
             const lastOpenSymbol = openSymbols[openSymbols.length - 1];
             const closeSymbol = (pair.map as any)[lastOpenSymbol];
             if (closeSymbol) {
