@@ -97,32 +97,117 @@ const ShoppingScreen: React.FC<ShoppingScreenProps> = ({
       return;
     }
 
+    if (!imageGenConfig.model) {
+      alert('请先选择生图模型');
+      setShowSettings(true);
+      return;
+    }
+
     const productId = `ai_${Date.now()}`;
     setGeneratingImages(new Set([...generatingImages, productId]));
 
     try {
-      // 这里调用AI生图API
-      // 示例：使用文生图API
-      const response = await fetch(imageGenConfig.apiUrl, {
+      // 🔥 构造正确的API地址
+      let apiUrl = imageGenConfig.apiUrl.trim();
+      // 移除末尾斜杠
+      if (apiUrl.endsWith('/')) {
+        apiUrl = apiUrl.slice(0, -1);
+      }
+      
+      // 🔥 根据不同的API提供商构造正确的endpoint
+      let endpoint;
+      if (apiUrl.includes('openai.com') || apiUrl.includes('api.openai.com')) {
+        // OpenAI官方API
+        endpoint = `${apiUrl}/v1/images/generations`;
+      } else {
+        // 第三方API提供商，尝试常见的endpoint
+        if (!apiUrl.includes('/v1/')) {
+          endpoint = `${apiUrl}/v1/images/generations`;
+        } else {
+          endpoint = apiUrl.endsWith('/images/generations') ? apiUrl : `${apiUrl}/images/generations`;
+        }
+      }
+
+      console.log('🎨 调用生图API:', endpoint);
+      console.log('🎨 使用模型:', imageGenConfig.model);
+
+      // 🔥 构造请求体，适配不同模型
+      const requestBody: any = {
+        prompt: `${searchTerm}, product photography, high quality, professional lighting, commercial product shot`,
+        model: imageGenConfig.model,
+        n: 1
+      };
+
+      // 🔥 根据模型类型设置不同参数
+      if (imageGenConfig.model.includes('dall-e')) {
+        // DALL-E系列参数
+        requestBody.size = '1024x1024';
+        requestBody.quality = 'standard';
+      } else if (imageGenConfig.model.includes('stable-diffusion') || imageGenConfig.model.includes('sd')) {
+        // Stable Diffusion参数
+        requestBody.width = 1024;
+        requestBody.height = 1024;
+        requestBody.steps = 20;
+        requestBody.cfg_scale = 7;
+      } else {
+        // 通用参数
+        requestBody.size = '1024x1024';
+      }
+
+      const response = await fetch(endpoint, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${imageGenConfig.apiKey}`
         },
-        body: JSON.stringify({
-          prompt: `${searchTerm}, product photography, high quality, professional lighting`,
-          model: imageGenConfig.model || 'dall-e-3', // 使用配置的模型
-          size: '1024x1024',
-          n: 1
-        })
+        body: JSON.stringify(requestBody)
       });
 
+      console.log('🎨 API响应状态:', response.status);
+
       if (!response.ok) {
-        throw new Error('生图失败');
+        const errorText = await response.text();
+        console.error('🎨 API错误响应:', errorText);
+        throw new Error(`生图失败 (${response.status}): ${errorText}`);
       }
 
       const data = await response.json();
-      const imageUrl = data.data?.[0]?.url || data.url || 'https://via.placeholder.com/300x300?text=AI生成';
+      console.log('🎨 API响应数据:', data);
+
+      // 🔥 更强大的响应解析，适配不同API格式
+      let imageUrl = '';
+      
+      if (data.data && data.data.length > 0) {
+        // OpenAI格式: { data: [{ url: "..." }] }
+        imageUrl = data.data[0].url || data.data[0].b64_json;
+      } else if (data.url) {
+        // 直接URL格式: { url: "..." }
+        imageUrl = data.url;
+      } else if (data.images && data.images.length > 0) {
+        // 某些API格式: { images: ["url1", "url2"] }
+        imageUrl = data.images[0];
+      } else if (data.image) {
+        // 某些API格式: { image: "url" }
+        imageUrl = data.image;
+      } else if (data.output && data.output.length > 0) {
+        // 某些API格式: { output: ["url1"] }
+        imageUrl = data.output[0];
+      }
+
+      if (!imageUrl) {
+        console.error('🎨 无法从响应中解析图片URL:', data);
+        throw new Error('API返回格式异常，无法获取图片URL');
+      }
+
+      // 如果是base64格式，需要转换
+      if (imageUrl.startsWith('data:image/')) {
+        // base64图片可以直接使用
+      } else if (!imageUrl.startsWith('http')) {
+        // 如果不是完整URL，尝试拼接
+        imageUrl = imageUrl.startsWith('/') ? `${apiUrl}${imageUrl}` : imageUrl;
+      }
+
+      console.log('🎨 获取到图片URL:', imageUrl.substring(0, 100) + '...');
 
       // 随机价格
       const price = Math.floor(Math.random() * 200) + 10;
@@ -137,9 +222,12 @@ const ShoppingScreen: React.FC<ShoppingScreenProps> = ({
 
       setProducts([newProduct, ...products]);
       setGeneratingImages(new Set([...generatingImages].filter(id => id !== productId)));
+      
+      alert(`✅ 成功生成商品图片: ${searchTerm}`);
     } catch (error) {
-      console.error('AI生图失败:', error);
-      alert('AI生图失败，请检查配置');
+      console.error('🎨 AI生图失败:', error);
+      const errorMessage = error instanceof Error ? error.message : '未知错误';
+      alert(`❌ AI生图失败: ${errorMessage}\n\n请检查:\n1. API地址是否正确\n2. API Key是否有效\n3. 模型是否支持生图\n4. 网络连接是否正常`);
       setGeneratingImages(new Set([...generatingImages].filter(id => id !== productId)));
     }
   };
