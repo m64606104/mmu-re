@@ -182,31 +182,18 @@ function App() {
   useEffect(() => {
     const processIncomeInterval = setInterval(async () => {
       try {
-        const { processAllAutoIncome } = await import('./utils/aiFinance');
+        const { processAllAutoIncome, processAllAutoExpenses } = await import('./utils/aiFinance');
         await processAllAutoIncome();
-        console.log('✅ 定时处理AI自动收入完成');
+        await processAllAutoExpenses(); // 内置30%概率自动支出
+        console.log('✅ 定时处理AI财务系统完成');
       } catch (error) {
-        console.error('⚠️ 定时处理AI自动收入失败:', error);
+        console.error('⚠️ 定时处理AI财务系统失败:', error);
       }
-    }, 60 * 60 * 1000); // 1小时
+    }, 30 * 60 * 1000); // 每30分钟执行一次
 
     return () => clearInterval(processIncomeInterval);
   }, []);
 
-  // 💸 定时处理AI日常支出（每6小时检查一次）
-  useEffect(() => {
-    const processExpenseInterval = setInterval(async () => {
-      try {
-        const { processAllAutoExpenses } = await import('./utils/aiFinance');
-        await processAllAutoExpenses();
-        console.log('✅ 定时处理AI日常支出完成');
-      } catch (error) {
-        console.error('⚠️ 定时处理AI日常支出失败:', error);
-      }
-    }, 6 * 60 * 60 * 1000); // 6小时
-
-    return () => clearInterval(processExpenseInterval);
-  }, []);
 
   useEffect(() => {
     // 🚀 性能优化：朋友圈数据也使用防抖保存
@@ -621,8 +608,29 @@ function App() {
     
     setConversations(prev => [newConversation, ...prev]);
     setCurrentConversationId(newConversation.id);
+    
+    // 💰 为新AI初始化智能财务系统
+    setTimeout(async () => {
+      try {
+        const { autoConfigureIncome } = await import('./utils/smartFinanceSystem');
+        const { getAIFinanceData } = await import('./utils/aiFinance');
+        
+        // 初始化AI财务数据（会根据角色设置智能生成初始资金）
+        await getAIFinanceData(newConversation.id, newConversation.characterSettings);
+        
+        // 配置AI收入（根据角色设置智能配置）
+        if (apiConfig) {
+          await autoConfigureIncome(newConversation, apiConfig);
+        }
+        
+        console.log(`💰 已为新AI ${friendData.nickname} 初始化智能财务系统`);
+      } catch (error) {
+        console.error('初始化AI财务系统失败:', error);
+      }
+    }, 1000); // 延迟1秒，避免阻塞界面
+    
     navigateTo('chat', newConversation.id);
-  }, [navigateTo]);
+  }, [navigateTo, apiConfig]);
 
   // 创建群聊
   const createGroup = useCallback((groupData: {

@@ -429,15 +429,22 @@ export const processAllAutoIncome = async (): Promise<void> => {
 };
 
 /**
- * 批量处理所有AI的日常支出
+ * 批量处理所有AI的自动支出（30%概率）
  */
 export const processAllAutoExpenses = async (): Promise<void> => {
   try {
     const allData = await getAllFinanceData();
+    let expenseCount = 0;
+    
     for (const data of allData) {
-      await processAutoExpenses(data.aiId);
+      // 30% 概率产生日常支出
+      if (Math.random() < 0.3) {
+        await processAutoExpenses(data.aiId);
+        expenseCount++;
+      }
     }
-    console.log('✅ 所有AI日常支出处理完成');
+    
+    console.log(`✅ AI日常支出处理完成，${expenseCount}/${allData.length}个AI产生了支出`);
   } catch (error) {
     console.error('批量处理日常支出失败:', error);
   }
