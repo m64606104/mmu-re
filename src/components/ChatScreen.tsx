@@ -4745,12 +4745,12 @@ ${doc.content}`;
                             <div className="bg-white p-4 space-y-3">
                               {message.order.message && (
                                 <div className="bg-blue-50 rounded-lg p-3">
-                                  <div className="text-sm font-medium text-blue-900 mb-1">已下单留言・送给专属礼物</div>
+                                  <div className="text-sm font-medium text-blue-900 mb-1">已下单留言・送给{message.order.recipientName || '你'}的礼物</div>
                                   <div className="text-sm text-gray-700">{message.order.message}</div>
-                                  <div className="text-xs text-gray-500 mt-2">—顾语不</div>
+                                  <div className="text-xs text-gray-500 mt-2">—{message.role === 'assistant' ? (conversation.characterSettings?.nickname || '我') : '我'}</div>
                                 </div>
                               )}
-                              <div className="text-sm font-medium text-gray-800 mb-2">百线串丽 Nautilus复刻</div>
+                              <div className="text-sm font-medium text-gray-800 mb-2">{message.order.products[0]?.name || '精美礼品'}</div>
                               <div className="text-orange-600 text-lg font-bold">¥{message.order.totalAmount.toFixed(2)}</div>
                               <div className="text-blue-500 text-xs">查看详情 &gt;</div>
                               {message.order.orderNumber && (
