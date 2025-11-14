@@ -4,7 +4,7 @@
  */
 
 import React from 'react';
-import { X, FileText, Share2, Trash2 } from 'lucide-react';
+import { X, FileText, Share2, Trash2, Download } from 'lucide-react';
 
 interface MessageSelectionToolbarProps {
   selectedCount: number;
@@ -12,6 +12,7 @@ interface MessageSelectionToolbarProps {
   onExtractDocument: () => void;
   onForward: () => void;
   onDelete?: () => void;
+  onExport?: () => void;
 }
 
 const MessageSelectionToolbar: React.FC<MessageSelectionToolbarProps> = ({
@@ -19,7 +20,8 @@ const MessageSelectionToolbar: React.FC<MessageSelectionToolbarProps> = ({
   onCancel,
   onExtractDocument,
   onForward,
-  onDelete
+  onDelete,
+  onExport
 }) => {
   return (
     <div className="fixed top-0 left-0 right-0 bg-gradient-to-r from-blue-500 to-blue-600 text-white shadow-lg z-50">
@@ -39,6 +41,17 @@ const MessageSelectionToolbar: React.FC<MessageSelectionToolbarProps> = ({
 
         {/* 右侧：操作按钮 */}
         <div className="flex items-center gap-2">
+          {/* 导出选中消息为JSON */}
+          {onExport && (
+            <button
+              onClick={onExport}
+              className="p-2 hover:bg-white/10 rounded-lg transition-colors"
+              title="导出选中消息"
+            >
+              <Download className="w-5 h-5" />
+            </button>
+          )}
+
           {/* 提取文档 */}
           <button
             onClick={onExtractDocument}

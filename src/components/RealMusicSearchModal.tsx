@@ -4,7 +4,7 @@
  */
 
 import React, { useState, useRef } from 'react';
-import { X, Search, Upload, Globe, Music, Loader, AlertCircle, CheckCircle } from 'lucide-react';
+import { X, Search, Upload, Globe, Loader, AlertCircle, CheckCircle } from 'lucide-react';
 import { RealMusicInfo, realMusicService } from '../utils/realMusicService';
 import RealMusicCard from './RealMusicCard';
 
@@ -158,8 +158,8 @@ const RealMusicSearchModal: React.FC<RealMusicSearchModalProps> = ({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-4xl max-h-[90vh] overflow-hidden">
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 overflow-y-auto">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-4xl max-h-[90vh] overflow-hidden my-8">
         {/* 头部 */}
         <div className="flex items-center justify-between p-6 border-b">
           <div>
@@ -177,22 +177,22 @@ const RealMusicSearchModal: React.FC<RealMusicSearchModalProps> = ({
         <div className="flex flex-col lg:flex-row h-[calc(90vh-5rem)]">
           {/* 左侧选项卡 */}
           <div className="lg:w-80 border-r bg-gray-50">
-            <div className="p-4 space-y-2">
+            <div className="p-4 space-y-1.5">
               {tabs.map((tab) => (
                 <button
                   key={tab.id}
                   onClick={() => setActiveTab(tab.id as any)}
-                  className={`w-full p-3 rounded-lg text-left transition-all ${
+                  className={`w-full px-3 py-2 rounded-lg text-left transition-all ${
                     activeTab === tab.id
                       ? 'bg-blue-500 text-white shadow-lg'
                       : 'bg-white hover:bg-gray-100 text-gray-700'
                   }`}
                 >
                   <div className="flex items-center gap-3">
-                    <tab.icon className="w-5 h-5" />
+                    <tab.icon className="w-4 h-4" />
                     <div>
-                      <div className="font-medium">{tab.label}</div>
-                      <div className={`text-xs ${
+                      <div className="text-sm font-medium">{tab.label}</div>
+                      <div className={`text-[11px] ${
                         activeTab === tab.id ? 'text-blue-100' : 'text-gray-500'
                       }`}>
                         {tab.desc}
@@ -201,34 +201,6 @@ const RealMusicSearchModal: React.FC<RealMusicSearchModalProps> = ({
                   </div>
                 </button>
               ))}
-            </div>
-            
-            {/* API状态说明 */}
-            <div className="p-4 border-t">
-              <h3 className="font-medium text-gray-900 mb-2 flex items-center gap-2">
-                <Music className="w-4 h-4" />
-                音乐源说明
-              </h3>
-              <div className="space-y-2 text-xs text-gray-600">
-                <div className="flex items-center gap-2">
-                  <span className="w-2 h-2 bg-green-400 rounded-full"></span>
-                  <span>Jamendo - 免费CC音乐</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <span className="w-2 h-2 bg-blue-400 rounded-full"></span>
-                  <span>iTunes - 30秒预览</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <span className="w-2 h-2 bg-purple-400 rounded-full"></span>
-                  <span>本地演示音乐</span>
-                </div>
-              </div>
-              
-              <div className="mt-3 p-2 bg-blue-50 rounded-lg">
-                <p className="text-xs text-blue-700">
-                  💡 提示：如果搜索结果较少，可以尝试英文关键词或歌手名
-                </p>
-              </div>
             </div>
             
             {/* 预览区域 */}
@@ -245,7 +217,7 @@ const RealMusicSearchModal: React.FC<RealMusicSearchModalProps> = ({
           </div>
 
           {/* 右侧内容区域 */}
-          <div className="flex-1 overflow-auto">
+          <div className="flex-1 overflow-auto min-h-0">
             <div className="p-6">
               {/* 在线搜索 */}
               {activeTab === 'search' && (

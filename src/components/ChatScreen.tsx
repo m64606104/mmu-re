@@ -1143,6 +1143,50 @@ ${recentMessages}
     setSelectedMessages([]);
   };
 
+  // 📤 导出选中消息为JSON
+  const handleExportSelectedMessages = () => {
+    if (selectedMessages.length === 0) return;
+
+    // 获取选中的消息对象（保持原有顺序）
+    const selectedMsgs = conversation.messages.filter(m =>
+      selectedMessages.includes(m.id)
+    );
+
+    const exportData = {
+      type: 'partial-chat-export',
+      conversationId: conversation.id,
+      conversationName: conversation.name,
+      characterSettings: conversation.characterSettings,
+      selectedMessageIds: selectedMessages,
+      messages: selectedMsgs,
+      exportDate: new Date().toISOString(),
+      appVersion: '1.0.0',
+    };
+
+    try {
+      const dataStr = JSON.stringify(exportData, null, 2);
+      const blob = new Blob([dataStr], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      const dateStr = new Date().toLocaleDateString().replace(/\//g, '-');
+      link.download = `${conversation.name}_部分聊天记录_${dateStr}.json`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+
+      showToast(`已导出 ${selectedMsgs.length} 条消息`, 'success');
+    } catch (error) {
+      console.error('导出选中消息失败:', error);
+      showToast('导出失败，请重试', 'error');
+    }
+
+    // 导出完成后退出多选模式
+    setIsMultiSelectMode(false);
+    setSelectedMessages([]);
+  };
+
   // 📤 提取选中消息为文档 - 显示预览
   const handleExtractToDocument = () => {
     if (selectedMessages.length === 0) return;
@@ -6099,6 +6143,7 @@ ${doc.content}`;
         onExtractDocument={handleExtractToDocument}
         onForward={handleForwardMessages}
         onDelete={handleBatchDelete}
+        onExport={handleExportSelectedMessages}
       />
     )}
 
