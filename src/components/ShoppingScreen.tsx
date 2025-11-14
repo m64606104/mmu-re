@@ -59,7 +59,7 @@ const ShoppingScreen: React.FC<ShoppingScreenProps> = ({
     food: {
       name: '😋 饿饿吗',
       subtitle: '美食外卖，30分钟送达',
-      placeholder: '想吃点什么？让AI帮你找',
+      placeholder: '搜索美食、商家、商品名',
       color: 'from-orange-500 to-red-500',
       categories: [
         { icon: '🍔', name: '汉堡' },
@@ -81,7 +81,7 @@ const ShoppingScreen: React.FC<ShoppingScreenProps> = ({
     movie: {
       name: '🎬 电影票',
       subtitle: '热映大片，在线选座',
-      placeholder: '搜索电影、影院或时间',
+      placeholder: '电影名/影院/演员',
       color: 'from-purple-500 to-blue-500',
       categories: [
         { icon: '🎭', name: '剧情' },
@@ -101,7 +101,7 @@ const ShoppingScreen: React.FC<ShoppingScreenProps> = ({
     shopping: {
       name: '🛍️ 淘淘宝',
       subtitle: '全球好货，正品保证',
-      placeholder: '搜索商品、品牌或店铺',
+      placeholder: '品牌、商品、店铺名',
       color: 'from-orange-500 to-red-500',
       categories: [
         { icon: '📱', name: '数码' },

@@ -2675,7 +2675,7 @@ ${conversation.characterSettings.memoryEvents ? `记忆事件：${conversation.c
 - 根据对话情境自然使用，不要刻意堆砌
 - 描述要具体生动，让对方能想象内容
 - 语音消息的内容要口语化，像真的在说话
-- 表情包描述要准确传达情绪
+- 表情包描述要准确传达情绪，可以参考网络上的表情包，如：一只快乐挥舞爱心的扭动小狗表情包
 - 引用消息会自动显示在气泡上方或内部，不影响其他内容
 
 ${SmartLinkParser.getPromptInstructions()}
