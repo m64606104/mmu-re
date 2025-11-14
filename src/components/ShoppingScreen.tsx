@@ -58,7 +58,17 @@ const ShoppingScreen: React.FC<ShoppingScreenProps> = ({
   const shopConfig = {
     food: {
       name: '😋 饿饿吗',
-      color: 'from-blue-500 to-cyan-500',
+      subtitle: '美食外卖，30分钟送达',
+      placeholder: '想吃点什么？让AI帮你找',
+      color: 'from-orange-500 to-red-500',
+      categories: [
+        { icon: '🍔', name: '汉堡' },
+        { icon: '🍕', name: '披萨' },
+        { icon: '🥤', name: '饮品' },
+        { icon: '🍜', name: '面条' },
+        { icon: '🍰', name: '甜品' },
+        { icon: '🔥', name: '热销' }
+      ],
       products: [
         { id: '1', name: '锅贴超级肥牛饭', price: 28.80, image: 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=400' },
         { id: '2', name: '金汤酸菜鱼鱼线', price: 35.00, image: 'https://images.unsplash.com/photo-1534422298391-e4f8c172dddb?w=400' },
@@ -70,7 +80,17 @@ const ShoppingScreen: React.FC<ShoppingScreenProps> = ({
     },
     movie: {
       name: '🎬 电影票',
-      color: 'from-purple-500 to-pink-500',
+      subtitle: '热映大片，在线选座',
+      placeholder: '搜索电影、影院或时间',
+      color: 'from-purple-500 to-blue-500',
+      categories: [
+        { icon: '🎭', name: '剧情' },
+        { icon: '💥', name: '动作' },
+        { icon: '😄', name: '喜剧' },
+        { icon: '💕', name: '爱情' },
+        { icon: '👻', name: '恐怖' },
+        { icon: '🔥', name: '热映' }
+      ],
       products: [
         { id: '1', name: '《流浪地球3》', price: 58.00, image: 'https://images.unsplash.com/photo-1536440136628-849c177e76a1?w=400' },
         { id: '2', name: '《龙马精神》', price: 48.00, image: 'https://images.unsplash.com/photo-1594908900066-3f47337549d8?w=400' },
@@ -80,7 +100,17 @@ const ShoppingScreen: React.FC<ShoppingScreenProps> = ({
     },
     shopping: {
       name: '🛍️ 淘淘宝',
+      subtitle: '全球好货，正品保证',
+      placeholder: '搜索商品、品牌或店铺',
       color: 'from-orange-500 to-red-500',
+      categories: [
+        { icon: '📱', name: '数码' },
+        { icon: '👕', name: '服饰' },
+        { icon: '🏠', name: '家居' },
+        { icon: '💄', name: '美妆' },
+        { icon: '📚', name: '图书' },
+        { icon: '🔥', name: '热卖' }
+      ],
       products: [
         { id: '1', name: '无线蓝牙耳机', price: 199.00, image: 'https://images.unsplash.com/photo-1590658268037-6bf12165a8df?w=400' },
         { id: '2', name: '智能手环', price: 299.00, image: 'https://images.unsplash.com/photo-1575311373937-040b8e1fd5b6?w=400' },
@@ -575,130 +605,191 @@ const ShoppingScreen: React.FC<ShoppingScreenProps> = ({
   };
 
   return (
-    <div className="h-screen bg-gray-50 flex flex-col">
-      {/* 头部 */}
-      <div className="bg-white border-b">
-        <div className="flex items-center justify-between px-4 py-3">
-          <div className="flex items-center">
-            <button
-              onClick={onBack}
-              className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
-            >
-              <ChevronLeft className="w-6 h-6" />
-            </button>
-            <h1 className="text-lg font-semibold ml-2">{currentShop.name}</h1>
-          </div>
-          
-          <div className="flex items-center gap-2">
-            {/* 购物车按钮 */}
-            <button
-              onClick={() => setShowCart(true)}
-              className="relative p-2 hover:bg-gray-100 rounded-lg transition-colors"
-            >
-              <ShoppingCart className="w-6 h-6" />
-              {cartItemCount > 0 && (
-                <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center">
-                  {cartItemCount > 99 ? '99+' : cartItemCount}
-                </span>
-              )}
-            </button>
-            
-            <button
-              onClick={() => setShowSettings(true)}
-              className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
-            >
-              <Settings className="w-6 h-6" />
-            </button>
-          </div>
-        </div>
-
-        {/* 搜索栏 */}
-        <div className="px-4 pb-3">
-          <div className="flex gap-2">
-            <div className="flex-1 relative">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
-              <input
-                type="text"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                onKeyPress={(e) => e.key === 'Enter' && handleSearch()}
-                placeholder="想吃点什么？让AI帮你找"
-                className="w-full pl-10 pr-4 py-2 border border-gray-200 rounded-lg focus:border-blue-500 focus:outline-none"
-              />
+    <div className="h-screen bg-gradient-to-br from-gray-50 to-gray-100 flex flex-col">
+      {/* 头部 - 现代化设计 */}
+      <div className={`bg-gradient-to-r ${currentShop.color} relative overflow-hidden`}>
+        {/* 装饰性背景 */}
+        <div className="absolute inset-0 bg-black/5"></div>
+        <div className="absolute top-0 right-0 w-32 h-32 bg-white/10 rounded-full -translate-y-16 translate-x-16"></div>
+        <div className="absolute bottom-0 left-0 w-24 h-24 bg-white/10 rounded-full translate-y-12 -translate-x-12"></div>
+        
+        <div className="relative z-10">
+          <div className="flex items-center justify-between px-4 py-4">
+            <div className="flex items-center">
+              <button
+                onClick={onBack}
+                className="p-2 hover:bg-white/20 rounded-xl transition-all duration-200 active:scale-95"
+              >
+                <ChevronLeft className="w-6 h-6 text-white" />
+              </button>
+              <div className="ml-3">
+                <h1 className="text-xl font-bold text-white">{currentShop.name}</h1>
+                <p className="text-white/80 text-sm">{currentShop.subtitle}</p>
+              </div>
             </div>
-            <button
-              onClick={handleSearch}
-              className={`px-4 py-2 bg-gradient-to-r ${currentShop.color} text-white rounded-lg font-medium hover:opacity-90 transition-opacity`}
-            >
-              搜索
-            </button>
+            
+            <div className="flex items-center gap-2">
+              {/* 购物车按钮 - 现代化设计 */}
+              <button
+                onClick={() => setShowCart(true)}
+                className="relative p-3 hover:bg-white/20 rounded-xl transition-all duration-200 active:scale-95"
+              >
+                <ShoppingCart className="w-6 h-6 text-white" />
+                {cartItemCount > 0 && (
+                  <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full w-6 h-6 flex items-center justify-center font-bold shadow-lg animate-pulse">
+                    {cartItemCount > 99 ? '99+' : cartItemCount}
+                  </span>
+                )}
+              </button>
+              
+              <button
+                onClick={() => setShowSettings(true)}
+                className="p-3 hover:bg-white/20 rounded-xl transition-all duration-200 active:scale-95"
+              >
+                <Settings className="w-6 h-6 text-white" />
+              </button>
+            </div>
+          </div>
+
+          {/* 搜索栏 - 现代化设计 */}
+          <div className="px-4 pb-6">
+            <div className="relative">
+              <div className="flex items-center bg-white/95 backdrop-blur-md rounded-2xl shadow-lg border border-white/20">
+                <div className="flex-1 relative">
+                  <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+                  <input
+                    type="text"
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    onKeyPress={(e) => e.key === 'Enter' && handleSearch()}
+                    placeholder={currentShop.placeholder}
+                    className="w-full pl-12 pr-4 py-4 bg-transparent border-none rounded-2xl focus:outline-none text-gray-800 placeholder-gray-500"
+                  />
+                </div>
+                <button
+                  onClick={handleSearch}
+                  disabled={isSearching}
+                  className="mr-2 px-6 py-3 bg-gradient-to-r from-orange-500 to-red-500 text-white rounded-xl font-semibold hover:shadow-lg transition-all duration-200 active:scale-95 disabled:opacity-50"
+                >
+                  {isSearching ? (
+                    <div className="flex items-center gap-2">
+                      <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
+                      <span>搜索中</span>
+                    </div>
+                  ) : (
+                    '搜索'
+                  )}
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       </div>
 
-      {/* 商品列表 */}
-      <div className="flex-1 overflow-y-auto p-4">
-        <div className="grid grid-cols-2 gap-3">
-          {products.map((product) => (
-            <div
-              key={product.id}
-              className="bg-white rounded-xl overflow-hidden shadow-sm hover:shadow-md transition-shadow"
-            >
-              <div className="relative">
-                <img
-                  src={product.image}
-                  alt={product.name}
-                  className="w-full h-40 object-cover"
-                  onError={(e) => {
-                    e.currentTarget.src = 'https://via.placeholder.com/300x300?text=加载失败';
-                  }}
-                />
-                {product.isAIGenerated && (
-                  <div className="absolute top-2 right-2 bg-purple-500 text-white text-xs px-2 py-1 rounded">
-                    AI生成
+      {/* 分类导航 - 新增 */}
+      <div className="bg-white shadow-sm">
+        <div className="px-4 py-3">
+          <div className="flex gap-2 overflow-x-auto" style={{scrollbarWidth: 'none', msOverflowStyle: 'none'}}>
+            {currentShop.categories.map((category, index) => (
+              <button
+                key={index}
+                className="flex-shrink-0 px-4 py-2 bg-gray-100 hover:bg-gray-200 rounded-full text-sm font-medium text-gray-700 transition-colors whitespace-nowrap"
+              >
+                {category.icon} {category.name}
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* 商品列表 - 全新设计 */}
+      <div className="flex-1 overflow-y-auto">
+        <div className="px-4 py-6">
+          <div className="grid grid-cols-2 gap-4">
+            {products.map((product) => (
+              <div
+                key={product.id}
+                className="bg-white rounded-2xl overflow-hidden shadow-lg hover:shadow-xl transition-all duration-300 hover:-translate-y-1"
+              >
+                <div className="relative">
+                  <img
+                    src={product.image}
+                    alt={product.name}
+                    className="w-full h-36 object-cover"
+                    onError={(e) => {
+                      e.currentTarget.src = 'https://via.placeholder.com/200x150?text=商品图片';
+                    }}
+                  />
+                  {/* 优惠标签 */}
+                  <div className="absolute top-2 left-2 bg-red-500 text-white px-2 py-1 rounded-lg text-xs font-bold">
+                    热销
                   </div>
-                )}
-                {generatingImages.has(product.id) && (
-                  <div className="absolute inset-0 bg-black/50 flex items-center justify-center">
-                    <div className="text-white text-sm">生成中...</div>
-                  </div>
-                )}
-              </div>
-              <div className="p-3">
-                <div className="text-sm font-medium text-gray-800 mb-1 line-clamp-2">
-                  {product.name}
+                  {/* 加载状态 */}
+                  {generatingImages.has(product.id) && (
+                    <div className="absolute inset-0 bg-black/50 flex items-center justify-center backdrop-blur-sm">
+                      <div className="flex flex-col items-center text-white">
+                        <div className="w-8 h-8 border-2 border-white/30 border-t-white rounded-full animate-spin mb-2"></div>
+                        <div className="text-sm">AI生成中...</div>
+                      </div>
+                    </div>
+                  )}
+                  {/* AI生成标识 */}
+                  {product.isAIGenerated && (
+                    <div className="absolute top-2 right-2 bg-purple-500 text-white px-2 py-1 rounded-lg text-xs font-bold flex items-center gap-1">
+                      <span className="w-2 h-2 bg-white rounded-full animate-pulse"></span>
+                      AI
+                    </div>
+                  )}
                 </div>
-                <div className="flex items-center justify-between">
-                  <div className="text-red-600 font-bold">
-                    ¥{product.price.toFixed(2)}
+                
+                <div className="p-4">
+                  <h3 className="font-bold text-gray-800 text-sm mb-2 leading-tight" style={{display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden'}}>{product.name}</h3>
+                  
+                  {/* 价格和评分 */}
+                  <div className="flex items-center justify-between mb-3">
+                    <div className="flex items-center gap-2">
+                      <span className="text-red-500 font-bold text-lg">¥{product.price.toFixed(2)}</span>
+                      <span className="text-gray-400 text-xs line-through">¥{(product.price * 1.2).toFixed(2)}</span>
+                    </div>
+                    <div className="flex items-center text-yellow-400 text-xs">
+                      <span>⭐</span>
+                      <span className="text-gray-500 ml-1">4.8</span>
+                    </div>
                   </div>
-                  <div className="flex gap-1">
+                  
+                  {/* 操作按钮 */}
+                  <div className="flex gap-2">
                     <button
-                      onClick={() => handleAddToCart(product)}
-                      className="p-2 bg-green-500 text-white rounded-lg hover:bg-green-600 transition-colors"
-                      title="加入购物车"
+                      onClick={() => {
+                        const success = addToCart(product, shopType);
+                        if (success) {
+                          updateCartCount();
+                          alert('✅ 已添加到购物车！');
+                        }
+                      }}
+                      className="flex-1 p-2.5 bg-gradient-to-r from-orange-400 to-orange-500 text-white rounded-xl font-semibold hover:shadow-lg transition-all duration-200 active:scale-95 flex items-center justify-center gap-1"
                     >
                       <ShoppingCart className="w-4 h-4" />
+                      <span className="text-sm">购物车</span>
                     </button>
                     <button
                       onClick={() => handleClickPurchase(product)}
-                      className="p-2 bg-gradient-to-r from-orange-500 to-red-500 text-white rounded-lg hover:opacity-90 transition-opacity"
-                      title="立即购买"
+                      className="flex-1 p-2.5 bg-gradient-to-r from-red-500 to-red-600 text-white rounded-xl font-semibold hover:shadow-lg transition-all duration-200 active:scale-95"
                     >
-                      <span className="text-xs font-medium">买</span>
+                      <span className="text-sm">立即购买</span>
                     </button>
                   </div>
                 </div>
               </div>
-            </div>
-          ))}
+            ))}
+          </div>
         </div>
       </div>
 
       {/* 搜索中loading */}
       {isSearching && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-xl p-6 flex flex-col items-center">
+          <div className="bg-white rounded-2xl p-6 flex flex-col items-center">
             <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mb-4"></div>
             <p className="text-gray-600">搜索中...</p>
           </div>
