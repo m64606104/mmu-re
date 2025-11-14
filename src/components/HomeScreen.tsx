@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { MessageCircle, Settings, Music, Phone, Heart, Bell, Play, Pause, SkipBack, SkipForward, MapPin, Sun, Palette, Upload, BookOpen, Mail, X, Database } from 'lucide-react';
+import { MessageCircle, Settings, Music, Phone, Heart, Bell, Play, Pause, SkipBack, SkipForward, MapPin, Sun, Palette, Upload, BookOpen, Mail, X, Database, Users } from 'lucide-react';
 import { Screen, ThemeSettings } from '../types';
 
 interface HomeScreenProps {
@@ -406,6 +406,7 @@ export default function HomeScreen({ onNavigate, theme }: HomeScreenProps) {
   const iconConfig: Record<string, { icon: any; name: string; onClick?: () => void }> = {
     settings: { icon: Settings, name: '设置', onClick: () => onNavigate('settings') },
     social: { icon: MessageCircle, name: '聊天', onClick: () => onNavigate('social') },
+    'user-system': { icon: Users, name: '好友', onClick: () => onNavigate('user-system') },
     theme: { icon: Palette, name: '主题', onClick: () => onNavigate('theme') },
     music: { icon: Music, name: '音乐' },
     phone: { icon: Phone, name: '电话' },

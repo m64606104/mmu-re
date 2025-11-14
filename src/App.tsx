@@ -16,6 +16,7 @@ import UserGuide from './components/UserGuide';
 import AnnouncementScreen from './components/AnnouncementScreen';
 import WalletScreen from './components/WalletScreen';
 import ShoppingScreen from './components/ShoppingScreen';
+import UserSystemScreen from './components/UserSystemScreen';
 import OrderHistoryScreen from './components/OrderHistoryScreen';
 import DatabaseScreen from './components/DatabaseScreen';
 import ToastContainer from './components/ToastContainer';
@@ -849,6 +850,12 @@ function App() {
             conversations={conversations}
             onSendGiftToAI={handleSendGiftToAI}
             onRequestAIPay={handleRequestAIPay}
+          />
+        );
+      case 'user-system':
+        return (
+          <UserSystemScreen 
+            onBack={() => navigateTo('home')}
           />
         );
       case 'order-history':
