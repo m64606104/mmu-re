@@ -40,6 +40,9 @@ const ShoppingScreen: React.FC<ShoppingScreenProps> = ({
   const [isSearching, setIsSearching] = useState(false);
   const [showCart, setShowCart] = useState(false);
   const [cartItemCount, setCartItemCount] = useState(0);
+  const [isEditingProduct, setIsEditingProduct] = useState(false);
+  const [editPrice, setEditPrice] = useState('');
+  const [editDescription, setEditDescription] = useState('');
   const [imageGenConfig, setImageGenConfig] = useState({
     apiUrl: localStorage.getItem('image_gen_api_url') || '',
     apiKey: localStorage.getItem('image_gen_api_key') || '',
@@ -225,8 +228,8 @@ const ShoppingScreen: React.FC<ShoppingScreenProps> = ({
 
       console.log('🎨 获取到图片URL:', imageUrl.substring(0, 100) + '...');
 
-      // 随机价格
-      const price = Math.floor(Math.random() * 200) + 10;
+      // 🎯 智能价格生成（根据商品类型和商城）
+      const price = generateSmartPrice(searchTerm, shopType);
 
       const newProduct: Product = {
         id: productId,
@@ -266,7 +269,7 @@ const ShoppingScreen: React.FC<ShoppingScreenProps> = ({
         const newProduct: Product = {
           id: `search_${Date.now()}`,
           name: searchQuery,
-          price: Math.floor(Math.random() * 100) + 10,
+          price: generateSmartPrice(searchQuery, shopType),
           image: `https://via.placeholder.com/300x300?text=${encodeURIComponent(searchQuery)}`
         };
         setGeneratedProduct(newProduct);
@@ -370,23 +373,148 @@ const ShoppingScreen: React.FC<ShoppingScreenProps> = ({
     setShowPurchaseOptions(true);
   };
 
-  // 生成商品描述
-  const generateProductDescription = (productName: string): string => {
-    const descriptions = {
-      '苹果手机': '专为追求高端体验而生！iPhone 15 Pro Max，航空级钛金属边框，史上最轻Pro机型。搭载A17 Pro芯片，开启移动端光线追踪新纪元。强大专业级摄像头系统，拍摄5倍长焦，还支持4K空间视频，自然立体声，让你前所未有的创作自由。',
-      '任天堂游戏机': '海拉鲁的故事！这次《塞尔达传说：王国之泪》主机套装，从最经典Joy-Con套件，每个处都蕴涵深入游戏中感受绿提经典平台、双重对阵的故事，开启你的传奇冒险！',
-      '游戏机': '海拉鲁的故事！这次《塞尔达传说：王国之泪》主机套装，从最经典Joy-Con套件，每个处都蕴涵深入游戏中感受绿提经典平台、双重对阵的故事，开启你的传奇冒险！'
+  // 开始编辑商品
+  const handleStartEdit = () => {
+    if (generatedProduct) {
+      setEditPrice(generatedProduct.price.toString());
+      setEditDescription(generateProductDescription(generatedProduct.name));
+      setIsEditingProduct(true);
+    }
+  };
+
+  // 保存编辑
+  const handleSaveEdit = () => {
+    if (generatedProduct && editPrice && editDescription) {
+      const price = parseFloat(editPrice);
+      if (isNaN(price) || price <= 0) {
+        alert('请输入有效的价格');
+        return;
+      }
+      
+      const updatedProduct = {
+        ...generatedProduct,
+        price: price,
+        description: editDescription
+      };
+      
+      setGeneratedProduct(updatedProduct);
+      setIsEditingProduct(false);
+      alert('商品信息已更新！');
+    }
+  };
+
+  // 取消编辑
+  const handleCancelEdit = () => {
+    setIsEditingProduct(false);
+    setEditPrice('');
+    setEditDescription('');
+  };
+
+  // 🎯 智能价格生成
+  const generateSmartPrice = (productName: string, shopType: 'food' | 'movie' | 'shopping'): number => {
+    const product = productName.toLowerCase();
+    
+    // 根据商城类型设定价格区间
+    const priceRanges = {
+      food: {
+        '咖啡': [15, 35], '奶茶': [12, 25], '饮料': [3, 8], '汽水': [3, 6],
+        '汉堡': [18, 35], '披萨': [25, 65], '炸鸡': [20, 45], '薯条': [8, 18],
+        '沙拉': [15, 28], '寿司': [20, 50], '拉面': [18, 35], '米饭': [10, 25],
+        '蛋糕': [25, 80], '甜品': [15, 45], '冰淇淋': [8, 25],
+        '早餐': [10, 25], '午餐': [15, 35], '晚餐': [20, 50]
+      },
+      movie: {
+        '电影': [35, 80], '3d': [45, 90], 'imax': [55, 120], 'vip': [80, 200],
+        '学生': [20, 40], '儿童': [20, 35], '成人': [35, 80],
+        '爆米花': [15, 35], '饮料': [8, 20], '套餐': [25, 50]
+      },
+      shopping: {
+        '手机': [800, 6000], '电脑': [2000, 12000], '平板': [1500, 5000],
+        '耳机': [50, 2000], '音响': [100, 3000], '充电': [20, 200],
+        '衣服': [50, 500], '鞋子': [80, 800], '包包': [100, 2000],
+        '化妆': [30, 300], '护肤': [50, 500], '香水': [100, 1000],
+        '书籍': [15, 80], '文具': [5, 50], '玩具': [20, 300],
+        '手表': [100, 5000], '首饰': [50, 2000], '眼镜': [100, 1500]
+      }
+    };
+
+    const ranges = priceRanges[shopType];
+    
+    // 查找匹配的关键词
+    for (const [keyword, [min, max]] of Object.entries(ranges)) {
+      if (product.includes(keyword)) {
+        // 在合理区间内随机
+        return Math.floor(Math.random() * (max - min + 1)) + min;
+      }
+    }
+    
+    // 默认价格区间
+    const defaultRanges = {
+      food: [10, 50],
+      movie: [35, 80], 
+      shopping: [20, 200]
     };
     
-    // 根据关键词匹配描述
-    for (const [key, desc] of Object.entries(descriptions)) {
-      if (productName.includes(key.slice(0, 2))) {
+    const [min, max] = defaultRanges[shopType];
+    return Math.floor(Math.random() * (max - min + 1)) + min;
+  };
+
+  // 🎯 改进的商品描述生成
+  const generateProductDescription = (productName: string): string => {
+    const product = productName.toLowerCase();
+    
+    // 🍽️ 美食类描述
+    const foodDescriptions = {
+      '奶茶': `香浓${productName}，精选优质茶叶配制，奶香浓郁，口感丝滑。每一口都是对味蕾的极致呵护，温暖您的午后时光。`,
+      '咖啡': `醇香${productName}，采用精品咖啡豆现磨现煮，香气浓郁，口感层次丰富。唤醒您的每一个清晨，为忙碌的一天注入活力。`,
+      '汉堡': `美味${productName}，新鲜面包配新鲜食材，层次丰富，营养均衡。每一口都是满满的幸福感，让您大饱口福。`,
+      '披萨': `正宗${productName}，意式薄底配丰富配菜，芝士拉丝，香气四溢。与朋友分享的美好时光，从这一片开始。`,
+      '寿司': `新鲜${productName}，当日采购的优质食材，师傅精心制作，口感Q弹。体验正宗的日式美食文化。`,
+      '沙拉': `健康${productName}，新鲜蔬菜搭配特制酱汁，营养丰富，清爽可口。为您的健康生活增添美味选择。`
+    };
+
+    // 🎬 电影类描述
+    const movieDescriptions = {
+      '电影': `精彩${productName}，震撼视听体验，舒适观影环境。让您沉浸在光影魅力中，享受电影带来的精神盛宴。`,
+      '3d': `立体${productName}体验，先进的3D技术带来沉浸式观影。仿佛置身电影世界，感受前所未有的视觉冲击。`,
+      'imax': `IMAX巨幕${productName}，超大屏幕配震撼音效，给您带来最极致的观影享受。每一个细节都清晰可见。`
+    };
+
+    // 🛍️ 购物类描述
+    const shoppingDescriptions = {
+      '手机': `智能${productName}，性能强劲，功能全面。集通讯、娱乐、办公于一体，助力您的数字生活更加精彩。`,
+      '电脑': `高性能${productName}，处理速度快，运行稳定。无论工作学习还是娱乐，都能为您提供出色的使用体验。`,
+      '耳机': `优质${productName}，音质清晰，佩戴舒适。让您在音乐的世界中畅游，享受纯净的听觉盛宴。`,
+      '衣服': `时尚${productName}，款式新颖，面料舒适。展现您的个人魅力，让您在人群中脱颖而出。`,
+      '鞋子': `舒适${productName}，设计精美，质量上乘。每一步都走得稳健自信，为您的出行增添风采。`,
+      '书籍': `精选${productName}，内容丰富，装帧精美。在知识的海洋中遨游，丰富您的精神世界。`
+    };
+
+    // 根据商城类型选择描述库
+    let descriptions: Record<string, string>;
+    if (shopType === 'food') {
+      descriptions = foodDescriptions;
+    } else if (shopType === 'movie') {
+      descriptions = movieDescriptions;
+    } else {
+      descriptions = shoppingDescriptions;
+    }
+
+    // 查找匹配的关键词
+    for (const [keyword, desc] of Object.entries(descriptions)) {
+      if (product.includes(keyword)) {
         return desc;
       }
     }
     
-    // 默认描述
-    return `专为您精心挑选的优质商品！${productName}，品质保证，值得拥有。采用优质材料制作，精工细作，为您带来卓越的使用体验。无论是日常使用还是特殊场合，都能满足您的需求。`;
+    // 根据商城类型生成默认描述
+    const defaultDescriptions = {
+      food: `美味的${productName}，新鲜制作，口感绝佳。精心挑选的优质食材，为您带来难忘的味蕾体验。`,
+      movie: `精彩的${productName}，为您提供优质的观影体验。舒适的环境，震撼的视听效果，让您尽享光影魅力。`,
+      shopping: `优质的${productName}，品质保证，性价比超高。精工制作，设计精美，满足您对品质生活的追求。`
+    };
+    
+    return defaultDescriptions[shopType];
   };
 
   return (
@@ -515,7 +643,7 @@ const ShoppingScreen: React.FC<ShoppingScreenProps> = ({
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
           <div className="bg-white rounded-xl p-6 flex flex-col items-center">
             <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mb-4"></div>
-            <p className="text-gray-600">AI正在为您生成商品...</p>
+            <p className="text-gray-600">搜索中...</p>
           </div>
         </div>
       )}
@@ -526,13 +654,25 @@ const ShoppingScreen: React.FC<ShoppingScreenProps> = ({
           <div className="bg-white rounded-2xl w-full max-w-sm mx-4 overflow-hidden">
             {/* 头部 */}
             <div className="bg-gray-100 px-4 py-3 flex items-center justify-between">
-              <h3 className="text-lg font-medium text-gray-800">商品搜索</h3>
-              <button
-                onClick={() => setShowProductModal(false)}
-                className="p-1 hover:bg-gray-200 rounded-full transition-colors"
-              >
-                <span className="text-gray-600 text-xl">×</span>
-              </button>
+              <h3 className="text-lg font-medium text-gray-800">
+                {isEditingProduct ? '编辑商品' : '商品搜索'}
+              </h3>
+              <div className="flex items-center gap-2">
+                {!isEditingProduct && (
+                  <button
+                    onClick={handleStartEdit}
+                    className="px-3 py-1 text-sm bg-blue-100 text-blue-600 rounded-full hover:bg-blue-200 transition-colors"
+                  >
+                    编辑
+                  </button>
+                )}
+                <button
+                  onClick={() => setShowProductModal(false)}
+                  className="p-1 hover:bg-gray-200 rounded-full transition-colors"
+                >
+                  <span className="text-gray-600 text-xl">×</span>
+                </button>
+              </div>
             </div>
 
             {/* 商品信息 */}
@@ -556,55 +696,104 @@ const ShoppingScreen: React.FC<ShoppingScreenProps> = ({
               </h4>
 
               {/* 价格 */}
-              <div className="text-center text-2xl font-bold text-red-500 mb-4">
-                ¥{generatedProduct.price.toFixed(2)}
-              </div>
+              {isEditingProduct ? (
+                <div className="mb-4">
+                  <label className="block text-sm font-medium text-gray-700 mb-1">价格</label>
+                  <input
+                    type="number"
+                    value={editPrice}
+                    onChange={(e) => setEditPrice(e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    placeholder="请输入价格"
+                    step="0.01"
+                    min="0"
+                  />
+                </div>
+              ) : (
+                <div className="text-center text-2xl font-bold text-red-500 mb-4">
+                  ¥{generatedProduct.price.toFixed(2)}
+                </div>
+              )}
 
               {/* 商品描述 */}
-              <div className="text-sm text-gray-600 leading-relaxed mb-6">
-                {generateProductDescription(generatedProduct.name)}
-              </div>
+              {isEditingProduct ? (
+                <div className="mb-6">
+                  <label className="block text-sm font-medium text-gray-700 mb-1">商品描述</label>
+                  <textarea
+                    value={editDescription}
+                    onChange={(e) => setEditDescription(e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    rows={4}
+                    placeholder="请输入商品描述"
+                  />
+                </div>
+              ) : (
+                <div className="text-sm text-gray-600 leading-relaxed mb-6">
+                  {generateProductDescription(generatedProduct.name)}
+                </div>
+              )}
             </div>
 
             {/* 操作按钮 */}
             <div className="px-4 pb-4">
-              {/* 添加到商城按钮 */}
-              <button
-                onClick={() => handleAddToMall(generatedProduct)}
-                className="w-full py-3 bg-green-500 text-white rounded-lg font-medium mb-3 hover:bg-green-600 transition-colors flex items-center justify-center gap-2"
-              >
-                <span>✓</span>
-                添加到商城
-              </button>
+              {isEditingProduct ? (
+                /* 编辑模式按钮 */
+                <div className="flex gap-3">
+                  <button
+                    onClick={handleCancelEdit}
+                    className="flex-1 py-3 bg-gray-200 text-gray-700 rounded-lg font-medium hover:bg-gray-300 transition-colors"
+                  >
+                    取消
+                  </button>
+                  <button
+                    onClick={handleSaveEdit}
+                    className="flex-1 py-3 bg-blue-500 text-white rounded-lg font-medium hover:bg-blue-600 transition-colors"
+                  >
+                    保存
+                  </button>
+                </div>
+              ) : (
+                /* 正常模式按钮 */
+                <>
+                  {/* 添加到商城按钮 */}
+                  <button
+                    onClick={() => handleAddToMall(generatedProduct)}
+                    className="w-full py-3 bg-green-500 text-white rounded-lg font-medium mb-3 hover:bg-green-600 transition-colors flex items-center justify-center gap-2"
+                  >
+                    <span>✓</span>
+                    添加到商城
+                  </button>
 
-              {/* 加入购物车按钮 */}
-              <button
-                onClick={() => {
-                  handleAddToCart(generatedProduct);
-                  setShowProductModal(false);
-                }}
-                className="w-full py-3 bg-orange-500 text-white rounded-lg font-medium mb-3 hover:bg-orange-600 transition-colors flex items-center justify-center gap-2"
-              >
-                <ShoppingCart className="w-4 h-4" />
-                加入购物车
-              </button>
+                  {/* 加入购物车按钮 */}
+                  <button
+                    onClick={() => {
+                      handleAddToCart(generatedProduct);
+                      setShowProductModal(false);
+                    }}
+                    className="w-full py-3 bg-orange-500 text-white rounded-lg font-medium mb-3 hover:bg-orange-600 transition-colors flex items-center justify-center gap-2"
+                  >
+                    <ShoppingCart className="w-4 h-4" />
+                    加入购物车
+                  </button>
 
-              {/* 底部按钮组 */}
-              <div className="flex gap-3">
-                <button
-                  onClick={() => setShowProductModal(false)}
-                  className="flex-1 py-2 bg-gray-200 text-gray-700 rounded-lg font-medium hover:bg-gray-300 transition-colors"
-                >
-                  取消
-                </button>
-                <button
-                  onClick={() => handleDirectPurchase(generatedProduct)}
-                  className="flex-1 py-2 bg-blue-500 text-white rounded-lg font-medium hover:bg-blue-600 transition-colors flex items-center justify-center gap-1"
-                >
-                  <span>🔍</span>
-                  立即购买
-                </button>
-              </div>
+                  {/* 底部按钮组 */}
+                  <div className="flex gap-3">
+                    <button
+                      onClick={() => setShowProductModal(false)}
+                      className="flex-1 py-2 bg-gray-200 text-gray-700 rounded-lg font-medium hover:bg-gray-300 transition-colors"
+                    >
+                      取消
+                    </button>
+                    <button
+                      onClick={() => handleDirectPurchase(generatedProduct)}
+                      className="flex-1 py-2 bg-blue-500 text-white rounded-lg font-medium hover:bg-blue-600 transition-colors flex items-center justify-center gap-1"
+                    >
+                      <span>🔍</span>
+                      立即购买
+                    </button>
+                  </div>
+                </>
+              )}
             </div>
           </div>
         </div>
