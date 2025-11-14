@@ -47,10 +47,22 @@ const ShoppingScreen: React.FC<ShoppingScreenProps> = ({
     addedToMall: boolean;
     addedToCart: boolean;
   }>({ addedToMall: false, addedToCart: false });
-  const [imageGenConfig, setImageGenConfig] = useState({
-    apiUrl: localStorage.getItem('image_gen_api_url') || '',
-    apiKey: localStorage.getItem('image_gen_api_key') || '',
-    model: localStorage.getItem('image_gen_model') || ''
+  const [imageGenConfig, setImageGenConfig] = useState(() => {
+    // 从localStorage加载保存的配置
+    const savedConfig = {
+      apiUrl: localStorage.getItem('image_gen_api_url') || '',
+      apiKey: localStorage.getItem('image_gen_api_key') || '',
+      model: localStorage.getItem('image_gen_model') || ''
+    };
+    
+    // 输出调试信息
+    console.log('🎨 加载AI生图配置:', {
+      apiUrl: savedConfig.apiUrl ? savedConfig.apiUrl.substring(0, 20) + '...' : '(未设置)',
+      hasApiKey: !!savedConfig.apiKey,
+      model: savedConfig.model || '(未设置)'
+    });
+    
+    return savedConfig;
   });
   const [generatingImages, setGeneratingImages] = useState<Set<string>>(new Set());
 
@@ -135,23 +147,49 @@ const ShoppingScreen: React.FC<ShoppingScreenProps> = ({
 
   // 保存AI生图配置
   const saveImageGenConfig = (config: { apiUrl: string; apiKey: string; model: string }) => {
-    localStorage.setItem('image_gen_api_url', config.apiUrl);
-    localStorage.setItem('image_gen_api_key', config.apiKey);
-    localStorage.setItem('image_gen_model', config.model);
-    setImageGenConfig(config);
-    alert('配置已保存');
+    try {
+      // 保存到localStorage
+      localStorage.setItem('image_gen_api_url', config.apiUrl);
+      localStorage.setItem('image_gen_api_key', config.apiKey);
+      localStorage.setItem('image_gen_model', config.model);
+      
+      // 立即更新状态
+      setImageGenConfig(config);
+      
+      console.log('✅ AI生图配置已保存:', {
+        apiUrl: config.apiUrl ? config.apiUrl.substring(0, 20) + '...' : '(空)',
+        hasApiKey: !!config.apiKey,
+        model: config.model || '(空)'
+      });
+      
+      alert('✅ 配置已保存并生效！');
+    } catch (error) {
+      console.error('❌ 保存配置失败:', error);
+      alert('❌ 保存配置失败，请重试');
+    }
   };
 
   // AI生成商品图片
   const generateProductImage = async (searchTerm: string) => {
+    console.log('🎨 开始AI生图:', {
+      searchTerm,
+      hasApiUrl: !!imageGenConfig.apiUrl,
+      hasApiKey: !!imageGenConfig.apiKey,
+      model: imageGenConfig.model
+    });
+    
     if (!imageGenConfig.apiUrl || !imageGenConfig.apiKey) {
-      alert('请先在设置中配置AI生图API');
+      console.warn('⚠️ AI生图配置不完整');
+      alert('⚠️ 请先在设置中配置AI生图API\n\n当前缺少:\n' + 
+            (!imageGenConfig.apiUrl ? '• API地址\n' : '') +
+            (!imageGenConfig.apiKey ? '• API密钥\n' : ''));
       setShowSettings(true);
       return;
     }
 
     if (!imageGenConfig.model) {
-      alert('请先选择生图模型');
+      console.warn('⚠️ 未选择AI生图模型');
+      alert('⚠️ 请先选择生图模型\n\n支持的模型:\n• DALL-E 3\n• DALL-E 2\n• Stable Diffusion');
       setShowSettings(true);
       return;
     }
