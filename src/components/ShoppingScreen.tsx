@@ -34,6 +34,9 @@ const ShoppingScreen: React.FC<ShoppingScreenProps> = ({
   const [showSettings, setShowSettings] = useState(false);
   const [showPurchaseOptions, setShowPurchaseOptions] = useState(false);
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
+  const [showProductModal, setShowProductModal] = useState(false);
+  const [generatedProduct, setGeneratedProduct] = useState<Product | null>(null);
+  const [isSearching, setIsSearching] = useState(false);
   const [imageGenConfig, setImageGenConfig] = useState({
     apiUrl: localStorage.getItem('image_gen_api_url') || '',
     apiKey: localStorage.getItem('image_gen_api_key') || '',
@@ -220,15 +223,18 @@ const ShoppingScreen: React.FC<ShoppingScreenProps> = ({
         isAIGenerated: true
       };
 
-      setProducts([newProduct, ...products]);
       setGeneratingImages(new Set([...generatingImages].filter(id => id !== productId)));
+      setIsSearching(false);
       
-      alert(`✅ 成功生成商品图片: ${searchTerm}`);
+      // 显示商品详情弹窗
+      setGeneratedProduct(newProduct);
+      setShowProductModal(true);
     } catch (error) {
-      console.error('🎨 AI生图失败:', error);
+      console.log('🎨 AI生图失败:', error);
       const errorMessage = error instanceof Error ? error.message : '未知错误';
       alert(`❌ AI生图失败: ${errorMessage}\n\n请检查:\n1. API地址是否正确\n2. API Key是否有效\n3. 模型是否支持生图\n4. 网络连接是否正常`);
       setGeneratingImages(new Set([...generatingImages].filter(id => id !== productId)));
+      setIsSearching(false);
     }
   };
 
@@ -236,18 +242,24 @@ const ShoppingScreen: React.FC<ShoppingScreenProps> = ({
   const handleSearch = () => {
     if (!searchQuery.trim()) return;
     
+    setIsSearching(true);
+    
     // 如果配置了AI生图，使用AI生成
     if (imageGenConfig.apiUrl && imageGenConfig.apiKey) {
       generateProductImage(searchQuery);
     } else {
-      // 否则添加占位商品
-      const newProduct: Product = {
-        id: `search_${Date.now()}`,
-        name: searchQuery,
-        price: Math.floor(Math.random() * 100) + 10,
-        image: `https://via.placeholder.com/300x300?text=${encodeURIComponent(searchQuery)}`
-      };
-      setProducts([newProduct, ...products]);
+      // 否则创建占位商品并显示弹窗
+      setTimeout(() => {
+        const newProduct: Product = {
+          id: `search_${Date.now()}`,
+          name: searchQuery,
+          price: Math.floor(Math.random() * 100) + 10,
+          image: `https://via.placeholder.com/300x300?text=${encodeURIComponent(searchQuery)}`
+        };
+        setGeneratedProduct(newProduct);
+        setShowProductModal(true);
+        setIsSearching(false);
+      }, 1500); // 模拟搜索时间
     }
     
     setSearchQuery('');
@@ -298,6 +310,39 @@ const ShoppingScreen: React.FC<ShoppingScreenProps> = ({
     const aiName = aiConv?.characterSettings?.nickname || 'AI';
     onRequestAIPay(product, aiId, shopType);
     alert(`已向${aiName}发送代付请求`);
+  };
+
+  // 加入商城
+  const handleAddToMall = (product: Product) => {
+    setProducts([product, ...products]);
+    setShowProductModal(false);
+    alert('商品已添加到商城！');
+  };
+
+  // 直接购买
+  const handleDirectPurchase = (product: Product) => {
+    setShowProductModal(false);
+    setSelectedProduct(product);
+    setShowPurchaseOptions(true);
+  };
+
+  // 生成商品描述
+  const generateProductDescription = (productName: string): string => {
+    const descriptions = {
+      '苹果手机': '专为追求高端体验而生！iPhone 15 Pro Max，航空级钛金属边框，史上最轻Pro机型。搭载A17 Pro芯片，开启移动端光线追踪新纪元。强大专业级摄像头系统，拍摄5倍长焦，还支持4K空间视频，自然立体声，让你前所未有的创作自由。',
+      '任天堂游戏机': '海拉鲁的故事！这次《塞尔达传说：王国之泪》主机套装，从最经典Joy-Con套件，每个处都蕴涵深入游戏中感受绿提经典平台、双重对阵的故事，开启你的传奇冒险！',
+      '游戏机': '海拉鲁的故事！这次《塞尔达传说：王国之泪》主机套装，从最经典Joy-Con套件，每个处都蕴涵深入游戏中感受绿提经典平台、双重对阵的故事，开启你的传奇冒险！'
+    };
+    
+    // 根据关键词匹配描述
+    for (const [key, desc] of Object.entries(descriptions)) {
+      if (productName.includes(key.slice(0, 2))) {
+        return desc;
+      }
+    }
+    
+    // 默认描述
+    return `专为您精心挑选的优质商品！${productName}，品质保证，值得拥有。采用优质材料制作，精工细作，为您带来卓越的使用体验。无论是日常使用还是特殊场合，都能满足您的需求。`;
   };
 
   return (
@@ -393,7 +438,95 @@ const ShoppingScreen: React.FC<ShoppingScreenProps> = ({
         </div>
       </div>
 
-      {/* AI生图设置弹窗 */}
+      {/* 搜索中loading */}
+      {isSearching && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl p-6 flex flex-col items-center">
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mb-4"></div>
+            <p className="text-gray-600">AI正在为您生成商品...</p>
+          </div>
+        </div>
+      )}
+
+      {/* 商品详情弹窗 */}
+      {showProductModal && generatedProduct && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl w-full max-w-sm mx-4 overflow-hidden">
+            {/* 头部 */}
+            <div className="bg-gray-100 px-4 py-3 flex items-center justify-between">
+              <h3 className="text-lg font-medium text-gray-800">商品搜索</h3>
+              <button
+                onClick={() => setShowProductModal(false)}
+                className="p-1 hover:bg-gray-200 rounded-full transition-colors"
+              >
+                <span className="text-gray-600 text-xl">×</span>
+              </button>
+            </div>
+
+            {/* 商品信息 */}
+            <div className="p-6">
+              {/* 商品图片 */}
+              <div className="w-24 h-24 mx-auto mb-4 rounded-lg overflow-hidden bg-gray-100">
+                <img 
+                  src={generatedProduct.image} 
+                  alt={generatedProduct.name}
+                  className="w-full h-full object-cover"
+                  onError={(e) => {
+                    const target = e.target as HTMLImageElement;
+                    target.src = `https://via.placeholder.com/300x300?text=${encodeURIComponent(generatedProduct.name)}`;
+                  }}
+                />
+              </div>
+
+              {/* 商品标题 */}
+              <h4 className="text-center text-lg font-medium text-gray-800 mb-2">
+                {generatedProduct.name}
+              </h4>
+
+              {/* 价格 */}
+              <div className="text-center text-2xl font-bold text-red-500 mb-4">
+                ¥{generatedProduct.price.toFixed(2)}
+              </div>
+
+              {/* 商品描述 */}
+              <div className="text-sm text-gray-600 leading-relaxed mb-6">
+                {generateProductDescription(generatedProduct.name)}
+              </div>
+            </div>
+
+            {/* 操作按钮 */}
+            <div className="px-4 pb-4">
+              {/* 添加到商城按钮 */}
+              <button
+                onClick={() => handleAddToMall(generatedProduct)}
+                className="w-full py-3 bg-green-500 text-white rounded-lg font-medium mb-3 hover:bg-green-600 transition-colors flex items-center justify-center gap-2"
+              >
+                <span>✓</span>
+                添加到商城
+              </button>
+
+              {/* 底部按钮组 */}
+              <div className="flex gap-3">
+                <button
+                  onClick={() => setShowProductModal(false)}
+                  className="flex-1 py-2 bg-gray-200 text-gray-700 rounded-lg font-medium hover:bg-gray-300 transition-colors"
+                >
+                  取消
+                </button>
+                <button
+                  onClick={() => handleDirectPurchase(generatedProduct)}
+                  className="flex-1 py-2 bg-blue-500 text-white rounded-lg font-medium hover:bg-blue-600 transition-colors flex items-center justify-center gap-1"
+                >
+                  <span>🔍</span>
+                  立即购买
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* AI生图配置弹窗 */}
       <ImageGenConfigModal
         isOpen={showSettings}
         onClose={() => setShowSettings(false)}
@@ -402,15 +535,17 @@ const ShoppingScreen: React.FC<ShoppingScreenProps> = ({
       />
 
       {/* 购买选项弹窗 */}
-      <PurchaseOptionsModal
-        isOpen={showPurchaseOptions}
-        onClose={() => setShowPurchaseOptions(false)}
-        product={selectedProduct}
-        conversations={conversations}
-        onPurchaseForSelf={handlePurchaseForSelf}
-        onPurchaseForAI={handlePurchaseForAI}
-        onRequestAIPay={handleRequestAIPay}
-      />
+      {showPurchaseOptions && selectedProduct && (
+        <PurchaseOptionsModal
+          isOpen={showPurchaseOptions}
+          onClose={() => setShowPurchaseOptions(false)}
+          product={selectedProduct}
+          conversations={conversations}
+          onPurchaseForSelf={handlePurchaseForSelf}
+          onPurchaseForAI={handlePurchaseForAI}
+          onRequestAIPay={handleRequestAIPay}
+        />
+      )}
     </div>
   );
 };
