@@ -3,8 +3,7 @@
  * 基于对话内容分析，智能识别适合开启子聊天的场景
  */
 
-import { Message, Conversation, SubChat } from '../types';
-import { createSubChat } from './subChatManager';
+import { Message, Conversation } from '../types';
 
 export interface SubChatSuggestion {
   id: string;
@@ -30,20 +29,18 @@ export class AISubChatInitiator {
    * 分析对话内容，检测是否需要发起子聊天
    */
   analyzeForSubChatNeeds(
-    conversation: Conversation, 
-    recentMessages: Message[], 
     currentMessage: Message
   ): SubChatSuggestion | null {
     
     // 检查各种触发场景
     const scenarios = [
-      this.detectPrivacyNeed(currentMessage, recentMessages),
-      this.detectDeepDiscussion(currentMessage, recentMessages),
-      this.detectSensitiveTopic(currentMessage, recentMessages),
-      this.detectPlanning(currentMessage, recentMessages),
-      this.detectStoryAnalysis(currentMessage, recentMessages),
-      this.detectTechnicalDiscuss(currentMessage, recentMessages),
-      this.detectEmotionalSupport(currentMessage, recentMessages),
+      this.detectPrivacyNeed(currentMessage),
+      this.detectDeepDiscussion(currentMessage),
+      this.detectSensitiveTopic(currentMessage),
+      this.detectPlanning(currentMessage),
+      this.detectStoryAnalysis(currentMessage),
+      this.detectTechnicalDiscuss(currentMessage),
+      this.detectEmotionalSupport(currentMessage),
     ];
 
     // 找到优先级最高的建议
@@ -62,7 +59,7 @@ export class AISubChatInitiator {
   /**
    * 检测隐私需求场景
    */
-  private detectPrivacyNeed(message: Message, recentMessages: Message[]): SubChatSuggestion | null {
+  private detectPrivacyNeed(message: Message): SubChatSuggestion | null {
     const privacyKeywords = [
       '私下', '悄悄', '秘密', '不想让', '别人不知道', '保密', '隐私',
       '私密', '不能说', '不方便', '单独', '一对一', '私聊'
@@ -107,7 +104,7 @@ export class AISubChatInitiator {
   /**
    * 检测深度讨论场景
    */
-  private detectDeepDiscussion(message: Message, recentMessages: Message[]): SubChatSuggestion | null {
+  private detectDeepDiscussion(message: Message): SubChatSuggestion | null {
     const deepKeywords = [
       '深入', '详细', '仔细', '深度', '具体', '细节', '分析', '探讨',
       '研究', '讨论', '深挖', '展开', '解释', '说明'
@@ -119,11 +116,7 @@ export class AISubChatInitiator {
     // 检查消息长度（长消息可能需要深度讨论）
     const isLongMessage = message.content.length > 100;
     
-    // 检查最近几条消息是否都比较长（表示复杂讨论）
-    const recentLongMessages = recentMessages.slice(-3).filter(m => m.content.length > 80);
-    const hasComplexDiscussion = recentLongMessages.length >= 2;
-
-    if (hasDeepKeywords || (isLongMessage && hasComplexDiscussion)) {
+    if (hasDeepKeywords || isLongMessage) {
       const topics = this.extractTopicsFromMessage(message);
       const topicName = topics[0] || '深度探讨';
       
@@ -144,7 +137,7 @@ export class AISubChatInitiator {
   /**
    * 检测敏感话题场景
    */
-  private detectSensitiveTopic(message: Message, recentMessages: Message[]): SubChatSuggestion | null {
+  private detectSensitiveTopic(message: Message): SubChatSuggestion | null {
     const sensitiveKeywords = [
       '感情', '关系', '家庭', '工作问题', '困难', '烦恼', '压力',
       '不开心', '担心', '焦虑', '抑郁', '痛苦', '难过', '委屈'
@@ -171,7 +164,7 @@ export class AISubChatInitiator {
   /**
    * 检测规划讨论场景
    */
-  private detectPlanning(message: Message, recentMessages: Message[]): SubChatSuggestion | null {
+  private detectPlanning(message: Message): SubChatSuggestion | null {
     const planningKeywords = [
       '计划', '规划', '安排', '方案', '策略', '步骤', '流程',
       '准备', '组织', '设计', '方法', '如何做'
@@ -201,7 +194,7 @@ export class AISubChatInitiator {
   /**
    * 检测小说/故事分析场景
    */
-  private detectStoryAnalysis(message: Message, recentMessages: Message[]): SubChatSuggestion | null {
+  private detectStoryAnalysis(message: Message): SubChatSuggestion | null {
     const storyKeywords = [
       '小说', '故事', '剧情', '角色', '情节', '主人公', '结局',
       '分析', '讨论', '剧透', '细节', '伏笔', '转折'
@@ -234,7 +227,7 @@ export class AISubChatInitiator {
   /**
    * 检测技术讨论场景
    */
-  private detectTechnicalDiscuss(message: Message, recentMessages: Message[]): SubChatSuggestion | null {
+  private detectTechnicalDiscuss(message: Message): SubChatSuggestion | null {
     const techKeywords = [
       '代码', '编程', '技术', '算法', '架构', '设计模式',
       'debug', '优化', '性能', '框架', '库', 'api'
@@ -261,7 +254,7 @@ export class AISubChatInitiator {
   /**
    * 检测情感支持场景
    */
-  private detectEmotionalSupport(message: Message, recentMessages: Message[]): SubChatSuggestion | null {
+  private detectEmotionalSupport(message: Message): SubChatSuggestion | null {
     const emotionalKeywords = [
       '帮助', '支持', '鼓励', '安慰', '倾诉', '听我说',
       '心情不好', '需要', '希望', '陪伴', '理解'

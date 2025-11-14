@@ -4,7 +4,7 @@
  */
 
 import React, { useState } from 'react';
-import { MessageCircle, X, Edit2, Check, AlertCircle } from 'lucide-react';
+import { MessageCircle, Edit2, Check, AlertCircle } from 'lucide-react';
 import { SubChatSuggestion } from '../utils/aiSubChatInitiator';
 
 interface SubChatSuggestionModalProps {

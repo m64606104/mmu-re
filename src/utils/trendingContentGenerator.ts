@@ -160,8 +160,7 @@ export class TrendingContentGenerator {
    */
   static generateContentSuggestion(
     hour: number,
-    personality?: string,
-    recentTopics?: string[]
+    personality?: string
   ): { content: string; hashtags: string[] } {
     const trendingContent = this.getTrendingContent();
     const timeOfDay = this.getTimeOfDay(hour);
@@ -216,7 +215,7 @@ export class TrendingContentGenerator {
     ];
     
     // 填充模板中的变量
-    const filledContent = this.fillTemplate(template, selectedContent.category, timeOfDay);
+    const filledContent = this.fillTemplate(template, timeOfDay);
     
     return {
       content: filledContent,
@@ -237,7 +236,7 @@ export class TrendingContentGenerator {
   /**
    * 填充模板变量
    */
-  private static fillTemplate(template: string, category: TrendingContent['category'], timeOfDay: string): string {
+  private static fillTemplate(template: string, timeOfDay: string): string {
     const placeholders = {
       // 通用变量
       weather: ['阳光', '微风', '细雨', '云朵', '蓝天', '夕阳', '月光'],

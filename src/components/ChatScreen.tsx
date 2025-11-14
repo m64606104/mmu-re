@@ -35,7 +35,7 @@ import SubChatWindow from './SubChatWindow';
 import SubChatManager from './SubChatManager';
 import SubChatSuggestionModal from './SubChatSuggestionModal';
 import { createSubChat, addSubChatToConversation, updateSubChatInConversation } from '../utils/subChatManager';
-import { aiSubChatInitiator, SubChatSuggestion } from '../utils/aiSubChatInitiator';
+import { SubChatSuggestion } from '../utils/aiSubChatInitiator';
 // 消息转发和多选相关导入
 import MessageSelectionToolbar from './MessageSelectionToolbar';
 import ForwardTargetSelector from './ForwardTargetSelector';

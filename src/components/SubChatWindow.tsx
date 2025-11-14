@@ -12,7 +12,6 @@ import ForwardTargetSelector from './ForwardTargetSelector';
 import { createSingleForward, createMergedForward, getMessagePreview } from '../utils/messageForward';
 import { formatChatRecord } from '../utils/chatRecordFormatter';
 import { splitMessages } from '../utils/messageFormatter';
-import { subChatMemoryManager } from '../utils/subChatMemoryManager';
 import { subChatPurposeDetector } from '../utils/subChatPurposeDetector';
 import type { MusicInfo } from '../utils/musicService';
 
@@ -630,7 +629,7 @@ ${otherSubChatsContext}
       
       if (isEarlyMessage) {
         for (const userMessage of unhandledUserMessages) {
-          const detectedPurpose = subChatPurposeDetector.detectPurposeFromMessage(userMessage, subChat);
+          const detectedPurpose = subChatPurposeDetector.detectPurposeFromMessage(userMessage);
           if (detectedPurpose && detectedPurpose.confidence > 0.6) {
             console.log('🎯 检测到子聊天目的:', detectedPurpose);
             
@@ -654,8 +653,7 @@ ${otherSubChatsContext}
       // 如果刚检测到目的，先生成理解回复
       if (purposeDetected && detectedPurposeInfo) {
         const understandingResponse = subChatPurposeDetector.generateUnderstandingResponse(
-          detectedPurposeInfo, 
-          subChat.name
+          detectedPurposeInfo
         );
         
         // 直接添加理解回复消息

@@ -118,50 +118,6 @@ export class RealMusicService {
     }
   }
 
-  /**
-   * Free Music Archive API (已废弃 - API服务已停止)
-   * https://freemusicarchive.org/api
-   */
-  private async searchFreeMusicArchive(_query: string): Promise<RealMusicInfo[]> {
-    try {
-      console.log('🚫 Free Music Archive API已不再提供公共访问，跳过搜索');
-      return [];
-      
-      // FMA API 已经停止服务，保留代码仅供参考
-      // const response = await fetch(
-      //   `https://freemusicarchive.org/api/get/tracks.json?api_key=API_KEY&limit=10&search=${encodeURIComponent(query)}`
-      // );
-      
-    } catch (error) {
-      console.error('Free Music Archive搜索失败:', error);
-      return [];
-    }
-  }
-
-  /**
-   * Audiomack API (已限制 - 需要认证)
-   */
-  private async searchAudiomack(_query: string): Promise<RealMusicInfo[]> {
-    try {
-      console.log('🚫 Audiomack API需要认证，暂时跳过搜索');
-      return [];
-      
-      // Audiomack API 现在需要认证，保留代码仅供参考
-      // 用户可以申请API密钥后启用
-      // const response = await fetch(
-      //   `https://api.audiomack.com/v1/search/songs?q=${encodeURIComponent(query)}&limit=10`,
-      //   {
-      //     headers: {
-      //       'Authorization': 'Bearer YOUR_API_KEY'
-      //     }
-      //   }
-      // );
-      
-    } catch (error) {
-      console.error('Audiomack搜索失败:', error);
-      return [];
-    }
-  }
 
   /**
    * iTunes Search API - 免费且可靠的音乐搜索

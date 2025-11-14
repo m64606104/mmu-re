@@ -5,7 +5,7 @@
 
 export interface VirtualNews {
   id: string;
-  type: 'news' | 'trending' | 'social' | 'tech' | 'entertainment' | 'lifestyle';
+  type: 'tech' | 'entertainment' | 'lifestyle' | 'social' | 'trending';
   title: string;
   summary?: string;
   hashtag: string;
@@ -14,7 +14,7 @@ export interface VirtualNews {
 }
 
 export class VirtualNewsGenerator {
-  private static newsTemplates = {
+  private static newsTemplates: Record<VirtualNews['type'], Array<{title: string, hashtag: string, summaries: string[]}>> = {
     tech: [
       {
         title: '{company}推出新功能，{feature}引发热议',
@@ -283,7 +283,7 @@ export class VirtualNewsGenerator {
   }
 
   private static getAssociation(type: VirtualNews['type']): string {
-    const associations = {
+    const associations: Record<VirtualNews['type'], string> = {
       tech: '未来生活',
       entertainment: '青春回忆',
       lifestyle: '美好日常',

@@ -3,7 +3,7 @@
  * 当用户在子聊天中说明发起原因时，智能识别并记录目的
  */
 
-import { Message, SubChat } from '../types';
+import { Message } from '../types';
 
 export interface DetectedPurpose {
   purpose: string;
@@ -25,7 +25,7 @@ export class SubChatPurposeDetector {
   /**
    * 检测用户消息中是否包含子聊天目的说明
    */
-  detectPurposeFromMessage(message: Message, subChat: SubChat): DetectedPurpose | null {
+  detectPurposeFromMessage(message: Message): DetectedPurpose | null {
     const content = message.content.toLowerCase();
     
     // 检测各种目的表达模式
@@ -43,7 +43,7 @@ export class SubChatPurposeDetector {
     let highestConfidence = 0;
 
     for (const detector of detectors) {
-      const result = detector.call(this, content, message, subChat);
+      const result = detector.call(this, content);
       if (result && result.confidence > highestConfidence) {
         highestConfidence = result.confidence;
         bestDetection = result;
@@ -56,7 +56,7 @@ export class SubChatPurposeDetector {
   /**
    * 检测隐私相关目的
    */
-  private detectPrivacyPurpose(content: string, message: Message, subChat: SubChat): DetectedPurpose | null {
+  private detectPrivacyPurpose(content: string): DetectedPurpose | null {
     const privacyPatterns = [
       /我想(在这里|单独|私下|悄悄).{0,20}(说|聊|讨论|谈)/,
       /这里比较(私密|安全|方便)，我想/,
@@ -91,7 +91,7 @@ export class SubChatPurposeDetector {
   /**
    * 检测深度讨论目的
    */
-  private detectDiscussionPurpose(content: string, message: Message, subChat: SubChat): DetectedPurpose | null {
+  private detectDiscussionPurpose(content: string): DetectedPurpose | null {
     const discussionPatterns = [
       /我想(详细|深入|仔细).{0,20}(讨论|分析|聊|谈)/,
       /这个话题(比较复杂|需要深入|值得详细)/,
@@ -126,7 +126,7 @@ export class SubChatPurposeDetector {
   /**
    * 检测规划相关目的
    */
-  private detectPlanningPurpose(content: string, message: Message, subChat: SubChat): DetectedPurpose | null {
+  private detectPlanningPurpose(content: string): DetectedPurpose | null {
     const planningPatterns = [
       /我想(制定|规划|安排|计划).{0,20}(方案|计划|流程)/,
       /我们来(讨论|制定|规划).{0,20}(怎么|如何)/,
@@ -161,7 +161,7 @@ export class SubChatPurposeDetector {
   /**
    * 检测分析相关目的
    */
-  private detectAnalysisPurpose(content: string, message: Message, subChat: SubChat): DetectedPurpose | null {
+  private detectAnalysisPurpose(content: string): DetectedPurpose | null {
     const analysisPatterns = [
       /我想分析.{1,30}/,
       /我们来(研究|解析|分析).{1,20}/,
@@ -203,7 +203,7 @@ export class SubChatPurposeDetector {
   /**
    * 检测情感支持目的
    */
-  private detectEmotionalPurpose(content: string, message: Message, subChat: SubChat): DetectedPurpose | null {
+  private detectEmotionalPurpose(content: string): DetectedPurpose | null {
     const emotionalPatterns = [
       /我(心情|情绪).{0,10}(不好|低落|糟糕)/,
       /我想(倾诉|聊聊|说说).{0,20}(心事|烦恼|困扰)/,
@@ -231,7 +231,7 @@ export class SubChatPurposeDetector {
   /**
    * 检测技术讨论目的
    */
-  private detectTechnicalPurpose(content: string, message: Message, subChat: SubChat): DetectedPurpose | null {
+  private detectTechnicalPurpose(content: string): DetectedPurpose | null {
     const technicalPatterns = [
       /我想(讨论|聊聊).{0,20}(技术|代码|编程)/,
       /关于.{0,20}(算法|架构|开发|bug)/,
@@ -265,7 +265,7 @@ export class SubChatPurposeDetector {
   /**
    * 检测一般目的
    */
-  private detectGeneralPurpose(content: string, message: Message, subChat: SubChat): DetectedPurpose | null {
+  private detectGeneralPurpose(content: string): DetectedPurpose | null {
     const generalPatterns = [
       /我想(在这里|这边).{0,20}(说|聊|讨论)/,
       /开这个.{0,10}(聊天|对话)是(为了|想要)/,
@@ -292,7 +292,7 @@ export class SubChatPurposeDetector {
   /**
    * 根据检测结果生成AI理解回复
    */
-  generateUnderstandingResponse(detection: DetectedPurpose, subChatName: string): string {
+  generateUnderstandingResponse(detection: DetectedPurpose): string {
     const responses = {
       privacy: [
         `我明白了，你希望在这个私密的空间里交流。我会保护好我们的对话内容。`,

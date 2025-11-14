@@ -4,7 +4,6 @@
  */
 
 import { Conversation } from '../types';
-import TrendingContentGenerator from './trendingContentGenerator';
 import VirtualNewsGenerator from './virtualNewsGenerator';
 import WeiboStyleGenerator from './weiboStyleGenerator';
 
@@ -156,7 +155,7 @@ export class DiverseMomentsGenerator {
     // 加权随机选择
     const selectedType = this.weightedRandomSelect(formatWeights);
     
-    return this.generateFormatDetails(selectedType, conversation);
+    return this.generateFormatDetails(selectedType as MomentsFormat['type'], conversation);
   }
   
   /**
@@ -236,30 +235,30 @@ export class DiverseMomentsGenerator {
     
     switch (format.type) {
       case 'text_only':
-        ({ content, theme } = this.generateTextOnlyContent(conversation, format, variation.themes));
+        ({ content, theme } = this.generateTextOnlyContent(format, variation.themes));
         break;
         
       case 'single_image':
       case 'multi_image':
-        ({ content, imageDescriptions, theme } = this.generateImageContent(conversation, format, variation.themes));
+        ({ content, imageDescriptions, theme } = this.generateImageContent(format, variation.themes));
         break;
         
       case 'news_sharing':
-        ({ content, theme } = this.generateNewsContent(conversation, format));
+        ({ content, theme } = this.generateNewsContent(conversation));
         break;
         
       case 'mood_check':
-        ({ content, imageDescriptions, theme } = this.generateMoodContent(conversation, format));
+        ({ content, imageDescriptions, theme } = this.generateMoodContent(format));
         break;
         
       case 'weibo_sharing':
-        ({ content, imageDescriptions, theme } = this.generateWeiboSharingContent(conversation, format));
+        ({ content, imageDescriptions, theme } = this.generateWeiboSharingContent(conversation));
         break;
     }
     
     // 添加话题标签
     if (format.hasHashtags) {
-      const hashtags = this.generateHashtags(theme, format.contentStyle);
+      const hashtags = this.generateHashtags(theme);
       if (hashtags.length > 0 && !content.includes('#')) {
         content += ` ${hashtags.slice(0, 2).join(' ')}`;
       }
@@ -272,13 +271,9 @@ export class DiverseMomentsGenerator {
    * 生成纯文字内容
    */
   static generateTextOnlyContent(
-    conversation: Conversation, 
     format: MomentsFormat, 
     recentThemes: string[]
   ): { content: string; theme: string } {
-    const personality = conversation.characterSettings?.personality || '';
-    const hour = new Date().getHours();
-    
     // 选择主题（避免重复）
     const availableThemes = [
       '生活感悟', '工作心得', '阅读笔记', '音乐分享', '电影观后感', 
@@ -289,14 +284,14 @@ export class DiverseMomentsGenerator {
       ? availableThemes[Math.floor(Math.random() * availableThemes.length)]
       : '日常随想';
     
-    const templates = this.getTextTemplates(theme, format.contentStyle, hour);
+    const templates = this.getTextTemplates(theme);
     const template = templates[Math.floor(Math.random() * templates.length)];
     
     // 根据文本长度调整内容
-    let content = this.fillTemplate(template, personality);
+    let content = this.fillTemplate(template);
     
     if (format.textLength === 'long') {
-      content += this.getExtendedThought(theme, personality);
+      content += this.getExtendedThought(theme);
     } else if (format.textLength === 'short') {
       content = content.split('。')[0] + '。';
     }
@@ -308,7 +303,6 @@ export class DiverseMomentsGenerator {
    * 生成配图内容
    */
   static generateImageContent(
-    conversation: Conversation,
     format: MomentsFormat,
     recentThemes: string[]
   ): { content: string; imageDescriptions: string[]; theme: string } {
@@ -318,7 +312,7 @@ export class DiverseMomentsGenerator {
       ? availableThemes[Math.floor(Math.random() * availableThemes.length)]
       : themes[Math.floor(Math.random() * themes.length)];
     
-    const { content, imageDescriptions } = this.generateImageBasedContent(theme, format.imageCount, conversation);
+    const { content, imageDescriptions } = this.generateImageBasedContent(theme, format.imageCount);
     
     return { content, imageDescriptions, theme };
   }
@@ -326,13 +320,13 @@ export class DiverseMomentsGenerator {
   /**
    * 生成新闻分享内容
    */
-  static generateNewsContent(conversation: Conversation, format: MomentsFormat): { content: string; theme: string } {
+  static generateNewsContent(conversation: Conversation): { content: string; theme: string } {
     const personality = conversation.characterSettings?.personality;
     const news = VirtualNewsGenerator.getTodayRecommendedNews(personality, 1)[0];
     
     if (!news) {
       // 降级到普通内容
-      return this.generateTextOnlyContent(conversation, format, []);
+      return { content: '暂无新闻内容，稍后再试', theme: '新闻分享' };
     }
     
     const comment = VirtualNewsGenerator.generateNewsComment(news, personality);
@@ -345,8 +339,7 @@ export class DiverseMomentsGenerator {
    * 生成微博分享内容
    */
   static generateWeiboSharingContent(
-    conversation: Conversation,
-    format: MomentsFormat
+    conversation: Conversation
   ): { content: string; imageDescriptions: string[]; theme: string } {
     const personality = conversation.characterSettings?.personality || '';
     
@@ -365,11 +358,9 @@ export class DiverseMomentsGenerator {
    * 生成心情类内容
    */
   static generateMoodContent(
-    conversation: Conversation, 
     format: MomentsFormat
   ): { content: string; imageDescriptions: string[]; theme: string } {
     const hour = new Date().getHours();
-    const personality = conversation.characterSettings?.personality || '';
     
     const moodTemplates = {
       morning: ['新的一天，{mood}', '早晨的{feeling}', '今天想{activity}'],
@@ -382,7 +373,7 @@ export class DiverseMomentsGenerator {
     const templates = moodTemplates[timeSlot];
     const template = templates[Math.floor(Math.random() * templates.length)];
     
-    const content = this.fillMoodTemplate(template, personality);
+    const content = this.fillMoodTemplate(template);
     const imageDescriptions = format.imageCount > 0 ? [this.generateMoodImage(timeSlot)] : [];
     
     return { content, imageDescriptions, theme: '心情分享' };
@@ -401,7 +392,7 @@ export class DiverseMomentsGenerator {
     return Object.keys(weights)[0];
   }
   
-  private static getTextTemplates(theme: string, style: string, hour: number): string[] {
+  private static getTextTemplates(theme: string): string[] {
     // 简化实现
     return [
       `关于${theme}，今天有些新的想法`,
@@ -410,16 +401,16 @@ export class DiverseMomentsGenerator {
     ];
   }
   
-  private static fillTemplate(template: string, personality: string): string {
+  private static fillTemplate(template: string): string {
     // 简化实现
     return template.replace(/\{[^}]+\}/g, '很好');
   }
   
-  private static getExtendedThought(theme: string, personality: string): string {
+  private static getExtendedThought(theme: string): string {
     return ` 生活中总有这样那样的感悟，${theme}给了我很多启发。`;
   }
   
-  private static generateImageBasedContent(theme: string, imageCount: number, conversation: Conversation): {
+  private static generateImageBasedContent(theme: string, imageCount: number): {
     content: string;
     imageDescriptions: string[];
   } {
@@ -431,7 +422,7 @@ export class DiverseMomentsGenerator {
     return { content, imageDescriptions };
   }
   
-  private static fillMoodTemplate(template: string, personality: string): string {
+  private static fillMoodTemplate(template: string): string {
     return template
       .replace('{mood}', '心情不错')
       .replace('{feeling}', '很舒适')
@@ -452,7 +443,7 @@ export class DiverseMomentsGenerator {
     return imageMap[timeSlot as keyof typeof imageMap] || imageMap.evening;
   }
   
-  private static generateHashtags(theme: string, style: string): string[] {
+  private static generateHashtags(theme: string): string[] {
     const hashtagMap: Record<string, string[]> = {
       '美食': ['#美食分享', '#今日美味', '#探店'],
       '心情分享': ['#今日心情', '#生活感悟', '#小确幸'],

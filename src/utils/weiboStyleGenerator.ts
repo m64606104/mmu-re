@@ -17,7 +17,7 @@ export interface WeiboPost {
     comments: number;
     likes: number;
   };
-  topic: 'tech' | 'finance' | 'entertainment' | 'lifestyle' | 'news' | 'sports';
+  topic: 'tech' | 'finance' | 'entertainment' | 'lifestyle' | 'news';
 }
 
 export class WeiboStyleGenerator {
@@ -105,7 +105,7 @@ export class WeiboStyleGenerator {
     const selectedTopic = topic || this.getRandomTopic();
     const username = this.getRandomUsername(selectedTopic);
     const template = this.getRandomTemplate(selectedTopic);
-    const content = this.fillTemplate(template, selectedTopic);
+    const content = this.fillTemplate(template);
     
     return {
       id: `weibo_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
@@ -114,7 +114,7 @@ export class WeiboStyleGenerator {
       postTime: this.generatePostTime(),
       hashtag: template.hashtag,
       content,
-      imageDescription: this.generateImageDescription(selectedTopic, content),
+      imageDescription: this.generateImageDescription(selectedTopic),
       engagement: this.generateEngagement(),
       topic: selectedTopic
     };
@@ -179,7 +179,7 @@ export class WeiboStyleGenerator {
 
   // 私有辅助方法
   private static getRandomTopic(): WeiboPost['topic'] {
-    const topics: WeiboPost['topic'][] = ['tech', 'finance', 'entertainment', 'lifestyle', 'news', 'sports'];
+    const topics: WeiboPost['topic'][] = ['tech', 'finance', 'entertainment', 'lifestyle', 'news'];
     return topics[Math.floor(Math.random() * topics.length)];
   }
 
@@ -212,7 +212,7 @@ export class WeiboStyleGenerator {
     return templates[Math.floor(Math.random() * templates.length)];
   }
 
-  private static fillTemplate(template: any, topic: WeiboPost['topic']): string {
+  private static fillTemplate(template: any): string {
     let content = template.template;
     
     // 替换模板中的占位符
@@ -243,14 +243,13 @@ export class WeiboStyleGenerator {
     };
   }
 
-  private static generateImageDescription(topic: WeiboPost['topic'], content: string): string {
-    const descriptions = {
+  private static generateImageDescription(topic: WeiboPost['topic']): string {
+    const descriptions: Record<WeiboPost['topic'], string> = {
       tech: '科技类数据图表，蓝色主色调，包含增长曲线和关键数据指标',
       finance: '财经数据可视化图表，红绿配色显示涨跌情况，包含K线图和统计数据',
       entertainment: '娱乐明星高清写真或活动现场照片，时尚造型，专业摄影风格',
       lifestyle: '生活方式相关的精美照片，温馨的色调，展现品质生活场景',
-      news: '新闻事件相关图片或信息图表，严肃正式的设计风格',
-      sports: '体育赛事精彩瞬间或运动相关的动感图片'
+      news: '新闻事件相关图片或信息图表，严肃正式的设计风格'
     };
 
     return descriptions[topic] || '相关主题的精美配图，设计简洁大方，色彩搭配和谐';

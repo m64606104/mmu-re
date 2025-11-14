@@ -129,7 +129,7 @@ class ApiUsageManager {
   /**
    * 记录API调用
    */
-  public recordApiCall(tokens?: number): void {
+  public recordApiCall(_tokens?: number): void {
     this.checkAndResetCounters();
     
     this.stats.hourly++;
