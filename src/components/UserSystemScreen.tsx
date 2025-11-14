@@ -15,10 +15,11 @@ import {
 } from '../utils/userSystem';
 import { 
   getConversations, 
-  sendMessageToUser, 
+  sendMessageToUser,
   getChatHistory,
   markConversationAsRead,
   startMessageSync,
+  createInitialConversation,
   type Conversation,
   type UserMessage 
 } from '../utils/messageSystem';
@@ -91,6 +92,9 @@ export default function UserSystemScreen({ onBack }: UserSystemScreenProps) {
     );
 
     if (success) {
+      // 创建初始对话记录，这样用户就能在主界面看到新好友
+      createInitialConversation(addFriendCode.trim().toUpperCase());
+      
       alert('添加好友成功！');
       loadFriendsAndConversations();
       setAddFriendCode('');
@@ -201,24 +205,25 @@ export default function UserSystemScreen({ onBack }: UserSystemScreenProps) {
           </div>
         </div>
 
-        {/* 对话列表 */}
+        {/* 好友列表 */}
         <div className="flex-1 overflow-y-auto">
-          {conversations.length === 0 ? (
+          {friends.length === 0 ? (
             <div className="flex flex-col items-center justify-center h-full text-gray-500">
               <MessageCircle className="w-16 h-16 mb-4 opacity-50" />
-              <p className="text-lg font-medium">暂无聊天记录</p>
+              <p className="text-lg font-medium">暂无好友</p>
               <p className="text-sm">添加好友开始聊天吧</p>
             </div>
           ) : (
             <div className="p-4 space-y-2">
-              {conversations.map((conversation) => {
-                const friendCode = conversation.participants.find(p => p !== currentUser?.userCode);
-                const friend = friends.find(f => f.userCode === friendCode);
-                if (!friend) return null;
+              {friends.map((friend) => {
+                // 查找对应的对话记录
+                const conversation = conversations.find(c => 
+                  c.participants.includes(friend.userCode)
+                );
 
                 return (
                   <div
-                    key={conversation.id}
+                    key={friend.userCode}
                     onClick={() => handleStartChat(friend)}
                     className="bg-white rounded-xl p-4 shadow-sm hover:shadow-md transition-all cursor-pointer"
                   >
@@ -232,14 +237,16 @@ export default function UserSystemScreen({ onBack }: UserSystemScreenProps) {
                         <div className="flex items-center justify-between">
                           <h3 className="font-semibold text-gray-800">{friend.nickname}</h3>
                           <span className="text-xs text-gray-500">
-                            {conversation.lastMessage ? new Date(conversation.lastMessage.timestamp).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' }) : ''}
+                            {conversation?.lastMessage ? 
+                              new Date(conversation.lastMessage.timestamp).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' }) : 
+                              '新好友'}
                           </span>
                         </div>
                         <div className="flex items-center justify-between mt-1">
                           <p className="text-sm text-gray-600 truncate">
-                            {conversation.lastMessage?.content || '开始聊天吧'}
+                            {conversation?.lastMessage?.content || '点击开始聊天'}
                           </p>
-                          {conversation.unreadCount > 0 && (
+                          {conversation && conversation.unreadCount > 0 && (
                             <span className="bg-red-500 text-white text-xs rounded-full px-2 py-1 min-w-[20px] text-center">
                               {conversation.unreadCount}
                             </span>
