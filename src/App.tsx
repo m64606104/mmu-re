@@ -140,10 +140,14 @@ function App() {
       if (loadedConversations.length > 0 && apiConfig) {
         try {
           const { autoConfigureAllIncome } = await import('./utils/smartFinanceSystem');
-          const { processAllAutoIncome } = await import('./utils/aiFinance');
+          const { processAllAutoIncome, upgradeAllExistingAIFinance } = await import('./utils/aiFinance');
           
           // 为所有AI配置收入（仅首次，已配置的会跳过）
           setTimeout(async () => {
+            // 🔄 首先升级已存在AI的智能财务系统
+            await upgradeAllExistingAIFinance(loadedConversations);
+            
+            // 为所有AI配置收入
             await autoConfigureAllIncome(loadedConversations, apiConfig);
             
             // 处理一次自动收入
