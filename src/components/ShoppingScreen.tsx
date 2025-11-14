@@ -1,8 +1,9 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { ChevronLeft, Search, ShoppingCart, Settings } from 'lucide-react';
 import { purchaseProduct, getBalance } from '../utils/wallet';
 import ImageGenConfigModal from './ImageGenConfigModal';
 import PurchaseOptionsModal from './PurchaseOptionsModal';
+import ShoppingCartModal, { addToCart, getCartItemCount, CartItem } from './ShoppingCartModal';
 import { Conversation } from '../types';
 
 interface ShoppingScreenProps {
@@ -37,6 +38,8 @@ const ShoppingScreen: React.FC<ShoppingScreenProps> = ({
   const [showProductModal, setShowProductModal] = useState(false);
   const [generatedProduct, setGeneratedProduct] = useState<Product | null>(null);
   const [isSearching, setIsSearching] = useState(false);
+  const [showCart, setShowCart] = useState(false);
+  const [cartItemCount, setCartItemCount] = useState(0);
   const [imageGenConfig, setImageGenConfig] = useState({
     apiUrl: localStorage.getItem('image_gen_api_url') || '',
     apiKey: localStorage.getItem('image_gen_api_key') || '',
@@ -82,6 +85,16 @@ const ShoppingScreen: React.FC<ShoppingScreenProps> = ({
 
   const currentShop = shopConfig[shopType];
   const [products, setProducts] = useState<Product[]>(currentShop.products);
+
+  // 更新购物车数量
+  useEffect(() => {
+    updateCartCount();
+  }, [shopType]);
+
+  const updateCartCount = () => {
+    const count = getCartItemCount(shopType);
+    setCartItemCount(count);
+  };
 
   // 保存AI生图配置
   const saveImageGenConfig = (config: { apiUrl: string; apiKey: string; model: string }) => {
@@ -319,6 +332,37 @@ const ShoppingScreen: React.FC<ShoppingScreenProps> = ({
     alert('商品已添加到商城！');
   };
 
+  // 加入购物车
+  const handleAddToCart = (product: Product) => {
+    const success = addToCart(product, shopType);
+    if (success) {
+      updateCartCount();
+      alert('已添加到购物车！');
+    } else {
+      alert('添加失败，请重试');
+    }
+  };
+
+  // 购物车结算
+  const handleCartPurchase = (_items: CartItem[], totalAmount: number) => {
+    const balance = getBalance();
+    
+    if (balance < totalAmount) {
+      alert('余额不足，请充值');
+      return;
+    }
+
+    // 批量购买商品
+    const success = purchaseProduct(totalAmount, `${currentShop.name}购物车结算`, currentShop.name);
+    if (success) {
+      updateCartCount();
+      onPurchase();
+      alert(`购买成功！总计 ¥${totalAmount.toFixed(2)}`);
+    } else {
+      alert('购买失败，请重试');
+    }
+  };
+
   // 直接购买
   const handleDirectPurchase = (product: Product) => {
     setShowProductModal(false);
@@ -349,20 +393,38 @@ const ShoppingScreen: React.FC<ShoppingScreenProps> = ({
     <div className="h-screen bg-gray-50 flex flex-col">
       {/* 头部 */}
       <div className="bg-white border-b">
-        <div className="flex items-center px-4 py-3">
-          <button
-            onClick={onBack}
-            className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
-          >
-            <ChevronLeft className="w-6 h-6" />
-          </button>
-          <h1 className="text-lg font-semibold ml-2">{currentShop.name}</h1>
-          <button
-            onClick={() => setShowSettings(true)}
-            className="ml-auto p-2 hover:bg-gray-100 rounded-lg transition-colors"
-          >
-            <Settings className="w-5 h-5" />
-          </button>
+        <div className="flex items-center justify-between px-4 py-3">
+          <div className="flex items-center">
+            <button
+              onClick={onBack}
+              className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+            >
+              <ChevronLeft className="w-6 h-6" />
+            </button>
+            <h1 className="text-lg font-semibold ml-2">{currentShop.name}</h1>
+          </div>
+          
+          <div className="flex items-center gap-2">
+            {/* 购物车按钮 */}
+            <button
+              onClick={() => setShowCart(true)}
+              className="relative p-2 hover:bg-gray-100 rounded-lg transition-colors"
+            >
+              <ShoppingCart className="w-6 h-6" />
+              {cartItemCount > 0 && (
+                <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center">
+                  {cartItemCount > 99 ? '99+' : cartItemCount}
+                </span>
+              )}
+            </button>
+            
+            <button
+              onClick={() => setShowSettings(true)}
+              className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+            >
+              <Settings className="w-6 h-6" />
+            </button>
+          </div>
         </div>
 
         {/* 搜索栏 */}
@@ -425,12 +487,22 @@ const ShoppingScreen: React.FC<ShoppingScreenProps> = ({
                   <div className="text-red-600 font-bold">
                     ¥{product.price.toFixed(2)}
                   </div>
-                  <button
-                    onClick={() => handleClickPurchase(product)}
-                    className="p-2 bg-gradient-to-r from-orange-500 to-red-500 text-white rounded-lg hover:opacity-90 transition-opacity"
-                  >
-                    <ShoppingCart className="w-4 h-4" />
-                  </button>
+                  <div className="flex gap-1">
+                    <button
+                      onClick={() => handleAddToCart(product)}
+                      className="p-2 bg-green-500 text-white rounded-lg hover:bg-green-600 transition-colors"
+                      title="加入购物车"
+                    >
+                      <ShoppingCart className="w-4 h-4" />
+                    </button>
+                    <button
+                      onClick={() => handleClickPurchase(product)}
+                      className="p-2 bg-gradient-to-r from-orange-500 to-red-500 text-white rounded-lg hover:opacity-90 transition-opacity"
+                      title="立即购买"
+                    >
+                      <span className="text-xs font-medium">买</span>
+                    </button>
+                  </div>
                 </div>
               </div>
             </div>
@@ -505,6 +577,18 @@ const ShoppingScreen: React.FC<ShoppingScreenProps> = ({
                 添加到商城
               </button>
 
+              {/* 加入购物车按钮 */}
+              <button
+                onClick={() => {
+                  handleAddToCart(generatedProduct);
+                  setShowProductModal(false);
+                }}
+                className="w-full py-3 bg-orange-500 text-white rounded-lg font-medium mb-3 hover:bg-orange-600 transition-colors flex items-center justify-center gap-2"
+              >
+                <ShoppingCart className="w-4 h-4" />
+                加入购物车
+              </button>
+
               {/* 底部按钮组 */}
               <div className="flex gap-3">
                 <button
@@ -546,6 +630,14 @@ const ShoppingScreen: React.FC<ShoppingScreenProps> = ({
           onRequestAIPay={handleRequestAIPay}
         />
       )}
+
+      {/* 购物车弹窗 */}
+      <ShoppingCartModal
+        isOpen={showCart}
+        onClose={() => setShowCart(false)}
+        shopType={shopType}
+        onPurchase={handleCartPurchase}
+      />
     </div>
   );
 };
