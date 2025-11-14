@@ -43,6 +43,10 @@ const ShoppingScreen: React.FC<ShoppingScreenProps> = ({
   const [isEditingProduct, setIsEditingProduct] = useState(false);
   const [editPrice, setEditPrice] = useState('');
   const [editDescription, setEditDescription] = useState('');
+  const [productActions, setProductActions] = useState<{
+    addedToMall: boolean;
+    addedToCart: boolean;
+  }>({ addedToMall: false, addedToCart: false });
   const [imageGenConfig, setImageGenConfig] = useState({
     apiUrl: localStorage.getItem('image_gen_api_url') || '',
     apiKey: localStorage.getItem('image_gen_api_key') || '',
@@ -244,6 +248,7 @@ const ShoppingScreen: React.FC<ShoppingScreenProps> = ({
       
       // 显示商品详情弹窗
       setGeneratedProduct(newProduct);
+      setProductActions({ addedToMall: false, addedToCart: false });
       setShowProductModal(true);
     } catch (error) {
       console.log('🎨 AI生图失败:', error);
@@ -273,6 +278,7 @@ const ShoppingScreen: React.FC<ShoppingScreenProps> = ({
           image: `https://via.placeholder.com/300x300?text=${encodeURIComponent(searchQuery)}`
         };
         setGeneratedProduct(newProduct);
+        setProductActions({ addedToMall: false, addedToCart: false });
         setShowProductModal(true);
         setIsSearching(false);
       }, 1500); // 模拟搜索时间
@@ -361,22 +367,32 @@ const ShoppingScreen: React.FC<ShoppingScreenProps> = ({
     alert(`已向${aiName}发送代付请求`);
   };
 
-  // 加入商城
+  // 加入商城（不关闭弹窗，允许继续操作）
   const handleAddToMall = (product: Product) => {
+    // 检查是否已存在该商品
+    const existingProduct = products.find(p => p.name === product.name);
+    if (existingProduct) {
+      alert('该商品已在商城中！');
+      return;
+    }
+    
     setProducts([product, ...products]);
-    setShowProductModal(false);
-    alert('商品已添加到商城！');
+    setProductActions(prev => ({ ...prev, addedToMall: true }));
+    alert('✅ 商品已添加到商城！\n您可以继续加入购物车或直接购买');
+    // 不关闭弹窗，让用户继续选择其他操作
   };
 
-  // 加入购物车
+  // 加入购物车（不关闭弹窗，允许继续操作）
   const handleAddToCart = (product: Product) => {
     const success = addToCart(product, shopType);
     if (success) {
       updateCartCount();
-      alert('已添加到购物车！');
+      setProductActions(prev => ({ ...prev, addedToCart: true }));
+      alert('✅ 已添加到购物车！\n您可以继续加入商城或直接购买');
     } else {
       alert('添加失败，请重试');
     }
+    // 不关闭弹窗，让用户继续选择其他操作
   };
 
   // 购物车结算
@@ -409,6 +425,8 @@ const ShoppingScreen: React.FC<ShoppingScreenProps> = ({
   const handleDirectPurchase = (product: Product) => {
     setShowProductModal(false);
     setSelectedProduct(product);
+    // 重置操作状态
+    setProductActions({ addedToMall: false, addedToCart: false });
     setShowPurchaseOptions(true);
   };
 
@@ -797,22 +815,29 @@ const ShoppingScreen: React.FC<ShoppingScreenProps> = ({
                   {/* 添加到商城按钮 */}
                   <button
                     onClick={() => handleAddToMall(generatedProduct)}
-                    className="w-full py-3 bg-green-500 text-white rounded-lg font-medium mb-3 hover:bg-green-600 transition-colors flex items-center justify-center gap-2"
+                    disabled={productActions.addedToMall}
+                    className={`w-full py-3 rounded-lg font-medium mb-3 transition-colors flex items-center justify-center gap-2 ${
+                      productActions.addedToMall 
+                        ? 'bg-green-600 text-white cursor-not-allowed' 
+                        : 'bg-green-500 text-white hover:bg-green-600'
+                    }`}
                   >
-                    <span>✓</span>
-                    添加到商城
+                    <span>{productActions.addedToMall ? '✅' : '✓'}</span>
+                    {productActions.addedToMall ? '已添加到商城' : '添加到商城'}
                   </button>
 
                   {/* 加入购物车按钮 */}
                   <button
-                    onClick={() => {
-                      handleAddToCart(generatedProduct);
-                      setShowProductModal(false);
-                    }}
-                    className="w-full py-3 bg-orange-500 text-white rounded-lg font-medium mb-3 hover:bg-orange-600 transition-colors flex items-center justify-center gap-2"
+                    onClick={() => handleAddToCart(generatedProduct)}
+                    disabled={productActions.addedToCart}
+                    className={`w-full py-3 rounded-lg font-medium mb-3 transition-colors flex items-center justify-center gap-2 ${
+                      productActions.addedToCart
+                        ? 'bg-orange-600 text-white cursor-not-allowed'
+                        : 'bg-orange-500 text-white hover:bg-orange-600'
+                    }`}
                   >
                     <ShoppingCart className="w-4 h-4" />
-                    加入购物车
+                    {productActions.addedToCart ? '已加入购物车' : '加入购物车'}
                   </button>
 
                   {/* 底部按钮组 */}
