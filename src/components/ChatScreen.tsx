@@ -1880,13 +1880,13 @@ ${characterInfo?.languageStyle ? `语言风格：${characterInfo.languageStyle}`
       const aiReplyMessage: Message = {
         id: `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
         role: 'assistant',
-        content: accept ? '是不是感冒了，听歌我点安慰呢？' : `不好意思，我暂时不能收这个${targetMessage.moneyTransfer.type === 'redPacket' ? '红包' : '转账'}。`,
+        content: accept ? '' : `不好意思，我暂时不能收这个${targetMessage.moneyTransfer.type === 'redPacket' ? '红包' : '转账'}。`,
         timestamp: Date.now(),
         moneyTransfer: accept ? {
           type: targetMessage.moneyTransfer.type,
           amount: targetMessage.moneyTransfer.amount,
           status: 'received' as const,
-          message: targetMessage.moneyTransfer.message,
+          message: '谢谢大哥！', // 显示在红包卡片上的留言
           receivedAt: Date.now()
         } : undefined
       };

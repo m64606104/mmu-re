@@ -99,19 +99,24 @@ const generateNextCheckTime = (minInterval: number, maxInterval: number): number
  */
 const buildProactiveMessagePrompt = (conversation: Conversation): string => {
   const memories = getMemoryBank(conversation.id).memories;
-  const recentMessages = conversation.messages.slice(-10);
+  // 增加上下文数量，包含更多对话历史
+  const recentMessages = conversation.messages.slice(-20);
   
   let context = '';
   if (recentMessages.length > 0) {
-    context = '\n\n【最近对话】\n' + recentMessages.map(m => {
+    const lastMessage = recentMessages[recentMessages.length - 1];
+    const timeSinceLastMessage = Math.floor((Date.now() - lastMessage.timestamp) / (1000 * 60)); // 分钟
+    
+    context = `\n\n【最近对话】（${timeSinceLastMessage}分钟前）\n` + recentMessages.map((m) => {
       const speaker = m.role === 'user' ? '用户' : 'AI';
-      return `${speaker}: ${m.content}`;
-    }).join('\n');
+      const timeAgo = Math.floor((Date.now() - m.timestamp) / (1000 * 60));
+      return `[${timeAgo}分钟前] ${speaker}: ${m.content.slice(0, 100)}${m.content.length > 100 ? '...' : ''}`;
+    }).slice(-10).join('\n'); // 只显示最后10条，但包含时间信息
   }
   
   let memoryContext = '';
   if (memories.length > 0) {
-    memoryContext = '\n\n【记忆】\n' + memories.slice(0, 5).map(m => `- ${m.content}`).join('\n');
+    memoryContext = '\n\n【重要记忆】\n' + memories.slice(0, 3).map(m => `- ${m.content}`).join('\n');
   }
   
   const currentTime = new Date();
@@ -121,23 +126,29 @@ const buildProactiveMessagePrompt = (conversation: Conversation): string => {
   return `
 你是${conversation.characterSettings?.nickname || conversation.name}，现在是${timeContext}。
 
-你想主动发送一条消息给用户，可能是：
-- 分享你的近况或想法
-- 询问对方最近怎么样
-- 分享有趣的事情
-- 表达关心
-- 闲聊
+【重要提醒】：
+- 你是在正在进行的对话中主动发消息，不是开始新对话
+- 要自然地接续之前的话题，保持对话的连贯性
+- 考虑上次对话的时间间隔，调整你的语气和话题
+- 如果刚刚在聊天，就像是想起了什么补充的内容
+- 如果间隔较长，可以询问近况或分享新想法
+
+【你可以】：
+- 补充刚才话题的想法
+- 分享相关的新想法
+- 询问对方的近况
+- 表达关心或兴趣
+- 自然地转换话题
 
 【要求】：
-- 保持自然、真实的对话风格
-- 不要过于正式或生硬
-- 消息要简短，1-2句话即可
-- 根据你们之前的对话和记忆来选择话题
-- 不要重复之前说过的内容
+- 语气要自然，就像真正的朋友聊天
+- 消息长度适中，不要太长（50字以内）
+- 要体现时间的连续性，不要像重新开始
+- 根据对话间隔调整语气（刚说完vs时间较长）
 ${context}
 ${memoryContext}
 
-请生成一条自然的主动消息：
+请生成一条自然连贯的消息：
 `.trim();
 };
 
@@ -174,7 +185,8 @@ export const sendProactiveMessage = async (
           { role: 'user', content: prompt }
         ],
         temperature: 0.8,
-        max_tokens: 100,
+        max_tokens: 300, // 增加token限制，防止消息被截断
+        stream: false,
       })
     });
     
@@ -187,15 +199,23 @@ export const sendProactiveMessage = async (
     const aiMessage = data.choices?.[0]?.message?.content;
     
     if (!aiMessage) {
-      console.error('未收到AI响应');
+      console.error('未收到AI响应:', data);
       return;
+    }
+    
+    // 检查是否被截断（以句号、问号、感叹号结尾为完整）
+    const cleanMessage = aiMessage.trim();
+    const isComplete = /[。！？.!?]$/.test(cleanMessage);
+    
+    if (!isComplete && cleanMessage.length > 50) {
+      console.warn('⚠️ AI主动消息可能被截断:', cleanMessage);
     }
     
     // 创建消息对象
     const newMessage: Message = {
       id: `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
       role: 'assistant',
-      content: aiMessage.trim(),
+      content: cleanMessage,
       timestamp: Date.now(),
     };
     
