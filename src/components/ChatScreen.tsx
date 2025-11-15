@@ -3616,7 +3616,7 @@ ${doc.content}`;
         };
       }
 
-      // 🚀 群聊多AI回复逻辑
+      // 🚀 群聊多AI回复逻辑 - 参考ai-chat-app-with-avatars实现
       if (conversation.type === 'group' && conversation.members && conversation.members.length > 0) {
         console.log('👥 群聊模式：开始多AI随机回复');
         
@@ -3627,15 +3627,36 @@ ${doc.content}`;
         
         console.log(`👥 群成员数量: ${groupMembers.length}个AI`);
         
+        if (groupMembers.length === 0) {
+          console.warn('⚠️ 群聊中没有有效的AI成员');
+          setShowSendingHint(false);
+          setShowTyping(false);
+          setIsGenerating(false);
+          return;
+        }
+        
         // 随机选择参与回复的AI数量 (0到全部成员)
         const maxParticipants = groupMembers.length;
-        const participantCount = Math.floor(Math.random() * (maxParticipants + 1)); // 0到maxParticipants
+        const participantCount = Math.floor(Math.random() * (maxParticipants + 1));
         
         console.log(`🎲 随机选择 ${participantCount} 个AI参与回复`);
         
         if (participantCount === 0) {
-          // 没有AI回复的情况
           console.log('😴 这次没有AI参与回复');
+          // 显示系统消息
+          setTimeout(() => {
+            const noResponseMessage: Message = {
+              id: `${Date.now()}_no_response`,
+              role: 'system',
+              content: '当前没有成员选择回复这条消息',
+              timestamp: Date.now(),
+            };
+            onUpdateConversation(conversation.id, {
+              messages: [...conversation.messages, noResponseMessage],
+              lastMessageTime: Date.now(),
+            });
+          }, 1000);
+          
           setShowSendingHint(false);
           setShowTyping(false);
           setIsGenerating(false);
@@ -3648,146 +3669,171 @@ ${doc.content}`;
         
         console.log(`🎯 选中的AI: ${selectedAIs.map(ai => ai.characterSettings?.nickname || ai.name).join(', ')}`);
         
-        // 依次让选中的AI回复
-        for (let i = 0; i < selectedAIs.length; i++) {
-          const currentAI = selectedAIs[i];
-          const aiName = currentAI.characterSettings?.nickname || currentAI.name;
-          
-          console.log(`🤖 ${aiName} 开始回复 (${i + 1}/${selectedAIs.length})`);
-          
+        // 保存当前聊天上下文，防止用户切换页面时出现问题
+        const currentConversationId = conversation.id;
+        
+        // 异步处理AI回复，避免阻塞UI
+        (async () => {
           try {
-            // 为当前AI构建个性化的系统提示
-            const aiSystemPrompt = `你现在在一个群聊中，群里有${groupMembers.length}个AI成员。你是${aiName}。
+            // 逐个AI回复
+            for (let i = 0; i < selectedAIs.length; i++) {
+              const currentAI = selectedAIs[i];
+              const aiName = currentAI.characterSettings?.nickname || currentAI.name;
+              
+              // 设置超时，避免单个AI卡住
+              const aiTimeoutId = setTimeout(() => {
+                console.warn(`⏰ ${aiName} 回复超时`);
+              }, 30000);
+              
+              try {
+                console.log(`🤖 ${aiName} 开始回复 (${i + 1}/${selectedAIs.length})`);
+                
+                // 延迟显示正在输入，模拟真实情况
+                await new Promise(resolve => setTimeout(resolve, 1500 + (i * 1000)));
+                setShowTyping(true);
+                
+                // 构建系统提示
+                const aiSystemPrompt = `你是${aiName}，正在参与群聊。
 
 当前群成员：${groupMembers.map(m => m.characterSettings?.nickname || m.name).join('、')}
 
 ${currentAI.characterSettings?.systemPrompt || ''}
 
-群聊互动规则：
-- 这是一个真实的群聊，所有成员（包括用户和其他AI）都会看到你的发言
-- 你可以回复用户的消息，也可以回复其他AI的消息，进行自然讨论
-- 你可以自然延续话题、略过话题、或者提出新话题
-- 与其他AI互动时要像真实朋友一样，可以同意、反驳、补充或询问
-- 保持你的个性特点，但要适应群聊的轻松氛围
-- 回复要自然简洁，不要太长，符合群聊节奏
-- **重要**：绝对不要在消息开头添加你的名字，直接说话即可
-- 使用自然口语表达，避免书面语和特殊符号
+群聊规则：
+- 这是真实群聊，所有成员都会看到你的发言
+- 可以回复用户或其他AI的消息，进行自然讨论
+- 可以自然延续话题、略过话题、或提出新话题
+- 保持个性但适应群聊氛围，回复简洁自然
+- 绝对不要在消息开头添加你的名字，直接说话即可
+- 使用自然口语表达，避免书面语
 
-群聊场景示例：
-- 如果看到其他AI说了有趣的话题，你可以接话或表达看法
-- 如果用户问问题，你可以回答，也可能其他AI已经回答了
-- 你可以主动分享想法，但不要抢话或刷屏
-- 群聊中的对话是连续的，要考虑上下文和其他人的发言
-
-现在请根据整个对话历史自然地参与讨论。`;
-
-            // 构建消息上下文 - 让AI看到完整的群聊历史
-            const recentMessages = conversation.messages.slice(-15); // 增加到15条消息以获得更好的上下文
-            const aiMessages = [
-              { role: 'system', content: aiSystemPrompt },
-              ...recentMessages.map((m: Message) => {
-                let content = m.content || '[多媒体消息]';
+请根据聊天历史自然地参与讨论。`;
                 
-                // 为AI标识消息发送者，让AI知道谁说了什么
-                let speaker = '';
-                if (m.role === 'user') {
-                  speaker = '用户';
-                } else if (m.role === 'assistant' && m.aiId) {
-                  // 查找发言的AI名称
-                  const speakerAI = groupMembers.find(ai => ai.id === m.aiId);
-                  speaker = speakerAI?.characterSettings?.nickname || m.aiName || 'AI';
-                } else if (m.role === 'system') {
-                  speaker = '系统';
+                // 构建消息历史 - 参考ai-chat-app-with-avatars的实现
+                const messages = [{ role: 'system', content: aiSystemPrompt }];
+                
+                // 添加最近的聊天历史
+                const recentMessages = conversation.messages.slice(-15);
+                recentMessages.forEach(msg => {
+                  if (msg.role === 'system') return; // 跳过系统消息
+                  
+                  let role = 'assistant';
+                  let content = msg.content || '[多媒体消息]';
+                  
+                  if (msg.role === 'user') {
+                    role = 'user';
+                    content = `用户: ${content}`;
+                  } else if (msg.role === 'assistant' && msg.aiId) {
+                    const speakerAI = groupMembers.find(ai => ai.id === msg.aiId);
+                    const speakerName = speakerAI?.characterSettings?.nickname || msg.aiName || 'AI';
+                    content = `${speakerName}: ${content}`;
+                  }
+                  
+                  messages.push({ role, content });
+                });
+                
+                console.log(`📤 ${aiName} API请求:`, `${apiConfig.baseUrl}/v1/chat/completions`);
+                
+                // 调用API
+                const response = await fetch(`${apiConfig.baseUrl}/v1/chat/completions`, {
+                  method: 'POST',
+                  headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${apiConfig.apiKey}`,
+                  },
+                  body: JSON.stringify({
+                    model: apiConfig.modelName,
+                    messages: messages,
+                    temperature: 0.7 + Math.random() * 0.3,
+                    stream: false
+                  }),
+                });
+                
+                clearTimeout(aiTimeoutId);
+                
+                console.log(`📥 ${aiName} API响应状态:`, response.status);
+                
+                if (!response.ok) {
+                  const errorText = await response.text();
+                  console.error(`❌ ${aiName} API错误:`, errorText);
+                  throw new Error(`API请求失败: ${response.status} - ${errorText}`);
                 }
                 
-                // 格式化消息，让AI明确知道是谁说的
-                if (speaker && m.role !== 'system') {
-                  content = `[${speaker}]: ${content}`;
+                const data = await response.json();
+                console.log(`📊 ${aiName} API返回数据:`, data);
+                
+                if (!data.choices?.[0]?.message?.content) {
+                  throw new Error('API返回数据格式不正确');
                 }
                 
-                return {
-                  role: m.role,
-                  content: content
+                const aiReplyContent = data.choices[0].message.content.trim();
+                
+                if (!aiReplyContent) {
+                  throw new Error('AI返回了空回复');
+                }
+                
+                // 清除输入状态
+                setShowTyping(false);
+                
+                // 添加AI回复到对话
+                const aiMessage: Message = {
+                  id: `${Date.now()}_${currentAI.id}_${Math.random()}`,
+                  role: 'assistant',
+                  content: aiReplyContent,
+                  timestamp: Date.now() + i,
+                  aiId: currentAI.id,
+                  aiName: aiName,
                 };
-              })
-            ];
-
-            const aiRequestBody = {
-              model: apiConfig.modelName,
-              messages: aiMessages,
-              temperature: 0.8 + Math.random() * 0.2 // 随机化temperature让回复更多样
-            };
-
-            // 显示当前AI正在输入
-            setShowTyping(true);
+                
+                // 只有在还在当前对话时才更新
+                if (currentConversationId === conversation.id) {
+                  onUpdateConversation(conversation.id, {
+                    messages: [...conversation.messages, aiMessage],
+                    lastMessageTime: Date.now(),
+                  });
+                }
+                
+                console.log(`✅ ${aiName} 回复完成: ${aiReplyContent.substring(0, 50)}...`);
+                
+                // AI间隔时间
+                if (i < selectedAIs.length - 1) {
+                  const delay = 2000 + Math.random() * 3000;
+                  console.log(`⏳ 等待 ${Math.round(delay/1000)}s 后下一个AI回复`);
+                  await new Promise(resolve => setTimeout(resolve, delay));
+                }
+                
+              } catch (error) {
+                clearTimeout(aiTimeoutId);
+                console.error(`❌ ${aiName} 回复出错:`, error);
+                
+                // 添加错误系统消息
+                if (currentConversationId === conversation.id) {
+                  const errorMessage: Message = {
+                    id: `${Date.now()}_error_${currentAI.id}`,
+                    role: 'system',
+                    content: `${aiName}暂时无法回复`,
+                    timestamp: Date.now(),
+                  };
+                  onUpdateConversation(conversation.id, {
+                    messages: [...conversation.messages, errorMessage],
+                    lastMessageTime: Date.now(),
+                  });
+                }
+              }
+            }
             
-            // 调用AI生成回复
-            const response = await fetch(`${apiConfig.baseUrl}/v1/chat/completions`, {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${apiConfig.apiKey}`,
-              },
-              body: JSON.stringify(aiRequestBody),
-            });
-
-            if (!response.ok) {
-              console.warn(`⚠️ ${aiName} 回复失败:`, response.status);
-              continue;
-            }
-
-            const data = await response.json();
+            console.log(`🎉 群聊回复完成，共${selectedAIs.length}个AI参与了回复`);
             
-            if (!data.choices || data.choices.length === 0) {
-              console.warn(`⚠️ ${aiName} 回复为空`);
-              continue;
-            }
-
-            const aiReplyContent = data.choices[0].message?.content?.trim();
-            
-            if (!aiReplyContent) {
-              console.warn(`⚠️ ${aiName} 回复内容为空`);
-              continue;
-            }
-
-            // 添加AI回复到对话（不再添加名称前缀，让AI回复更自然）
-            const aiMessage: Message = {
-              id: `${Date.now()}_${currentAI.id}_${Math.random()}`,
-              role: 'assistant',
-              content: aiReplyContent, // 直接使用AI回复内容，不添加名称前缀
-              timestamp: Date.now() + i, // 确保时间戳递增
-              // 添加AI标识符，用于UI显示时识别是哪个AI
-              aiId: currentAI.id,
-              aiName: aiName,
-            };
-
-            // 更新对话
-            onUpdateConversation(conversation.id, {
-              messages: [...conversation.messages, aiMessage],
-              lastMessageTime: Date.now(),
-            });
-
-            console.log(`✅ ${aiName} 回复完成: ${aiReplyContent.substring(0, 30)}...`);
-
-            // AI回复间隔，模拟真人思考和打字时间
-            if (i < selectedAIs.length - 1) {
-              const delay = 2000 + Math.random() * 3000; // 2-5秒随机延迟
-              console.log(`⏳ 等待 ${Math.round(delay/1000)}s 后下一个AI回复`);
-              await new Promise(resolve => setTimeout(resolve, delay));
-            }
-
           } catch (error) {
-            console.error(`❌ ${aiName} 回复出错:`, error);
-            continue;
+            console.error('❌ 群聊AI回复过程出错:', error);
+          } finally {
+            // 确保清理状态
+            setShowSendingHint(false);
+            setShowTyping(false);
+            setIsGenerating(false);
           }
-        }
-
-        // 所有AI回复完成
-        setShowSendingHint(false);
-        setShowTyping(false);
-        setIsGenerating(false);
+        })();
         
-        console.log(`🎉 群聊回复完成，共${selectedAIs.length}个AI参与了回复`);
         return;
       }
       
