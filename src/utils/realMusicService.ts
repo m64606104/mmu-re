@@ -100,18 +100,28 @@ export class RealMusicService {
         return [];
       }
       
-      return data.results.map((track: any): RealMusicInfo => ({
+      // 过滤和验证Jamendo结果，确保有可用音频
+      const validTracks = data.results.filter((track: any) => {
+        const audioUrl = track.audio || track.audiodownload;
+        return audioUrl && 
+               (audioUrl.startsWith('https://') || audioUrl.startsWith('http://')) &&
+               (audioUrl.includes('.mp3') || audioUrl.includes('.ogg'));
+      });
+
+      console.log(`Jamendo API: ${data.results.length} 总结果, ${validTracks.length} 有效音频`);
+
+      return validTracks.map((track: any): RealMusicInfo => ({
         id: `jamendo_${track.id}`,
         title: track.name || '未知标题',
         artist: track.artist_name || '未知艺术家',
         album: track.album_name,
         duration: parseInt(track.duration) || 0,
-        audioUrl: track.audio || track.audiodownload, // Jamendo提供完整音频
-        previewUrl: track.audiodownload,
+        audioUrl: track.audio || track.audiodownload,
+        previewUrl: track.audio || track.audiodownload, // Jamendo音频通常是完整的
         coverUrl: track.album_image || track.image,
         source: 'jamendo',
-        playable: !!(track.audio || track.audiodownload),
-        isFullVersion: true, // Jamendo提供完整版音乐
+        playable: true, // 已过滤，确保可播放
+        isFullVersion: true,
         genre: track.musicinfo?.tags?.genres?.[0]?.name
       }));
     } catch (error) {
@@ -152,18 +162,27 @@ export class RealMusicService {
         return [];
       }
       
-      return data.results.map((track: any): RealMusicInfo => ({
+      // 过滤掉没有预览URL的结果，并验证URL格式
+      const validTracks = data.results.filter((track: any) => {
+        return track.previewUrl && 
+               track.previewUrl.startsWith('https://') &&
+               track.previewUrl.includes('.m4a');
+      });
+
+      console.log(`iTunes API: ${data.results.length} 总结果, ${validTracks.length} 有效音频`);
+
+      return validTracks.map((track: any): RealMusicInfo => ({
         id: `itunes_${track.trackId}`,
         title: track.trackName || '未知标题',
         artist: track.artistName || '未知艺术家',
         album: track.collectionName,
         duration: Math.round((track.trackTimeMillis || 0) / 1000),
-        previewUrl: track.previewUrl, // iTunes提供30秒预览，用于搜索时试听
-        audioUrl: track.previewUrl, // iTunes预览也作为音频源使用
-        coverUrl: track.artworkUrl100?.replace('100x100', '300x300'), // 高分辨率封面
+        previewUrl: track.previewUrl,
+        audioUrl: track.previewUrl, // iTunes的M4A预览通常可以直接播放
+        coverUrl: track.artworkUrl100?.replace('100x100', '300x300'),
         source: 'itunes',
-        playable: !!track.previewUrl,
-        isFullVersion: false, // iTunes只提供30秒预览
+        playable: true, // 已过滤，确保可播放
+        isFullVersion: false,
         genre: track.primaryGenreName,
         releaseYear: track.releaseDate ? new Date(track.releaseDate).getFullYear() : undefined
       }));
@@ -239,63 +258,131 @@ export class RealMusicService {
   }
 
   /**
-   * 生成示例音频（Web Audio API）
+   * 生成示例音频（改进版 - 确保真正可播放）
    */
   private async generateSampleAudio(mood: string): Promise<string> {
     try {
-      const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
-      const duration = 30; // 30秒示例
-      const sampleRate = audioContext.sampleRate;
-      const buffer = audioContext.createBuffer(2, sampleRate * duration, sampleRate);
-
-      // 根据情绪选择频率
-      const frequencies = mood === 'happy' ? [261.63, 329.63, 392.00] : [174.61, 220.00, 261.63];
-      
-      for (let channel = 0; channel < buffer.numberOfChannels; channel++) {
-        const channelData = buffer.getChannelData(channel);
-        
-        for (let i = 0; i < buffer.length; i++) {
-          let sample = 0;
-          const time = i / sampleRate;
-          
-          frequencies.forEach((freq, index) => {
-            const volume = 0.1 / (index + 1);
-            sample += Math.sin(2 * Math.PI * freq * time) * volume;
-          });
-          
-          // 添加包络
-          const envelope = Math.min(1, time * 2) * Math.min(1, (duration - time) / 2);
-          channelData[i] = sample * envelope;
-        }
+      // 检查浏览器支持
+      if (!(window.AudioContext || (window as any).webkitAudioContext)) {
+        console.warn('浏览器不支持Web Audio API，使用预设音频');
+        return this.getPresetAudioUrl(mood);
       }
 
-      // 转换为Blob URL
-      return this.audioBufferToBlob(buffer);
+      const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+      const duration = 15; // 缩短为15秒，提高生成速度
+      const sampleRate = 44100; // 标准采样率
+      const buffer = audioContext.createBuffer(1, sampleRate * duration, sampleRate); // 单声道减少复杂度
+
+      const channelData = buffer.getChannelData(0);
+      
+      // 生成更悦耳的音频 - 基于和弦
+      const baseFreq = mood === 'happy' ? 523.25 : 261.63; // C5 or C4
+      const chord = [1, 5/4, 3/2]; // 大三和弦
+      
+      for (let i = 0; i < buffer.length; i++) {
+        const time = i / sampleRate;
+        let sample = 0;
+        
+        // 生成和弦
+        chord.forEach((ratio, index) => {
+          const freq = baseFreq * ratio;
+          const volume = 0.15 / (index + 1);
+          sample += Math.sin(2 * Math.PI * freq * time) * volume;
+        });
+        
+        // 添加淡入淡出包络
+        let envelope = 1;
+        if (time < 1) {
+          envelope = time; // 1秒淡入
+        } else if (time > duration - 1) {
+          envelope = duration - time; // 1秒淡出
+        }
+        
+        channelData[i] = sample * envelope * 0.5; // 降低音量避免失真
+      }
+
+      // 转换为WAV格式
+      const wavBlob = this.audioBufferToWav(buffer);
+      const audioUrl = URL.createObjectURL(wavBlob);
+      
+      // 验证生成的音频是否可播放
+      const isPlayable = await this.validateGeneratedAudio(audioUrl);
+      if (!isPlayable) {
+        console.warn('生成的音频无法播放，使用预设音频');
+        URL.revokeObjectURL(audioUrl);
+        return this.getPresetAudioUrl(mood);
+      }
+      
+      console.log(`✅ 成功生成${mood}音频: ${audioUrl}`);
+      return audioUrl;
     } catch (error) {
       console.error('生成示例音频失败:', error);
-      return '';
+      return this.getPresetAudioUrl(mood);
     }
   }
 
   /**
-   * AudioBuffer 转 Blob URL
+   * 验证生成的音频是否可播放
    */
-  private async audioBufferToBlob(buffer: AudioBuffer): Promise<string> {
-    const offlineContext = new OfflineAudioContext(
-      buffer.numberOfChannels,
-      buffer.length,
-      buffer.sampleRate
-    );
-    
-    const source = offlineContext.createBufferSource();
-    source.buffer = buffer;
-    source.connect(offlineContext.destination);
-    source.start(0);
-    
-    const renderedBuffer = await offlineContext.startRendering();
-    const wavBlob = this.audioBufferToWav(renderedBuffer);
-    return URL.createObjectURL(wavBlob);
+  private async validateGeneratedAudio(url: string): Promise<boolean> {
+    return new Promise((resolve) => {
+      const audio = new Audio();
+      let resolved = false;
+      
+      const timeout = setTimeout(() => {
+        if (!resolved) {
+          resolved = true;
+          resolve(false);
+        }
+      }, 3000);
+      
+      audio.addEventListener('canplaythrough', () => {
+        if (!resolved) {
+          resolved = true;
+          clearTimeout(timeout);
+          resolve(true);
+        }
+      });
+      
+      audio.addEventListener('error', () => {
+        if (!resolved) {
+          resolved = true;
+          clearTimeout(timeout);
+          resolve(false);
+        }
+      });
+      
+      try {
+        audio.src = url;
+        audio.load();
+      } catch {
+        if (!resolved) {
+          resolved = true;
+          clearTimeout(timeout);
+          resolve(false);
+        }
+      }
+    });
   }
+
+  /**
+   * 获取预设音频URL作为备选方案 - 使用真正可播放的音频
+   */
+  private getPresetAudioUrl(mood: string): string {
+    // 使用真正可用的公共音频文件
+    const presetUrls: Record<string, string> = {
+      'happy': 'https://sample-music.netlify.app/death%20bed.mp3',
+      'calm': 'https://file-examples.com/storage/fe68e1b6c4c2b86d21640ac/2017/11/file_example_MP3_700KB.mp3',
+      'energetic': 'https://www.learningcontainer.com/wp-content/uploads/2020/02/Kalimba.mp3',
+      'peaceful': 'https://sample-music.netlify.app/Bazzi%20-%20Mine.mp3',
+      'morning': 'https://sample-videos.com/zip/10/mp3/SampleAudio_0.4mb_mp3.mp3',
+      'focus': 'https://file-examples.com/storage/fe68e1b6c4c2b86d21640ac/2017/11/file_example_MP3_1MG.mp3'
+    };
+    
+    console.log(`🎵 使用预设音频 (${mood}):`, presetUrls[mood] || presetUrls['happy']);
+    return presetUrls[mood] || presetUrls['happy'];
+  }
+
 
   /**
    * AudioBuffer 转 WAV
