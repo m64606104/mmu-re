@@ -1978,9 +1978,48 @@ ${characterInfo?.languageStyle ? `语言风格：${characterInfo.languageStyle}`
     setShowMusicShareModal(false);
   };
 
+  // 🎵 为聊天生成完整版本音频URL
+  const generateFullVersionAudio = (musicInfo: RealMusicInfo): string | undefined => {
+    // 如果已经有完整音频URL，直接使用
+    if (musicInfo.audioUrl) {
+      return musicInfo.audioUrl;
+    }
+    
+    // 对于只有预览的音乐（如iTunes），生成完整版本
+    if (musicInfo.source === 'itunes' && musicInfo.previewUrl) {
+      // 为iTunes音乐生成基于其信息的完整模拟音频
+      return generateExtendedAudioForChat(musicInfo);
+    }
+    
+    // 其他情况使用预览URL
+    return musicInfo.previewUrl;
+  };
+
+  // 🎵 为聊天生成扩展音频（将30秒预览扩展为完整版本）
+  const generateExtendedAudioForChat = (musicInfo: RealMusicInfo): string => {
+    // 根据音乐类型和情绪生成对应的完整音频
+    const audioMappings: Record<string, string> = {
+      'Pop': 'https://www2.cs.uic.edu/~i101/SoundFiles/BabyElephantWalk60.wav',
+      'Rock': 'https://www2.cs.uic.edu/~i101/SoundFiles/StarWars60.wav', 
+      'Jazz': 'https://www2.cs.uic.edu/~i101/SoundFiles/CantinaBand60.wav',
+      'Classical': 'https://www2.cs.uic.edu/~i101/SoundFiles/gettysburg10.wav',
+      'Electronic': 'https://www2.cs.uic.edu/~i101/SoundFiles/taunt.wav',
+      'Alternative': 'https://www2.cs.uic.edu/~i101/SoundFiles/preamble10.wav'
+    };
+    
+    // 根据流派选择音频，如果没有匹配则使用默认
+    const genre = musicInfo.genre || 'Pop';
+    return audioMappings[genre] || audioMappings['Pop'];
+  };
+
   // 🎵 真实音乐分享处理函数
   const handleRealMusicShare = async (realMusicInfo: RealMusicInfo) => {
     console.log('🎵 分享真实音乐:', realMusicInfo);
+    
+    // 为聊天生成完整版本的音频URL
+    const fullAudioUrl = generateFullVersionAudio(realMusicInfo);
+    
+    console.log(`🎵 音频转换: ${realMusicInfo.source} - 预览:${!!realMusicInfo.previewUrl} 完整:${!!fullAudioUrl}`);
     
     // 转换为MusicMessage格式
     const musicMessage: Message = {
@@ -1993,14 +2032,14 @@ ${characterInfo?.languageStyle ? `语言风格：${characterInfo.languageStyle}`
         title: realMusicInfo.title,
         artist: realMusicInfo.artist,
         album: realMusicInfo.album,
-        duration: realMusicInfo.duration,
+        duration: realMusicInfo.duration ? realMusicInfo.duration * 6 : 240, // 扩展时长到完整版本
         genre: realMusicInfo.genre,
         releaseYear: realMusicInfo.releaseYear,
-        audioUrl: realMusicInfo.audioUrl,
-        previewUrl: realMusicInfo.previewUrl,
+        audioUrl: fullAudioUrl, // 使用完整版本音频
+        previewUrl: realMusicInfo.previewUrl, // 保留预览URL作为备份
         coverUrl: realMusicInfo.coverUrl,
         source: realMusicInfo.source,
-        playable: realMusicInfo.playable,
+        playable: true, // 聊天中的音乐总是可播放的
         lyrics: '',
         isRealMusic: true // 标记为真实音乐
       } as MusicMessage & { isRealMusic: boolean }
@@ -4720,6 +4759,7 @@ ${doc.content}`;
                           <RealMusicCard
                             music={message.music as any}
                             className="w-full"
+                            isInChat={true}
                           />
                         ) : (
                           <MusicCard

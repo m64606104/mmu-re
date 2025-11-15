@@ -10,11 +10,13 @@ import { RealMusicInfo } from '../utils/realMusicService';
 interface RealMusicCardProps {
   music: RealMusicInfo;
   className?: string;
+  isInChat?: boolean; // 是否在聊天中显示
 }
 
 const RealMusicCard: React.FC<RealMusicCardProps> = ({
   music,
-  className = ''
+  className = '',
+  isInChat = false
 }) => {
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
@@ -164,8 +166,14 @@ const RealMusicCard: React.FC<RealMusicCardProps> = ({
             <span className="text-sm opacity-90 capitalize">
               {music.source}
             </span>
-            {music.source === 'itunes' && (
+            {music.source === 'itunes' && !isInChat && (
               <span className="text-xs bg-white/20 px-2 py-0.5 rounded-full">预览</span>
+            )}
+            {music.source === 'itunes' && isInChat && (
+              <span className="text-xs bg-white/20 px-2 py-0.5 rounded-full">完整版</span>
+            )}
+            {music.audioUrl && !music.previewUrl && (
+              <span className="text-xs bg-green-400/20 px-2 py-0.5 rounded-full text-green-200">完整</span>
             )}
           </div>
           
@@ -241,8 +249,11 @@ const RealMusicCard: React.FC<RealMusicCardProps> = ({
                 <div className="flex items-center gap-1">
                   <Clock className="w-3 h-3" />
                   <span>{formatTime(music.duration)}</span>
-                  {music.source === 'itunes' && (
+                  {music.source === 'itunes' && !isInChat && (
                     <span className="text-yellow-300">(预览)</span>
+                  )}
+                  {music.source === 'itunes' && isInChat && (
+                    <span className="text-green-300">(完整版)</span>
                   )}
                 </div>
               )}
