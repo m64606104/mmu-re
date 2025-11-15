@@ -10,13 +10,15 @@ import { RealMusicInfo } from '../utils/realMusicService';
 interface RealMusicCardProps {
   music: RealMusicInfo;
   className?: string;
-  isInChat?: boolean; // 是否在聊天中显示
+  showGenerateButton?: boolean;
+  onGenerateAIResponse?: () => void;
 }
 
 const RealMusicCard: React.FC<RealMusicCardProps> = ({
   music,
   className = '',
-  isInChat = false
+  showGenerateButton = true,
+  onGenerateAIResponse
 }) => {
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
@@ -32,17 +34,12 @@ const RealMusicCard: React.FC<RealMusicCardProps> = ({
   useEffect(() => {
     const initAudio = () => {
       if (music.audioUrl || music.previewUrl) {
-        // 优先使用完整的audioUrl，如果没有则使用预览URL
         const audioUrl = music.audioUrl || music.previewUrl;
         if (audioUrl && audioRef.current) {
           setIsLoading(true);
           setError(null);
           
           audioRef.current.src = audioUrl;
-          // 设置音频属性以支持更长播放时间
-          audioRef.current.preload = 'metadata';
-          audioRef.current.crossOrigin = 'anonymous';
-          
           audioRef.current.addEventListener('loadedmetadata', handleLoadedMetadata);
           audioRef.current.addEventListener('timeupdate', handleTimeUpdate);
           audioRef.current.addEventListener('ended', handleEnded);
@@ -134,7 +131,6 @@ const RealMusicCard: React.FC<RealMusicCardProps> = ({
       case 'audiomack': return '🎧';
       case 'youtube': return '▶️';
       case 'local': return '💾';
-      case 'itunes': return '🍎';
       default: return '🎵';
     }
   };
@@ -146,7 +142,6 @@ const RealMusicCard: React.FC<RealMusicCardProps> = ({
       case 'audiomack': return 'from-orange-400 to-red-500';
       case 'youtube': return 'from-red-400 to-pink-500';
       case 'local': return 'from-purple-400 to-violet-500';
-      case 'itunes': return 'from-blue-400 to-cyan-500';
       default: return 'from-gray-400 to-slate-500';
     }
   };
@@ -154,60 +149,47 @@ const RealMusicCard: React.FC<RealMusicCardProps> = ({
   const progress = duration > 0 ? (currentTime / duration) * 100 : 0;
 
   return (
-    <div className={`bg-gradient-to-br ${getSourceColor()} rounded-2xl shadow-lg text-white overflow-hidden ${className}`}>
+    <div className={`bg-gradient-to-br ${getSourceColor()} rounded-2xl shadow-xl text-white overflow-hidden max-w-sm ${className}`}>
       {/* 隐藏的音频元素 */}
       <audio ref={audioRef} preload="metadata" crossOrigin="anonymous" />
-
-      {/* 头部信息 - 简化设计 */}
-      <div className="px-4 pt-3 pb-2">
+      
+      {/* 头部信息 */}
+      <div className="p-4 pb-2">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <span className="text-lg">{getSourceIcon()}</span>
-            <span className="text-sm opacity-90 capitalize">
-              {music.source}
+            <Music className="w-5 h-5" />
+            <span className="text-sm opacity-90">
+              {music.playable ? (
+                (music as any).fullAudioUrl ? '30秒预览' : '完整音频'
+              ) : '仅信息'}
             </span>
-            {music.source === 'itunes' && !isInChat && (
-              <span className="text-xs bg-white/20 px-2 py-0.5 rounded-full">预览</span>
-            )}
-            {music.source === 'itunes' && isInChat && (
-              <span className="text-xs bg-white/20 px-2 py-0.5 rounded-full">完整版</span>
-            )}
-            {music.audioUrl && !music.previewUrl && (
-              <span className="text-xs bg-green-400/20 px-2 py-0.5 rounded-full text-green-200">完整</span>
-            )}
+            <span className="text-lg">{getSourceIcon()}</span>
           </div>
           
-          <div className="flex items-center gap-1">
-            {(music as any).originalUrl && (
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  window.open((music as any).originalUrl, '_blank', 'noopener,noreferrer');
-                }}
+          <div className="flex items-center gap-2">
+            {/* 完整版本链接（优先显示） */}
+            {(music as any).fullAudioUrl && (
+              <a
+                href={(music as any).fullAudioUrl}
+                target="_blank"
+                rel="noopener noreferrer"
                 className="p-1 rounded-full bg-white/10 hover:bg-white/20 transition-colors"
-                title="打开原始链接"
+                title="打开完整版本"
               >
                 <ExternalLink className="w-4 h-4" />
-              </button>
+              </a>
             )}
             
-            {music.audioUrl && (
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  const link = document.createElement('a');
-                  link.href = music.audioUrl!;
-                  link.download = `${music.title} - ${music.artist}`;
-                  link.style.display = 'none';
-                  document.body.appendChild(link);
-                  link.click();
-                  document.body.removeChild(link);
-                }}
+            {/* 如果有完整音频URL可以下载 */}
+            {music.audioUrl && !(music as any).fullAudioUrl && (
+              <a
+                href={music.audioUrl}
+                download={`${music.title} - ${music.artist}`}
                 className="p-1 rounded-full bg-white/10 hover:bg-white/20 transition-colors"
                 title="下载音频"
               >
                 <Download className="w-4 h-4" />
-              </button>
+              </a>
             )}
           </div>
         </div>
@@ -249,12 +231,6 @@ const RealMusicCard: React.FC<RealMusicCardProps> = ({
                 <div className="flex items-center gap-1">
                   <Clock className="w-3 h-3" />
                   <span>{formatTime(music.duration)}</span>
-                  {music.source === 'itunes' && !isInChat && (
-                    <span className="text-yellow-300">(预览)</span>
-                  )}
-                  {music.source === 'itunes' && isInChat && (
-                    <span className="text-green-300">(完整版)</span>
-                  )}
                 </div>
               )}
               {music.genre && (
@@ -328,7 +304,43 @@ const RealMusicCard: React.FC<RealMusicCardProps> = ({
         </div>
       )}
 
+      {/* AI生成按钮 */}
+      {showGenerateButton && (
+        <div className="px-4 pb-4 pt-2 border-t border-white/10">
+          <button
+            onClick={onGenerateAIResponse}
+            className="w-full py-2 bg-white/20 hover:bg-white/30 rounded-lg font-medium transition-colors"
+          >
+            ✨ 让AI聊聊这首歌
+          </button>
+        </div>
+      )}
 
+      {/* 底部信息 */}
+      <div className="px-4 pb-4 pt-2 border-t border-white/10">
+        <div className="flex items-center justify-between text-xs">
+          <div className="flex items-center gap-1 opacity-75">
+            <span>来源:</span>
+            <span className="capitalize">{music.source}</span>
+          </div>
+          
+          <div className="flex items-center gap-1">
+            <div className={`w-2 h-2 rounded-full ${music.playable ? 'bg-green-400' : 'bg-gray-400'}`} />
+            <span className="opacity-75 text-xs">
+              {music.playable ? '可播放' : '仅信息'}
+            </span>
+          </div>
+        </div>
+        
+        {/* 完整版本提示 */}
+        {(music as any).fullAudioUrl && (
+          <div className="mt-2 p-2 bg-white/10 rounded-lg">
+            <p className="text-xs opacity-80">
+              💡 这是30秒预览版本，点击 <ExternalLink className="w-3 h-3 inline" /> 访问完整版本
+            </p>
+          </div>
+        )}
+      </div>
 
       {/* 播放状态指示 */}
       {isPlaying && (

@@ -1874,14 +1874,34 @@ ${characterInfo?.languageStyle ? `语言风格：${characterInfo.languageStyle}`
       return msg;
     });
 
+    // 🔥 修复AI红包接收逻辑：当AI接收/退回用户红包时，需要添加AI的回复消息
+    let finalMessages = updatedMessages;
+    if (targetMessage.role === 'user' && targetMessage.moneyTransfer) {
+      const aiReplyContent = accept 
+        ? `谢谢你的${targetMessage.moneyTransfer.type === 'redPacket' ? '红包' : '转账'}！💰`
+        : `不好意思，我暂时不能收这个${targetMessage.moneyTransfer.type === 'redPacket' ? '红包' : '转账'}，退还给你了。`;
+      
+      const aiReplyMessage: Message = {
+        id: `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+        role: 'assistant',
+        content: aiReplyContent,
+        timestamp: Date.now(),
+        moneyTransfer: {
+          type: targetMessage.moneyTransfer.type,
+          amount: targetMessage.moneyTransfer.amount,
+          status: accept ? 'received' as const : 'returned' as const,
+          message: targetMessage.moneyTransfer.message,
+          receivedAt: accept ? Date.now() : undefined
+        }
+      };
+      
+      finalMessages = [...updatedMessages, aiReplyMessage];
+    }
+
     onUpdateConversation(conversation.id, {
-      messages: updatedMessages,
+      messages: finalMessages,
       lastMessageTime: Date.now()
     });
-
-    // 🔧 修复：用户领取AI红包时，不应该有AI的自动回复
-    // AI接收/退回用户红包的回复通过 [接收红包:留言] 标记处理
-    // 所以这里不需要自动回复了
   };
 
   // 处理图片上传
@@ -1978,48 +1998,9 @@ ${characterInfo?.languageStyle ? `语言风格：${characterInfo.languageStyle}`
     setShowMusicShareModal(false);
   };
 
-  // 🎵 为聊天生成完整版本音频URL
-  const generateFullVersionAudio = (musicInfo: RealMusicInfo): string | undefined => {
-    // 如果已经有完整音频URL，直接使用
-    if (musicInfo.audioUrl) {
-      return musicInfo.audioUrl;
-    }
-    
-    // 对于只有预览的音乐（如iTunes），生成完整版本
-    if (musicInfo.source === 'itunes' && musicInfo.previewUrl) {
-      // 为iTunes音乐生成基于其信息的完整模拟音频
-      return generateExtendedAudioForChat(musicInfo);
-    }
-    
-    // 其他情况使用预览URL
-    return musicInfo.previewUrl;
-  };
-
-  // 🎵 为聊天生成扩展音频（将30秒预览扩展为完整版本）
-  const generateExtendedAudioForChat = (musicInfo: RealMusicInfo): string => {
-    // 根据音乐类型和情绪生成对应的完整音频
-    const audioMappings: Record<string, string> = {
-      'Pop': 'https://www2.cs.uic.edu/~i101/SoundFiles/BabyElephantWalk60.wav',
-      'Rock': 'https://www2.cs.uic.edu/~i101/SoundFiles/StarWars60.wav', 
-      'Jazz': 'https://www2.cs.uic.edu/~i101/SoundFiles/CantinaBand60.wav',
-      'Classical': 'https://www2.cs.uic.edu/~i101/SoundFiles/gettysburg10.wav',
-      'Electronic': 'https://www2.cs.uic.edu/~i101/SoundFiles/taunt.wav',
-      'Alternative': 'https://www2.cs.uic.edu/~i101/SoundFiles/preamble10.wav'
-    };
-    
-    // 根据流派选择音频，如果没有匹配则使用默认
-    const genre = musicInfo.genre || 'Pop';
-    return audioMappings[genre] || audioMappings['Pop'];
-  };
-
   // 🎵 真实音乐分享处理函数
   const handleRealMusicShare = async (realMusicInfo: RealMusicInfo) => {
     console.log('🎵 分享真实音乐:', realMusicInfo);
-    
-    // 为聊天生成完整版本的音频URL
-    const fullAudioUrl = generateFullVersionAudio(realMusicInfo);
-    
-    console.log(`🎵 音频转换: ${realMusicInfo.source} - 预览:${!!realMusicInfo.previewUrl} 完整:${!!fullAudioUrl}`);
     
     // 转换为MusicMessage格式
     const musicMessage: Message = {
@@ -2032,14 +2013,15 @@ ${characterInfo?.languageStyle ? `语言风格：${characterInfo.languageStyle}`
         title: realMusicInfo.title,
         artist: realMusicInfo.artist,
         album: realMusicInfo.album,
-        duration: realMusicInfo.duration ? realMusicInfo.duration * 6 : 240, // 扩展时长到完整版本
+        duration: realMusicInfo.duration,
         genre: realMusicInfo.genre,
         releaseYear: realMusicInfo.releaseYear,
-        audioUrl: fullAudioUrl, // 使用完整版本音频
-        previewUrl: realMusicInfo.previewUrl, // 保留预览URL作为备份
+        audioUrl: realMusicInfo.audioUrl || realMusicInfo.previewUrl, // 优先使用完整音频，否则使用预览
+        previewUrl: realMusicInfo.previewUrl,
+        fullAudioUrl: realMusicInfo.fullAudioUrl, // 外部完整版本链接
         coverUrl: realMusicInfo.coverUrl,
         source: realMusicInfo.source,
-        playable: true, // 聊天中的音乐总是可播放的
+        playable: realMusicInfo.playable,
         lyrics: '',
         isRealMusic: true // 标记为真实音乐
       } as MusicMessage & { isRealMusic: boolean }
@@ -4613,23 +4595,15 @@ ${doc.content}`;
                       <div className={`p-0 rounded-2xl overflow-hidden mb-2 ${
                         message.role === 'user' 
                           ? 'bg-gradient-to-br from-yellow-400 to-orange-400' 
-                          : message.moneyTransfer.status === 'received'
-                          ? 'bg-gradient-to-br from-green-500 to-green-600'
-                          : message.moneyTransfer.status === 'returned'
-                          ? 'bg-gradient-to-br from-gray-400 to-gray-500'
                           : 'bg-gradient-to-br from-yellow-500 to-orange-500'
                       }`}>
                         <div className="p-4 text-white">
                           <div className="flex items-center gap-2 mb-2">
                             <span className="text-2xl">
-                              {message.moneyTransfer.status === 'received' ? '✅' : 
-                               message.moneyTransfer.status === 'returned' ? '↩️' :
-                               message.moneyTransfer.type === 'redPacket' ? '🧧' : '💸'}
+                              {message.moneyTransfer.type === 'redPacket' ? '🧧' : '💸'}
                             </span>
                             <div className="text-lg font-bold">
-                              {message.moneyTransfer.status === 'received' ? '已收红包' :
-                               message.moneyTransfer.status === 'returned' ? '已退红包' :
-                               message.moneyTransfer.type === 'redPacket' ? '红包' : '转账'}
+                              {message.moneyTransfer.type === 'redPacket' ? '红包' : '转账'}
                             </div>
                           </div>
                           <div className="text-2xl font-bold mb-2">
@@ -4646,14 +4620,13 @@ ${doc.content}`;
                             </div>
                           )}
                           {message.moneyTransfer.status === 'received' && (
-                            <div className="text-xs opacity-90 flex items-center gap-1">
-                              <span>✨</span>
-                              <span>感谢你的{message.moneyTransfer.type === 'redPacket' ? '红包' : '转账'}！</span>
+                            <div className="text-xs opacity-75">
+                              已{message.moneyTransfer.type === 'redPacket' ? '领取' : '收款'}
                             </div>
                           )}
                           {message.moneyTransfer.status === 'returned' && (
                             <div className="text-xs opacity-75">
-                              已退回给发送方
+                              已退回
                             </div>
                           )}
                         </div>
@@ -4754,12 +4727,18 @@ ${doc.content}`;
                     
                     {/* 🎵 音乐卡片 */}
                     {message.music && (
-                      <div className="max-w-[320px]">
+                      <div className="max-w-[300px]">
                         {(message.music as any).isRealMusic ? (
                           <RealMusicCard
                             music={message.music as any}
                             className="w-full"
-                            isInChat={true}
+                            showGenerateButton={true}
+                            onGenerateAIResponse={() => {
+                              // 触发AI对这首歌的回复
+                              const prompt = `用户正在听《${message.music?.title}》- ${message.music?.artist}，请和用户聊聊这首歌。`;
+                              setCurrentInput(prompt);
+                              handleSendMessage();
+                            }}
                           />
                         ) : (
                           <MusicCard

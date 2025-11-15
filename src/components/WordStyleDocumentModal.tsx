@@ -74,11 +74,10 @@ const WordStyleDocumentModal: React.FC<WordStyleDocumentModalProps> = ({
   };
   
   return (
-    <div className="fixed inset-0 z-[60] bg-gray-100 flex flex-col">
-      {/* 顶部工具栏（Word 风格） */}
-      <div className="bg-white border-b shadow-sm">
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-[9999]" onClick={onClose}>
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-4xl h-[90vh] max-h-[800px] flex flex-col overflow-hidden" onClick={(e) => e.stopPropagation()}>
         {/* 顶部标题栏 */}
-        <div className="px-4 py-3 flex items-center justify-between">
+        <div className="px-6 py-4 flex items-center justify-between border-b border-gray-200 bg-white">
           <div className="flex items-center gap-4 flex-1 min-w-0">
             <button
               onClick={onClose}
@@ -114,21 +113,21 @@ const WordStyleDocumentModal: React.FC<WordStyleDocumentModalProps> = ({
             </div>
           </div>
           
-          {/* 操作按钮 - 缩小尺寸 */}
-          <div className="flex items-center gap-1">
+          {/* 操作按钮 */}
+          <div className="flex items-center gap-2">
             <button
               onClick={handleCopy}
-              className="flex items-center gap-1 px-2 py-1.5 text-xs text-gray-700 hover:bg-gray-100 rounded-md transition-colors"
+              className="flex items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
               title="复制文本"
             >
               {copied ? (
                 <>
-                  <Check className="w-3 h-3 text-green-600" />
+                  <Check className="w-4 h-4 text-green-600" />
                   <span className="text-green-600">已复制</span>
                 </>
               ) : (
                 <>
-                  <Copy className="w-3 h-3" />
+                  <Copy className="w-4 h-4" />
                   复制
                 </>
               )}
@@ -136,19 +135,19 @@ const WordStyleDocumentModal: React.FC<WordStyleDocumentModalProps> = ({
             
             <button
               onClick={handleDownload}
-              className="flex items-center gap-1 px-2 py-1.5 text-xs text-gray-700 hover:bg-gray-100 rounded-md transition-colors"
+              className="flex items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
               title="下载文档"
             >
-              <Download className="w-3 h-3" />
+              <Download className="w-4 h-4" />
               下载
             </button>
             
             {onSave && (
               <button
                 onClick={onSave}
-                className="flex items-center gap-1 px-3 py-1.5 text-xs text-white bg-blue-600 hover:bg-blue-700 rounded-md transition-colors font-medium"
+                className="flex items-center gap-2 px-4 py-2 text-sm text-white bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors font-medium"
               >
-                <Save className="w-3 h-3" />
+                <Save className="w-4 h-4" />
                 保存到文档库
               </button>
             )}
@@ -156,9 +155,9 @@ const WordStyleDocumentModal: React.FC<WordStyleDocumentModalProps> = ({
             {onForward && (
               <button
                 onClick={onForward}
-                className="flex items-center gap-1 px-3 py-1.5 text-xs text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-md transition-colors font-medium"
+                className="flex items-center gap-2 px-4 py-2 text-sm text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors font-medium"
               >
-                <Forward className="w-3 h-3" />
+                <Forward className="w-4 h-4" />
                 转发
               </button>
             )}
@@ -166,7 +165,7 @@ const WordStyleDocumentModal: React.FC<WordStyleDocumentModalProps> = ({
         </div>
         
         {/* 元信息栏 */}
-        <div className="px-6 py-2 bg-gray-50 border-t flex items-center gap-4 text-sm text-gray-600">
+        <div className="px-6 py-2 bg-gray-50 border-b flex items-center gap-4 text-sm text-gray-600">
           {authorAvatar && (
             <img 
               src={authorAvatar} 
@@ -182,64 +181,45 @@ const WordStyleDocumentModal: React.FC<WordStyleDocumentModalProps> = ({
             </>
           )}
         </div>
-      </div>
-      
-      {/* 文档内容区域（A4 纸张效果） */}
-      <div className="flex-1 overflow-y-auto py-8">
-        <div className="max-w-4xl mx-auto">
-          {/* A4 纸张容器 */}
-          <div className="bg-white shadow-lg rounded-lg overflow-hidden">
-            {/* 问候语 */}
-            {document.greeting && (
-              <div className="px-12 py-6 bg-blue-50 border-b">
-                <p className="text-sm text-blue-800">
-                  💌 {document.greeting}
-                </p>
-              </div>
-            )}
-            
-            {/* 文档正文 */}
-            <div className="px-12 py-10 word-document-content">
-              {/* Word 风格的顶部装饰条 */}
-              <div className={`h-1 ${
-                document.type === 'code' ? 'bg-green-500' : 
-                document.type === 'markdown' ? 'bg-purple-500' : 
-                'bg-blue-500'
-              } rounded-full mb-8`} />
+        
+        {/* 文档内容区域（A4 纸张效果） */}
+        <div className="flex-1 overflow-y-auto py-8 bg-gray-50">
+          <div className="max-w-4xl mx-auto px-4">
+            {/* A4 纸张容器 */}
+            <div className="bg-white shadow-lg rounded-lg overflow-hidden min-h-[600px]">
+              {/* 问候语 */}
+              {document.greeting && (
+                <div className="px-12 py-6 bg-blue-50 border-b">
+                  <p className="text-sm text-blue-800">
+                    💌 {document.greeting}
+                  </p>
+                </div>
+              )}
               
-              {/* 标题 - 书面风格 */}
-              <div className="text-center mb-12">
+              {/* 文档正文 */}
+              <div className="px-12 py-10">
+                {/* Word 风格的顶部装饰条 */}
+                <div className={`h-1 mb-8 rounded-full ${
+                  document.type === 'code' ? 'bg-gradient-to-r from-green-400 to-green-600' : 
+                  document.type === 'markdown' ? 'bg-gradient-to-r from-purple-400 to-purple-600' : 
+                  'bg-gradient-to-r from-blue-400 to-blue-600'
+                }`} />
+                
+                {/* 标题 */}
                 <h1 
-                  className="text-4xl font-bold mb-4"
-                  style={{
-                    ...generateTitleStyle(formattedDocument.title, document.type),
-                    fontFamily: '"Times New Roman", "SimSun", serif',
-                  }}
+                  className="text-3xl font-bold text-gray-900 mb-8 text-center leading-tight"
+                  style={generateTitleStyle(document.title, document.type)}
                 >
-                  {formattedDocument.title}
+                  {document.title}
                 </h1>
-                {/* 标题装饰线 */}
-                <div className="mx-auto w-24 h-0.5 bg-gradient-to-r from-transparent via-gray-400 to-transparent"></div>
+                
+                {/* 内容 */}
+                <div 
+                  className="prose prose-lg max-w-none text-gray-800 leading-relaxed"
+                  style={generateContentStyle()}
+                  dangerouslySetInnerHTML={{ __html: formattedDocument.content }}
+                />
               </div>
-              
-              {/* 内容 - 应用格式化后的内容 */}
-              <div 
-                className="prose prose-lg max-w-none"
-                dangerouslySetInnerHTML={{ __html: formattedDocument.content }}
-                style={{
-                  ...generateContentStyle(),
-                  letterSpacing: '0.02em',
-                  textAlign: 'justify',
-                }}
-              />
-            </div>
-            
-            {/* 底部装饰 */}
-            <div className="px-12 py-6 bg-gray-50 border-t">
-              <p className="text-xs text-gray-500 text-center">
-                本文档由 {author} 创建
-                {timestamp && ` · ${formatTime(timestamp)}`}
-              </p>
             </div>
           </div>
         </div>
