@@ -3663,22 +3663,53 @@ ${doc.content}`;
 
 ${currentAI.characterSettings?.systemPrompt || ''}
 
-群聊规则：
-- 你可以看到群里其他成员的发言
-- 保持你的个性，但要适应群聊氛围
-- 回复要自然，不要太长
-- 可以和其他AI互动
-- 使用自然口语表达，不要使用斜杠（/）等书面符号
+群聊互动规则：
+- 这是一个真实的群聊，所有成员（包括用户和其他AI）都会看到你的发言
+- 你可以回复用户的消息，也可以回复其他AI的消息，进行自然讨论
+- 你可以自然延续话题、略过话题、或者提出新话题
+- 与其他AI互动时要像真实朋友一样，可以同意、反驳、补充或询问
+- 保持你的个性特点，但要适应群聊的轻松氛围
+- 回复要自然简洁，不要太长，符合群聊节奏
+- **重要**：绝对不要在消息开头添加你的名字，直接说话即可
+- 使用自然口语表达，避免书面语和特殊符号
 
-现在请根据最近的对话内容做出回应。`;
+群聊场景示例：
+- 如果看到其他AI说了有趣的话题，你可以接话或表达看法
+- 如果用户问问题，你可以回答，也可能其他AI已经回答了
+- 你可以主动分享想法，但不要抢话或刷屏
+- 群聊中的对话是连续的，要考虑上下文和其他人的发言
 
-            // 构建消息上下文
+现在请根据整个对话历史自然地参与讨论。`;
+
+            // 构建消息上下文 - 让AI看到完整的群聊历史
+            const recentMessages = conversation.messages.slice(-15); // 增加到15条消息以获得更好的上下文
             const aiMessages = [
               { role: 'system', content: aiSystemPrompt },
-              ...conversation.messages.slice(-10).map((m: Message) => ({ // 只取最近10条消息避免上下文过长
-                role: m.role,
-                content: m.content || '[多媒体消息]'
-              }))
+              ...recentMessages.map((m: Message) => {
+                let content = m.content || '[多媒体消息]';
+                
+                // 为AI标识消息发送者，让AI知道谁说了什么
+                let speaker = '';
+                if (m.role === 'user') {
+                  speaker = '用户';
+                } else if (m.role === 'assistant' && m.aiId) {
+                  // 查找发言的AI名称
+                  const speakerAI = groupMembers.find(ai => ai.id === m.aiId);
+                  speaker = speakerAI?.characterSettings?.nickname || m.aiName || 'AI';
+                } else if (m.role === 'system') {
+                  speaker = '系统';
+                }
+                
+                // 格式化消息，让AI明确知道是谁说的
+                if (speaker && m.role !== 'system') {
+                  content = `[${speaker}]: ${content}`;
+                }
+                
+                return {
+                  role: m.role,
+                  content: content
+                };
+              })
             ];
 
             const aiRequestBody = {
@@ -3719,12 +3750,15 @@ ${currentAI.characterSettings?.systemPrompt || ''}
               continue;
             }
 
-            // 添加AI回复到对话
+            // 添加AI回复到对话（不再添加名称前缀，让AI回复更自然）
             const aiMessage: Message = {
               id: `${Date.now()}_${currentAI.id}_${Math.random()}`,
               role: 'assistant',
-              content: `[${aiName}] ${aiReplyContent}`, // 标识是哪个AI回复的
+              content: aiReplyContent, // 直接使用AI回复内容，不添加名称前缀
               timestamp: Date.now() + i, // 确保时间戳递增
+              // 添加AI标识符，用于UI显示时识别是哪个AI
+              aiId: currentAI.id,
+              aiName: aiName,
             };
 
             // 更新对话
@@ -4694,29 +4728,31 @@ ${currentAI.characterSettings?.systemPrompt || ''}
                 {message.role === 'assistant' && (
                   <div className="relative flex-shrink-0">
                     {(() => {
-                      // 群聊模式：从消息内容中提取AI名称
-                      if (conversation.type === 'group' && message.content.startsWith('[') && message.content.includes(']')) {
-                        const nameMatch = message.content.match(/^\[([^\]]+)\]/);
-                        const aiName = nameMatch ? nameMatch[1] : conversation.name;
+                      // 群聊模式：使用Message中的AI标识信息
+                      if (conversation.type === 'group' && message.aiId) {
                         // 从群成员中找到对应的AI信息
                         const aiMember = conversation.members?.map(memberId => 
                           conversations.find(c => c.id === memberId)
-                        ).find(c => c && (c.characterSettings?.nickname === aiName || c.name === aiName));
+                        ).find(c => c && c.id === message.aiId);
+                        
+                        // 使用最新的角色设置信息
+                        const displayName = aiMember?.characterSettings?.nickname || message.aiName || 'AI';
+                        const avatar = aiMember?.characterSettings?.avatar;
                         
                         return (
                           <>
-                            {aiMember?.characterSettings?.avatar ? (
+                            {avatar ? (
                               <div className="w-11 h-11 rounded-full overflow-hidden border-2 border-white shadow-md">
-                                <img src={aiMember.characterSettings.avatar} alt={`${aiName}头像`} className="w-full h-full object-cover" />
+                                <img src={avatar} alt={`${displayName}头像`} className="w-full h-full object-cover" />
                               </div>
                             ) : (
                               <div className="w-11 h-11 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center border-2 border-white shadow-md">
-                                <span className="text-white font-semibold text-sm">{aiName.charAt(0)}</span>
+                                <span className="text-white font-semibold text-sm">{displayName.charAt(0)}</span>
                               </div>
                             )}
-                            {/* 显示AI名称标签 */}
+                            {/* 显示AI名称标签 - 使用网名(nickname) */}
                             <div className="absolute -top-1 left-1/2 transform -translate-x-1/2 bg-blue-500 text-white text-xs px-2 py-0.5 rounded-full whitespace-nowrap shadow-sm">
-                              {aiName}
+                              {displayName}
                             </div>
                           </>
                         );
@@ -5399,15 +5435,7 @@ ${currentAI.characterSettings?.systemPrompt || ''}
                     {/* 纯文字内容 */}
                     {!message.mediaType && !message.moneyTransfer && !message.document && !message.order && message.content && message.content.trim() && (
                       <p className={`text-[15px] leading-relaxed whitespace-pre-wrap break-words ${message.replyTo ? 'px-4' : ''}`}>
-                        {(() => {
-                          // 群聊模式：去掉AI名称前缀，因为已经在头像上显示了
-                          if (conversation.type === 'group' && message.role === 'assistant' && 
-                              message.content.startsWith('[') && message.content.includes(']')) {
-                            const nameMatch = message.content.match(/^\[([^\]]+)\]\s*/);
-                            return nameMatch ? message.content.replace(nameMatch[0], '') : message.content;
-                          }
-                          return message.content;
-                        })()}
+                        {message.content}
                       </p>
                     )}
                     {/* 用户媒体的描述文字（排除语音和表情包） */}

@@ -39,6 +39,9 @@ export interface Message {
     role: 'user' | 'assistant';
   }; // 引用的消息
   edited?: boolean; // 是否已编辑
+  // 🤖 群聊AI标识支持
+  aiId?: string; // AI的对话ID，用于群聊中识别是哪个AI回复的
+  aiName?: string; // AI的显示名称（nickname）
   // 💰 红包/转账支持
   moneyTransfer?: MoneyTransfer;
   // 📄 文档支持
