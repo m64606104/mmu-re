@@ -131,6 +131,7 @@ const RealMusicCard: React.FC<RealMusicCardProps> = ({
       case 'audiomack': return '🎧';
       case 'youtube': return '▶️';
       case 'local': return '💾';
+      case 'itunes': return '🍎';
       default: return '🎵';
     }
   };
@@ -142,6 +143,7 @@ const RealMusicCard: React.FC<RealMusicCardProps> = ({
       case 'audiomack': return 'from-orange-400 to-red-500';
       case 'youtube': return 'from-red-400 to-pink-500';
       case 'local': return 'from-purple-400 to-violet-500';
+      case 'itunes': return 'from-blue-400 to-cyan-500';
       default: return 'from-gray-400 to-slate-500';
     }
   };
@@ -165,27 +167,36 @@ const RealMusicCard: React.FC<RealMusicCardProps> = ({
           </div>
           
           <div className="flex items-center gap-2">
-            {music.audioUrl && (
-              <a
-                href={music.audioUrl}
-                target="_blank"
-                rel="noopener noreferrer"
+            {(music as any).originalUrl && (
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  window.open((music as any).originalUrl, '_blank', 'noopener,noreferrer');
+                }}
                 className="p-1 rounded-full bg-white/10 hover:bg-white/20 transition-colors"
                 title="打开原始链接"
               >
                 <ExternalLink className="w-4 h-4" />
-              </a>
+              </button>
             )}
             
             {music.audioUrl && (
-              <a
-                href={music.audioUrl}
-                download={`${music.title} - ${music.artist}`}
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  const link = document.createElement('a');
+                  link.href = music.audioUrl!;
+                  link.download = `${music.title} - ${music.artist}`;
+                  link.style.display = 'none';
+                  document.body.appendChild(link);
+                  link.click();
+                  document.body.removeChild(link);
+                }}
                 className="p-1 rounded-full bg-white/10 hover:bg-white/20 transition-colors"
                 title="下载音频"
               >
                 <Download className="w-4 h-4" />
-              </a>
+              </button>
             )}
           </div>
         </div>
@@ -227,6 +238,9 @@ const RealMusicCard: React.FC<RealMusicCardProps> = ({
                 <div className="flex items-center gap-1">
                   <Clock className="w-3 h-3" />
                   <span>{formatTime(music.duration)}</span>
+                  {music.source === 'itunes' && (
+                    <span className="text-yellow-300">(预览)</span>
+                  )}
                 </div>
               )}
               {music.genre && (

@@ -14,7 +14,7 @@ export interface RealMusicInfo {
   audioUrl?: string;
   previewUrl?: string;
   coverUrl?: string;
-  source: 'jamendo' | 'freemusicarchive' | 'audiomack' | 'youtube' | 'local';
+  source: 'jamendo' | 'freemusicarchive' | 'audiomack' | 'youtube' | 'local' | 'itunes';
   playable: boolean;
 }
 
