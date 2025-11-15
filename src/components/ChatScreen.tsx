@@ -790,6 +790,83 @@ ${recentMessages}
   // 追踪用户是否还在当前聊天页面
   const isComponentMountedRef = useRef(true);
   
+  // 🧠 构建群聊专用系统提示词
+  const buildGroupChatSystemPrompt = (member: Conversation, groupMembers: Conversation[]): string => {
+    const settings = member.characterSettings;
+    const aiName = settings?.nickname || member.name;
+    
+    // 构建群成员列表信息
+    const groupMembersInfo = groupMembers.map(m => {
+      const displayName = m.characterSettings?.nickname || m.name;
+      const personality = m.characterSettings?.personality || '未设定';
+      return `- ${displayName}${m.id === member.id ? '（你自己）' : ''}：${personality}`;
+    }).join('\n');
+    
+    // 群聊特定规则
+    const groupChatRules = `\n\n【群聊环境说明】
+这是一个群聊，不是私聊。群里有以下成员：
+${groupMembersInfo}
+- 我（用户）：群主
+
+你需要：
+1. 意识到这是一个多人群聊环境，不是一对一私聊
+2. 你可以回应任何人的消息，包括用户"我"和其他AI成员
+3. 你可以主动发起新话题，不必等待别人先说话
+4. 你可以和其他群成员互动，就像真实的群聊一样
+5. 根据整个聊天历史的上下文自然发言，不要刻意回应最后一条消息
+6. 如果聊天陷入沉默，可以主动打破僵局
+7. 可以@其他人，可以接话，可以插话，就像真人在群里聊天
+8. 保持你的角色特点，但要自然融入群聊氛围`;
+    
+    // 基础提示：要求自然对话，禁止格式化内容
+    const baseRules = `\n\n【重要规则】
+1. 用自然的对话方式回复，就像真人在微信/QQ群聊一样
+2. 不要使用任何Markdown格式（如*、**、#、-、•等符号）
+3. 不要使用列表格式、标题格式
+4. 不要添加任何引用来源、参考链接、引文标注
+5. 如果要分享网址，直接完整地发送网址即可，不要加任何说明
+6. 每句话之间用换行分隔，就像发送多条消息一样
+7. 保持口语化，避免书面语和正式用语
+8. ⚠️ 非常重要：你的回复内容中绝对不要包含你自己的名字或任何人名前缀（如"cc:"、"小明:"等），系统会自动显示发送者名字，你只需要直接说内容即可
+9. 聊天记录中显示的"名字: 内容"格式是为了让你知道谁说了什么，你回复时只需要说内容本身，不要模仿这个格式`;
+    
+    if (!settings) {
+      return `你是${aiName}，正在参与一个群聊。${groupChatRules}${baseRules}`;
+    }
+    
+    let prompt = `你是${aiName}。请严格按照以下设定进行角色扮演：\n\n`;
+    
+    if (settings.systemPrompt) {
+      prompt += `【人物设定】\n${settings.systemPrompt}\n\n`;
+    }
+    
+    if (settings.personality) {
+      prompt += `【性格特征】\n${settings.personality}\n\n`;
+    }
+    
+    if (settings.languageStyle) {
+      prompt += `【语言风格】\n${settings.languageStyle}\n\n`;
+    }
+    
+    if (settings.languageExample) {
+      prompt += `【语言示例】\n${settings.languageExample}\n\n`;
+    }
+    
+    if (settings.memoryEvents) {
+      prompt += `【记忆事件】\n${settings.memoryEvents}\n\n`;
+    }
+    
+    // 添加群聊环境说明
+    prompt += groupChatRules;
+    
+    // 添加基础规则
+    prompt += baseRules;
+    
+    prompt += `\n\n完全沉浸在这个角色中，在群聊中自然地发言。`;
+    
+    return prompt;
+  };
+  
   // AI状态相关state
   const [aiStatus, setAIStatus] = useState<any | null>(null);
   const [showActivityModal, setShowActivityModal] = useState(false);
@@ -3616,328 +3693,226 @@ ${doc.content}`;
         };
       }
 
-      // 🚀 群聊多AI回复逻辑 - 参考ai-chat-app-with-avatars实现
+      // 🚀 群聊多AI回复逻辑（自由模式）
       if (conversation.type === 'group' && conversation.members && conversation.members.length > 0) {
-        console.log('👥 群聊模式：开始多AI随机回复');
+        console.log('👥 群聊自由模式：开始多AI随机回复');
         
-        // 获取所有群成员的AI信息
+        // 获取所有群成员的AI信息（从私聊对话中同步）
         const groupMembers = conversation.members
           .map(memberId => conversations.find(c => c.id === memberId))
           .filter(c => c && c.characterSettings) as Conversation[];
         
+        if (groupMembers.length === 0) {
+          console.warn('⚠️ 群聊中没有AI成员');
+          setShowSendingHint(false);
+          setShowTyping(false);
+          setIsGenerating(false);
+          return;
+        }
+        
         console.log(`👥 群成员数量: ${groupMembers.length}个AI`);
         
-        if (groupMembers.length === 0) {
-          console.warn('⚠️ 群聊中没有有效的AI成员');
+        // 🎲 随机决定有多少个AI回复（0到全部）
+        const numResponders = Math.floor(Math.random() * (groupMembers.length + 1));
+        console.log(`🎲 随机选择 ${numResponders} 个AI参与回复`);
+        
+        if (numResponders === 0) {
+          // 无人回复的情况，给用户提示
+          console.log('😴 本次没有AI回复');
           setShowSendingHint(false);
           setShowTyping(false);
           setIsGenerating(false);
-          return;
-        }
-        
-        // 随机选择参与回复的AI数量 (0到全部成员)
-        const maxParticipants = groupMembers.length;
-        const participantCount = Math.floor(Math.random() * (maxParticipants + 1));
-        
-        console.log(`🎲 随机选择 ${participantCount} 个AI参与回复`);
-        
-        if (participantCount === 0) {
-          console.log('😴 这次没有AI参与回复');
-          // 显示系统消息
-          setTimeout(() => {
-            const noResponseMessage: Message = {
-              id: `${Date.now()}_no_response`,
-              role: 'system',
-              content: '当前没有成员选择回复这条消息',
-              timestamp: Date.now(),
-            };
-            onUpdateConversation(conversation.id, {
-              messages: [...conversation.messages, noResponseMessage],
-              lastMessageTime: Date.now(),
-            });
-          }, 1000);
           
-          setShowSendingHint(false);
-          setShowTyping(false);
-          setIsGenerating(false);
+          // 添加系统提示
+          const hintMessage: Message = {
+            id: Date.now().toString(),
+            role: 'system',
+            content: '💬 本次没有AI回复，请再试一次',
+            timestamp: Date.now(),
+          };
+          
+          onUpdateConversation(conversation.id, {
+            messages: [...conversation.messages, hintMessage],
+            lastMessageTime: Date.now(),
+          });
+          
           return;
         }
         
-        // 随机选择参与回复的AI并打乱顺序
+        // 随机打乱AI成员顺序并选取前N个
         const shuffledMembers = [...groupMembers].sort(() => Math.random() - 0.5);
-        const selectedAIs = shuffledMembers.slice(0, participantCount);
+        const respondingMembers = shuffledMembers.slice(0, numResponders);
         
-        console.log(`🎯 选中的AI: ${selectedAIs.map(ai => ai.characterSettings?.nickname || ai.name).join(', ')}`);
+        console.log(`🎯 选中的AI: ${respondingMembers.map(ai => ai.characterSettings?.nickname || ai.name).join(', ')}`);
         
-        // 保存当前聊天上下文，防止用户切换页面时出现问题
-        const currentConversationId = conversation.id;
+        // 隐藏"消息发送中"提示
+        setShowSendingHint(false);
         
-        // 异步处理AI回复，优化速度和多消息支持 - 参考ai-chat-app-with-avatars
-        selectedAIs.forEach((currentAI, index) => {
-          const aiName = currentAI.characterSettings?.nickname || currentAI.name;
+        // 逐个AI成员生成回复（流式：一个接一个）
+        let currentMessages = [...conversation.messages];
+        
+        for (let i = 0; i < respondingMembers.length; i++) {
+          const member = respondingMembers[i];
+          const aiName = member.characterSettings?.nickname || member.name;
           
-          // 设置独立的超时处理
-          const aiTimeoutId = setTimeout(() => {
-            console.warn(`⏰ ${aiName} 回复超时`);
-            if (currentConversationId === conversation.id) {
-              setShowTyping(false);
-              const errorMessage: Message = {
-                id: `${Date.now()}_timeout_${currentAI.id}`,
-                role: 'system',
-                content: `${aiName}暂时无法回复`,
-                timestamp: Date.now(),
-              };
-              onUpdateConversation(conversation.id, {
-                messages: [...conversation.messages, errorMessage],
-                lastMessageTime: Date.now(),
-              });
-            }
-          }, 30000);
+          console.log(`🤖 ${aiName} 开始回复 (${i + 1}/${respondingMembers.length})`);
           
-          // 优化延迟：减少等待时间，提升响应速度
-          setTimeout(() => {
-            // 显示正在输入状态
-            if (currentConversationId === conversation.id) {
-              setShowTyping(true);
+          try {
+            // 🧠 构建群聊专用系统提示（让AI知道群聊环境）
+            const groupChatSystemPrompt = buildGroupChatSystemPrompt(member, groupMembers);
+            
+            // 📚 获取上下文消息（默认最近20条）
+            const contextLimit = member.characterSettings?.contextConfig?.enabled 
+              ? member.characterSettings.contextConfig.messageCount 
+              : 20;
+            const recentMessages = currentMessages.slice(-contextLimit);
+            
+            // 🗓️ 构建消息历史 - 群聊模式下需要包含发送者信息
+            // 📷 检测是否有图片消息（用于视觉识别）
+            const hasImageMessages = recentMessages.some(m => m.mediaType === 'image' && m.mediaUrl);
+            const shouldUseVision = hasImageMessages && apiConfig.modelName?.includes('vision');
+            
+            const apiMessages: any[] = [
+              { role: 'system' as const, content: groupChatSystemPrompt },
+              ...recentMessages.map(msg => {
+                // 获取发送者名字
+                let senderName = '我';
+                if (msg.role === 'assistant') {
+                  // 查找是哪个AI发的
+                  const sender = groupMembers.find(m => 
+                    msg.content?.includes(`[${m.characterSettings?.nickname || m.name}]`)
+                  );
+                  if (sender) {
+                    senderName = sender.characterSettings?.nickname || sender.name;
+                  } else {
+                    senderName = '其他AI';
+                  }
+                }
+                
+                // 📷 如果消息包含图片且启用了视觉识别
+                if (msg.mediaType === 'image' && msg.mediaUrl && shouldUseVision) {
+                  return {
+                    role: msg.role === 'user' ? 'user' as const : 'assistant' as const,
+                    content: [
+                      {
+                        type: 'text',
+                        text: `${senderName}: ${msg.content || '发送了一张图片'}`
+                      },
+                      {
+                        type: 'image_url',
+                        image_url: {
+                          url: msg.mediaUrl
+                        }
+                      }
+                    ]
+                  };
+                }
+                
+                // 清理消息内容（移除AI名称标签）
+                let content = formatMessageForAI(msg);
+                if (msg.role === 'assistant') {
+                  content = content.replace(/^\[.+?\]\s*/, '');
+                }
+                
+                return {
+                  role: msg.role === 'user' ? 'user' as const : 'assistant' as const,
+                  content: `${senderName}: ${content}`
+                };
+              })
+            ];
+            
+            // 🚀 调用AI生成回复
+            const requestBody: any = {
+              model: apiConfig.modelName,
+              messages: apiMessages,
+              temperature: 0.9, // 提高温度让对话更自然随机
+            };
+            
+            // 如果使用视觉模型，添加max_tokens限制
+            if (shouldUseVision) {
+              requestBody.max_tokens = 1000;
             }
             
-            console.log(`🤖 ${aiName} 开始回复 (${index + 1}/${selectedAIs.length})`);
-            
-            // 构建优化的系统提示 - 增加多媒体支持
-            const aiSystemPrompt = `你是${aiName}，正在参与群聊。
-
-当前群成员：${groupMembers.map(m => m.characterSettings?.nickname || m.name).join('、')}
-
-${currentAI.characterSettings?.systemPrompt || ''}
-
-群聊互动规则：
-- 这是真实群聊环境，像人类一样自然交流
-- 可以回复用户或其他AI，进行连续对话
-- 可以发多条消息表达完整想法（用换行分隔不同句子）
-- 保持个性，回复要简洁有趣
-- 绝对不要在消息开头添加名字
-- 可以表达情感、提问、评论、补充等
-
-多媒体回应指南：
-- 看到图片时：可以评论内容、颜色、构图等，表达感受
-- 听到语音时：可以评论语气、内容、音质等
-- 看到视频时：可以评论画面、剧情、技巧等
-- 看到表情包时：可以用对应情绪回应或发送相关表情
-- 看到音乐时：可以评论旋律、歌词、情感等
-- 看到文档时：可以评论内容、格式、实用性等
-
-请根据聊天历史自然参与讨论，可以发送1-3条相关消息。`;
-            
-            // 构建消息历史
-            const messages = [{ role: 'system', content: aiSystemPrompt }];
-            
-            // 添加聊天历史，格式化为对话格式 - 支持多媒体内容
-            conversation.messages.slice(-12).forEach(msg => {
-              if (msg.role === 'system') return;
-              
-              let role = 'assistant';
-              let content = '';
-              
-              // 🎨 根据消息类型生成描述性内容 - 参考ai-chat-app-with-avatars
-              if (msg.mediaType === 'image') {
-                content = `[图片] ${msg.mediaDescription || '发送了一张图片'}`;
-              } else if (msg.mediaType === 'video') {
-                content = `[视频] ${msg.mediaDescription || '分享了一个视频'}`;
-              } else if (msg.mediaType === 'voice') {
-                content = `[语音] ${msg.mediaDescription || '发送了语音消息'}`;
-              } else if (msg.mediaType === 'sticker') {
-                content = `[表情包] ${msg.mediaDescription || '发送了表情包'}`;
-              } else if (msg.moneyTransfer) {
-                const type = msg.moneyTransfer.type === 'redPacket' ? '红包' : '转账';
-                content = `[${type}] ¥${msg.moneyTransfer.amount} ${msg.moneyTransfer.message || ''}`;
-              } else if (msg.document) {
-                content = `[文档] ${msg.document.title}`;
-              } else if (msg.music) {
-                content = `[音乐] ${msg.music.title} - ${msg.music.artist}`;
-              } else if (msg.neteaseMusicInfo) {
-                content = `[音乐] ${msg.neteaseMusicInfo.title} - ${msg.neteaseMusicInfo.artist}`;
-              } else {
-                content = msg.content || '[消息]';
-              }
-              
-              if (msg.role === 'user') {
-                role = 'user';
-              } else if (msg.role === 'assistant' && msg.aiId) {
-                const speakerAI = groupMembers.find(ai => ai.id === msg.aiId);
-                const speakerName = speakerAI?.characterSettings?.nickname || msg.aiName || 'AI';
-                content = `${speakerName}: ${content}`;
-              }
-              
-              messages.push({ role, content });
-            });
-            
-            console.log(`📤 ${aiName} API请求 - 优化版本`);
-            
-            // 调用API
-            fetch(`${apiConfig.baseUrl}/v1/chat/completions`, {
+            const response = await fetch(`${apiConfig.baseUrl}/v1/chat/completions`, {
               method: 'POST',
               headers: {
-                'Content-Type': 'application/json',
                 'Authorization': `Bearer ${apiConfig.apiKey}`,
+                'Content-Type': 'application/json',
               },
-              body: JSON.stringify({
-                model: apiConfig.modelName,
-                messages: messages,
-                temperature: 0.8, // 提高创造性
-                max_tokens: 200, // 限制长度，提升速度
-                stream: false
-              }),
-            })
-            .then(async response => {
-              clearTimeout(aiTimeoutId);
-              
-              console.log(`📥 ${aiName} API响应:`, response.status);
-              
-              if (!response.ok) {
-                throw new Error(`API请求失败: ${response.status}`);
-              }
-              
-              return response.json();
-            })
-            .then(data => {
-              console.log(`📊 ${aiName} API成功`);
-              
-              if (!data.choices?.[0]?.message?.content) {
-                throw new Error('API返回数据格式错误');
-              }
-              
-              const aiReplyContent = data.choices[0].message.content.trim();
-              
-              if (!aiReplyContent) {
-                throw new Error('AI返回空回复');
-              }
-              
-              // 清除正在输入状态
-              if (currentConversationId === conversation.id) {
-                setShowTyping(false);
-              }
-              
-              // 🔥 智能消息分割 - 参考ai-chat-app-with-avatars的精华逻辑
-              
-              // 智能分割函数：按标点符号和长度分割，保持语义完整
-              function splitMessageIntelligently(text: string, maxLength: number = 50): string[] {
-                const sentences: string[] = [];
-                let current = '';
-                
-                // 优先按句号、感叹号、问号分割
-                const punctuation = /[。！？]/;
-                
-                for (let i = 0; i < text.length; i++) {
-                  current += text[i];
-                  
-                  // 如果遇到标点符号且当前句子长度适中
-                  if (punctuation.test(text[i]) && current.length > maxLength / 2) {
-                    sentences.push(current.trim());
-                    current = '';
-                  } 
-                  // 如果句子太长，强制分割
-                  else if (current.length >= maxLength) {
-                    // 尝试在最近的逗号处分割
-                    const commaIndex = current.lastIndexOf('，');
-                    if (commaIndex > 0) {
-                      sentences.push(current.substring(0, commaIndex + 1).trim());
-                      current = current.substring(commaIndex + 1);
-                    } else {
-                      sentences.push(current.trim());
-                      current = '';
-                    }
-                  }
-                }
-                
-                // 添加最后一段
-                if (current.trim()) {
-                  sentences.push(current.trim());
-                }
-                
-                return sentences.length > 0 ? sentences : [text];
-              }
-              
-              // 先按换行分割，再智能分割长句
-              let allResponses: string[] = [];
-              const initialResponses = aiReplyContent.split('\n').filter((line: string) => line.trim() !== '');
-              
-              initialResponses.forEach((initialResponse: string) => {
-                allResponses = allResponses.concat(splitMessageIntelligently(initialResponse.trim(), 50));
-              });
-              
-              console.log(`💬 ${aiName} 智能分割为 ${allResponses.length} 条消息`);
-              
-              // 依次添加每条回复消息，添加自然化处理
-              allResponses.forEach((response: string, rIndex: number) => {
-                // 添加随机延迟让回复更自然
-                const randomDelay = rIndex * 800 + Math.random() * 300; // 800ms基础 + 0-300ms随机
-                
-                setTimeout(() => {
-                  // 自然化处理 - 参考ai-chat-app-with-avatars
-                  let finalResponse = response.trim();
-                  
-                  // 如果回复以句号结尾且比较正式，添加语气词让它更自然
-                  if (finalResponse.endsWith('。') && !finalResponse.includes('！') && 
-                      !finalResponse.includes('？') && !finalResponse.includes('~') &&
-                      finalResponse.length > 5) {
-                    const toneWords = ['~', '呢', '呀', '吧', '啦'];
-                    const randomToneWord = toneWords[Math.floor(Math.random() * toneWords.length)];
-                    if (Math.random() > 0.4) { // 60%的概率添加语气词
-                      finalResponse = finalResponse.slice(0, -1) + randomToneWord;
-                    }
-                  }
-                  
-                  const aiMessage: Message = {
-                    id: `${Date.now()}_${currentAI.id}_${rIndex}_${Math.random()}`,
-                    role: 'assistant',
-                    content: finalResponse,
-                    timestamp: Date.now() + rIndex * 10, // 保证时间戳递增
-                    aiId: currentAI.id,
-                    aiName: aiName,
-                  };
-                  
-                  // 只有在当前对话时才更新
-                  if (currentConversationId === conversation.id) {
-                    onUpdateConversation(conversation.id, {
-                      messages: [...conversation.messages, aiMessage],
-                      lastMessageTime: Date.now(),
-                    });
-                  }
-                  
-                  console.log(`✅ ${aiName} 第${rIndex + 1}条: ${response.substring(0, 30)}...`);
-                }, randomDelay); // 使用随机延迟
-              });
-              
-              // 显示完成提示（最后一个AI）
-              if (index === selectedAIs.length - 1) {
-                setTimeout(() => {
-                  console.log(`🎉 群聊回复完成！`);
-                  setShowSendingHint(false);
-                  setIsGenerating(false);
-                }, allResponses.length * 800 + 500);
-              }
-            })
-            .catch(error => {
-              clearTimeout(aiTimeoutId);
-              console.error(`❌ ${aiName} 回复出错:`, error);
-              
-              if (currentConversationId === conversation.id) {
-                setShowTyping(false);
-                const errorMessage: Message = {
-                  id: `${Date.now()}_error_${currentAI.id}`,
-                  role: 'system',
-                  content: `${aiName}回复失败: ${error.message}`,
-                  timestamp: Date.now(),
-                };
-                onUpdateConversation(conversation.id, {
-                  messages: [...conversation.messages, errorMessage],
-                  lastMessageTime: Date.now(),
-                });
-              }
+              body: JSON.stringify(requestBody)
             });
-          }, 500 + (index * 1500)); // 大幅减少延迟：500ms基础 + 每个AI间隔1.5秒
-        });
+            
+            if (!response.ok) {
+              const errorText = await response.text();
+              console.error(`❌ AI成员 ${aiName} API请求失败:`, response.status, errorText);
+              continue; // 跳过这个AI，继续下一个
+            }
+            
+            const data = await response.json();
+            const aiResponse = data.choices?.[0]?.message?.content;
+            
+            if (!aiResponse || !aiResponse.trim()) {
+              console.error(`❌ AI成员 ${aiName} 未返回有效回复`);
+              continue;
+            }
+            
+            console.log(`✅ ${aiName} 回复内容:`, aiResponse.substring(0, 50) + '...');
+            
+            // 🔀 智能切分AI回复为多个气泡
+            const responseLines = splitMessages(aiResponse);
+            const limitedResponseLines = responseLines.slice(0, 23);
+            
+            // 🎬 逐条显示该AI的消息（带输入动画）
+            for (let j = 0; j < limitedResponseLines.length; j++) {
+              // 显示输入动画
+              setShowTyping(true);
+              
+              // 等待模拟输入时间
+              await new Promise(resolve => setTimeout(resolve, 800 + Math.random() * 1200));
+              
+              // 隐藏输入动画，显示消息
+              setShowTyping(false);
+              
+              const aiMessage: Message = {
+                id: `${Date.now()}_${member.id}_${j}`,
+                role: 'assistant',
+                content: `[${aiName}] ${limitedResponseLines[j].trim()}`,
+                timestamp: Date.now(),
+              };
+              
+              currentMessages = [...currentMessages, aiMessage];
+              
+              // 更新对话状态
+              onUpdateConversation(conversation.id, {
+                messages: currentMessages,
+                lastMessageTime: Date.now(),
+              });
+              
+              // 短暂停顿（气泡之间）
+              if (j < limitedResponseLines.length - 1) {
+                await new Promise(resolve => setTimeout(resolve, 300));
+              }
+            }
+            
+            // AI之间的回复间隔（模拟真人思考时间）
+            if (i < respondingMembers.length - 1) {
+              const delay = 1000 + Math.random() * 1000;
+              console.log(`⏳ 等待 ${Math.round(delay/1000)}s 后下一个AI回复`);
+              await new Promise(resolve => setTimeout(resolve, delay));
+            }
+            
+          } catch (error) {
+            console.error(`❌ ${aiName} 回复出错:`, error);
+            continue;
+          }
+        }
         
+        // 所有AI回复完成
+        setShowSendingHint(false);
+        setShowTyping(false);
+        setIsGenerating(false);
+        
+        console.log(`🎉 群聊回复完成，共 ${respondingMembers.length} 个AI参与了回复`);
         return;
       }
       
@@ -4866,114 +4841,29 @@ ${currentAI.characterSettings?.systemPrompt || ''}
                 </div>
               )}
               
-              {/* 系统消息 - 增强样式设计 */}
+              {/* 系统消息 - 居中显示 */}
               {message.role === 'system' ? (
-                <div className="flex justify-center my-3">
-                  <div className="max-w-xs">
-                    {/* 根据系统消息类型使用不同样式 */}
-                    {message.content.includes('加入') || message.content.includes('创建') ? (
-                      /* 群聊/好友相关 - 绿色系 */
-                      <div className="bg-gradient-to-r from-green-50 to-emerald-50 border border-green-100 rounded-xl px-4 py-2.5 shadow-sm">
-                        <div className="flex items-center gap-2 justify-center">
-                          <div className="w-1.5 h-1.5 bg-green-400 rounded-full"></div>
-                          <span className="text-sm text-green-700 font-medium text-center">
-                            {message.content}
-                          </span>
-                          <div className="w-1.5 h-1.5 bg-green-400 rounded-full"></div>
-                        </div>
-                      </div>
-                    ) : message.content.includes('无法') || message.content.includes('失败') || message.content.includes('暂时') ? (
-                      /* 错误/警告相关 - 橙色系 */
-                      <div className="bg-gradient-to-r from-orange-50 to-amber-50 border border-orange-100 rounded-xl px-4 py-2.5 shadow-sm">
-                        <div className="flex items-center gap-2 justify-center">
-                          <div className="w-1.5 h-1.5 bg-orange-400 rounded-full"></div>
-                          <span className="text-sm text-orange-700 font-medium text-center">
-                            {message.content}
-                          </span>
-                          <div className="w-1.5 h-1.5 bg-orange-400 rounded-full"></div>
-                        </div>
-                      </div>
-                    ) : message.content.includes('没有') || message.content.includes('选择') ? (
-                      /* 信息提示 - 蓝色系 */
-                      <div className="bg-gradient-to-r from-blue-50 to-sky-50 border border-blue-100 rounded-xl px-4 py-2.5 shadow-sm">
-                        <div className="flex items-center gap-2 justify-center">
-                          <div className="w-1.5 h-1.5 bg-blue-400 rounded-full"></div>
-                          <span className="text-sm text-blue-700 font-medium text-center">
-                            {message.content}
-                          </span>
-                          <div className="w-1.5 h-1.5 bg-blue-400 rounded-full"></div>
-                        </div>
-                      </div>
-                    ) : (
-                      /* 默认样式 - 灰色系 */
-                      <div className="bg-gradient-to-r from-gray-50 to-slate-50 border border-gray-200 rounded-xl px-4 py-2.5 shadow-sm">
-                        <div className="flex items-center gap-2 justify-center">
-                          <div className="w-1.5 h-1.5 bg-gray-400 rounded-full"></div>
-                          <span className="text-sm text-gray-600 font-medium text-center">
-                            {message.content}
-                          </span>
-                          <div className="w-1.5 h-1.5 bg-gray-400 rounded-full"></div>
-                        </div>
-                      </div>
-                    )}
-                  </div>
+                <div className="flex justify-center my-2">
+                  <span className="text-xs text-gray-500 bg-gray-100 px-3 py-1.5 rounded-full">
+                    {message.content}
+                  </span>
                 </div>
               ) : (
-              <div id={`message-${message.id}`} className={`message-bubble flex gap-2 transition-colors ${
-                message.role === 'user' ? 'justify-end items-end' : conversation.type === 'group' ? 'justify-start items-start' : 'justify-start items-end'
-              }`}>
+              <div id={`message-${message.id}`} className={`message-bubble flex gap-2 items-end transition-colors ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}>
                 {message.role === 'assistant' && (
-                  <div className="flex-shrink-0">
-                    {(() => {
-                      // 群聊模式：参考QQ样式显示
-                      if (conversation.type === 'group' && message.aiId) {
-                        // 从群成员中找到对应的AI信息
-                        const aiMember = conversation.members?.map(memberId => 
-                          conversations.find(c => c.id === memberId)
-                        ).find(c => c && c.id === message.aiId);
-                        
-                        // 使用最新的角色设置信息
-                        const displayName = aiMember?.characterSettings?.nickname || message.aiName || 'AI';
-                        const avatar = aiMember?.characterSettings?.avatar;
-                        
-                        return (
-                          <div className="flex flex-col items-center mb-1">
-                            {/* QQ风格：昵称在头像上方 */}
-                            <div className="text-xs text-gray-500 mb-1 max-w-[60px] truncate text-center">
-                              {displayName}
-                            </div>
-                            {/* QQ风格：头像 */}
-                            {avatar ? (
-                              <div className="w-10 h-10 rounded-full overflow-hidden">
-                                <img src={avatar} alt={`${displayName}头像`} className="w-full h-full object-cover" />
-                              </div>
-                            ) : (
-                              <div className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center">
-                                <span className="text-white font-semibold text-sm">{displayName.charAt(0)}</span>
-                              </div>
-                            )}
-                          </div>
-                        );
-                      } else {
-                        // 私聊模式：使用原有逻辑
-                        return (
-                          <div className="relative">
-                            {conversation.characterSettings?.avatar ? (
-                              <div className="w-11 h-11 rounded-full overflow-hidden border-2 border-white shadow-md">
-                                <img src={conversation.characterSettings.avatar} alt="AI头像" className="w-full h-full object-cover" />
-                              </div>
-                            ) : (
-                              <div className="w-11 h-11 rounded-full bg-gradient-to-br from-gray-700 to-gray-900 flex items-center justify-center border-2 border-white shadow-md">
-                                <span className="text-white font-semibold text-sm">{conversation.name.charAt(0)}</span>
-                              </div>
-                            )}
-                            <div className="absolute -bottom-0.5 -right-0.5 w-4 h-4 bg-white rounded-full flex items-center justify-center shadow-sm">
-                              <span className="text-[10px]">{getUserBadge()}</span>
-                            </div>
-                          </div>
-                        );
-                      }
-                    })()}
+                  <div className="relative flex-shrink-0">
+                    {conversation.characterSettings?.avatar ? (
+                      <div className="w-11 h-11 rounded-full overflow-hidden border-2 border-white shadow-md">
+                        <img src={conversation.characterSettings.avatar} alt="AI头像" className="w-full h-full object-cover" />
+                      </div>
+                    ) : (
+                      <div className="w-11 h-11 rounded-full bg-gradient-to-br from-gray-700 to-gray-900 flex items-center justify-center border-2 border-white shadow-md">
+                        <span className="text-white font-semibold text-sm">{conversation.name.charAt(0)}</span>
+                      </div>
+                    )}
+                    <div className="absolute -bottom-0.5 -right-0.5 w-4 h-4 bg-white rounded-full flex items-center justify-center shadow-sm">
+                      <span className="text-[10px]">{getUserBadge()}</span>
+                    </div>
                   </div>
                 )}
                 <div className="relative max-w-[70%]">
@@ -5632,9 +5522,7 @@ ${currentAI.characterSettings?.systemPrompt || ''}
                     
                     {/* 纯文字内容 */}
                     {!message.mediaType && !message.moneyTransfer && !message.document && !message.order && message.content && message.content.trim() && (
-                      <p className={`text-[15px] leading-relaxed whitespace-pre-wrap break-words ${message.replyTo ? 'px-4' : ''}`}>
-                        {message.content}
-                      </p>
+                      <p className={`text-[15px] leading-relaxed whitespace-pre-wrap break-words ${message.replyTo ? 'px-4' : ''}`}>{message.content}</p>
                     )}
                     {/* 用户媒体的描述文字（排除语音和表情包） */}
                     {message.role === 'user' && message.mediaType && message.mediaType !== 'sticker' && message.mediaType !== 'voice' && message.mediaDescription && (
@@ -5683,65 +5571,32 @@ ${currentAI.characterSettings?.systemPrompt || ''}
         )}
 
         {showTyping && (
-          <div className="flex gap-2 items-end justify-start animate-fade-in">
-            {/* 群聊模式：显示具体AI头像和名称 */}
-            {conversation.type === 'group' ? (
-              <div className="flex flex-col items-center mb-1">
-                <div className="text-xs text-gray-500 mb-1 max-w-[60px] truncate text-center">
-                  AI正在思考...
+          <div className="flex gap-2 items-end justify-start">
+            <div className="relative flex-shrink-0">
+              {conversation.characterSettings?.avatar ? (
+                <div className="w-11 h-11 rounded-full overflow-hidden border-2 border-white shadow-md">
+                  <img src={conversation.characterSettings.avatar} alt="AI头像" className="w-full h-full object-cover" />
                 </div>
-                <div className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center relative">
-                  <span className="text-white font-semibold text-sm">AI</span>
-                  {/* 添加脉搏效果 */}
-                  <div className="absolute inset-0 rounded-full bg-blue-400 animate-ping opacity-30"></div>
+              ) : (
+                <div className="w-11 h-11 rounded-full bg-gradient-to-br from-gray-700 to-gray-900 flex items-center justify-center border-2 border-white shadow-md">
+                  <span className="text-white font-semibold text-sm">{conversation.name.charAt(0)}</span>
                 </div>
+              )}
+              <div className="absolute -bottom-0.5 -right-0.5 w-4 h-4 bg-white rounded-full flex items-center justify-center shadow-sm">
+                <span className="text-[10px]">{getUserBadge()}</span>
               </div>
-            ) : (
-              /* 私聊模式：原有头像显示 */
-              <div className="relative flex-shrink-0">
-                {conversation.characterSettings?.avatar ? (
-                  <div className="w-11 h-11 rounded-full overflow-hidden border-2 border-white shadow-md relative">
-                    <img src={conversation.characterSettings.avatar} alt="AI头像" className="w-full h-full object-cover" />
-                    {/* 添加思考状态指示 */}
-                    <div className="absolute inset-0 rounded-full bg-blue-500/20 animate-pulse"></div>
-                  </div>
-                ) : (
-                  <div className="w-11 h-11 rounded-full bg-gradient-to-br from-gray-700 to-gray-900 flex items-center justify-center border-2 border-white shadow-md relative">
-                    <span className="text-white font-semibold text-sm">{conversation.name.charAt(0)}</span>
-                    {/* 添加思考状态指示 */}
-                    <div className="absolute inset-0 rounded-full bg-blue-400/30 animate-pulse"></div>
-                  </div>
-                )}
-                <div className="absolute -bottom-0.5 -right-0.5 w-4 h-4 bg-white rounded-full flex items-center justify-center shadow-sm">
-                  <span className="text-[10px]">{getUserBadge()}</span>
-                </div>
-              </div>
-            )}
-            
-            {/* 增强的输入指示器 */}
+            </div>
             <div className="relative">
-              <div className="bg-white rounded-2xl px-4 py-3 border border-gray-200 shadow-lg hover:shadow-xl transition-all duration-300">
-                <div className="flex items-center gap-1">
-                  {/* 改进的跳动点 - 更生动的效果 */}
-                  <div className="w-2.5 h-2.5 bg-gradient-to-r from-blue-400 to-blue-600 rounded-full animate-bounce shadow-sm" 
-                       style={{ animationDelay: '0ms', animationDuration: '1.4s' }}></div>
-                  <div className="w-2.5 h-2.5 bg-gradient-to-r from-purple-400 to-purple-600 rounded-full animate-bounce shadow-sm" 
-                       style={{ animationDelay: '0.2s', animationDuration: '1.4s' }}></div>
-                  <div className="w-2.5 h-2.5 bg-gradient-to-r from-pink-400 to-pink-600 rounded-full animate-bounce shadow-sm" 
-                       style={{ animationDelay: '0.4s', animationDuration: '1.4s' }}></div>
-                  
-                  {/* 添加"正在输入"文字 */}
-                  <span className="text-xs text-gray-500 ml-2 animate-pulse">正在输入</span>
+              <div className="bg-white rounded-2xl px-4 py-2.5 border border-gray-200 shadow-sm">
+                <div className="flex gap-1">
+                  <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></div>
+                  <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></div>
+                  <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></div>
                 </div>
               </div>
-              
-              {/* 优化的消息尾巴 */}
               <div className="absolute bottom-3 left-0 -translate-x-[40%]">
-                <div className="w-2.5 h-2.5 bg-white border-l border-t border-gray-200 transform rotate-45 shadow-md"></div>
+                <div className="w-2.5 h-2.5 bg-white border-l border-t border-gray-200 transform rotate-45 shadow-sm"></div>
               </div>
-              
-              {/* 添加微妙的光晕效果 */}
-              <div className="absolute inset-0 rounded-2xl bg-gradient-to-r from-blue-50/50 to-purple-50/50 -z-10 blur-sm"></div>
             </div>
           </div>
         )}
