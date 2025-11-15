@@ -106,11 +106,12 @@ export class RealMusicService {
         artist: track.artist_name || '未知艺术家',
         album: track.album_name,
         duration: parseInt(track.duration) || 0,
-        audioUrl: track.audio || track.audiodownload, // 使用可用的音频URL
+        audioUrl: track.audio || track.audiodownload, // Jamendo提供完整音频
         previewUrl: track.audiodownload,
         coverUrl: track.album_image || track.image,
         source: 'jamendo',
         playable: !!(track.audio || track.audiodownload),
+        isFullVersion: true, // Jamendo提供完整版音乐
         genre: track.musicinfo?.tags?.genres?.[0]?.name
       }));
     } catch (error) {
@@ -210,6 +211,7 @@ export class RealMusicService {
         audioUrl: await this.generateSampleAudio(music.mood),
         source: 'local' as const,
         playable: true,
+        isFullVersion: true, // 本地音乐都是完整版
         genre: music.genre,
         coverUrl: this.generateCoverUrl(music.mood)
       }))

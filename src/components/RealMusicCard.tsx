@@ -33,20 +33,30 @@ const RealMusicCard: React.FC<RealMusicCardProps> = ({
   // 初始化音频
   useEffect(() => {
     const initAudio = () => {
-      if (music.audioUrl || music.previewUrl) {
-        const audioUrl = music.audioUrl || music.previewUrl;
-        if (audioUrl && audioRef.current) {
-          setIsLoading(true);
-          setError(null);
-          
-          audioRef.current.src = audioUrl;
-          audioRef.current.addEventListener('loadedmetadata', handleLoadedMetadata);
-          audioRef.current.addEventListener('timeupdate', handleTimeUpdate);
-          audioRef.current.addEventListener('ended', handleEnded);
-          audioRef.current.addEventListener('error', handleAudioError);
-        }
+      // 优先使用完整音频，如果没有则使用预览
+      const audioUrl = music.audioUrl || music.previewUrl;
+      
+      if (audioUrl && audioRef.current) {
+        setIsLoading(true);
+        setError(null);
+        
+        console.log(`🎵 初始化音频播放:`, {
+          title: music.title,
+          artist: music.artist,
+          hasFullVersion: !!music.audioUrl,
+          hasPreview: !!music.previewUrl,
+          usingUrl: audioUrl,
+          isFullVersion: music.isFullVersion
+        });
+        
+        audioRef.current.src = audioUrl;
+        audioRef.current.addEventListener('loadedmetadata', handleLoadedMetadata);
+        audioRef.current.addEventListener('timeupdate', handleTimeUpdate);
+        audioRef.current.addEventListener('ended', handleEnded);
+        audioRef.current.addEventListener('error', handleAudioError);
       } else {
         setError('无可用音频源');
+        console.warn('🎵 音乐无可用音频源:', music);
       }
     };
 
@@ -221,7 +231,7 @@ const RealMusicCard: React.FC<RealMusicCardProps> = ({
               <p className="text-xs opacity-75 truncate mt-1">{music.album}</p>
             )}
             
-            {/* 时长和流派 */}
+            {/* 时长、流派和版本信息 */}
             <div className="flex items-center gap-2 mt-2 text-xs opacity-75">
               {music.duration && (
                 <div className="flex items-center gap-1">
@@ -232,6 +242,17 @@ const RealMusicCard: React.FC<RealMusicCardProps> = ({
               {music.genre && (
                 <span className="bg-white/20 px-2 py-0.5 rounded-full">
                   {music.genre}
+                </span>
+              )}
+              {/* 版本标识 */}
+              {music.isFullVersion === false && (
+                <span className="bg-orange-500/80 text-white px-2 py-0.5 rounded-full text-xs font-medium">
+                  30秒预览
+                </span>
+              )}
+              {music.isFullVersion === true && (
+                <span className="bg-green-500/80 text-white px-2 py-0.5 rounded-full text-xs font-medium">
+                  完整版
                 </span>
               )}
             </div>

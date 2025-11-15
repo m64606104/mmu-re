@@ -83,7 +83,9 @@ const RealMusicSearchModal: React.FC<RealMusicSearchModalProps> = ({
         artist: parts[0] || '本地音乐',
         audioUrl: URL.createObjectURL(file),
         source: 'local',
-        playable: true
+        playable: true,
+        isFullVersion: true, // 用户上传的音乐都是完整版
+        duration: 0 // 将在音频加载后获取
       };
       
       setSelectedMusic(musicInfo);
@@ -117,8 +119,9 @@ const RealMusicSearchModal: React.FC<RealMusicSearchModalProps> = ({
           artist: '未知歌手',
           audioUrl: audioUrl,
           duration: metadata?.duration,
-          source: 'local',
-          playable: true
+          source: 'url',
+          playable: true,
+          isFullVersion: true // URL音乐通常是完整版
         };
         
         setSelectedMusic(musicInfo);
@@ -283,6 +286,17 @@ const RealMusicSearchModal: React.FC<RealMusicSearchModalProps> = ({
                                 <p className="text-xs text-gray-500 mt-1 capitalize">
                                   {music.source}
                                 </p>
+                                {/* 版本标识 */}
+                                {music.isFullVersion === false && (
+                                  <div className="text-xs text-orange-600 mt-1 font-medium">
+                                    30秒预览
+                                  </div>
+                                )}
+                                {music.isFullVersion === true && (
+                                  <div className="text-xs text-green-600 mt-1 font-medium">
+                                    完整版
+                                  </div>
+                                )}
                                 {selectedMusic?.id === music.id && (
                                   <div className="text-blue-500 text-xs mt-1 font-medium">
                                     ✓ 已选择
