@@ -6,7 +6,6 @@
 import React, { useState, useRef } from 'react';
 import { X, Search, Upload, Globe, Loader, AlertCircle, CheckCircle } from 'lucide-react';
 import { RealMusicInfo, realMusicService } from '../utils/realMusicService';
-import RealMusicCard from './RealMusicCard';
 
 interface RealMusicSearchModalProps {
   isOpen: boolean;
@@ -203,15 +202,26 @@ const RealMusicSearchModal: React.FC<RealMusicSearchModalProps> = ({
               ))}
             </div>
             
-            {/* 预览区域 */}
+            {/* 预览区域 - 紧凑显示 */}
             {selectedMusic && (
-              <div className="p-4 border-t">
-                <h3 className="font-medium text-gray-900 mb-3">已选择</h3>
-                <RealMusicCard 
-                  music={selectedMusic}
-                  className="w-full"
-                  showGenerateButton={false}
-                />
+              <div className="p-4 border-t bg-blue-50">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3 flex-1 min-w-0">
+                    <div className="w-12 h-12 rounded-lg bg-gradient-to-br from-blue-400 to-blue-600 flex items-center justify-center text-white">
+                      🎵
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <h4 className="font-medium text-gray-900 truncate">{selectedMusic.title}</h4>
+                      <p className="text-sm text-gray-600 truncate">{selectedMusic.artist}</p>
+                    </div>
+                  </div>
+                  <button
+                    onClick={handleConfirmSelection}
+                    className="ml-3 px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors font-medium flex-shrink-0"
+                  >
+                    分享
+                  </button>
+                </div>
               </div>
             )}
           </div>
@@ -397,22 +407,6 @@ const RealMusicSearchModal: React.FC<RealMusicSearchModalProps> = ({
                 </div>
               )}
 
-              {/* 操作按钮 */}
-              <div className="flex gap-3 mt-8 pt-6 border-t">
-                <button
-                  onClick={onClose}
-                  className="px-6 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
-                >
-                  取消
-                </button>
-                <button
-                  onClick={handleConfirmSelection}
-                  disabled={!selectedMusic}
-                  className="flex-1 px-6 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 disabled:opacity-50 transition-colors"
-                >
-                  分享给 {characterName}
-                </button>
-              </div>
             </div>
           </div>
         </div>
