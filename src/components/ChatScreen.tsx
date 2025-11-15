@@ -4780,13 +4780,6 @@ ${doc.content}`;
                           <RealMusicCard
                             music={message.music as any}
                             className="w-full"
-                            showGenerateButton={true}
-                            onGenerateAIResponse={() => {
-                              // 触发AI对这首歌的回复
-                              const prompt = `用户正在听《${message.music?.title}》- ${message.music?.artist}，请和用户聊聊这首歌。`;
-                              setCurrentInput(prompt);
-                              handleSendMessage();
-                            }}
                           />
                         ) : (
                           <MusicCard

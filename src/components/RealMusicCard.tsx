@@ -4,21 +4,17 @@
  */
 
 import React, { useState, useEffect, useRef } from 'react';
-import { Music, Play, Pause, Volume2, Download, ExternalLink, Clock } from 'lucide-react';
+import { Music, Play, Pause, Volume2, ExternalLink, Clock } from 'lucide-react';
 import { RealMusicInfo } from '../utils/realMusicService';
 
 interface RealMusicCardProps {
   music: RealMusicInfo;
   className?: string;
-  showGenerateButton?: boolean;
-  onGenerateAIResponse?: () => void;
 }
 
 const RealMusicCard: React.FC<RealMusicCardProps> = ({
   music,
-  className = '',
-  showGenerateButton = true,
-  onGenerateAIResponse
+  className = ''
 }) => {
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
@@ -211,16 +207,6 @@ const RealMusicCard: React.FC<RealMusicCardProps> = ({
     return `${mins}:${secs.toString().padStart(2, '0')}`;
   };
 
-  const getSourceIcon = () => {
-    switch (music.source) {
-      case 'jamendo': return '🎵';
-      case 'freemusicarchive': return '🎼';
-      case 'audiomack': return '🎧';
-      case 'youtube': return '▶️';
-      case 'local': return '💾';
-      default: return '🎵';
-    }
-  };
 
   const getSourceColor = () => {
     switch (music.source) {
@@ -236,50 +222,25 @@ const RealMusicCard: React.FC<RealMusicCardProps> = ({
   const progress = duration > 0 ? (currentTime / duration) * 100 : 0;
 
   return (
-    <div className={`bg-gradient-to-br ${getSourceColor()} rounded-2xl shadow-xl text-white overflow-hidden max-w-sm ${className}`}>
+    <div className={`bg-gradient-to-br ${getSourceColor()} rounded-xl shadow-lg text-white overflow-hidden max-w-sm ${className}`}>
       {/* 隐藏的音频元素 */}
       <audio ref={audioRef} preload="metadata" crossOrigin="anonymous" />
       
-      {/* 头部信息 */}
-      <div className="p-4 pb-2">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <Music className="w-5 h-5" />
-            <span className="text-sm opacity-90">
-              {music.playable ? '可播放音乐' : '仅信息'}
-            </span>
-            <span className="text-lg">{getSourceIcon()}</span>
-          </div>
-          
-          <div className="flex items-center gap-2">
-            {music.audioUrl && (
-              <a
-                href={music.audioUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="p-1 rounded-full bg-white/10 hover:bg-white/20 transition-colors"
-                title="打开原始链接"
-              >
-                <ExternalLink className="w-4 h-4" />
-              </a>
-            )}
-            
-            {music.audioUrl && (
-              <a
-                href={music.audioUrl}
-                download={`${music.title} - ${music.artist}`}
-                className="p-1 rounded-full bg-white/10 hover:bg-white/20 transition-colors"
-                title="下载音频"
-              >
-                <Download className="w-4 h-4" />
-              </a>
-            )}
-          </div>
-        </div>
-      </div>
-
-      {/* 封面和音乐信息 */}
-      <div className="px-4 pb-3">
+      {/* 封面和音乐信息 - 紧凑布局 */}
+      <div className="p-4 relative">
+        {/* 右上角链接按钮 */}
+        {music.audioUrl && (
+          <a
+            href={music.audioUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="absolute top-2 right-2 p-1.5 rounded-full bg-black/20 hover:bg-black/40 transition-colors z-10"
+            title="打开原始链接"
+          >
+            <ExternalLink className="w-3.5 h-3.5" />
+          </a>
+        )}
+        
         <div className="flex items-start gap-3">
           {/* 封面图片 */}
           <div className="flex-shrink-0">
@@ -398,34 +359,6 @@ const RealMusicCard: React.FC<RealMusicCardProps> = ({
         </div>
       )}
 
-      {/* AI生成按钮 */}
-      {showGenerateButton && (
-        <div className="px-4 pb-4 pt-2 border-t border-white/10">
-          <button
-            onClick={onGenerateAIResponse}
-            className="w-full py-2 bg-white/20 hover:bg-white/30 rounded-lg font-medium transition-colors"
-          >
-            ✨ 让AI聊聊这首歌
-          </button>
-        </div>
-      )}
-
-      {/* 底部信息 */}
-      <div className="px-4 pb-4 pt-2 border-t border-white/10">
-        <div className="flex items-center justify-between text-xs">
-          <div className="flex items-center gap-1 opacity-75">
-            <span>来源:</span>
-            <span className="capitalize">{music.source}</span>
-          </div>
-          
-          <div className="flex items-center gap-1">
-            <div className={`w-2 h-2 rounded-full ${music.playable ? 'bg-green-400' : 'bg-gray-400'}`} />
-            <span className="opacity-75 text-xs">
-              {music.playable ? '可播放' : '仅信息'}
-            </span>
-          </div>
-        </div>
-      </div>
 
       {/* 播放状态指示 */}
       {isPlaying && (
