@@ -157,9 +157,9 @@ export class RealMusicService {
         album: track.collectionName,
         duration: Math.round((track.trackTimeMillis || 0) / 1000),
         previewUrl: track.previewUrl, // iTunes提供30秒预览
-        audioUrl: track.previewUrl, // 使用预览作为播放源
+        audioUrl: undefined, // iTunes不提供完整音频，只有预览
         coverUrl: track.artworkUrl100?.replace('100x100', '300x300'), // 高分辨率封面
-        source: 'youtube', // 标记为外部源
+        source: 'itunes', // 修正为iTunes源
         playable: !!track.previewUrl,
         genre: track.primaryGenreName,
         releaseYear: track.releaseDate ? new Date(track.releaseDate).getFullYear() : undefined
@@ -198,20 +198,18 @@ export class RealMusicService {
     const musicList = filtered.length > 0 ? filtered : localMusicData.slice(0, 3);
 
     // 生成音频URL（异步生成可能会影响性能，这里使用预设URL）
-    const localMusic: RealMusicInfo[] = await Promise.all(
-      musicList.map(async (music) => ({
-        id: music.id,
-        title: music.title,
-        artist: music.artist,
-        album: 'Demo Collection',
-        duration: music.duration,
-        audioUrl: await this.generateSampleAudio(music.mood),
-        source: 'local' as const,
-        playable: true,
-        genre: music.genre,
-        coverUrl: this.generateCoverUrl(music.mood)
-      }))
-    );
+    const localMusic: RealMusicInfo[] = musicList.map((music) => ({
+      id: music.id,
+      title: music.title,
+      artist: music.artist,
+      album: 'Demo Collection',
+      duration: music.duration,
+      audioUrl: this.getFullLengthAudioUrl(music.id, music.mood),
+      source: 'local' as const,
+      playable: true,
+      genre: music.genre,
+      coverUrl: this.generateCoverUrl(music.mood)
+    }));
 
     console.log(`✅ 本地音乐搜索完成，返回${localMusic.length}个结果`);
     return localMusic;
@@ -235,106 +233,38 @@ export class RealMusicService {
   }
 
   /**
-   * 生成示例音频（Web Audio API）
+   * 获取完整长度的音频URL
    */
-  private async generateSampleAudio(mood: string): Promise<string> {
-    try {
-      const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
-      const duration = 30; // 30秒示例
-      const sampleRate = audioContext.sampleRate;
-      const buffer = audioContext.createBuffer(2, sampleRate * duration, sampleRate);
-
-      // 根据情绪选择频率
-      const frequencies = mood === 'happy' ? [261.63, 329.63, 392.00] : [174.61, 220.00, 261.63];
-      
-      for (let channel = 0; channel < buffer.numberOfChannels; channel++) {
-        const channelData = buffer.getChannelData(channel);
-        
-        for (let i = 0; i < buffer.length; i++) {
-          let sample = 0;
-          const time = i / sampleRate;
-          
-          frequencies.forEach((freq, index) => {
-            const volume = 0.1 / (index + 1);
-            sample += Math.sin(2 * Math.PI * freq * time) * volume;
-          });
-          
-          // 添加包络
-          const envelope = Math.min(1, time * 2) * Math.min(1, (duration - time) / 2);
-          channelData[i] = sample * envelope;
-        }
-      }
-
-      // 转换为Blob URL
-      return this.audioBufferToBlob(buffer);
-    } catch (error) {
-      console.error('生成示例音频失败:', error);
-      return '';
-    }
-  }
-
-  /**
-   * AudioBuffer 转 Blob URL
-   */
-  private async audioBufferToBlob(buffer: AudioBuffer): Promise<string> {
-    const offlineContext = new OfflineAudioContext(
-      buffer.numberOfChannels,
-      buffer.length,
-      buffer.sampleRate
-    );
-    
-    const source = offlineContext.createBufferSource();
-    source.buffer = buffer;
-    source.connect(offlineContext.destination);
-    source.start(0);
-    
-    const renderedBuffer = await offlineContext.startRendering();
-    const wavBlob = this.audioBufferToWav(renderedBuffer);
-    return URL.createObjectURL(wavBlob);
-  }
-
-  /**
-   * AudioBuffer 转 WAV
-   */
-  private audioBufferToWav(buffer: AudioBuffer): Blob {
-    const length = buffer.length;
-    const numberOfChannels = buffer.numberOfChannels;
-    const sampleRate = buffer.sampleRate;
-    const arrayBuffer = new ArrayBuffer(44 + length * numberOfChannels * 2);
-    const view = new DataView(arrayBuffer);
-    
-    // WAV header
-    const writeString = (offset: number, string: string) => {
-      for (let i = 0; i < string.length; i++) {
-        view.setUint8(offset + i, string.charCodeAt(i));
-      }
+  private getFullLengthAudioUrl(musicId: string, mood: string): string {
+    // 为演示目的，使用免费的在线音频资源
+    const demoAudioUrls = {
+      'local_1': 'https://www.soundjay.com/misc/sounds/bell-ringing-05.wav', // Happy Melody
+      'local_2': 'https://www.soundjay.com/misc/sounds/rain-02.wav', // Calm Waters  
+      'local_3': 'https://www.soundjay.com/misc/sounds/beep-07a.wav', // Upbeat Rhythm
+      'local_4': 'https://www.soundjay.com/misc/sounds/wind-chimes-01.wav', // Peaceful Night
+      'local_5': 'https://www.soundjay.com/misc/sounds/typing-on-keyboard-02.wav', // Morning Coffee
+      'local_6': 'https://www.soundjay.com/misc/sounds/page-flip-01a.wav' // Focus Flow
     };
     
-    writeString(0, 'RIFF');
-    view.setUint32(4, 36 + length * numberOfChannels * 2, true);
-    writeString(8, 'WAVE');
-    writeString(12, 'fmt ');
-    view.setUint32(16, 16, true);
-    view.setUint16(20, 1, true);
-    view.setUint16(22, numberOfChannels, true);
-    view.setUint32(24, sampleRate, true);
-    view.setUint32(28, sampleRate * numberOfChannels * 2, true);
-    view.setUint16(32, numberOfChannels * 2, true);
-    view.setUint16(34, 16, true);
-    writeString(36, 'data');
-    view.setUint32(40, length * numberOfChannels * 2, true);
+    // 如果有预设URL则使用，否则生成Blob URL
+    return demoAudioUrls[musicId as keyof typeof demoAudioUrls] || this.generateLongAudioBlob(mood);
+  }
+
+  /**
+   * 生成长时间音频URL（用于演示完整播放）
+   */
+  private generateLongAudioBlob(mood: string): string {
+    // 使用免费的长时间音频示例
+    const longAudioUrls = {
+      happy: 'https://www2.cs.uic.edu/~i101/SoundFiles/BabyElephantWalk60.wav',
+      calm: 'https://www2.cs.uic.edu/~i101/SoundFiles/CantinaBand60.wav', 
+      energetic: 'https://www2.cs.uic.edu/~i101/SoundFiles/StarWars60.wav',
+      peaceful: 'https://www2.cs.uic.edu/~i101/SoundFiles/taunt.wav',
+      morning: 'https://www2.cs.uic.edu/~i101/SoundFiles/gettysburg10.wav',
+      focus: 'https://www2.cs.uic.edu/~i101/SoundFiles/preamble10.wav'
+    };
     
-    let offset = 44;
-    for (let i = 0; i < length; i++) {
-      for (let channel = 0; channel < numberOfChannels; channel++) {
-        const sample = buffer.getChannelData(channel)[i];
-        const intSample = Math.max(-1, Math.min(1, sample)) * 0x7FFF;
-        view.setInt16(offset, intSample, true);
-        offset += 2;
-      }
-    }
-    
-    return new Blob([arrayBuffer], { type: 'audio/wav' });
+    return longAudioUrls[mood as keyof typeof longAudioUrls] || longAudioUrls.calm;
   }
 
   /**
@@ -387,4 +317,5 @@ export class RealMusicService {
   }
 }
 
+// 导出服务实例
 export const realMusicService = RealMusicService.getInstance();

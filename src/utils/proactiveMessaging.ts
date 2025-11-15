@@ -118,26 +118,47 @@ const buildProactiveMessagePrompt = (conversation: Conversation): string => {
   const hour = currentTime.getHours();
   const timeContext = hour < 12 ? '早上' : hour < 18 ? '下午' : '晚上';
   
-  return `
-你是${conversation.characterSettings?.nickname || conversation.name}，现在是${timeContext}。
+  const lastMessageTime = recentMessages.length > 0 ? recentMessages[recentMessages.length - 1].timestamp : 0;
+  const timeSinceLastMessage = Date.now() - lastMessageTime;
+  const minutesSince = Math.floor(timeSinceLastMessage / (1000 * 60));
+  const hoursSince = Math.floor(minutesSince / 60);
+  
+  let timeGap = '';
+  if (hoursSince > 24) {
+    timeGap = `距离上次聊天已经过去了${Math.floor(hoursSince / 24)}天`;
+  } else if (hoursSince > 1) {
+    timeGap = `距离上次聊天已经过去了${hoursSince}小时`;
+  } else if (minutesSince > 30) {
+    timeGap = `距离上次聊天已经过去了${minutesSince}分钟`;
+  } else {
+    timeGap = '刚刚结束聊天不久';
+  }
 
-你想主动发送一条消息给用户，可能是：
-- 分享你的近况或想法
-- 询问对方最近怎么样
-- 分享有趣的事情
-- 表达关心
-- 闲聊
+  return `
+你是${conversation.characterSettings?.nickname || conversation.name}，现在是${timeContext}（${currentTime.toLocaleString()}）。
+
+【时间感知】：${timeGap}
+
+【角色设定】：
+${conversation.characterSettings?.systemPrompt || '你是一个友善的AI助手'}
+
+【性格特点】：
+- 说话风格：${conversation.characterSettings?.languageStyle || '自然友善'}
+- 语言习惯：${conversation.characterSettings?.languageExample || '正常交流'}
+
+你想主动发送一条消息给用户。根据时间间隔选择合适的开场：
+- 如果刚聊完不久：可以补充刚才的话题或分享新想法
+- 如果隔了几小时：可以问候并分享近况
+- 如果隔了一天以上：要重新建立联系，不要假设对方记得之前的对话
 
 【要求】：
-- 保持自然、真实的对话风格
-- 不要过于正式或生硬
-- 消息要简短，1-2句话即可
-- 根据你们之前的对话和记忆来选择话题
-- 不要重复之前说过的内容
-${context}
-${memoryContext}
+- 必须保持与之前对话的连贯性
+- 根据时间间隔调整语气和内容
+- 不要突然跳转话题，要自然过渡
+- 如果时间较长，要适当重新介绍话题背景
+- 保持角色的一致性和真实感${context}${memoryContext}
 
-请生成一条自然的主动消息：
+请发送一条符合时间感知的自然消息：
 `.trim();
 };
 
@@ -174,7 +195,7 @@ export const sendProactiveMessage = async (
           { role: 'user', content: prompt }
         ],
         temperature: 0.8,
-        max_tokens: 100,
+        max_tokens: 800,
       })
     });
     
