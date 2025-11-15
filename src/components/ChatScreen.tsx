@@ -3616,8 +3616,149 @@ ${doc.content}`;
         };
       }
 
-      // 🚀 使用后台任务，不阻塞用户
-      console.log('🚀 创建后台AI生成任务...');
+      // 🚀 群聊多AI回复逻辑
+      if (conversation.type === 'group' && conversation.members && conversation.members.length > 0) {
+        console.log('👥 群聊模式：开始多AI随机回复');
+        
+        // 获取所有群成员的AI信息
+        const groupMembers = conversation.members
+          .map(memberId => conversations.find(c => c.id === memberId))
+          .filter(c => c && c.characterSettings) as Conversation[];
+        
+        console.log(`👥 群成员数量: ${groupMembers.length}个AI`);
+        
+        // 随机选择参与回复的AI数量 (0到全部成员)
+        const maxParticipants = groupMembers.length;
+        const participantCount = Math.floor(Math.random() * (maxParticipants + 1)); // 0到maxParticipants
+        
+        console.log(`🎲 随机选择 ${participantCount} 个AI参与回复`);
+        
+        if (participantCount === 0) {
+          // 没有AI回复的情况
+          console.log('😴 这次没有AI参与回复');
+          setShowSendingHint(false);
+          setShowTyping(false);
+          setIsGenerating(false);
+          return;
+        }
+        
+        // 随机选择参与回复的AI并打乱顺序
+        const shuffledMembers = [...groupMembers].sort(() => Math.random() - 0.5);
+        const selectedAIs = shuffledMembers.slice(0, participantCount);
+        
+        console.log(`🎯 选中的AI: ${selectedAIs.map(ai => ai.characterSettings?.nickname || ai.name).join(', ')}`);
+        
+        // 依次让选中的AI回复
+        for (let i = 0; i < selectedAIs.length; i++) {
+          const currentAI = selectedAIs[i];
+          const aiName = currentAI.characterSettings?.nickname || currentAI.name;
+          
+          console.log(`🤖 ${aiName} 开始回复 (${i + 1}/${selectedAIs.length})`);
+          
+          try {
+            // 为当前AI构建个性化的系统提示
+            const aiSystemPrompt = `你现在在一个群聊中，群里有${groupMembers.length}个AI成员。你是${aiName}。
+
+当前群成员：${groupMembers.map(m => m.characterSettings?.nickname || m.name).join('、')}
+
+${currentAI.characterSettings?.systemPrompt || ''}
+
+群聊规则：
+- 你可以看到群里其他成员的发言
+- 保持你的个性，但要适应群聊氛围
+- 回复要自然，不要太长
+- 可以和其他AI互动
+- 使用自然口语表达，不要使用斜杠（/）等书面符号
+
+现在请根据最近的对话内容做出回应。`;
+
+            // 构建消息上下文
+            const aiMessages = [
+              { role: 'system', content: aiSystemPrompt },
+              ...conversation.messages.slice(-10).map((m: Message) => ({ // 只取最近10条消息避免上下文过长
+                role: m.role,
+                content: m.content || '[多媒体消息]'
+              }))
+            ];
+
+            const aiRequestBody = {
+              model: apiConfig.modelName,
+              messages: aiMessages,
+              temperature: 0.8 + Math.random() * 0.2 // 随机化temperature让回复更多样
+            };
+
+            // 显示当前AI正在输入
+            setShowTyping(true);
+            
+            // 调用AI生成回复
+            const response = await fetch(`${apiConfig.baseUrl}/v1/chat/completions`, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${apiConfig.apiKey}`,
+              },
+              body: JSON.stringify(aiRequestBody),
+            });
+
+            if (!response.ok) {
+              console.warn(`⚠️ ${aiName} 回复失败:`, response.status);
+              continue;
+            }
+
+            const data = await response.json();
+            
+            if (!data.choices || data.choices.length === 0) {
+              console.warn(`⚠️ ${aiName} 回复为空`);
+              continue;
+            }
+
+            const aiReplyContent = data.choices[0].message?.content?.trim();
+            
+            if (!aiReplyContent) {
+              console.warn(`⚠️ ${aiName} 回复内容为空`);
+              continue;
+            }
+
+            // 添加AI回复到对话
+            const aiMessage: Message = {
+              id: `${Date.now()}_${currentAI.id}_${Math.random()}`,
+              role: 'assistant',
+              content: `[${aiName}] ${aiReplyContent}`, // 标识是哪个AI回复的
+              timestamp: Date.now() + i, // 确保时间戳递增
+            };
+
+            // 更新对话
+            onUpdateConversation(conversation.id, {
+              messages: [...conversation.messages, aiMessage],
+              lastMessageTime: Date.now(),
+            });
+
+            console.log(`✅ ${aiName} 回复完成: ${aiReplyContent.substring(0, 30)}...`);
+
+            // AI回复间隔，模拟真人思考和打字时间
+            if (i < selectedAIs.length - 1) {
+              const delay = 2000 + Math.random() * 3000; // 2-5秒随机延迟
+              console.log(`⏳ 等待 ${Math.round(delay/1000)}s 后下一个AI回复`);
+              await new Promise(resolve => setTimeout(resolve, delay));
+            }
+
+          } catch (error) {
+            console.error(`❌ ${aiName} 回复出错:`, error);
+            continue;
+          }
+        }
+
+        // 所有AI回复完成
+        setShowSendingHint(false);
+        setShowTyping(false);
+        setIsGenerating(false);
+        
+        console.log(`🎉 群聊回复完成，共${selectedAIs.length}个AI参与了回复`);
+        return;
+      }
+      
+      // 🚀 私聊模式：使用原有的单AI回复逻辑
+      console.log('🚀 私聊模式：创建后台AI生成任务...');
       
       // 🎬 保持"消息发送中"提示，模拟输入动画将在下面逐条显示
       // 用户可以退出页面，但如果留在页面则会看到完整的输入过程
@@ -4552,18 +4693,53 @@ ${doc.content}`;
               <div id={`message-${message.id}`} className={`message-bubble flex gap-2 items-end transition-colors ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}>
                 {message.role === 'assistant' && (
                   <div className="relative flex-shrink-0">
-                    {conversation.characterSettings?.avatar ? (
-                      <div className="w-11 h-11 rounded-full overflow-hidden border-2 border-white shadow-md">
-                        <img src={conversation.characterSettings.avatar} alt="AI头像" className="w-full h-full object-cover" />
-                      </div>
-                    ) : (
-                      <div className="w-11 h-11 rounded-full bg-gradient-to-br from-gray-700 to-gray-900 flex items-center justify-center border-2 border-white shadow-md">
-                        <span className="text-white font-semibold text-sm">{conversation.name.charAt(0)}</span>
-                      </div>
-                    )}
-                    <div className="absolute -bottom-0.5 -right-0.5 w-4 h-4 bg-white rounded-full flex items-center justify-center shadow-sm">
-                      <span className="text-[10px]">{getUserBadge()}</span>
-                    </div>
+                    {(() => {
+                      // 群聊模式：从消息内容中提取AI名称
+                      if (conversation.type === 'group' && message.content.startsWith('[') && message.content.includes(']')) {
+                        const nameMatch = message.content.match(/^\[([^\]]+)\]/);
+                        const aiName = nameMatch ? nameMatch[1] : conversation.name;
+                        // 从群成员中找到对应的AI信息
+                        const aiMember = conversation.members?.map(memberId => 
+                          conversations.find(c => c.id === memberId)
+                        ).find(c => c && (c.characterSettings?.nickname === aiName || c.name === aiName));
+                        
+                        return (
+                          <>
+                            {aiMember?.characterSettings?.avatar ? (
+                              <div className="w-11 h-11 rounded-full overflow-hidden border-2 border-white shadow-md">
+                                <img src={aiMember.characterSettings.avatar} alt={`${aiName}头像`} className="w-full h-full object-cover" />
+                              </div>
+                            ) : (
+                              <div className="w-11 h-11 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center border-2 border-white shadow-md">
+                                <span className="text-white font-semibold text-sm">{aiName.charAt(0)}</span>
+                              </div>
+                            )}
+                            {/* 显示AI名称标签 */}
+                            <div className="absolute -top-1 left-1/2 transform -translate-x-1/2 bg-blue-500 text-white text-xs px-2 py-0.5 rounded-full whitespace-nowrap shadow-sm">
+                              {aiName}
+                            </div>
+                          </>
+                        );
+                      } else {
+                        // 私聊模式：使用原有逻辑
+                        return (
+                          <>
+                            {conversation.characterSettings?.avatar ? (
+                              <div className="w-11 h-11 rounded-full overflow-hidden border-2 border-white shadow-md">
+                                <img src={conversation.characterSettings.avatar} alt="AI头像" className="w-full h-full object-cover" />
+                              </div>
+                            ) : (
+                              <div className="w-11 h-11 rounded-full bg-gradient-to-br from-gray-700 to-gray-900 flex items-center justify-center border-2 border-white shadow-md">
+                                <span className="text-white font-semibold text-sm">{conversation.name.charAt(0)}</span>
+                              </div>
+                            )}
+                            <div className="absolute -bottom-0.5 -right-0.5 w-4 h-4 bg-white rounded-full flex items-center justify-center shadow-sm">
+                              <span className="text-[10px]">{getUserBadge()}</span>
+                            </div>
+                          </>
+                        );
+                      }
+                    })()}
                   </div>
                 )}
                 <div className="relative max-w-[70%]">
@@ -5222,7 +5398,17 @@ ${doc.content}`;
                     
                     {/* 纯文字内容 */}
                     {!message.mediaType && !message.moneyTransfer && !message.document && !message.order && message.content && message.content.trim() && (
-                      <p className={`text-[15px] leading-relaxed whitespace-pre-wrap break-words ${message.replyTo ? 'px-4' : ''}`}>{message.content}</p>
+                      <p className={`text-[15px] leading-relaxed whitespace-pre-wrap break-words ${message.replyTo ? 'px-4' : ''}`}>
+                        {(() => {
+                          // 群聊模式：去掉AI名称前缀，因为已经在头像上显示了
+                          if (conversation.type === 'group' && message.role === 'assistant' && 
+                              message.content.startsWith('[') && message.content.includes(']')) {
+                            const nameMatch = message.content.match(/^\[([^\]]+)\]\s*/);
+                            return nameMatch ? message.content.replace(nameMatch[0], '') : message.content;
+                          }
+                          return message.content;
+                        })()}
+                      </p>
                     )}
                     {/* 用户媒体的描述文字（排除语音和表情包） */}
                     {message.role === 'user' && message.mediaType && message.mediaType !== 'sticker' && message.mediaType !== 'voice' && message.mediaDescription && (
