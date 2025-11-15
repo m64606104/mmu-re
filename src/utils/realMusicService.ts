@@ -357,18 +357,92 @@ export class RealMusicService {
   }
 
   /**
-   * 验证音频URL是否可播放
+   * 验证音频URL是否可播放 - 参考DLC实现改进
    */
   async validateAudioUrl(url: string): Promise<boolean> {
     try {
-      const audio = new Audio();
       return new Promise((resolve) => {
-        audio.oncanplay = () => resolve(true);
-        audio.onerror = () => resolve(false);
+        const audio = new Audio();
+        let resolved = false;
+        
+        // 设置5秒超时
+        const timeout = setTimeout(() => {
+          if (!resolved) {
+            resolved = true;
+            resolve(false);
+          }
+        }, 5000);
+        
+        audio.addEventListener('canplay', () => {
+          if (!resolved) {
+            resolved = true;
+            clearTimeout(timeout);
+            resolve(true);
+          }
+        });
+        
+        audio.addEventListener('error', () => {
+          if (!resolved) {
+            resolved = true;
+            clearTimeout(timeout);
+            resolve(false);
+          }
+        });
+        
+        // 参考DLC设置方式
         audio.src = url;
+        audio.preload = 'metadata';
+        audio.load();
       });
     } catch {
       return false;
+    }
+  }
+
+  /**
+   * 获取音频测试报告 - 新增功能
+   */
+  async getMusicTestReport(): Promise<any> {
+    console.log('🎵 开始音乐服务测试...');
+    
+    try {
+      // 测试各个API的示例音频
+      const testResults = await Promise.all([
+        this.searchiTunes('test').then(results => ({
+          api: 'iTunes',
+          success: results.length > 0,
+          count: results.length,
+          sampleUrl: results[0]?.previewUrl || null
+        })).catch(() => ({ api: 'iTunes', success: false, count: 0, sampleUrl: null })),
+        
+        this.searchJamendo('test').then(results => ({
+          api: 'Jamendo', 
+          success: results.length > 0,
+          count: results.length,
+          sampleUrl: results[0]?.audioUrl || null
+        })).catch(() => ({ api: 'Jamendo', success: false, count: 0, sampleUrl: null })),
+        
+        this.searchLocal('test').then(results => ({
+          api: 'Local',
+          success: results.length > 0, 
+          count: results.length,
+          sampleUrl: results[0]?.audioUrl || null
+        })).catch(() => ({ api: 'Local', success: false, count: 0, sampleUrl: null }))
+      ]);
+      
+      console.log('🎵 音乐API测试结果:', testResults);
+      return {
+        timestamp: new Date().toISOString(),
+        apis: testResults,
+        summary: {
+          working: testResults.filter(r => r.success).length,
+          total: testResults.length,
+          workingApis: testResults.filter(r => r.success).map(r => r.api)
+        }
+      };
+    } catch (error) {
+      console.error('🎵 音乐服务测试失败:', error);
+      return { error: error instanceof Error ? error.message : '未知错误' };
     }
   }
 

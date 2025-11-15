@@ -30,35 +30,44 @@ const RealMusicCard: React.FC<RealMusicCardProps> = ({
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const progressRef = useRef<HTMLDivElement | null>(null);
 
-  // 初始化音频
+  // 参考DLC实现：简化音频初始化
   useEffect(() => {
     const initAudio = () => {
-      // 优先使用完整音频，如果没有则使用预览
       const audioUrl = music.audioUrl || music.previewUrl;
       
       if (audioUrl && audioRef.current) {
-        setIsLoading(true);
-        setError(null);
-        
-        console.log(`🎵 初始化音频播放:`, {
+        console.log(`🎵 初始化音频:`, {
           title: music.title,
           artist: music.artist,
-          hasFullVersion: !!music.audioUrl,
-          hasPreview: !!music.previewUrl,
-          usingUrl: audioUrl,
+          url: audioUrl,
+          source: music.source,
           isFullVersion: music.isFullVersion
         });
         
-        // 添加预加载设置
-        audioRef.current.preload = 'metadata';
+        setError(null);
+        setIsLoading(true);
+        
+        // 参考DLC：简单直接的设置方式
         audioRef.current.src = audioUrl;
-        audioRef.current.addEventListener('loadedmetadata', handleLoadedMetadata);
-        audioRef.current.addEventListener('timeupdate', handleTimeUpdate);
-        audioRef.current.addEventListener('ended', handleEnded);
-        audioRef.current.addEventListener('error', handleAudioError);
+        audioRef.current.preload = 'metadata';
+        
+        // 绑定事件监听器
+        const audio = audioRef.current;
+        audio.addEventListener('loadedmetadata', handleLoadedMetadata);
+        audio.addEventListener('timeupdate', handleTimeUpdate);
+        audio.addEventListener('ended', handleEnded);
+        audio.addEventListener('error', handleAudioError);
+        audio.addEventListener('canplay', () => {
+          setIsLoading(false);
+          setAudioReady(true);
+          console.log('🎵 音频可播放');
+        });
+        
+        // 尝试加载
+        audio.load();
       } else {
         setError('无可用音频源');
-        console.warn('🎵 音乐无可用音频源:', music);
+        console.warn('🎵 音乐无音频URL:', music);
       }
     };
 
@@ -66,10 +75,15 @@ const RealMusicCard: React.FC<RealMusicCardProps> = ({
     
     return () => {
       if (audioRef.current) {
-        audioRef.current.removeEventListener('loadedmetadata', handleLoadedMetadata);
-        audioRef.current.removeEventListener('timeupdate', handleTimeUpdate);
-        audioRef.current.removeEventListener('ended', handleEnded);
-        audioRef.current.removeEventListener('error', handleAudioError);
+        const audio = audioRef.current;
+        audio.removeEventListener('loadedmetadata', handleLoadedMetadata);
+        audio.removeEventListener('timeupdate', handleTimeUpdate);
+        audio.removeEventListener('ended', handleEnded);
+        audio.removeEventListener('error', handleAudioError);
+        
+        // 清理播放状态
+        audio.pause();
+        setIsPlaying(false);
       }
     };
   }, [music]);
@@ -123,45 +137,57 @@ const RealMusicCard: React.FC<RealMusicCardProps> = ({
   };
 
   const handlePlay = async () => {
-    if (!audioRef.current || !audioReady) return;
+    if (!audioRef.current) return;
 
     try {
       if (isPlaying) {
         // 暂停播放
         audioRef.current.pause();
         setIsPlaying(false);
+        console.log('🎵 音频暂停');
       } else {
-        // 重置任何之前的播放状态
-        if (audioRef.current.readyState >= 2) { // HAVE_CURRENT_DATA
-          // 先暂停确保没有其他播放操作
-          audioRef.current.pause();
+        // 参考DLC实现：更简洁的播放逻辑
+        console.log('🎵 尝试播放音频:', {
+          src: audioRef.current.src,
+          readyState: audioRef.current.readyState,
+          networkState: audioRef.current.networkState
+        });
+        
+        // 确保音频源存在
+        if (!audioRef.current.src) {
+          setError('音频源不存在');
+          return;
+        }
+        
+        // 直接播放，让浏览器处理加载
+        try {
+          const playPromise = audioRef.current.play();
           
-          // 稍微延迟后再播放，避免冲突
-          setTimeout(async () => {
-            try {
-              if (audioRef.current) {
-                await audioRef.current.play();
-                setIsPlaying(true);
-                setError(null); // 清除之前的错误
-              }
-            } catch (playError: any) {
-              console.warn('🎵 播放尝试失败:', playError);
-              if (playError?.name === 'AbortError') {
-                setError('播放被中断，请重试');
-              } else if (playError?.name === 'NotAllowedError') {
-                setError('请先点击页面任意位置再播放');
-              } else {
-                setError('播放失败，请检查网络连接');
-              }
-            }
-          }, 100);
-        } else {
-          setError('音频还未完全加载，请稍候再试');
+          if (playPromise !== undefined) {
+            await playPromise;
+            setIsPlaying(true);
+            setError(null);
+            console.log('🎵 播放成功');
+          }
+        } catch (playError: any) {
+          console.warn('🎵 播放失败:', playError);
+          
+          // 参考DLC的错误处理方式
+          if (playError.name === 'NotAllowedError') {
+            setError('需要用户交互后才能播放，请点击重试');
+          } else if (playError.name === 'AbortError') {
+            setError('播放被中断，请重试');
+          } else if (playError.name === 'NotSupportedError') {
+            setError('不支持的音频格式');
+          } else {
+            setError(`播放失败: ${playError.message || '未知错误'}`);
+          }
+          setIsPlaying(false);
         }
       }
-    } catch (error) {
-      console.error('🎵 播放处理失败:', error);
-      setError('播放操作失败');
+    } catch (error: any) {
+      console.error('🎵 播放处理异常:', error);
+      setError(`播放异常: ${error.message || '未知错误'}`);
       setIsPlaying(false);
     }
   };

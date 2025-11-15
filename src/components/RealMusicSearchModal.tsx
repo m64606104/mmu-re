@@ -4,9 +4,10 @@
  */
 
 import React, { useState, useRef } from 'react';
-import { X, Search, Upload, Globe, Loader, AlertCircle, CheckCircle } from 'lucide-react';
+import { X, Search, Upload, Globe, Loader, AlertCircle, CheckCircle, TestTube } from 'lucide-react';
 import { RealMusicInfo, realMusicService } from '../utils/realMusicService';
 import RealMusicCard from './RealMusicCard';
+import audioTestService from '../utils/audioTestService';
 
 interface RealMusicSearchModalProps {
   isOpen: boolean;
@@ -34,6 +35,9 @@ const RealMusicSearchModal: React.FC<RealMusicSearchModalProps> = ({
   const [urlValidating, setUrlValidating] = useState(false);
   const [urlValid, setUrlValid] = useState<boolean | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  
+  // 音频测试状态
+  const [isTesting, setIsTesting] = useState(false);
 
   const tabs = [
     { id: 'search', label: '在线搜索', icon: Search },
@@ -141,6 +145,60 @@ const RealMusicSearchModal: React.FC<RealMusicSearchModalProps> = ({
     }
   };
 
+  // 音频兼容性测试 - 参考DLC实现
+  const handleAudioTest = async () => {
+    setIsTesting(true);
+    
+    try {
+      console.log('🧪 开始音频兼容性测试...');
+      
+      // 1. 测试浏览器支持
+      const browserCapability = audioTestService.testBrowserCapability();
+      console.log('🌐 浏览器音频能力:', browserCapability);
+      
+      // 2. 生成测试音频
+      const testAudioUrl = audioTestService.generateTestAudio();
+      console.log('🎵 生成测试音频:', testAudioUrl);
+      
+      // 3. 测试音乐API
+      const musicTestReport = await realMusicService.getMusicTestReport();
+      console.log('🎶 音乐API测试:', musicTestReport);
+      
+      // 4. 如果有搜索结果，测试音频URL
+      let audioUrlTests = new Map();
+      if (searchResults.length > 0) {
+        const testUrls = searchResults.slice(0, 3).map(r => r.audioUrl || r.previewUrl).filter(Boolean) as string[];
+        if (testUrls.length > 0) {
+          audioUrlTests = await audioTestService.testMultipleUrls(testUrls);
+          console.log('🔗 音频URL测试:', audioUrlTests);
+        }
+      }
+      
+      // 显示测试结果摘要
+      const workingApis = musicTestReport.summary?.workingApis || [];
+      const supportedFormats = browserCapability.formats;
+      const workingUrls = Array.from(audioUrlTests.values()).filter(r => r.success).length;
+      
+      alert(`🧪 音频兼容性测试完成！
+
+📊 测试结果:
+• 浏览器支持: ${supportedFormats.join(', ')} 格式
+• 可用音乐API: ${workingApis.length > 0 ? workingApis.join(', ') : '无'}
+• 可播放URL: ${workingUrls}/${audioUrlTests.size}个
+• 测试音频: ${testAudioUrl ? '生成成功' : '生成失败'}
+
+${workingApis.length === 0 ? '⚠️ 所有音乐API都不可用，建议使用本地上传或音频链接功能。' : '✅ 音频功能正常可用！'}
+
+详细日志请查看浏览器控制台。`);
+      
+    } catch (error) {
+      console.error('🧪 音频测试失败:', error);
+      alert(`❌ 音频测试失败: ${error instanceof Error ? error.message : '未知错误'}`);
+    } finally {
+      setIsTesting(false);
+    }
+  };
+
 
   if (!isOpen) return null;
 
@@ -183,6 +241,26 @@ const RealMusicSearchModal: React.FC<RealMusicSearchModalProps> = ({
             ))}
             </div>
             
+            {/* 音频测试按钮 */}
+            <div className="p-4 border-t">
+              <button
+                onClick={handleAudioTest}
+                disabled={isTesting}
+                className="w-full p-2 bg-purple-500 text-white rounded-lg hover:bg-purple-600 disabled:opacity-50 transition-colors flex items-center justify-center gap-2"
+              >
+                {isTesting ? (
+                  <>
+                    <Loader className="w-4 h-4 animate-spin" />
+                    测试中...
+                  </>
+                ) : (
+                  <>
+                    <TestTube className="w-4 h-4" />
+                    音频兼容性测试
+                  </>
+                )}
+              </button>
+            </div>
             
             {/* 预览区域 */}
             {selectedMusic && (
