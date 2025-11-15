@@ -51,46 +51,11 @@ export default function HomeScreen({ onNavigate, theme }: HomeScreenProps) {
   // 应用布局状态
   const [appLayout, setAppLayout] = useState<string[]>(() => {
     const saved = localStorage.getItem('appLayout');
-    let layout = saved ? JSON.parse(saved) : ['settings', 'social', 'user-system', 'theme', 'music', 'phone', 'bell', 'mail', 'database'];
-    
-    // 🔥 为老用户自动添加好友功能：如果布局中没有'user-system'，则添加它
-    if (saved && !layout.includes('user-system')) {
-      // 在'social'后面插入'user-system'
-      const socialIndex = layout.indexOf('social');
-      if (socialIndex !== -1) {
-        layout.splice(socialIndex + 1, 0, 'user-system');
-      } else {
-        // 如果没有social，就放在第三位
-        layout.splice(2, 0, 'user-system');
-      }
-      
-      // 保存更新后的布局
-      localStorage.setItem('appLayout', JSON.stringify(layout));
-      console.log('✅ 为老用户添加了好友功能到主页面');
-    }
-    
-    return layout;
+    return saved ? JSON.parse(saved) : ['settings', 'social', 'theme', 'music', 'phone', 'bell', 'mail', 'database'];
   });
   const [quickLayout, setQuickLayout] = useState<string[]>(() => {
     const saved = localStorage.getItem('quickLayout');
-    let layout = saved ? JSON.parse(saved) : ['announcement', 'social', 'user-system', 'settings'];
-    
-    // 🔥 为老用户在快捷栏也添加好友功能（可选）
-    if (saved && !layout.includes('user-system') && layout.length < 4) {
-      // 如果快捷栏还有空间，添加好友功能
-      const socialIndex = layout.indexOf('social');
-      if (socialIndex !== -1) {
-        layout.splice(socialIndex + 1, 0, 'user-system');
-      } else {
-        layout.push('user-system');
-      }
-      
-      // 保存更新后的布局
-      localStorage.setItem('quickLayout', JSON.stringify(layout));
-      console.log('✅ 为老用户在快捷栏添加了好友功能');
-    }
-    
-    return layout;
+    return saved ? JSON.parse(saved) : ['announcement', 'social', 'heart', 'settings'];
   });
   const [dockLayout, setDockLayout] = useState<string[]>(() => {
     const saved = localStorage.getItem('dockLayout');

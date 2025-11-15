@@ -158,8 +158,8 @@ const RealMusicSearchModal: React.FC<RealMusicSearchModalProps> = ({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 overflow-y-auto">
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-4xl max-h-[90vh] overflow-hidden my-8">
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-4xl max-h-[90vh] overflow-hidden">
         {/* 头部 */}
         <div className="flex items-center justify-between p-6 border-b">
           <div>
@@ -177,22 +177,22 @@ const RealMusicSearchModal: React.FC<RealMusicSearchModalProps> = ({
         <div className="flex flex-col lg:flex-row h-[calc(90vh-5rem)]">
           {/* 左侧选项卡 */}
           <div className="lg:w-80 border-r bg-gray-50">
-            <div className="p-4 space-y-1.5">
+            <div className="p-4 space-y-2">
               {tabs.map((tab) => (
                 <button
                   key={tab.id}
                   onClick={() => setActiveTab(tab.id as any)}
-                  className={`w-full px-3 py-2 rounded-lg text-left transition-all ${
+                  className={`w-full p-2 rounded-lg text-left transition-all ${
                     activeTab === tab.id
                       ? 'bg-blue-500 text-white shadow-lg'
                       : 'bg-white hover:bg-gray-100 text-gray-700'
                   }`}
                 >
-                  <div className="flex items-center gap-3">
+                  <div className="flex items-center gap-2">
                     <tab.icon className="w-4 h-4" />
                     <div>
                       <div className="text-sm font-medium">{tab.label}</div>
-                      <div className={`text-[11px] ${
+                      <div className={`text-xs ${
                         activeTab === tab.id ? 'text-blue-100' : 'text-gray-500'
                       }`}>
                         {tab.desc}
@@ -217,7 +217,7 @@ const RealMusicSearchModal: React.FC<RealMusicSearchModalProps> = ({
           </div>
 
           {/* 右侧内容区域 */}
-          <div className="flex-1 overflow-auto min-h-0">
+          <div className="flex-1 overflow-auto">
             <div className="p-6">
               {/* 在线搜索 */}
               {activeTab === 'search' && (

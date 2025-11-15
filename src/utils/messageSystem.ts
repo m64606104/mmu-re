@@ -156,36 +156,6 @@ function updateConversation(fromUserCode: string, toUserCode: string, message: U
 }
 
 /**
- * 创建初始对话记录（添加好友时调用）
- */
-export function createInitialConversation(userCode: string): void {
-  const currentUser = getCurrentUser();
-  if (!currentUser) return;
-  
-  const conversations = getConversations();
-  const conversationId = [currentUser.userCode, userCode].sort().join('_');
-  
-  // 检查对话是否已存在
-  const existingConversation = conversations.find(c => c.id === conversationId);
-  if (existingConversation) return;
-  
-  // 创建新对话记录
-  const newConversation: Conversation = {
-    id: conversationId,
-    participants: [currentUser.userCode, userCode],
-    unreadCount: 0,
-    updatedAt: Date.now()
-  };
-  
-  conversations.push(newConversation);
-  conversations.sort((a, b) => b.updatedAt - a.updatedAt);
-  
-  localStorage.setItem('conversations', JSON.stringify(conversations));
-  
-  console.log(`✅ 创建初始对话记录: ${conversationId}`);
-}
-
-/**
  * 标记对话为已读
  */
 export function markConversationAsRead(userCode: string): void {

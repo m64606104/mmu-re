@@ -1143,50 +1143,6 @@ ${recentMessages}
     setSelectedMessages([]);
   };
 
-  // 📤 导出选中消息为JSON
-  const handleExportSelectedMessages = () => {
-    if (selectedMessages.length === 0) return;
-
-    // 获取选中的消息对象（保持原有顺序）
-    const selectedMsgs = conversation.messages.filter(m =>
-      selectedMessages.includes(m.id)
-    );
-
-    const exportData = {
-      type: 'partial-chat-export',
-      conversationId: conversation.id,
-      conversationName: conversation.name,
-      characterSettings: conversation.characterSettings,
-      selectedMessageIds: selectedMessages,
-      messages: selectedMsgs,
-      exportDate: new Date().toISOString(),
-      appVersion: '1.0.0',
-    };
-
-    try {
-      const dataStr = JSON.stringify(exportData, null, 2);
-      const blob = new Blob([dataStr], { type: 'application/json' });
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
-      const dateStr = new Date().toLocaleDateString().replace(/\//g, '-');
-      link.download = `${conversation.name}_部分聊天记录_${dateStr}.json`;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      URL.revokeObjectURL(url);
-
-      showToast(`已导出 ${selectedMsgs.length} 条消息`, 'success');
-    } catch (error) {
-      console.error('导出选中消息失败:', error);
-      showToast('导出失败，请重试', 'error');
-    }
-
-    // 导出完成后退出多选模式
-    setIsMultiSelectMode(false);
-    setSelectedMessages([]);
-  };
-
   // 📤 提取选中消息为文档 - 显示预览
   const handleExtractToDocument = () => {
     if (selectedMessages.length === 0) return;
@@ -1863,17 +1819,17 @@ ${characterInfo?.languageStyle ? `语言风格：${characterInfo.languageStyle}`
               console.error('❌ 同步AI财务记录失败:', error);
             });
           }
-          // 🚀 如果是用户发送给AI的红包/转账，AI收到后记录收入
+          // 🚀 如果是用户发送给AI的红包/转账，AI收到后静默记录收入（不显示详细信息）
           else if (targetMessage.role === 'user') {
             addAIFinanceTransaction(
               conversation.id,
               'income',  // AI收入
               msg.moneyTransfer.amount,
-              msg.moneyTransfer.type === 'redPacket' ? '红包收入' : '转账收入',
-              `收到用户${msg.moneyTransfer.type === 'redPacket' ? '红包' : '转账'}: ${msg.moneyTransfer.message || '无留言'}`,
+              msg.moneyTransfer.type === 'redPacket' ? '收到红包' : '收到转账',
+              '---',  // 隐藏详细信息，保护隐私
               'user',
               messageId,
-              false
+              true  // 设置为隐私模式，不在AI财务报告中显示详细金额和来源
             ).catch(error => {
               console.error('❌ 同步AI财务记录失败:', error);
             });
@@ -6143,7 +6099,6 @@ ${doc.content}`;
         onExtractDocument={handleExtractToDocument}
         onForward={handleForwardMessages}
         onDelete={handleBatchDelete}
-        onExport={handleExportSelectedMessages}
       />
     )}
 

@@ -74,9 +74,9 @@ const WordStyleDocumentModal: React.FC<WordStyleDocumentModalProps> = ({
   };
   
   return (
-    <div className="fixed inset-0 z-50 bg-gray-100 flex flex-col">
+    <div className="fixed inset-0 z-[9999] bg-gray-100 flex flex-col">
       {/* 顶部工具栏（Word 风格） */}
-      <div className="bg-white border-b shadow-sm">
+      <div className="bg-white border-b shadow-sm relative z-[10000]">
         {/* 顶部标题栏 */}
         <div className="px-6 py-4 flex items-center justify-between">
           <div className="flex items-center gap-4 flex-1 min-w-0">

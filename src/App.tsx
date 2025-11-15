@@ -374,8 +374,6 @@ function App() {
         isMuted: data.character?.isMuted || false,
         // 保留AI状态信息
         aiStatus: data.character?.aiStatus,
-        // 导入子聊天记录（如果存在）
-        subChats: data.subChats || [],
       };
       
       console.log('✅ 创建新对话:', newConversation);
