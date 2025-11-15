@@ -398,22 +398,20 @@ const RealMusicSearchModal: React.FC<RealMusicSearchModalProps> = ({
                 </div>
               )}
 
-              {/* 操作按钮 */}
-              <div className="flex gap-3 mt-8 pt-6 border-t">
-                <button
-                  onClick={onClose}
-                  className="px-6 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
-                >
-                  取消
-                </button>
-                <button
-                  onClick={handleConfirmSelection}
-                  disabled={!selectedMusic}
-                  className="flex-1 px-6 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 disabled:opacity-50 transition-colors"
-                >
-                  分享给 {characterName}
-                </button>
-              </div>
+              {/* 分享按钮 */}
+              {selectedMusic && (
+                <div className="mt-8 pt-6 border-t">
+                  <button
+                    onClick={handleConfirmSelection}
+                    className="w-full px-6 py-3 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors font-medium text-center"
+                  >
+                    🎵 分享给 {characterName}
+                  </button>
+                  <p className="text-xs text-gray-500 mt-2 text-center">
+                    {selectedMusic.source === 'jamendo' ? '完整音频' : '30秒预览'}
+                  </p>
+                </div>
+              )}
             </div>
           </div>
         </div>

@@ -160,6 +160,7 @@ const RealMusicCard: React.FC<RealMusicCardProps> = ({
             <Music className="w-5 h-5" />
             <span className="text-sm opacity-90">
               {music.playable ? (
+                music.source === 'jamendo' ? '完整音频' : 
                 (music as any).fullAudioUrl ? '30秒预览' : '完整音频'
               ) : '仅信息'}
             </span>

@@ -1877,22 +1877,18 @@ ${characterInfo?.languageStyle ? `语言风格：${characterInfo.languageStyle}`
     // 🔥 修复AI红包接收逻辑：当AI接收/退回用户红包时，需要添加AI的回复消息
     let finalMessages = updatedMessages;
     if (targetMessage.role === 'user' && targetMessage.moneyTransfer) {
-      const aiReplyContent = accept 
-        ? `谢谢你的${targetMessage.moneyTransfer.type === 'redPacket' ? '红包' : '转账'}！💰`
-        : `不好意思，我暂时不能收这个${targetMessage.moneyTransfer.type === 'redPacket' ? '红包' : '转账'}，退还给你了。`;
-      
       const aiReplyMessage: Message = {
         id: `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
         role: 'assistant',
-        content: aiReplyContent,
+        content: accept ? '是不是感冒了，听歌我点安慰呢？' : `不好意思，我暂时不能收这个${targetMessage.moneyTransfer.type === 'redPacket' ? '红包' : '转账'}。`,
         timestamp: Date.now(),
-        moneyTransfer: {
+        moneyTransfer: accept ? {
           type: targetMessage.moneyTransfer.type,
           amount: targetMessage.moneyTransfer.amount,
-          status: accept ? 'received' as const : 'returned' as const,
+          status: 'received' as const,
           message: targetMessage.moneyTransfer.message,
-          receivedAt: accept ? Date.now() : undefined
-        }
+          receivedAt: Date.now()
+        } : undefined
       };
       
       finalMessages = [...updatedMessages, aiReplyMessage];
@@ -2016,7 +2012,7 @@ ${characterInfo?.languageStyle ? `语言风格：${characterInfo.languageStyle}`
         duration: realMusicInfo.duration,
         genre: realMusicInfo.genre,
         releaseYear: realMusicInfo.releaseYear,
-        audioUrl: realMusicInfo.audioUrl || realMusicInfo.previewUrl, // 优先使用完整音频，否则使用预览
+        audioUrl: realMusicInfo.source === 'jamendo' ? realMusicInfo.audioUrl : (realMusicInfo.audioUrl || realMusicInfo.previewUrl), // Jamendo优先使用完整音频
         previewUrl: realMusicInfo.previewUrl,
         fullAudioUrl: realMusicInfo.fullAudioUrl, // 外部完整版本链接
         coverUrl: realMusicInfo.coverUrl,
