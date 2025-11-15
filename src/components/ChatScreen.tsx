@@ -4724,11 +4724,13 @@ ${currentAI.characterSettings?.systemPrompt || ''}
                   </span>
                 </div>
               ) : (
-              <div id={`message-${message.id}`} className={`message-bubble flex gap-2 items-end transition-colors ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+              <div id={`message-${message.id}`} className={`message-bubble flex gap-2 transition-colors ${
+                message.role === 'user' ? 'justify-end items-end' : conversation.type === 'group' ? 'justify-start items-start' : 'justify-start items-end'
+              }`}>
                 {message.role === 'assistant' && (
-                  <div className="relative flex-shrink-0">
+                  <div className="flex-shrink-0">
                     {(() => {
-                      // 群聊模式：使用Message中的AI标识信息
+                      // 群聊模式：参考QQ样式显示
                       if (conversation.type === 'group' && message.aiId) {
                         // 从群成员中找到对应的AI信息
                         const aiMember = conversation.members?.map(memberId => 
@@ -4740,26 +4742,27 @@ ${currentAI.characterSettings?.systemPrompt || ''}
                         const avatar = aiMember?.characterSettings?.avatar;
                         
                         return (
-                          <>
+                          <div className="flex flex-col items-center mb-1">
+                            {/* QQ风格：昵称在头像上方 */}
+                            <div className="text-xs text-gray-500 mb-1 max-w-[60px] truncate text-center">
+                              {displayName}
+                            </div>
+                            {/* QQ风格：头像 */}
                             {avatar ? (
-                              <div className="w-11 h-11 rounded-full overflow-hidden border-2 border-white shadow-md">
+                              <div className="w-10 h-10 rounded-full overflow-hidden">
                                 <img src={avatar} alt={`${displayName}头像`} className="w-full h-full object-cover" />
                               </div>
                             ) : (
-                              <div className="w-11 h-11 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center border-2 border-white shadow-md">
+                              <div className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center">
                                 <span className="text-white font-semibold text-sm">{displayName.charAt(0)}</span>
                               </div>
                             )}
-                            {/* 显示AI名称标签 - 使用网名(nickname) */}
-                            <div className="absolute -top-1 left-1/2 transform -translate-x-1/2 bg-blue-500 text-white text-xs px-2 py-0.5 rounded-full whitespace-nowrap shadow-sm">
-                              {displayName}
-                            </div>
-                          </>
+                          </div>
                         );
                       } else {
                         // 私聊模式：使用原有逻辑
                         return (
-                          <>
+                          <div className="relative">
                             {conversation.characterSettings?.avatar ? (
                               <div className="w-11 h-11 rounded-full overflow-hidden border-2 border-white shadow-md">
                                 <img src={conversation.characterSettings.avatar} alt="AI头像" className="w-full h-full object-cover" />
@@ -4772,7 +4775,7 @@ ${currentAI.characterSettings?.systemPrompt || ''}
                             <div className="absolute -bottom-0.5 -right-0.5 w-4 h-4 bg-white rounded-full flex items-center justify-center shadow-sm">
                               <span className="text-[10px]">{getUserBadge()}</span>
                             </div>
-                          </>
+                          </div>
                         );
                       }
                     })()}
