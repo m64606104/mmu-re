@@ -70,7 +70,7 @@ import { getErrorFromResponse, formatErrorMessage } from '../utils/apiErrorHandl
 // @ts-ignore - 函数在backgroundTaskManager内部使用，TS静态分析无法识别
 import { splitMessages, cleanAIMessage } from '../utils/messageFormatter';
 // 群聊服务
-import { generateGroupChatReplies, generateGroupChatRepliesFreeMode, GroupAIReply } from '../utils/groupChatService';
+import { generateGroupChatReplies, generateGroupChatRepliesFreeMode } from '../utils/groupChatService';
 import GroupChatSettingsModal from './GroupChatSettingsModal';
 // import { backgroundTaskManager } from '../utils/backgroundTaskManager';
 // 直接在这里定义一个简化版的backgroundTaskManager作为替代
@@ -2612,7 +2612,7 @@ ${characterInfo?.languageStyle ? `语言风格：${characterInfo.languageStyle}`
             console.log(`⌨️ ${aiId} 正在输入...`);
           },
           
-          onAIMessage: (aiId, message) => {
+          onAIMessage: (_aiId, message) => {
             // 添加消息到对话
             const updatedMessages = [...conversation.messages, message];
             onUpdateConversation(conversation.id, {
@@ -3329,8 +3329,6 @@ ${SmartHTMLGenerator.getModuleInstructions()}
 - 你的余额有限（初始500元），合理使用
 
 记住：像真人一样使用这些功能，在合适的时机自然地发送红包、转账、文档或礼物。`
-        : conversation.type === 'group'
-        ? '你是一个群聊助手，可以参与多人对话。使用自然口语表达，不要使用斜杠（/）等书面符号。'
         : '你是一个AI助手。使用自然口语表达，不要使用斜杠（/）等书面符号。';
 
       // 添加用户资料信息
@@ -3786,9 +3784,10 @@ ${currentAI.characterSettings?.systemPrompt || ''}
 现在请根据最近的对话内容做出回应。`;
 
             // 构建消息上下文
+            const recentMessages = conversation.messages.slice(-10); // 只取最近10条消息避免上下文过长
             const aiMessages = [
               { role: 'system', content: aiSystemPrompt },
-              ...contextMessages.slice(-10).map(m => ({ // 只取最近10条消息避免上下文过长
+              ...recentMessages.map((m: Message) => ({
                 role: m.role,
                 content: m.content || '[多媒体消息]'
               }))
