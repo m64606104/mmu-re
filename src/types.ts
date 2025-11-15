@@ -24,6 +24,10 @@ export interface Message {
   role: 'user' | 'assistant' | 'system';
   content: string;
   timestamp: number;
+  // 👥 群聊中的发送者信息
+  senderId?: string;
+  senderName?: string;
+  senderAvatar?: string;
   // 新的多媒体支持
   mediaItems?: MediaItem[]; // 多媒体数组，支持混合发送
   // 旧的单媒体字段（保留兼容性）

@@ -3745,11 +3745,12 @@ ${doc.content}`;
         
         console.log(`🎯 选中的AI: ${respondingMembers.map(ai => ai.characterSettings?.nickname || ai.name).join(', ')}`);
         
-        // 隐藏"消息发送中"提示
-        setShowSendingHint(false);
+        // 📌 保持"消息发送中"提示，直到第一个AI开始回复
+        // setShowSendingHint(false); // 不在这里隐藏
         
         // 逐个AI成员生成回复（流式：一个接一个）
         let currentMessages = [...conversation.messages];
+        let isFirstBubble = true; // 标记是否是第一个气泡
         
         for (let i = 0; i < respondingMembers.length; i++) {
           const member = respondingMembers[i];
@@ -3775,17 +3776,27 @@ ${doc.content}`;
             const apiMessages: any[] = [
               { role: 'system' as const, content: groupChatSystemPrompt },
               ...recentMessages.map(msg => {
-                // 获取发送者名字
+                // 🔥 获取发送者名字（使用senderId而不是内容中的标签）
                 let senderName = '我';
                 if (msg.role === 'assistant') {
-                  // 查找是哪个AI发的
-                  const sender = groupMembers.find(m => 
-                    msg.content?.includes(`[${m.characterSettings?.nickname || m.name}]`)
-                  );
-                  if (sender) {
-                    senderName = sender.characterSettings?.nickname || sender.name;
+                  // 使用senderId查找发送者
+                  if (msg.senderId) {
+                    const sender = groupMembers.find(m => m.id === msg.senderId);
+                    if (sender) {
+                      senderName = sender.characterSettings?.nickname || sender.name;
+                    } else {
+                      senderName = msg.senderName || '其他AI';
+                    }
                   } else {
-                    senderName = '其他AI';
+                    // 兼容旧消息：通过内容中的[]标签查找
+                    const sender = groupMembers.find(m => 
+                      msg.content?.includes(`[${m.characterSettings?.nickname || m.name}]`)
+                    );
+                    if (sender) {
+                      senderName = sender.characterSettings?.nickname || sender.name;
+                    } else {
+                      senderName = '其他AI';
+                    }
                   }
                 }
                 
@@ -3808,7 +3819,7 @@ ${doc.content}`;
                   };
                 }
                 
-                // 清理消息内容（移除AI名称标签）
+                // 清理消息内容（移除AI名称标签，如果有的话）
                 let content = formatMessageForAI(msg);
                 if (msg.role === 'assistant') {
                   content = content.replace(/^\[.+?\]\s*/, '');
@@ -3864,6 +3875,12 @@ ${doc.content}`;
             
             // 🎬 逐条显示该AI的消息（带输入动画）
             for (let j = 0; j < limitedResponseLines.length; j++) {
+              // 📌 如果是第一个气泡，先隐藏"消息发送中"提示
+              if (isFirstBubble) {
+                setShowSendingHint(false);
+                isFirstBubble = false;
+              }
+              
               // 显示输入动画
               setShowTyping(true);
               
@@ -3873,11 +3890,16 @@ ${doc.content}`;
               // 隐藏输入动画，显示消息
               setShowTyping(false);
               
+              // 🔥 修复：不在消息内容中显示AI名字，名字应该由头像显示
               const aiMessage: Message = {
                 id: `${Date.now()}_${member.id}_${j}`,
                 role: 'assistant',
-                content: `[${aiName}] ${limitedResponseLines[j].trim()}`,
+                content: limitedResponseLines[j].trim(), // 直接使用内容，不加[AI名字]前缀
                 timestamp: Date.now(),
+                // 🔥 添加senderId和senderName用于显示头像和名字
+                senderId: member.id,
+                senderName: aiName,
+                senderAvatar: member.characterSettings?.avatar || member.avatar,
               };
               
               currentMessages = [...currentMessages, aiMessage];
