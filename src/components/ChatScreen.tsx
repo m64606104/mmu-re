@@ -23,6 +23,8 @@ import { RealMusicInfo } from '../utils/realMusicService';
 import { MusicMessage } from '../types';
 import { musicContextService } from '../utils/musicContextService';
 import ZhihuFeed from './ZhihuFeed';
+import NeteaseMusicCard from './NeteaseMusicCard';
+import NeteaseMusicParser from '../utils/neteaseMusicParser';
 import WeiboFeed from './WeiboFeed';
 import SearchHistoryView from './SearchHistoryView';
 import ChatSearchModal from './ChatSearchModal';
@@ -1703,20 +1705,70 @@ ${characterInfo?.languageStyle ? `语言风格：${characterInfo.languageStyle}`
       return;
     }
 
-    const newMessage: Message = {
-      id: Date.now().toString() + Math.random(),
-      role: 'user',
-      content: currentInput.trim(),
-      timestamp: Date.now(),
-      // 如果有引用消息,添加引用信息
-      ...(quotedMessage && quotedMessage.role !== 'system' && {
-        replyTo: {
-          id: quotedMessage.id,
-          content: quotedMessage.content,
-          role: quotedMessage.role as 'user' | 'assistant'
-        }
-      })
-    };
+    // 🎵 检测网易云音乐分享链接
+    const musicLinkDetection = NeteaseMusicParser.detectMusicLink(currentInput.trim());
+    
+    let newMessage: Message;
+    
+    if (musicLinkDetection.hasLink) {
+      // 解析音乐信息
+      const musicInfo = NeteaseMusicParser.parseFromShareText(
+        musicLinkDetection.rawText || currentInput.trim(), 
+        musicLinkDetection.url!
+      );
+      
+      if (musicInfo) {
+        // 创建包含网易云音乐信息的消息
+        newMessage = {
+          id: Date.now().toString() + Math.random(),
+          role: 'user',
+          content: '', // 音乐卡片消息不显示文字内容
+          timestamp: Date.now(),
+          neteaseMusicInfo: musicInfo, // 添加网易云音乐信息
+          // 如果有引用消息,添加引用信息
+          ...(quotedMessage && quotedMessage.role !== 'system' && {
+            replyTo: {
+              id: quotedMessage.id,
+              content: quotedMessage.content,
+              role: quotedMessage.role as 'user' | 'assistant'
+            }
+          })
+        };
+        
+        console.log('🎵 检测到网易云音乐分享:', musicInfo);
+      } else {
+        // 如果解析失败，发送原始消息
+        newMessage = {
+          id: Date.now().toString() + Math.random(),
+          role: 'user',
+          content: currentInput.trim(),
+          timestamp: Date.now(),
+          ...(quotedMessage && quotedMessage.role !== 'system' && {
+            replyTo: {
+              id: quotedMessage.id,
+              content: quotedMessage.content,
+              role: quotedMessage.role as 'user' | 'assistant'
+            }
+          })
+        };
+      }
+    } else {
+      // 普通消息
+      newMessage = {
+        id: Date.now().toString() + Math.random(),
+        role: 'user',
+        content: currentInput.trim(),
+        timestamp: Date.now(),
+        // 如果有引用消息,添加引用信息
+        ...(quotedMessage && quotedMessage.role !== 'system' && {
+          replyTo: {
+            id: quotedMessage.id,
+            content: quotedMessage.content,
+            role: quotedMessage.role as 'user' | 'assistant'
+          }
+        })
+      };
+    }
 
     onUpdateConversation(conversation.id, {
       messages: [...conversation.messages, newMessage],
@@ -4705,6 +4757,22 @@ ${doc.content}`;
                       />
                     )}
                     
+                    {/* 🎵 网易云音乐卡片 */}
+                    {message.neteaseMusicInfo && (
+                      <div className="max-w-[300px]">
+                        <NeteaseMusicCard
+                          musicInfo={message.neteaseMusicInfo}
+                          className="w-full"
+                          onPlay={() => {
+                            console.log('🎵 播放网易云音乐:', message.neteaseMusicInfo?.title);
+                          }}
+                          onPause={() => {
+                            console.log('🎵 暂停网易云音乐:', message.neteaseMusicInfo?.title);
+                          }}
+                        />
+                      </div>
+                    )}
+
                     {/* 🎵 音乐卡片 */}
                     {message.music && (
                       <div className="max-w-[300px]">

@@ -53,6 +53,18 @@ export interface Message {
   socialFeed?: SocialFeedMessage;
   // 🎵 音乐分享支持
   music?: MusicMessage;
+  // 🎵 网易云音乐分享支持
+  neteaseMusicInfo?: {
+    id: string;
+    title: string;
+    artist: string;
+    album?: string;
+    coverUrl?: string;
+    playUrl?: string;
+    duration?: number;
+    shareUrl: string;
+    platform: 'netease';
+  };
 }
 
 // 💰 红包/转账类型
