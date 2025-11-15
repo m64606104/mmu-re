@@ -4762,12 +4762,57 @@ ${currentAI.characterSettings?.systemPrompt || ''}
                 </div>
               )}
               
-              {/* 系统消息 - 居中显示 */}
+              {/* 系统消息 - 增强样式设计 */}
               {message.role === 'system' ? (
-                <div className="flex justify-center my-2">
-                  <span className="text-xs text-gray-500 bg-gray-100 px-3 py-1.5 rounded-full">
-                    {message.content}
-                  </span>
+                <div className="flex justify-center my-3">
+                  <div className="max-w-xs">
+                    {/* 根据系统消息类型使用不同样式 */}
+                    {message.content.includes('加入') || message.content.includes('创建') ? (
+                      /* 群聊/好友相关 - 绿色系 */
+                      <div className="bg-gradient-to-r from-green-50 to-emerald-50 border border-green-100 rounded-xl px-4 py-2.5 shadow-sm">
+                        <div className="flex items-center gap-2 justify-center">
+                          <div className="w-1.5 h-1.5 bg-green-400 rounded-full"></div>
+                          <span className="text-sm text-green-700 font-medium text-center">
+                            {message.content}
+                          </span>
+                          <div className="w-1.5 h-1.5 bg-green-400 rounded-full"></div>
+                        </div>
+                      </div>
+                    ) : message.content.includes('无法') || message.content.includes('失败') || message.content.includes('暂时') ? (
+                      /* 错误/警告相关 - 橙色系 */
+                      <div className="bg-gradient-to-r from-orange-50 to-amber-50 border border-orange-100 rounded-xl px-4 py-2.5 shadow-sm">
+                        <div className="flex items-center gap-2 justify-center">
+                          <div className="w-1.5 h-1.5 bg-orange-400 rounded-full"></div>
+                          <span className="text-sm text-orange-700 font-medium text-center">
+                            {message.content}
+                          </span>
+                          <div className="w-1.5 h-1.5 bg-orange-400 rounded-full"></div>
+                        </div>
+                      </div>
+                    ) : message.content.includes('没有') || message.content.includes('选择') ? (
+                      /* 信息提示 - 蓝色系 */
+                      <div className="bg-gradient-to-r from-blue-50 to-sky-50 border border-blue-100 rounded-xl px-4 py-2.5 shadow-sm">
+                        <div className="flex items-center gap-2 justify-center">
+                          <div className="w-1.5 h-1.5 bg-blue-400 rounded-full"></div>
+                          <span className="text-sm text-blue-700 font-medium text-center">
+                            {message.content}
+                          </span>
+                          <div className="w-1.5 h-1.5 bg-blue-400 rounded-full"></div>
+                        </div>
+                      </div>
+                    ) : (
+                      /* 默认样式 - 灰色系 */
+                      <div className="bg-gradient-to-r from-gray-50 to-slate-50 border border-gray-200 rounded-xl px-4 py-2.5 shadow-sm">
+                        <div className="flex items-center gap-2 justify-center">
+                          <div className="w-1.5 h-1.5 bg-gray-400 rounded-full"></div>
+                          <span className="text-sm text-gray-600 font-medium text-center">
+                            {message.content}
+                          </span>
+                          <div className="w-1.5 h-1.5 bg-gray-400 rounded-full"></div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
                 </div>
               ) : (
               <div id={`message-${message.id}`} className={`message-bubble flex gap-2 transition-colors ${
@@ -5534,32 +5579,65 @@ ${currentAI.characterSettings?.systemPrompt || ''}
         )}
 
         {showTyping && (
-          <div className="flex gap-2 items-end justify-start">
-            <div className="relative flex-shrink-0">
-              {conversation.characterSettings?.avatar ? (
-                <div className="w-11 h-11 rounded-full overflow-hidden border-2 border-white shadow-md">
-                  <img src={conversation.characterSettings.avatar} alt="AI头像" className="w-full h-full object-cover" />
+          <div className="flex gap-2 items-end justify-start animate-fade-in">
+            {/* 群聊模式：显示具体AI头像和名称 */}
+            {conversation.type === 'group' ? (
+              <div className="flex flex-col items-center mb-1">
+                <div className="text-xs text-gray-500 mb-1 max-w-[60px] truncate text-center">
+                  AI正在思考...
                 </div>
-              ) : (
-                <div className="w-11 h-11 rounded-full bg-gradient-to-br from-gray-700 to-gray-900 flex items-center justify-center border-2 border-white shadow-md">
-                  <span className="text-white font-semibold text-sm">{conversation.name.charAt(0)}</span>
+                <div className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center relative">
+                  <span className="text-white font-semibold text-sm">AI</span>
+                  {/* 添加脉搏效果 */}
+                  <div className="absolute inset-0 rounded-full bg-blue-400 animate-ping opacity-30"></div>
                 </div>
-              )}
-              <div className="absolute -bottom-0.5 -right-0.5 w-4 h-4 bg-white rounded-full flex items-center justify-center shadow-sm">
-                <span className="text-[10px]">{getUserBadge()}</span>
               </div>
-            </div>
+            ) : (
+              /* 私聊模式：原有头像显示 */
+              <div className="relative flex-shrink-0">
+                {conversation.characterSettings?.avatar ? (
+                  <div className="w-11 h-11 rounded-full overflow-hidden border-2 border-white shadow-md relative">
+                    <img src={conversation.characterSettings.avatar} alt="AI头像" className="w-full h-full object-cover" />
+                    {/* 添加思考状态指示 */}
+                    <div className="absolute inset-0 rounded-full bg-blue-500/20 animate-pulse"></div>
+                  </div>
+                ) : (
+                  <div className="w-11 h-11 rounded-full bg-gradient-to-br from-gray-700 to-gray-900 flex items-center justify-center border-2 border-white shadow-md relative">
+                    <span className="text-white font-semibold text-sm">{conversation.name.charAt(0)}</span>
+                    {/* 添加思考状态指示 */}
+                    <div className="absolute inset-0 rounded-full bg-blue-400/30 animate-pulse"></div>
+                  </div>
+                )}
+                <div className="absolute -bottom-0.5 -right-0.5 w-4 h-4 bg-white rounded-full flex items-center justify-center shadow-sm">
+                  <span className="text-[10px]">{getUserBadge()}</span>
+                </div>
+              </div>
+            )}
+            
+            {/* 增强的输入指示器 */}
             <div className="relative">
-              <div className="bg-white rounded-2xl px-4 py-2.5 border border-gray-200 shadow-sm">
-                <div className="flex gap-1">
-                  <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></div>
-                  <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></div>
-                  <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></div>
+              <div className="bg-white rounded-2xl px-4 py-3 border border-gray-200 shadow-lg hover:shadow-xl transition-all duration-300">
+                <div className="flex items-center gap-1">
+                  {/* 改进的跳动点 - 更生动的效果 */}
+                  <div className="w-2.5 h-2.5 bg-gradient-to-r from-blue-400 to-blue-600 rounded-full animate-bounce shadow-sm" 
+                       style={{ animationDelay: '0ms', animationDuration: '1.4s' }}></div>
+                  <div className="w-2.5 h-2.5 bg-gradient-to-r from-purple-400 to-purple-600 rounded-full animate-bounce shadow-sm" 
+                       style={{ animationDelay: '0.2s', animationDuration: '1.4s' }}></div>
+                  <div className="w-2.5 h-2.5 bg-gradient-to-r from-pink-400 to-pink-600 rounded-full animate-bounce shadow-sm" 
+                       style={{ animationDelay: '0.4s', animationDuration: '1.4s' }}></div>
+                  
+                  {/* 添加"正在输入"文字 */}
+                  <span className="text-xs text-gray-500 ml-2 animate-pulse">正在输入</span>
                 </div>
               </div>
+              
+              {/* 优化的消息尾巴 */}
               <div className="absolute bottom-3 left-0 -translate-x-[40%]">
-                <div className="w-2.5 h-2.5 bg-white border-l border-t border-gray-200 transform rotate-45 shadow-sm"></div>
+                <div className="w-2.5 h-2.5 bg-white border-l border-t border-gray-200 transform rotate-45 shadow-md"></div>
               </div>
+              
+              {/* 添加微妙的光晕效果 */}
+              <div className="absolute inset-0 rounded-2xl bg-gradient-to-r from-blue-50/50 to-purple-50/50 -z-10 blur-sm"></div>
             </div>
           </div>
         )}

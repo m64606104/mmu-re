@@ -75,17 +75,27 @@ const MessageNotification: React.FC<MessageNotificationProps> = ({
   };
 
   // 格式化消息内容
-  const formatMessageContent = (message: Message): string => {
+  const formatMessageContent = (message: Message, conversation: Conversation): string => {
     if (message.mediaType === 'image') return '[图片]';
     if (message.mediaType === 'video') return '[视频]';
     if (message.mediaType === 'voice') return '[语音]';
     if (message.mediaType === 'sticker') return '[表情包]';
+    if (message.moneyTransfer) {
+      const type = message.moneyTransfer.type === 'redPacket' ? '红包' : '转账';
+      return `[${type}] ¥${message.moneyTransfer.amount}`;
+    }
+    
+    // 群聊消息：显示发送者名称
+    let content = message.content;
+    if (conversation.type === 'group' && message.role === 'assistant' && message.aiName) {
+      content = `${message.aiName}: ${content}`;
+    }
     
     // 截断长消息
-    if (message.content.length > 30) {
-      return message.content.substring(0, 30) + '...';
+    if (content.length > 35) {
+      return content.substring(0, 35) + '...';
     }
-    return message.content;
+    return content;
   };
 
   if (notifications.length === 0) return null;
@@ -113,8 +123,8 @@ const MessageNotification: React.FC<MessageNotificationProps> = ({
           "
         >
           <div className="flex items-center gap-3 p-3">
-            {/* 头像 */}
-            <div className="flex-shrink-0">
+            {/* 头像 - 根据聊天类型显示不同样式 */}
+            <div className="flex-shrink-0 relative">
               {currentNotification.conversation.avatar ? (
                 <img
                   src={currentNotification.conversation.avatar}
@@ -122,8 +132,21 @@ const MessageNotification: React.FC<MessageNotificationProps> = ({
                   className="w-12 h-12 rounded-full object-cover"
                 />
               ) : (
-                <div className="w-12 h-12 rounded-full bg-gradient-to-br from-blue-400 to-purple-500 flex items-center justify-center text-white font-semibold text-lg">
+                <div className={`w-12 h-12 rounded-full flex items-center justify-center text-white font-semibold text-lg ${
+                  currentNotification.conversation.type === 'group' 
+                    ? 'bg-gradient-to-br from-green-400 to-emerald-500' 
+                    : 'bg-gradient-to-br from-blue-400 to-purple-500'
+                }`}>
                   {currentNotification.conversation.name.charAt(0)}
+                </div>
+              )}
+              
+              {/* 群聊标识 */}
+              {currentNotification.conversation.type === 'group' && (
+                <div className="absolute -bottom-1 -right-1 w-5 h-5 bg-green-500 rounded-full flex items-center justify-center border-2 border-white">
+                  <svg className="w-3 h-3 text-white" fill="currentColor" viewBox="0 0 20 20">
+                    <path d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
                 </div>
               )}
             </div>
@@ -142,7 +165,7 @@ const MessageNotification: React.FC<MessageNotificationProps> = ({
                 </button>
               </div>
               <p className="text-sm text-gray-600 truncate">
-                {formatMessageContent(currentNotification.message)}
+                {formatMessageContent(currentNotification.message, currentNotification.conversation)}
               </p>
             </div>
           </div>
