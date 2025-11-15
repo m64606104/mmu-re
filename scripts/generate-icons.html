@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>图标生成器</title>
+</head>
+<body>
+    <canvas id="canvas" width="512" height="512"></canvas>
+    <button onclick="generateIcons()">生成图标</button>
+    
+    <script>
+        function drawCubeIcon(canvas, size) {
+            const ctx = canvas.getContext('2d');
+            canvas.width = size;
+            canvas.height = size;
+            
+            // 清空画布，设置深灰色背景
+            ctx.fillStyle = '#4B5563';
+            ctx.fillRect(0, 0, size, size);
+            
+            // 设置画布中心
+            const centerX = size / 2;
+            const centerY = size / 2;
+            const cubeSize = size * 0.4;
+            
+            // 立方体参数
+            const depth = cubeSize * 0.3;
+            const width = cubeSize;
+            const height = cubeSize;
+            
+            // 顶面
+            ctx.beginPath();
+            ctx.moveTo(centerX - width/2, centerY - height/2);
+            ctx.lineTo(centerX + width/2, centerY - height/2);
+            ctx.lineTo(centerX + width/2 + depth/2, centerY - height/2 - depth/2);
+            ctx.lineTo(centerX - width/2 + depth/2, centerY - height/2 - depth/2);
+            ctx.closePath();
+            
+            const topGradient = ctx.createLinearGradient(0, 0, size, size);
+            topGradient.addColorStop(0, '#E5E7EB');
+            topGradient.addColorStop(1, '#D1D5DB');
+            ctx.fillStyle = topGradient;
+            ctx.fill();
+            
+            // 左面
+            ctx.beginPath();
+            ctx.moveTo(centerX - width/2, centerY - height/2);
+            ctx.lineTo(centerX - width/2 + depth/2, centerY - height/2 - depth/2);
+            ctx.lineTo(centerX - width/2 + depth/2, centerY + height/2 - depth/2);
+            ctx.lineTo(centerX - width/2, centerY + height/2);
+            ctx.closePath();
+            
+            const leftGradient = ctx.createLinearGradient(0, 0, size, size);
+            leftGradient.addColorStop(0, '#8B5CF6');
+            leftGradient.addColorStop(1, '#7C3AED');
+            ctx.fillStyle = leftGradient;
+            ctx.fill();
+            
+            // 右面  
+            ctx.beginPath();
+            ctx.moveTo(centerX + width/2, centerY - height/2);
+            ctx.lineTo(centerX + width/2 + depth/2, centerY - height/2 - depth/2);
+            ctx.lineTo(centerX + width/2 + depth/2, centerY + height/2 - depth/2);
+            ctx.lineTo(centerX + width/2, centerY + height/2);
+            ctx.closePath();
+            
+            const rightGradient = ctx.createLinearGradient(0, 0, size, size);
+            rightGradient.addColorStop(0, '#A78BFA');
+            rightGradient.addColorStop(1, '#8B5CF6');
+            ctx.fillStyle = rightGradient;
+            ctx.fill();
+            
+            // 正面
+            ctx.beginPath();
+            ctx.moveTo(centerX - width/2, centerY - height/2);
+            ctx.lineTo(centerX + width/2, centerY - height/2);
+            ctx.lineTo(centerX + width/2, centerY + height/2);
+            ctx.lineTo(centerX - width/2, centerY + height/2);
+            ctx.closePath();
+            
+            const frontGradient = ctx.createLinearGradient(0, 0, size, size);
+            frontGradient.addColorStop(0, '#C4B5FD');
+            frontGradient.addColorStop(1, '#A78BFA');
+            ctx.fillStyle = frontGradient;
+            ctx.fill();
+            
+            // 光环效果
+            ctx.beginPath();
+            ctx.ellipse(centerX, centerY + height * 0.3, width * 0.7, height * 0.15, 0, 0, 2 * Math.PI);
+            ctx.strokeStyle = 'rgba(167, 139, 250, 0.6)';
+            ctx.lineWidth = 3;
+            ctx.stroke();
+        }
+        
+        function generateIcons() {
+            const canvas = document.getElementById('canvas');
+            
+            // 生成不同尺寸的图标
+            const sizes = [16, 32, 180, 192, 512];
+            
+            sizes.forEach(size => {
+                drawCubeIcon(canvas, size);
+                
+                // 下载图标
+                canvas.toBlob(blob => {
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    
+                    if (size === 180) {
+                        a.download = 'apple-touch-icon.png';
+                    } else if (size === 16) {
+                        a.download = 'favicon-16x16.png';
+                    } else if (size === 32) {
+                        a.download = 'favicon-32x32.png';
+                    } else {
+                        a.download = `icon-${size}x${size}.png`;
+                    }
+                    
+                    document.body.appendChild(a);
+                    a.click();
+                    document.body.removeChild(a);
+                    URL.revokeObjectURL(url);
+                });
+            });
+            
+            // 生成favicon.ico (使用32x32版本)
+            drawCubeIcon(canvas, 32);
+            canvas.toBlob(blob => {
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = 'favicon.ico';
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+            });
+        }
+        
+        // 页面加载时显示预览
+        window.onload = function() {
+            const canvas = document.getElementById('canvas');
+            drawCubeIcon(canvas, 512);
+        }
+    </script>
+</body>
+</html>
