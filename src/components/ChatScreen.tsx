@@ -69,6 +69,8 @@ import { getAIStatus } from '../utils/aiStatusManager';
 import { getErrorFromResponse, formatErrorMessage } from '../utils/apiErrorHandler';
 // @ts-ignore - 函数在backgroundTaskManager内部使用，TS静态分析无法识别
 import { splitMessages, cleanAIMessage } from '../utils/messageFormatter';
+// 群聊服务
+import { generateGroupChatReplies, GroupAIReply } from '../utils/groupChatService';
 // import { backgroundTaskManager } from '../utils/backgroundTaskManager';
 // 直接在这里定义一个简化版的backgroundTaskManager作为替代
 const backgroundTaskManager = {
@@ -673,6 +675,9 @@ export default function ChatScreen({
   const [showTyping, setShowTyping] = useState(false);
   const [pendingMessages, setPendingMessages] = useState<string[]>([]);
   const [showAllSentHint, setShowAllSentHint] = useState(false);
+  
+  // 群聊相关状态
+  const [currentTypingAI, setCurrentTypingAI] = useState<{id: string; name: string; avatar?: string} | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   
@@ -789,83 +794,6 @@ ${recentMessages}
   
   // 追踪用户是否还在当前聊天页面
   const isComponentMountedRef = useRef(true);
-  
-  // 🧠 构建群聊专用系统提示词
-  const buildGroupChatSystemPrompt = (member: Conversation, groupMembers: Conversation[]): string => {
-    const settings = member.characterSettings;
-    const aiName = settings?.nickname || member.name;
-    
-    // 构建群成员列表信息
-    const groupMembersInfo = groupMembers.map(m => {
-      const displayName = m.characterSettings?.nickname || m.name;
-      const personality = m.characterSettings?.personality || '未设定';
-      return `- ${displayName}${m.id === member.id ? '（你自己）' : ''}：${personality}`;
-    }).join('\n');
-    
-    // 群聊特定规则
-    const groupChatRules = `\n\n【群聊环境说明】
-这是一个群聊，不是私聊。群里有以下成员：
-${groupMembersInfo}
-- 我（用户）：群主
-
-你需要：
-1. 意识到这是一个多人群聊环境，不是一对一私聊
-2. 你可以回应任何人的消息，包括用户"我"和其他AI成员
-3. 你可以主动发起新话题，不必等待别人先说话
-4. 你可以和其他群成员互动，就像真实的群聊一样
-5. 根据整个聊天历史的上下文自然发言，不要刻意回应最后一条消息
-6. 如果聊天陷入沉默，可以主动打破僵局
-7. 可以@其他人，可以接话，可以插话，就像真人在群里聊天
-8. 保持你的角色特点，但要自然融入群聊氛围`;
-    
-    // 基础提示：要求自然对话，禁止格式化内容
-    const baseRules = `\n\n【重要规则】
-1. 用自然的对话方式回复，就像真人在微信/QQ群聊一样
-2. 不要使用任何Markdown格式（如*、**、#、-、•等符号）
-3. 不要使用列表格式、标题格式
-4. 不要添加任何引用来源、参考链接、引文标注
-5. 如果要分享网址，直接完整地发送网址即可，不要加任何说明
-6. 每句话之间用换行分隔，就像发送多条消息一样
-7. 保持口语化，避免书面语和正式用语
-8. ⚠️ 非常重要：你的回复内容中绝对不要包含你自己的名字或任何人名前缀（如"cc:"、"小明:"等），系统会自动显示发送者名字，你只需要直接说内容即可
-9. 聊天记录中显示的"名字: 内容"格式是为了让你知道谁说了什么，你回复时只需要说内容本身，不要模仿这个格式`;
-    
-    if (!settings) {
-      return `你是${aiName}，正在参与一个群聊。${groupChatRules}${baseRules}`;
-    }
-    
-    let prompt = `你是${aiName}。请严格按照以下设定进行角色扮演：\n\n`;
-    
-    if (settings.systemPrompt) {
-      prompt += `【人物设定】\n${settings.systemPrompt}\n\n`;
-    }
-    
-    if (settings.personality) {
-      prompt += `【性格特征】\n${settings.personality}\n\n`;
-    }
-    
-    if (settings.languageStyle) {
-      prompt += `【语言风格】\n${settings.languageStyle}\n\n`;
-    }
-    
-    if (settings.languageExample) {
-      prompt += `【语言示例】\n${settings.languageExample}\n\n`;
-    }
-    
-    if (settings.memoryEvents) {
-      prompt += `【记忆事件】\n${settings.memoryEvents}\n\n`;
-    }
-    
-    // 添加群聊环境说明
-    prompt += groupChatRules;
-    
-    // 添加基础规则
-    prompt += baseRules;
-    
-    prompt += `\n\n完全沉浸在这个角色中，在群聊中自然地发言。`;
-    
-    return prompt;
-  };
   
   // AI状态相关state
   const [aiStatus, setAIStatus] = useState<any | null>(null);
@@ -2648,6 +2576,74 @@ ${characterInfo?.languageStyle ? `语言风格：${characterInfo.languageStyle}`
     }
   };
 
+  // 群聊生成函数
+  const handleGroupChatGenerate = async () => {
+    setIsGenerating(true);
+    setShowSendingHint(true);
+
+    try {
+      // 调用群聊服务
+      await generateGroupChatReplies(
+        conversation,
+        apiConfig,
+        conversations,
+        {
+          onAIStart: (aiId, aiName) => {
+            console.log(`🤖 ${aiName} 开始回复`);
+            // 隐藏发送中提示，显示AI打字动画
+            setShowSendingHint(false);
+            
+            // 获取AI头像
+            const aiMember = conversations.find(c => c.id === aiId);
+            setCurrentTypingAI({
+              id: aiId,
+              name: aiName,
+              avatar: aiMember?.characterSettings?.avatar || aiMember?.avatar
+            });
+          },
+          
+          onAITyping: (aiId) => {
+            // 保持打字动画显示
+            console.log(`⌨️ ${aiId} 正在输入...`);
+          },
+          
+          onAIMessage: (aiId, message) => {
+            // 添加消息到对话
+            const updatedMessages = [...conversation.messages, message];
+            onUpdateConversation(conversation.id, {
+              messages: updatedMessages,
+              lastMessageTime: Date.now()
+            });
+          },
+          
+          onAIComplete: (aiId, messages) => {
+            console.log(`✅ ${aiId} 完成回复，共${messages.length}条消息`);
+            // 清除当前AI的打字动画
+            setCurrentTypingAI(null);
+          },
+          
+          onAIError: (aiId, error) => {
+            console.error(`❌ ${aiId} 回复出错:`, error);
+            // 显示错误提示（可选）
+          },
+          
+          onAllComplete: (allReplies) => {
+            console.log('🎉 所有AI完成回复');
+            setIsGenerating(false);
+            setCurrentTypingAI(null);
+            setShowSendingHint(false);
+          }
+        }
+      );
+    } catch (error: any) {
+      console.error('群聊生成失败:', error);
+      alert('群聊生成失败: ' + error.message);
+      setIsGenerating(false);
+      setCurrentTypingAI(null);
+      setShowSendingHint(false);
+    }
+  };
+
   const handleGenerate = async () => {
     if (!apiConfig.baseUrl || !apiConfig.apiKey || !apiConfig.modelName) {
       alert('请先在设置中配置 API');
@@ -2656,6 +2652,12 @@ ${characterInfo?.languageStyle ? `语言风格：${characterInfo.languageStyle}`
 
     if (conversation.messages.length === 0) {
       alert('请先发送消息');
+      return;
+    }
+
+    // 判断是否为群聊
+    if (conversation.type === 'group') {
+      await handleGroupChatGenerate();
       return;
     }
 
@@ -3693,248 +3695,144 @@ ${doc.content}`;
         };
       }
 
-      // 🚀 群聊多AI回复逻辑（自由模式）
+      // 🚀 群聊多AI回复逻辑
       if (conversation.type === 'group' && conversation.members && conversation.members.length > 0) {
-        console.log('👥 群聊自由模式：开始多AI随机回复');
+        console.log('👥 群聊模式：开始多AI随机回复');
         
-        // 获取所有群成员的AI信息（从私聊对话中同步）
+        // 获取所有群成员的AI信息
         const groupMembers = conversation.members
           .map(memberId => conversations.find(c => c.id === memberId))
           .filter(c => c && c.characterSettings) as Conversation[];
         
-        if (groupMembers.length === 0) {
-          console.warn('⚠️ 群聊中没有AI成员');
-          setShowSendingHint(false);
-          setShowTyping(false);
-          setIsGenerating(false);
-          return;
-        }
-        
         console.log(`👥 群成员数量: ${groupMembers.length}个AI`);
         
-        // 🎲 随机决定有多少个AI回复（0到全部）
-        const numResponders = Math.floor(Math.random() * (groupMembers.length + 1));
-        console.log(`🎲 随机选择 ${numResponders} 个AI参与回复`);
+        // 随机选择参与回复的AI数量 (0到全部成员)
+        const maxParticipants = groupMembers.length;
+        const participantCount = Math.floor(Math.random() * (maxParticipants + 1)); // 0到maxParticipants
         
-        if (numResponders === 0) {
-          // 无人回复的情况，给用户提示
-          console.log('😴 本次没有AI回复');
+        console.log(`🎲 随机选择 ${participantCount} 个AI参与回复`);
+        
+        if (participantCount === 0) {
+          // 没有AI回复的情况
+          console.log('😴 这次没有AI参与回复');
           setShowSendingHint(false);
           setShowTyping(false);
           setIsGenerating(false);
-          
-          // 添加系统提示
-          const hintMessage: Message = {
-            id: Date.now().toString(),
-            role: 'system',
-            content: '💬 本次没有AI回复，请再试一次',
-            timestamp: Date.now(),
-          };
-          
-          onUpdateConversation(conversation.id, {
-            messages: [...conversation.messages, hintMessage],
-            lastMessageTime: Date.now(),
-          });
-          
           return;
         }
         
-        // 随机打乱AI成员顺序并选取前N个
+        // 随机选择参与回复的AI并打乱顺序
         const shuffledMembers = [...groupMembers].sort(() => Math.random() - 0.5);
-        const respondingMembers = shuffledMembers.slice(0, numResponders);
+        const selectedAIs = shuffledMembers.slice(0, participantCount);
         
-        console.log(`🎯 选中的AI: ${respondingMembers.map(ai => ai.characterSettings?.nickname || ai.name).join(', ')}`);
+        console.log(`🎯 选中的AI: ${selectedAIs.map(ai => ai.characterSettings?.nickname || ai.name).join(', ')}`);
         
-        // 📌 保持"消息发送中"提示，直到第一个AI开始回复
-        // setShowSendingHint(false); // 不在这里隐藏
-        
-        // 逐个AI成员生成回复（流式：一个接一个）
-        let currentMessages = [...conversation.messages];
-        let isFirstBubble = true; // 标记是否是第一个气泡
-        
-        for (let i = 0; i < respondingMembers.length; i++) {
-          const member = respondingMembers[i];
-          const aiName = member.characterSettings?.nickname || member.name;
+        // 依次让选中的AI回复
+        for (let i = 0; i < selectedAIs.length; i++) {
+          const currentAI = selectedAIs[i];
+          const aiName = currentAI.characterSettings?.nickname || currentAI.name;
           
-          console.log(`🤖 ${aiName} 开始回复 (${i + 1}/${respondingMembers.length})`);
+          console.log(`🤖 ${aiName} 开始回复 (${i + 1}/${selectedAIs.length})`);
           
           try {
-            // 🧠 构建群聊专用系统提示（让AI知道群聊环境）
-            const groupChatSystemPrompt = buildGroupChatSystemPrompt(member, groupMembers);
-            
-            // 📚 获取上下文消息（默认最近20条）
-            const contextLimit = member.characterSettings?.contextConfig?.enabled 
-              ? member.characterSettings.contextConfig.messageCount 
-              : 20;
-            const recentMessages = currentMessages.slice(-contextLimit);
-            
-            // 🗓️ 构建消息历史 - 群聊模式下需要包含发送者信息
-            // 📷 检测是否有图片消息（用于视觉识别）
-            const hasImageMessages = recentMessages.some(m => m.mediaType === 'image' && m.mediaUrl);
-            const shouldUseVision = hasImageMessages && apiConfig.modelName?.includes('vision');
-            
-            const apiMessages: any[] = [
-              { role: 'system' as const, content: groupChatSystemPrompt },
-              ...recentMessages.map(msg => {
-                // 🔥 获取发送者名字（使用senderId而不是内容中的标签）
-                let senderName = '我';
-                if (msg.role === 'assistant') {
-                  // 使用senderId查找发送者
-                  if (msg.senderId) {
-                    const sender = groupMembers.find(m => m.id === msg.senderId);
-                    if (sender) {
-                      senderName = sender.characterSettings?.nickname || sender.name;
-                    } else {
-                      senderName = msg.senderName || '其他AI';
-                    }
-                  } else {
-                    // 兼容旧消息：通过内容中的[]标签查找
-                    const sender = groupMembers.find(m => 
-                      msg.content?.includes(`[${m.characterSettings?.nickname || m.name}]`)
-                    );
-                    if (sender) {
-                      senderName = sender.characterSettings?.nickname || sender.name;
-                    } else {
-                      senderName = '其他AI';
-                    }
-                  }
-                }
-                
-                // 📷 如果消息包含图片且启用了视觉识别
-                if (msg.mediaType === 'image' && msg.mediaUrl && shouldUseVision) {
-                  return {
-                    role: msg.role === 'user' ? 'user' as const : 'assistant' as const,
-                    content: [
-                      {
-                        type: 'text',
-                        text: `${senderName}: ${msg.content || '发送了一张图片'}`
-                      },
-                      {
-                        type: 'image_url',
-                        image_url: {
-                          url: msg.mediaUrl
-                        }
-                      }
-                    ]
-                  };
-                }
-                
-                // 清理消息内容（移除AI名称标签，如果有的话）
-                let content = formatMessageForAI(msg);
-                if (msg.role === 'assistant') {
-                  content = content.replace(/^\[.+?\]\s*/, '');
-                }
-                
-                return {
-                  role: msg.role === 'user' ? 'user' as const : 'assistant' as const,
-                  content: `${senderName}: ${content}`
-                };
-              })
+            // 为当前AI构建个性化的系统提示
+            const aiSystemPrompt = `你现在在一个群聊中，群里有${groupMembers.length}个AI成员。你是${aiName}。
+
+当前群成员：${groupMembers.map(m => m.characterSettings?.nickname || m.name).join('、')}
+
+${currentAI.characterSettings?.systemPrompt || ''}
+
+群聊规则：
+- 你可以看到群里其他成员的发言
+- 保持你的个性，但要适应群聊氛围
+- 回复要自然，不要太长
+- 可以和其他AI互动
+- 使用自然口语表达，不要使用斜杠（/）等书面符号
+
+现在请根据最近的对话内容做出回应。`;
+
+            // 构建消息上下文
+            const aiMessages = [
+              { role: 'system', content: aiSystemPrompt },
+              ...contextMessages.slice(-10).map(m => ({ // 只取最近10条消息避免上下文过长
+                role: m.role,
+                content: m.content || '[多媒体消息]'
+              }))
             ];
-            
-            // 🚀 调用AI生成回复
-            const requestBody: any = {
+
+            const aiRequestBody = {
               model: apiConfig.modelName,
-              messages: apiMessages,
-              temperature: 0.9, // 提高温度让对话更自然随机
+              messages: aiMessages,
+              temperature: 0.8 + Math.random() * 0.2 // 随机化temperature让回复更多样
             };
+
+            // 显示当前AI正在输入
+            setShowTyping(true);
             
-            // 如果使用视觉模型，添加max_tokens限制
-            if (shouldUseVision) {
-              requestBody.max_tokens = 1000;
-            }
-            
+            // 调用AI生成回复
             const response = await fetch(`${apiConfig.baseUrl}/v1/chat/completions`, {
               method: 'POST',
               headers: {
-                'Authorization': `Bearer ${apiConfig.apiKey}`,
                 'Content-Type': 'application/json',
+                'Authorization': `Bearer ${apiConfig.apiKey}`,
               },
-              body: JSON.stringify(requestBody)
+              body: JSON.stringify(aiRequestBody),
             });
-            
+
             if (!response.ok) {
-              const errorText = await response.text();
-              console.error(`❌ AI成员 ${aiName} API请求失败:`, response.status, errorText);
-              continue; // 跳过这个AI，继续下一个
-            }
-            
-            const data = await response.json();
-            const aiResponse = data.choices?.[0]?.message?.content;
-            
-            if (!aiResponse || !aiResponse.trim()) {
-              console.error(`❌ AI成员 ${aiName} 未返回有效回复`);
+              console.warn(`⚠️ ${aiName} 回复失败:`, response.status);
               continue;
             }
+
+            const data = await response.json();
             
-            console.log(`✅ ${aiName} 回复内容:`, aiResponse.substring(0, 50) + '...');
-            
-            // 🔀 智能切分AI回复为多个气泡
-            const responseLines = splitMessages(aiResponse);
-            const limitedResponseLines = responseLines.slice(0, 23);
-            
-            // 🎬 逐条显示该AI的消息（带输入动画）
-            for (let j = 0; j < limitedResponseLines.length; j++) {
-              // 📌 如果是第一个气泡，先隐藏"消息发送中"提示
-              if (isFirstBubble) {
-                setShowSendingHint(false);
-                isFirstBubble = false;
-              }
-              
-              // 显示输入动画
-              setShowTyping(true);
-              
-              // 等待模拟输入时间
-              await new Promise(resolve => setTimeout(resolve, 800 + Math.random() * 1200));
-              
-              // 隐藏输入动画，显示消息
-              setShowTyping(false);
-              
-              // 🔥 修复：不在消息内容中显示AI名字，名字应该由头像显示
-              const aiMessage: Message = {
-                id: `${Date.now()}_${member.id}_${j}`,
-                role: 'assistant',
-                content: limitedResponseLines[j].trim(), // 直接使用内容，不加[AI名字]前缀
-                timestamp: Date.now(),
-                // 🔥 添加senderId和senderName用于显示头像和名字
-                senderId: member.id,
-                senderName: aiName,
-                senderAvatar: member.characterSettings?.avatar || member.avatar,
-              };
-              
-              currentMessages = [...currentMessages, aiMessage];
-              
-              // 更新对话状态
-              onUpdateConversation(conversation.id, {
-                messages: currentMessages,
-                lastMessageTime: Date.now(),
-              });
-              
-              // 短暂停顿（气泡之间）
-              if (j < limitedResponseLines.length - 1) {
-                await new Promise(resolve => setTimeout(resolve, 300));
-              }
+            if (!data.choices || data.choices.length === 0) {
+              console.warn(`⚠️ ${aiName} 回复为空`);
+              continue;
             }
+
+            const aiReplyContent = data.choices[0].message?.content?.trim();
             
-            // AI之间的回复间隔（模拟真人思考时间）
-            if (i < respondingMembers.length - 1) {
-              const delay = 1000 + Math.random() * 1000;
+            if (!aiReplyContent) {
+              console.warn(`⚠️ ${aiName} 回复内容为空`);
+              continue;
+            }
+
+            // 添加AI回复到对话
+            const aiMessage: Message = {
+              id: `${Date.now()}_${currentAI.id}_${Math.random()}`,
+              role: 'assistant',
+              content: `[${aiName}] ${aiReplyContent}`, // 标识是哪个AI回复的
+              timestamp: Date.now() + i, // 确保时间戳递增
+            };
+
+            // 更新对话
+            onUpdateConversation(conversation.id, {
+              messages: [...conversation.messages, aiMessage],
+              lastMessageTime: Date.now(),
+            });
+
+            console.log(`✅ ${aiName} 回复完成: ${aiReplyContent.substring(0, 30)}...`);
+
+            // AI回复间隔，模拟真人思考和打字时间
+            if (i < selectedAIs.length - 1) {
+              const delay = 2000 + Math.random() * 3000; // 2-5秒随机延迟
               console.log(`⏳ 等待 ${Math.round(delay/1000)}s 后下一个AI回复`);
               await new Promise(resolve => setTimeout(resolve, delay));
             }
-            
+
           } catch (error) {
             console.error(`❌ ${aiName} 回复出错:`, error);
             continue;
           }
         }
-        
+
         // 所有AI回复完成
         setShowSendingHint(false);
         setShowTyping(false);
         setIsGenerating(false);
         
-        console.log(`🎉 群聊回复完成，共 ${respondingMembers.length} 个AI参与了回复`);
+        console.log(`🎉 群聊回复完成，共${selectedAIs.length}个AI参与了回复`);
         return;
       }
       
@@ -4874,21 +4772,45 @@ ${doc.content}`;
               <div id={`message-${message.id}`} className={`message-bubble flex gap-2 items-end transition-colors ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}>
                 {message.role === 'assistant' && (
                   <div className="relative flex-shrink-0">
-                    {conversation.characterSettings?.avatar ? (
-                      <div className="w-11 h-11 rounded-full overflow-hidden border-2 border-white shadow-md">
-                        <img src={conversation.characterSettings.avatar} alt="AI头像" className="w-full h-full object-cover" />
-                      </div>
+                    {/* 群聊：显示发送者的头像 */}
+                    {conversation.type === 'group' ? (
+                      (message as any).senderAvatar ? (
+                        <div className="w-11 h-11 rounded-full overflow-hidden border-2 border-white shadow-md">
+                          <img src={(message as any).senderAvatar} alt={(message as any).senderName || 'AI'} className="w-full h-full object-cover" />
+                        </div>
+                      ) : (
+                        <div className="w-11 h-11 rounded-full bg-gradient-to-br from-blue-400 to-purple-500 flex items-center justify-center border-2 border-white shadow-md">
+                          <span className="text-white font-semibold text-sm">{((message as any).senderName || 'AI').charAt(0)}</span>
+                        </div>
+                      )
                     ) : (
-                      <div className="w-11 h-11 rounded-full bg-gradient-to-br from-gray-700 to-gray-900 flex items-center justify-center border-2 border-white shadow-md">
-                        <span className="text-white font-semibold text-sm">{conversation.name.charAt(0)}</span>
+                      /* 私聊：显示对话角色的头像 */
+                      conversation.characterSettings?.avatar ? (
+                        <div className="w-11 h-11 rounded-full overflow-hidden border-2 border-white shadow-md">
+                          <img src={conversation.characterSettings.avatar} alt="AI头像" className="w-full h-full object-cover" />
+                        </div>
+                      ) : (
+                        <div className="w-11 h-11 rounded-full bg-gradient-to-br from-gray-700 to-gray-900 flex items-center justify-center border-2 border-white shadow-md">
+                          <span className="text-white font-semibold text-sm">{conversation.name.charAt(0)}</span>
+                        </div>
+                      )
+                    )}
+                    {/* 只在私聊显示角标 */}
+                    {conversation.type === 'private' && (
+                      <div className="absolute -bottom-0.5 -right-0.5 w-4 h-4 bg-white rounded-full flex items-center justify-center shadow-sm">
+                        <span className="text-[10px]">{getUserBadge()}</span>
                       </div>
                     )}
-                    <div className="absolute -bottom-0.5 -right-0.5 w-4 h-4 bg-white rounded-full flex items-center justify-center shadow-sm">
-                      <span className="text-[10px]">{getUserBadge()}</span>
-                    </div>
                   </div>
                 )}
                 <div className="relative max-w-[70%]">
+                  {/* 群聊：显示发送者名字 */}
+                  {message.role === 'assistant' && conversation.type === 'group' && (message as any).senderName && (
+                    <div className="text-xs text-gray-500 mb-1 ml-1">
+                      {(message as any).senderName}
+                    </div>
+                  )}
+                  
                   {/* 多选模式复选框 */}
                   {isMultiSelectMode && (
                     <input
@@ -5592,7 +5514,8 @@ ${doc.content}`;
           </div>
         )}
 
-        {showTyping && (
+        {/* 私聊打字动画 */}
+        {showTyping && conversation.type === 'private' && (
           <div className="flex gap-2 items-end justify-start">
             <div className="relative flex-shrink-0">
               {conversation.characterSettings?.avatar ? (
@@ -5607,6 +5530,35 @@ ${doc.content}`;
               <div className="absolute -bottom-0.5 -right-0.5 w-4 h-4 bg-white rounded-full flex items-center justify-center shadow-sm">
                 <span className="text-[10px]">{getUserBadge()}</span>
               </div>
+            </div>
+            <div className="relative">
+              <div className="bg-white rounded-2xl px-4 py-2.5 border border-gray-200 shadow-sm">
+                <div className="flex gap-1">
+                  <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></div>
+                  <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></div>
+                  <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></div>
+                </div>
+              </div>
+              <div className="absolute bottom-3 left-0 -translate-x-[40%]">
+                <div className="w-2.5 h-2.5 bg-white border-l border-t border-gray-200 transform rotate-45 shadow-sm"></div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* 群聊打字动画 */}
+        {currentTypingAI && conversation.type === 'group' && (
+          <div className="flex gap-2 items-end justify-start">
+            <div className="relative flex-shrink-0">
+              {currentTypingAI.avatar ? (
+                <div className="w-11 h-11 rounded-full overflow-hidden border-2 border-white shadow-md">
+                  <img src={currentTypingAI.avatar} alt={currentTypingAI.name} className="w-full h-full object-cover" />
+                </div>
+              ) : (
+                <div className="w-11 h-11 rounded-full bg-gradient-to-br from-blue-400 to-purple-500 flex items-center justify-center border-2 border-white shadow-md">
+                  <span className="text-white font-semibold text-sm">{currentTypingAI.name.charAt(0)}</span>
+                </div>
+              )}
             </div>
             <div className="relative">
               <div className="bg-white rounded-2xl px-4 py-2.5 border border-gray-200 shadow-sm">
