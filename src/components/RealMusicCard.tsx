@@ -49,6 +49,8 @@ const RealMusicCard: React.FC<RealMusicCardProps> = ({
           isFullVersion: music.isFullVersion
         });
         
+        // 添加预加载设置
+        audioRef.current.preload = 'metadata';
         audioRef.current.src = audioUrl;
         audioRef.current.addEventListener('loadedmetadata', handleLoadedMetadata);
         audioRef.current.addEventListener('timeupdate', handleTimeUpdate);
@@ -103,15 +105,42 @@ const RealMusicCard: React.FC<RealMusicCardProps> = ({
 
     try {
       if (isPlaying) {
+        // 暂停播放
         audioRef.current.pause();
         setIsPlaying(false);
       } else {
-        await audioRef.current.play();
-        setIsPlaying(true);
+        // 重置任何之前的播放状态
+        if (audioRef.current.readyState >= 2) { // HAVE_CURRENT_DATA
+          // 先暂停确保没有其他播放操作
+          audioRef.current.pause();
+          
+          // 稍微延迟后再播放，避免冲突
+          setTimeout(async () => {
+            try {
+              if (audioRef.current) {
+                await audioRef.current.play();
+                setIsPlaying(true);
+                setError(null); // 清除之前的错误
+              }
+            } catch (playError: any) {
+              console.warn('🎵 播放尝试失败:', playError);
+              if (playError?.name === 'AbortError') {
+                setError('播放被中断，请重试');
+              } else if (playError?.name === 'NotAllowedError') {
+                setError('请先点击页面任意位置再播放');
+              } else {
+                setError('播放失败，请检查网络连接');
+              }
+            }
+          }, 100);
+        } else {
+          setError('音频还未完全加载，请稍候再试');
+        }
       }
     } catch (error) {
-      console.error('播放失败:', error);
-      setError('播放失败，可能是网络问题');
+      console.error('🎵 播放处理失败:', error);
+      setError('播放操作失败');
+      setIsPlaying(false);
     }
   };
 
