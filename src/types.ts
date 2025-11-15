@@ -515,9 +515,6 @@ export interface MusicMessage {
   album?: string; // 专辑名称
   duration?: number; // 时长（秒）
   coverUrl?: string; // 封面图片URL
-  audioUrl?: string; // 音频播放URL
-  previewUrl?: string; // 预览音频URL（通常30秒）
-  fullAudioUrl?: string; // 完整版本的外部链接（如Apple Music、Spotify等）
   genre?: string; // 流派/类型
   mood?: 'happy' | 'sad' | 'energetic' | 'calm' | 'romantic' | 'mysterious'; // 音乐情绪
   tempo?: 'slow' | 'medium' | 'fast'; // 节奏

@@ -11,12 +11,12 @@ export interface RealMusicInfo {
   duration?: number;
   genre?: string;
   releaseYear?: number;
-  audioUrl?: string;           // 完整音频URL（如果可用）
-  previewUrl?: string;         // 预览音频URL（通常30秒）
-  fullAudioUrl?: string;       // 完整版本的外部链接（如Apple Music、Spotify等）
+  audioUrl?: string;      // 完整音频URL，用于分享到聊天
+  previewUrl?: string;    // 30秒预览URL，用于搜索时试听
   coverUrl?: string;
-  source: 'jamendo' | 'freemusicarchive' | 'audiomack' | 'youtube' | 'local';
+  source: 'jamendo' | 'freemusicarchive' | 'audiomack' | 'youtube' | 'local' | 'itunes' | 'url';
   playable: boolean;
+  isFullVersion?: boolean;  // 标识是否为完整版本
 }
 
 export class RealMusicService {
@@ -157,12 +157,12 @@ export class RealMusicService {
         artist: track.artistName || '未知艺术家',
         album: track.collectionName,
         duration: Math.round((track.trackTimeMillis || 0) / 1000),
-        previewUrl: track.previewUrl, // iTunes提供30秒预览
-        audioUrl: undefined, // iTunes只提供预览，没有完整音频
-        fullAudioUrl: track.trackViewUrl, // Apple Music/iTunes Store链接
+        previewUrl: track.previewUrl, // iTunes提供30秒预览，用于搜索时试听
+        audioUrl: undefined, // iTunes不提供完整音频，仅预览
         coverUrl: track.artworkUrl100?.replace('100x100', '300x300'), // 高分辨率封面
-        source: 'youtube', // 标记为外部源
+        source: 'itunes',
         playable: !!track.previewUrl,
+        isFullVersion: false, // iTunes只提供30秒预览
         genre: track.primaryGenreName,
         releaseYear: track.releaseDate ? new Date(track.releaseDate).getFullYear() : undefined
       }));

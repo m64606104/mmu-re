@@ -1874,30 +1874,14 @@ ${characterInfo?.languageStyle ? `语言风格：${characterInfo.languageStyle}`
       return msg;
     });
 
-    // 🔥 修复AI红包接收逻辑：当AI接收/退回用户红包时，需要添加AI的回复消息
-    let finalMessages = updatedMessages;
-    if (targetMessage.role === 'user' && targetMessage.moneyTransfer) {
-      const aiReplyMessage: Message = {
-        id: `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-        role: 'assistant',
-        content: accept ? '' : `不好意思，我暂时不能收这个${targetMessage.moneyTransfer.type === 'redPacket' ? '红包' : '转账'}。`,
-        timestamp: Date.now(),
-        moneyTransfer: accept ? {
-          type: targetMessage.moneyTransfer.type,
-          amount: targetMessage.moneyTransfer.amount,
-          status: 'received' as const,
-          message: '谢谢大哥！', // 显示在红包卡片上的留言
-          receivedAt: Date.now()
-        } : undefined
-      };
-      
-      finalMessages = [...updatedMessages, aiReplyMessage];
-    }
-
     onUpdateConversation(conversation.id, {
-      messages: finalMessages,
+      messages: updatedMessages,
       lastMessageTime: Date.now()
     });
+
+    // 🔧 修复：用户领取AI红包时，不应该有AI的自动回复
+    // AI接收/退回用户红包的回复通过 [接收红包:留言] 标记处理
+    // 所以这里不需要自动回复了
   };
 
   // 处理图片上传
@@ -2012,9 +1996,8 @@ ${characterInfo?.languageStyle ? `语言风格：${characterInfo.languageStyle}`
         duration: realMusicInfo.duration,
         genre: realMusicInfo.genre,
         releaseYear: realMusicInfo.releaseYear,
-        audioUrl: realMusicInfo.source === 'jamendo' ? realMusicInfo.audioUrl : (realMusicInfo.audioUrl || realMusicInfo.previewUrl), // Jamendo优先使用完整音频
+        audioUrl: realMusicInfo.audioUrl,
         previewUrl: realMusicInfo.previewUrl,
-        fullAudioUrl: realMusicInfo.fullAudioUrl, // 外部完整版本链接
         coverUrl: realMusicInfo.coverUrl,
         source: realMusicInfo.source,
         playable: realMusicInfo.playable,
@@ -4651,9 +4634,10 @@ ${doc.content}`;
                       </div>
                     )}
                     
-                    {/* 🔥 红包/转账的文字回复（只显示AI的感谢等回复，不显示用户的默认文本） */}
+                    {/* 🔥 红包/转账的文字回复（只显示AI接收/退回红包的回复，不显示AI发送红包时的文字） */}
                     {message.moneyTransfer && message.content && message.content.trim() && 
-                     message.role === 'assistant' && (
+                     message.role === 'assistant' && 
+                     (message.moneyTransfer.status === 'received' || message.moneyTransfer.status === 'returned') && (
                       <div className="rounded-2xl px-4 py-2.5 bg-white border border-gray-200">
                         <p className="text-[15px] leading-relaxed whitespace-pre-wrap break-words">{message.content}</p>
                       </div>

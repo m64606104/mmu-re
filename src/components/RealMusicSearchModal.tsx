@@ -36,9 +36,9 @@ const RealMusicSearchModal: React.FC<RealMusicSearchModalProps> = ({
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const tabs = [
-    { id: 'search', label: '在线搜索', icon: Search, desc: '搜索免费音乐' },
-    { id: 'upload', label: '本地上传', icon: Upload, desc: '上传音频文件' },
-    { id: 'url', label: '音频链接', icon: Globe, desc: '输入音频URL' }
+    { id: 'search', label: '在线搜索', icon: Search },
+    { id: 'upload', label: '本地上传', icon: Upload },
+    { id: 'url', label: '音频链接', icon: Globe }
   ];
 
   // 搜索真实音乐
@@ -130,30 +130,14 @@ const RealMusicSearchModal: React.FC<RealMusicSearchModalProps> = ({
     }
   };
 
-  // 选择音乐
-  const handleMusicSelection = (music: RealMusicInfo) => {
-    setSelectedMusic(music);
-  };
-
   // 确认选择并分享
   const handleConfirmSelection = () => {
     if (selectedMusic) {
       onSelectMusic(selectedMusic);
       onClose();
-      resetForm();
     }
   };
 
-  // 重置表单
-  const resetForm = () => {
-    setSearchQuery('');
-    setSearchResults([]);
-    setSelectedMusic(null);
-    setSearchError(null);
-    setUploadedFile(null);
-    setAudioUrl('');
-    setUrlValid(null);
-  };
 
   if (!isOpen) return null;
 
@@ -179,28 +163,21 @@ const RealMusicSearchModal: React.FC<RealMusicSearchModalProps> = ({
           <div className="lg:w-80 border-r bg-gray-50">
             <div className="p-4 space-y-2">
               {tabs.map((tab) => (
-                <button
-                  key={tab.id}
-                  onClick={() => setActiveTab(tab.id as any)}
-                  className={`w-full p-2 rounded-lg text-left transition-all ${
-                    activeTab === tab.id
-                      ? 'bg-blue-500 text-white shadow-lg'
-                      : 'bg-white hover:bg-gray-100 text-gray-700'
-                  }`}
-                >
-                  <div className="flex items-center gap-2">
-                    <tab.icon className="w-4 h-4" />
-                    <div>
-                      <div className="font-medium text-sm">{tab.label}</div>
-                      <div className={`text-xs ${
-                        activeTab === tab.id ? 'text-blue-100' : 'text-gray-500'
-                      }`}>
-                        {tab.desc}
-                      </div>
-                    </div>
-                  </div>
-                </button>
-              ))}
+              <button
+                key={tab.id}
+                onClick={() => setActiveTab(tab.id as any)}
+                className={`flex-1 p-2 rounded-lg transition-all text-sm ${
+                  activeTab === tab.id
+                    ? 'bg-blue-500 text-white shadow-lg'
+                    : 'bg-gray-100 hover:bg-gray-200 text-gray-700'
+                }`}
+              >
+                <div className="flex items-center justify-center gap-2">
+                  <tab.icon className="w-4 h-4" />
+                  <div className="font-medium">{tab.label}</div>
+                </div>
+              </button>
+            ))}
             </div>
             
             
@@ -275,14 +252,14 @@ const RealMusicSearchModal: React.FC<RealMusicSearchModalProps> = ({
                       </h3>
                       <div className="grid gap-3">
                         {searchResults.map((music, index) => (
-                          <div
-                            key={index}
-                            className={`p-4 border rounded-lg cursor-pointer transition-all ${
-                              selectedMusic?.id === music.id
-                                ? 'border-blue-500 bg-blue-50'
-                                : 'hover:bg-gray-50'
+                          <div 
+                            key={`${music.id}-${index}`}
+                            onClick={() => setSelectedMusic(music)}
+                            className={`p-4 border rounded-lg hover:shadow-md transition-all cursor-pointer ${
+                              selectedMusic?.id === music.id 
+                                ? 'border-blue-500 bg-blue-50' 
+                                : 'border-gray-200'
                             }`}
-                            onClick={() => handleMusicSelection(music)}
                           >
                             <div className="flex items-center justify-between">
                               <div className="flex-1">
@@ -306,6 +283,11 @@ const RealMusicSearchModal: React.FC<RealMusicSearchModalProps> = ({
                                 <p className="text-xs text-gray-500 mt-1 capitalize">
                                   {music.source}
                                 </p>
+                                {selectedMusic?.id === music.id && (
+                                  <div className="text-blue-500 text-xs mt-1 font-medium">
+                                    ✓ 已选择
+                                  </div>
+                                )}
                               </div>
                             </div>
                           </div>
@@ -398,20 +380,22 @@ const RealMusicSearchModal: React.FC<RealMusicSearchModalProps> = ({
                 </div>
               )}
 
-              {/* 分享按钮 */}
-              {selectedMusic && (
-                <div className="mt-8 pt-6 border-t">
-                  <button
-                    onClick={handleConfirmSelection}
-                    className="w-full px-6 py-3 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors font-medium text-center"
-                  >
-                    🎵 分享给 {characterName}
-                  </button>
-                  <p className="text-xs text-gray-500 mt-2 text-center">
-                    {selectedMusic.source === 'jamendo' ? '完整音频' : '30秒预览'}
-                  </p>
-                </div>
-              )}
+              {/* 操作按钮 */}
+              <div className="flex gap-3 mt-8 pt-6 border-t">
+                <button
+                  onClick={onClose}
+                  className="px-6 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
+                >
+                  取消
+                </button>
+                <button
+                  onClick={handleConfirmSelection}
+                  disabled={!selectedMusic}
+                  className="flex-1 px-6 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 disabled:opacity-50 transition-colors"
+                >
+                  分享给 {characterName}
+                </button>
+              </div>
             </div>
           </div>
         </div>

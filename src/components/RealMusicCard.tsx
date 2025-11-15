@@ -159,30 +159,25 @@ const RealMusicCard: React.FC<RealMusicCardProps> = ({
           <div className="flex items-center gap-2">
             <Music className="w-5 h-5" />
             <span className="text-sm opacity-90">
-              {music.playable ? (
-                music.source === 'jamendo' ? '完整音频' : 
-                (music as any).fullAudioUrl ? '30秒预览' : '完整音频'
-              ) : '仅信息'}
+              {music.playable ? '可播放音乐' : '仅信息'}
             </span>
             <span className="text-lg">{getSourceIcon()}</span>
           </div>
           
           <div className="flex items-center gap-2">
-            {/* 完整版本链接（优先显示） */}
-            {(music as any).fullAudioUrl && (
+            {music.audioUrl && (
               <a
-                href={(music as any).fullAudioUrl}
+                href={music.audioUrl}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="p-1 rounded-full bg-white/10 hover:bg-white/20 transition-colors"
-                title="打开完整版本"
+                title="打开原始链接"
               >
                 <ExternalLink className="w-4 h-4" />
               </a>
             )}
             
-            {/* 如果有完整音频URL可以下载 */}
-            {music.audioUrl && !(music as any).fullAudioUrl && (
+            {music.audioUrl && (
               <a
                 href={music.audioUrl}
                 download={`${music.title} - ${music.artist}`}
@@ -332,15 +327,6 @@ const RealMusicCard: React.FC<RealMusicCardProps> = ({
             </span>
           </div>
         </div>
-        
-        {/* 完整版本提示 */}
-        {(music as any).fullAudioUrl && (
-          <div className="mt-2 p-2 bg-white/10 rounded-lg">
-            <p className="text-xs opacity-80">
-              💡 这是30秒预览版本，点击 <ExternalLink className="w-3 h-3 inline" /> 访问完整版本
-            </p>
-          </div>
-        )}
       </div>
 
       {/* 播放状态指示 */}
