@@ -3703,7 +3703,7 @@ ${doc.content}`;
             
             console.log(`🤖 ${aiName} 开始回复 (${index + 1}/${selectedAIs.length})`);
             
-            // 构建优化的系统提示
+            // 构建优化的系统提示 - 增加多媒体支持
             const aiSystemPrompt = `你是${aiName}，正在参与群聊。
 
 当前群成员：${groupMembers.map(m => m.characterSettings?.nickname || m.name).join('、')}
@@ -3718,17 +3718,47 @@ ${currentAI.characterSettings?.systemPrompt || ''}
 - 绝对不要在消息开头添加名字
 - 可以表达情感、提问、评论、补充等
 
+多媒体回应指南：
+- 看到图片时：可以评论内容、颜色、构图等，表达感受
+- 听到语音时：可以评论语气、内容、音质等
+- 看到视频时：可以评论画面、剧情、技巧等
+- 看到表情包时：可以用对应情绪回应或发送相关表情
+- 看到音乐时：可以评论旋律、歌词、情感等
+- 看到文档时：可以评论内容、格式、实用性等
+
 请根据聊天历史自然参与讨论，可以发送1-3条相关消息。`;
             
             // 构建消息历史
             const messages = [{ role: 'system', content: aiSystemPrompt }];
             
-            // 添加聊天历史，格式化为对话格式
+            // 添加聊天历史，格式化为对话格式 - 支持多媒体内容
             conversation.messages.slice(-12).forEach(msg => {
               if (msg.role === 'system') return;
               
               let role = 'assistant';
-              let content = msg.content || '[多媒体消息]';
+              let content = '';
+              
+              // 🎨 根据消息类型生成描述性内容 - 参考ai-chat-app-with-avatars
+              if (msg.mediaType === 'image') {
+                content = `[图片] ${msg.mediaDescription || '发送了一张图片'}`;
+              } else if (msg.mediaType === 'video') {
+                content = `[视频] ${msg.mediaDescription || '分享了一个视频'}`;
+              } else if (msg.mediaType === 'voice') {
+                content = `[语音] ${msg.mediaDescription || '发送了语音消息'}`;
+              } else if (msg.mediaType === 'sticker') {
+                content = `[表情包] ${msg.mediaDescription || '发送了表情包'}`;
+              } else if (msg.moneyTransfer) {
+                const type = msg.moneyTransfer.type === 'redPacket' ? '红包' : '转账';
+                content = `[${type}] ¥${msg.moneyTransfer.amount} ${msg.moneyTransfer.message || ''}`;
+              } else if (msg.document) {
+                content = `[文档] ${msg.document.title}`;
+              } else if (msg.music) {
+                content = `[音乐] ${msg.music.title} - ${msg.music.artist}`;
+              } else if (msg.neteaseMusicInfo) {
+                content = `[音乐] ${msg.neteaseMusicInfo.title} - ${msg.neteaseMusicInfo.artist}`;
+              } else {
+                content = msg.content || '[消息]';
+              }
               
               if (msg.role === 'user') {
                 role = 'user';
@@ -3787,18 +3817,80 @@ ${currentAI.characterSettings?.systemPrompt || ''}
                 setShowTyping(false);
               }
               
-              // 🔥 关键优化：处理多条消息回复 - 参考ai-chat-app
-              const responses = aiReplyContent.split('\n').filter((line: string) => line.trim() !== '');
+              // 🔥 智能消息分割 - 参考ai-chat-app-with-avatars的精华逻辑
               
-              console.log(`💬 ${aiName} 回复 ${responses.length} 条消息`);
+              // 智能分割函数：按标点符号和长度分割，保持语义完整
+              function splitMessageIntelligently(text: string, maxLength: number = 50): string[] {
+                const sentences: string[] = [];
+                let current = '';
+                
+                // 优先按句号、感叹号、问号分割
+                const punctuation = /[。！？]/;
+                
+                for (let i = 0; i < text.length; i++) {
+                  current += text[i];
+                  
+                  // 如果遇到标点符号且当前句子长度适中
+                  if (punctuation.test(text[i]) && current.length > maxLength / 2) {
+                    sentences.push(current.trim());
+                    current = '';
+                  } 
+                  // 如果句子太长，强制分割
+                  else if (current.length >= maxLength) {
+                    // 尝试在最近的逗号处分割
+                    const commaIndex = current.lastIndexOf('，');
+                    if (commaIndex > 0) {
+                      sentences.push(current.substring(0, commaIndex + 1).trim());
+                      current = current.substring(commaIndex + 1);
+                    } else {
+                      sentences.push(current.trim());
+                      current = '';
+                    }
+                  }
+                }
+                
+                // 添加最后一段
+                if (current.trim()) {
+                  sentences.push(current.trim());
+                }
+                
+                return sentences.length > 0 ? sentences : [text];
+              }
               
-              // 依次添加每条回复消息
-              responses.forEach((response: string, rIndex: number) => {
+              // 先按换行分割，再智能分割长句
+              let allResponses: string[] = [];
+              const initialResponses = aiReplyContent.split('\n').filter((line: string) => line.trim() !== '');
+              
+              initialResponses.forEach((initialResponse: string) => {
+                allResponses = allResponses.concat(splitMessageIntelligently(initialResponse.trim(), 50));
+              });
+              
+              console.log(`💬 ${aiName} 智能分割为 ${allResponses.length} 条消息`);
+              
+              // 依次添加每条回复消息，添加自然化处理
+              allResponses.forEach((response: string, rIndex: number) => {
+                // 添加随机延迟让回复更自然
+                const randomDelay = rIndex * 800 + Math.random() * 300; // 800ms基础 + 0-300ms随机
+                
                 setTimeout(() => {
+                  // 自然化处理 - 参考ai-chat-app-with-avatars
+                  let finalResponse = response.trim();
+                  
+                  // 如果回复以句号结尾且比较正式，添加语气词让它更自然
+                  if (finalResponse.endsWith('。') && !finalResponse.includes('！') && 
+                      !finalResponse.includes('？') && !finalResponse.includes('~') &&
+                      finalResponse.length > 5) {
+                    const toneWords = ['~', '呢', '呀', '吧', '啦'];
+                    const randomToneWord = toneWords[Math.floor(Math.random() * toneWords.length)];
+                    if (Math.random() > 0.4) { // 60%的概率添加语气词
+                      finalResponse = finalResponse.slice(0, -1) + randomToneWord;
+                    }
+                  }
+                  
                   const aiMessage: Message = {
                     id: `${Date.now()}_${currentAI.id}_${rIndex}_${Math.random()}`,
                     role: 'assistant',
-                    content: response.trim(),
+                    content: finalResponse,
                     timestamp: Date.now() + rIndex * 10, // 保证时间戳递增
                     aiId: currentAI.id,
                     aiName: aiName,
@@ -3813,7 +3905,7 @@ ${currentAI.characterSettings?.systemPrompt || ''}
                   }
                   
                   console.log(`✅ ${aiName} 第${rIndex + 1}条: ${response.substring(0, 30)}...`);
-                }, rIndex * 800); // 每条消息间隔800ms
+                }, randomDelay); // 使用随机延迟
               });
               
               // 显示完成提示（最后一个AI）
@@ -3822,7 +3914,7 @@ ${currentAI.characterSettings?.systemPrompt || ''}
                   console.log(`🎉 群聊回复完成！`);
                   setShowSendingHint(false);
                   setIsGenerating(false);
-                }, responses.length * 800 + 500);
+                }, allResponses.length * 800 + 500);
               }
             })
             .catch(error => {
