@@ -24,7 +24,7 @@ const NeteaseMusicCard: React.FC<NeteaseMusicCardProps> = ({
   const [isLoading, setIsLoading] = useState(false);
   const audioRef = useRef<HTMLAudioElement>(null);
 
-  // 模拟播放功能（实际的网易云音乐需要API支持）
+  // 网易云音乐播放功能
   const handlePlayToggle = () => {
     if (musicInfo.playUrl) {
       // 如果有播放链接，尝试播放
@@ -38,8 +38,10 @@ const NeteaseMusicCard: React.FC<NeteaseMusicCardProps> = ({
         onPlay?.();
       }
     } else {
-      // 没有播放链接，打开网易云音乐链接
-      window.open(musicInfo.shareUrl, '_blank');
+      // 网易云音乐需要跳转到官方应用播放
+      if (confirm('此歌曲需要在网易云音乐官方应用中播放，是否打开？')) {
+        window.open(musicInfo.shareUrl, '_blank');
+      }
     }
   };
 

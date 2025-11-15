@@ -94,8 +94,30 @@ const RealMusicCard: React.FC<RealMusicCardProps> = ({
   };
 
   const handleAudioError = (e: Event) => {
-    console.error('音频加载错误:', e);
-    setError('音频加载失败');
+    const target = e.target as HTMLAudioElement;
+    const errorCode = target.error?.code;
+    const errorMessage = target.error?.message;
+    
+    console.error('🎵 音频加载错误:', {
+      code: errorCode,
+      message: errorMessage,
+      src: target.src,
+      music: music
+    });
+    
+    // 根据错误类型提供不同的错误信息
+    if (errorCode === 1) { // MEDIA_ERR_ABORTED
+      setError('音频加载被中止');
+    } else if (errorCode === 2) { // MEDIA_ERR_NETWORK
+      setError('网络错误，无法加载音频');
+    } else if (errorCode === 3) { // MEDIA_ERR_DECODE
+      setError('音频格式不支持');
+    } else if (errorCode === 4) { // MEDIA_ERR_SRC_NOT_SUPPORTED
+      setError('音频源不可用或格式不支持');
+    } else {
+      setError('音频加载失败');
+    }
+    
     setIsLoading(false);
     setAudioReady(false);
   };

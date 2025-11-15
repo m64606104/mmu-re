@@ -159,7 +159,7 @@ export class RealMusicService {
         album: track.collectionName,
         duration: Math.round((track.trackTimeMillis || 0) / 1000),
         previewUrl: track.previewUrl, // iTunes提供30秒预览，用于搜索时试听
-        audioUrl: undefined, // iTunes不提供完整音频，仅预览
+        audioUrl: track.previewUrl, // iTunes预览也作为音频源使用
         coverUrl: track.artworkUrl100?.replace('100x100', '300x300'), // 高分辨率封面
         source: 'itunes',
         playable: !!track.previewUrl,
