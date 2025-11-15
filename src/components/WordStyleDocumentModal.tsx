@@ -74,11 +74,11 @@ const WordStyleDocumentModal: React.FC<WordStyleDocumentModalProps> = ({
   };
   
   return (
-    <div className="fixed inset-0 z-[9999] bg-gray-100 flex flex-col">
+    <div className="fixed inset-0 z-[60] bg-gray-100 flex flex-col">
       {/* 顶部工具栏（Word 风格） */}
-      <div className="bg-white border-b shadow-sm relative z-[10000]">
+      <div className="bg-white border-b shadow-sm">
         {/* 顶部标题栏 */}
-        <div className="px-6 py-4 flex items-center justify-between">
+        <div className="px-4 py-3 flex items-center justify-between">
           <div className="flex items-center gap-4 flex-1 min-w-0">
             <button
               onClick={onClose}
@@ -114,21 +114,21 @@ const WordStyleDocumentModal: React.FC<WordStyleDocumentModalProps> = ({
             </div>
           </div>
           
-          {/* 操作按钮 */}
-          <div className="flex items-center gap-2">
+          {/* 操作按钮 - 缩小尺寸 */}
+          <div className="flex items-center gap-1">
             <button
               onClick={handleCopy}
-              className="flex items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
+              className="flex items-center gap-1 px-2 py-1.5 text-xs text-gray-700 hover:bg-gray-100 rounded-md transition-colors"
               title="复制文本"
             >
               {copied ? (
                 <>
-                  <Check className="w-4 h-4 text-green-600" />
+                  <Check className="w-3 h-3 text-green-600" />
                   <span className="text-green-600">已复制</span>
                 </>
               ) : (
                 <>
-                  <Copy className="w-4 h-4" />
+                  <Copy className="w-3 h-3" />
                   复制
                 </>
               )}
@@ -136,19 +136,19 @@ const WordStyleDocumentModal: React.FC<WordStyleDocumentModalProps> = ({
             
             <button
               onClick={handleDownload}
-              className="flex items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
+              className="flex items-center gap-1 px-2 py-1.5 text-xs text-gray-700 hover:bg-gray-100 rounded-md transition-colors"
               title="下载文档"
             >
-              <Download className="w-4 h-4" />
+              <Download className="w-3 h-3" />
               下载
             </button>
             
             {onSave && (
               <button
                 onClick={onSave}
-                className="flex items-center gap-2 px-4 py-2 text-sm text-white bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors font-medium"
+                className="flex items-center gap-1 px-3 py-1.5 text-xs text-white bg-blue-600 hover:bg-blue-700 rounded-md transition-colors font-medium"
               >
-                <Save className="w-4 h-4" />
+                <Save className="w-3 h-3" />
                 保存到文档库
               </button>
             )}
@@ -156,9 +156,9 @@ const WordStyleDocumentModal: React.FC<WordStyleDocumentModalProps> = ({
             {onForward && (
               <button
                 onClick={onForward}
-                className="flex items-center gap-2 px-4 py-2 text-sm text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors font-medium"
+                className="flex items-center gap-1 px-3 py-1.5 text-xs text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-md transition-colors font-medium"
               >
-                <Forward className="w-4 h-4" />
+                <Forward className="w-3 h-3" />
                 转发
               </button>
             )}

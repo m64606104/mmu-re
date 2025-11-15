@@ -1819,17 +1819,17 @@ ${characterInfo?.languageStyle ? `语言风格：${characterInfo.languageStyle}`
               console.error('❌ 同步AI财务记录失败:', error);
             });
           }
-          // 🚀 如果是用户发送给AI的红包/转账，AI收到后静默记录收入（不显示详细信息）
+          // 🚀 如果是用户发送给AI的红包/转账，AI收到后记录收入
           else if (targetMessage.role === 'user') {
             addAIFinanceTransaction(
               conversation.id,
               'income',  // AI收入
               msg.moneyTransfer.amount,
-              msg.moneyTransfer.type === 'redPacket' ? '收到红包' : '收到转账',
-              '---',  // 隐藏详细信息，保护隐私
+              msg.moneyTransfer.type === 'redPacket' ? '红包收入' : '转账收入',
+              `收到用户${msg.moneyTransfer.type === 'redPacket' ? '红包' : '转账'}: ${msg.moneyTransfer.message || '无留言'}`,
               'user',
               messageId,
-              true  // 设置为隐私模式，不在AI财务报告中显示详细金额和来源
+              false
             ).catch(error => {
               console.error('❌ 同步AI财务记录失败:', error);
             });
@@ -4574,15 +4574,23 @@ ${doc.content}`;
                       <div className={`p-0 rounded-2xl overflow-hidden mb-2 ${
                         message.role === 'user' 
                           ? 'bg-gradient-to-br from-yellow-400 to-orange-400' 
+                          : message.moneyTransfer.status === 'received'
+                          ? 'bg-gradient-to-br from-green-500 to-green-600'
+                          : message.moneyTransfer.status === 'returned'
+                          ? 'bg-gradient-to-br from-gray-400 to-gray-500'
                           : 'bg-gradient-to-br from-yellow-500 to-orange-500'
                       }`}>
                         <div className="p-4 text-white">
                           <div className="flex items-center gap-2 mb-2">
                             <span className="text-2xl">
-                              {message.moneyTransfer.type === 'redPacket' ? '🧧' : '💸'}
+                              {message.moneyTransfer.status === 'received' ? '✅' : 
+                               message.moneyTransfer.status === 'returned' ? '↩️' :
+                               message.moneyTransfer.type === 'redPacket' ? '🧧' : '💸'}
                             </span>
                             <div className="text-lg font-bold">
-                              {message.moneyTransfer.type === 'redPacket' ? '红包' : '转账'}
+                              {message.moneyTransfer.status === 'received' ? '已收红包' :
+                               message.moneyTransfer.status === 'returned' ? '已退红包' :
+                               message.moneyTransfer.type === 'redPacket' ? '红包' : '转账'}
                             </div>
                           </div>
                           <div className="text-2xl font-bold mb-2">
@@ -4599,13 +4607,14 @@ ${doc.content}`;
                             </div>
                           )}
                           {message.moneyTransfer.status === 'received' && (
-                            <div className="text-xs opacity-75">
-                              已{message.moneyTransfer.type === 'redPacket' ? '领取' : '收款'}
+                            <div className="text-xs opacity-90 flex items-center gap-1">
+                              <span>✨</span>
+                              <span>感谢你的{message.moneyTransfer.type === 'redPacket' ? '红包' : '转账'}！</span>
                             </div>
                           )}
                           {message.moneyTransfer.status === 'returned' && (
                             <div className="text-xs opacity-75">
-                              已退回
+                              已退回给发送方
                             </div>
                           )}
                         </div>

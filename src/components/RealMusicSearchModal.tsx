@@ -158,7 +158,7 @@ const RealMusicSearchModal: React.FC<RealMusicSearchModalProps> = ({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60] p-4">
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-4xl max-h-[90vh] overflow-hidden">
         {/* 头部 */}
         <div className="flex items-center justify-between p-6 border-b">
@@ -175,16 +175,16 @@ const RealMusicSearchModal: React.FC<RealMusicSearchModalProps> = ({
         </div>
 
         <div className="flex flex-col lg:flex-row h-[calc(90vh-5rem)]">
-          {/* 左侧选项卡 */}
-          <div className="lg:w-80 border-r bg-gray-50">
-            <div className="p-4 space-y-2">
+          {/* 左侧选项卡 - 缩小尺寸 */}
+          <div className="lg:w-64 border-r bg-gray-50">
+            <div className="p-3 space-y-1">
               {tabs.map((tab) => (
                 <button
                   key={tab.id}
                   onClick={() => setActiveTab(tab.id as any)}
-                  className={`w-full p-2 rounded-lg text-left transition-all ${
+                  className={`w-full p-2 rounded-md text-left transition-all ${
                     activeTab === tab.id
-                      ? 'bg-blue-500 text-white shadow-lg'
+                      ? 'bg-blue-500 text-white shadow-md'
                       : 'bg-white hover:bg-gray-100 text-gray-700'
                   }`}
                 >
