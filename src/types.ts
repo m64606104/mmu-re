@@ -262,6 +262,7 @@ export interface Conversation {
   members?: string[]; // 群成员ID数组（仅群聊）
   aiStatus?: AIStatusInfo; // AI状态信息（仅私聊AI角色）
   subChats?: SubChat[]; // 子聊天列表
+  groupChatMode?: 'sequential' | 'free'; // 群聊回复模式：顺序模式 | 自由模式（默认sequential）
 }
 
 export interface UserProfile {

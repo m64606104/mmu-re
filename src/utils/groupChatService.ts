@@ -52,16 +52,28 @@ function formatMessageForAI(msg: Message): string {
 function buildGroupChatSystemPrompt(
   aiSettings: CharacterSettings,
   groupName: string,
-  otherMembers: Array<{ name: string; role: string }> // 其他成员信息
+  otherMembers: Array<{ name: string; role: string }>, // 其他成员信息
+  isFreeMode: boolean = false // 是否为自由模式
 ): string {
   const membersList = otherMembers.map(m => `${m.name}(${m.role})`).join('、');
+  
+  const freeModeExtra = isFreeMode ? `
+
+【自由模式特性】：
+- 你可以回应任何人的消息，包括其他AI成员的发言
+- 你可以主动发起新话题，保持对话活跃
+- 即使没有人直接@你，你也可以参与讨论
+- 你可以与其他AI成员互动，就像真实的群聊一样
+- 观察整个对话流程，在合适的时机自然发言` : '';
   
   return `你是${aiSettings.nickname}。
 
 【群聊环境】：
 - 这是一个名为"${groupName}"的群聊
 - 群成员：${membersList}
-- 你需要在群聊中以自己的角色身份自然地参与对话
+- ⚠️ 重要：这是一个真实的群聊，有多个AI成员和用户共同参与
+- 你需要意识到其他AI成员也是独立的个体，他们会独立思考和发言
+- 你需要在群聊中以自己的角色身份自然地参与对话${freeModeExtra}
 
 ${aiSettings.systemPrompt ? `人物设定：${aiSettings.systemPrompt}` : ''}
 ${aiSettings.personality ? `性格特征：${aiSettings.personality}` : ''}
@@ -74,6 +86,7 @@ ${aiSettings.memoryEvents ? `记忆事件：${aiSettings.memoryEvents}` : ''}
 - **选择性发言**：不是每条消息都要回复，只在你感兴趣或相关时发言
 - **简洁回复**：群聊消息通常较短，避免长篇大论
 - **互动感**：可以@其他成员、回应他人观点、发表自己看法
+- **识别发送者**：注意消息前的发送者名字，区分用户和其他AI的发言
 - **跳过回复**：如果这条消息与你无关或不感兴趣，输出"[不回复]"
 
 【回复格式】：
@@ -87,11 +100,13 @@ ${aiSettings.memoryEvents ? `记忆事件：${aiSettings.memoryEvents}` : ''}
 - ❌ 不要输出思考过程
 - ❌ 不要进行总结性发言
 - ❌ 不要使用英文分析
+- ❌ 不要模仿其他AI的身份发言
 
 ✅ **正确做法**：
 - ✅ 直接用自然的中文回复
 - ✅ 像朋友聊天一样表达
-- ✅ 根据角色性格自然发言`;
+- ✅ 根据角色性格自然发言
+- ✅ 回应其他AI时，自然地提到他们的名字`;
 }
 
 /**
@@ -128,7 +143,8 @@ async function generateAIReply(
   aiMember: Conversation,
   groupConversation: Conversation,
   apiConfig: ApiConfig,
-  allConversations: Conversation[]
+  allConversations: Conversation[],
+  isFreeMode: boolean = false
 ): Promise<GroupAIReply> {
   const reply: GroupAIReply = {
     aiId: aiMember.id,
@@ -156,7 +172,8 @@ async function generateAIReply(
     const systemPrompt = buildGroupChatSystemPrompt(
       aiMember.characterSettings!,
       groupConversation.name,
-      otherMembers
+      otherMembers,
+      isFreeMode
     );
     
     // 构建消息历史（最近20条）
@@ -245,7 +262,7 @@ async function generateAIReply(
 }
 
 /**
- * 群聊生成服务主函数
+ * 群聊生成服务主函数 - 顺序模式
  * 依次为每个AI成员生成回复，支持回调
  */
 export async function generateGroupChatReplies(
@@ -264,6 +281,7 @@ export async function generateGroupChatReplies(
   }
   
   const allReplies: GroupAIReply[] = [];
+  const isFreeMode = groupConversation.groupChatMode === 'free';
   
   // 依次为每个AI生成回复
   for (const aiMember of aiMembers) {
@@ -271,7 +289,90 @@ export async function generateGroupChatReplies(
     callbacks?.onAIStart?.(aiMember.id, aiMember.characterSettings?.nickname || aiMember.name);
     
     // 生成回复
-    const reply = await generateAIReply(aiMember, groupConversation, apiConfig, allConversations);
+    const reply = await generateAIReply(aiMember, groupConversation, apiConfig, allConversations, isFreeMode);
+    allReplies.push(reply);
+    
+    if (reply.status === 'error') {
+      callbacks?.onAIError?.(reply.aiId, reply.error || '未知错误');
+      continue;
+    }
+    
+    if (reply.messages.length === 0) {
+      // AI选择不回复
+      callbacks?.onAIComplete?.(reply.aiId, []);
+      continue;
+    }
+    
+    // 逐条发送消息（模拟打字效果）
+    for (const message of reply.messages) {
+      callbacks?.onAITyping?.(reply.aiId);
+      // 等待一小段时间模拟打字
+      await new Promise(resolve => setTimeout(resolve, 800));
+      
+      // 添加senderId以标识消息来源
+      const messageWithSender = {
+        ...message,
+        senderId: reply.aiId,
+        senderName: reply.aiName,
+        senderAvatar: reply.aiAvatar,
+      } as any;
+      
+      callbacks?.onAIMessage?.(reply.aiId, messageWithSender);
+    }
+    
+    callbacks?.onAIComplete?.(reply.aiId, reply.messages);
+  }
+  
+  // 所有AI完成
+  callbacks?.onAllComplete?.(allReplies);
+  
+  return allReplies;
+}
+
+/**
+ * 群聊生成服务 - 自由模式
+ * 随机选择0到全部AI进行回复
+ */
+export async function generateGroupChatRepliesFreeMode(
+  groupConversation: Conversation,
+  apiConfig: ApiConfig,
+  allConversations: Conversation[],
+  callbacks?: GroupChatCallback
+): Promise<GroupAIReply[]> {
+  const members = groupConversation.members || [];
+  const aiMembers = members
+    .map(mid => allConversations.find(c => c.id === mid))
+    .filter(c => c && c.type === 'private') as Conversation[];
+  
+  if (aiMembers.length === 0) {
+    throw new Error('群聊中没有AI成员');
+  }
+  
+  // 随机选择回复的AI数量 (0 到 全部)
+  const replyCount = Math.floor(Math.random() * (aiMembers.length + 1));
+  console.log(`🎲 自由模式：从${aiMembers.length}个AI中随机选择${replyCount}个回复`);
+  
+  // 如果没有AI回复，返回空数组
+  if (replyCount === 0) {
+    console.log('💤 本轮无AI回复');
+    callbacks?.onAllComplete?.([]);
+    return [];
+  }
+  
+  // 随机选择AI
+  const shuffled = [...aiMembers].sort(() => Math.random() - 0.5);
+  const selectedAIs = shuffled.slice(0, replyCount);
+  console.log(`✅ 选中的AI: ${selectedAIs.map(ai => ai.characterSettings?.nickname || ai.name).join('、')}`);
+  
+  const allReplies: GroupAIReply[] = [];
+  
+  // 依次为选中的AI生成回复
+  for (const aiMember of selectedAIs) {
+    // 通知开始
+    callbacks?.onAIStart?.(aiMember.id, aiMember.characterSettings?.nickname || aiMember.name);
+    
+    // 生成回复
+    const reply = await generateAIReply(aiMember, groupConversation, apiConfig, allConversations, true);
     allReplies.push(reply);
     
     if (reply.status === 'error') {

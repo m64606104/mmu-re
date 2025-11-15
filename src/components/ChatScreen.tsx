@@ -70,7 +70,8 @@ import { getErrorFromResponse, formatErrorMessage } from '../utils/apiErrorHandl
 // @ts-ignore - 函数在backgroundTaskManager内部使用，TS静态分析无法识别
 import { splitMessages, cleanAIMessage } from '../utils/messageFormatter';
 // 群聊服务
-import { generateGroupChatReplies, GroupAIReply } from '../utils/groupChatService';
+import { generateGroupChatReplies, generateGroupChatRepliesFreeMode, GroupAIReply } from '../utils/groupChatService';
+import GroupChatSettingsModal from './GroupChatSettingsModal';
 // import { backgroundTaskManager } from '../utils/backgroundTaskManager';
 // 直接在这里定义一个简化版的backgroundTaskManager作为替代
 const backgroundTaskManager = {
@@ -678,6 +679,7 @@ export default function ChatScreen({
   
   // 群聊相关状态
   const [currentTypingAI, setCurrentTypingAI] = useState<{id: string; name: string; avatar?: string} | null>(null);
+  const [showGroupSettings, setShowGroupSettings] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   
@@ -2582,8 +2584,11 @@ ${characterInfo?.languageStyle ? `语言风格：${characterInfo.languageStyle}`
     setShowSendingHint(true);
 
     try {
+      const isFreeMode = conversation.groupChatMode === 'free';
+      const generateFunction = isFreeMode ? generateGroupChatRepliesFreeMode : generateGroupChatReplies;
+      
       // 调用群聊服务
-      await generateGroupChatReplies(
+      const allReplies = await generateFunction(
         conversation,
         apiConfig,
         conversations,
@@ -2627,14 +2632,43 @@ ${characterInfo?.languageStyle ? `语言风格：${characterInfo.languageStyle}`
             // 显示错误提示（可选）
           },
           
-          onAllComplete: (allReplies) => {
+          onAllComplete: (replies) => {
             console.log('🎉 所有AI完成回复');
             setIsGenerating(false);
             setCurrentTypingAI(null);
             setShowSendingHint(false);
+            
+            // 自由模式：如果没有AI回复，显示提示
+            if (isFreeMode && replies.length === 0) {
+              // 添加系统消息提示
+              const systemMessage: Message = {
+                id: `system_${Date.now()}`,
+                role: 'system',
+                content: '本轮没有AI回复',
+                timestamp: Date.now()
+              };
+              onUpdateConversation(conversation.id, {
+                messages: [...conversation.messages, systemMessage],
+                lastMessageTime: Date.now()
+              });
+            }
           }
         }
       );
+      
+      // 如果是自由模式且所有AI都选择不回复，也显示提示
+      if (isFreeMode && allReplies.every(r => r.messages.length === 0)) {
+        const systemMessage: Message = {
+          id: `system_${Date.now()}`,
+          role: 'system',
+          content: '所有AI都选择不回复',
+          timestamp: Date.now()
+        };
+        onUpdateConversation(conversation.id, {
+          messages: [...conversation.messages, systemMessage],
+          lastMessageTime: Date.now()
+        });
+      }
     } catch (error: any) {
       console.error('群聊生成失败:', error);
       alert('群聊生成失败: ' + error.message);
@@ -4702,10 +4736,28 @@ ${currentAI.characterSettings?.systemPrompt || ''}
               <Bell className="w-5 h-5 text-gray-700" />
             )}
           </button>
+          
+          {/* 设置按钮 */}
           {conversation.type === 'private' && (
             <button
               onClick={onOpenCharacterSettings}
               className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+              title="角色设置"
+            >
+              <svg className="w-5 h-5 text-gray-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <circle cx="12" cy="5" r="1.5" fill="currentColor"/>
+                <circle cx="12" cy="12" r="1.5" fill="currentColor"/>
+                <circle cx="12" cy="19" r="1.5" fill="currentColor"/>
+              </svg>
+            </button>
+          )}
+          
+          {/* 群聊设置按钮 */}
+          {conversation.type === 'group' && (
+            <button
+              onClick={() => setShowGroupSettings(true)}
+              className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+              title="群聊设置"
             >
               <svg className="w-5 h-5 text-gray-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <circle cx="12" cy="5" r="1.5" fill="currentColor"/>
@@ -6503,6 +6555,15 @@ ${currentAI.characterSettings?.systemPrompt || ''}
           }}
         />
       </div>
+    )}
+
+    {/* 👥 群聊设置弹窗 */}
+    {showGroupSettings && conversation.type === 'group' && (
+      <GroupChatSettingsModal
+        conversation={conversation}
+        onClose={() => setShowGroupSettings(false)}
+        onUpdateConversation={onUpdateConversation}
+      />
     )}
     </>
   );
