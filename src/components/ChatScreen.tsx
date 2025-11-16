@@ -3913,13 +3913,14 @@ ${doc.content}`;
         apiConfig,
         requestBody,
         async (newMessages: Message[], conversationId: string, error?: string) => {
-          // 后台任务完成回调
-          console.log(`✅ 后台任务完成，收到${newMessages.length}条消息${error ? `，错误: ${error}` : ''}`);
-          
-          // 🔥 清理loading状态
-          setShowSendingHint(false);
-          setShowTyping(false);
-          setIsGenerating(false);
+          try {
+            // 后台任务完成回调
+            console.log(`✅ 后台任务完成，收到${newMessages.length}条消息${error ? `，错误: ${error}` : ''}`);
+            
+            // 🔥 立即清理loading状态（无论成功失败，都要重置）
+            setShowSendingHint(false);
+            setShowTyping(false);
+            setIsGenerating(false);
           
           // 🔥 关键修复：区分API失败和AI不回复
           if (newMessages.length === 0) {
@@ -4266,6 +4267,14 @@ ${doc.content}`;
           }, 0); // 延迟到下一个事件循环，确保不阻塞UI
           
           // 🔥 热梗系统已删除
+          } catch (callbackError) {
+            // 🆕 如果callback本身出错，确保状态重置
+            console.error('❌ Callback执行出错:', callbackError);
+            setIsGenerating(false);
+            setShowSendingHint(false);
+            setShowTyping(false);
+            showToast('处理回复时出错，请重试', 'error');
+          }
         }
       );
       
