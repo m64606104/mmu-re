@@ -26,9 +26,28 @@ export interface Letter {
   replyContent?: string;  // 回信内容
   bottleAIProfile?: BottleAI;  // 漂流瓶AI的完整人设信息（用于生成回信）
   
+  // 多轮交流相关
+  conversationRounds: LetterRound[];  // 完整的交流记录（包含来回的信件）
+  currentRound: number;  // 当前轮数（从1开始）
+  maxRounds: number;  // 最大轮数限制（漂流瓶专属，默认3轮）
+  isPenPalAdded: boolean;  // 是否已加为笔友
+  
   // 装饰元素
   stampStyle?: 'default' | 'vintage' | 'flower' | 'sea';  // 邮票样式
   paperStyle?: 'white' | 'vintage' | 'blue';  // 信纸样式
+}
+
+// 单轮交流记录
+export interface LetterRound {
+  roundNumber: number;  // 第几轮
+  userLetter: {
+    content: string;
+    sentAt: number;
+  };
+  aiReply?: {
+    content: string;
+    repliedAt: number;
+  };
 }
 
 // 漂流瓶随机AI角色池

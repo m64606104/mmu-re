@@ -310,7 +310,19 @@ export function sendLetter(
     paperStyle: 'white',
     
     // 保存AI人设信息（用于生成回信时参考）
-    bottleAIProfile: bottleAI
+    bottleAIProfile: bottleAI,
+    
+    // 多轮交流初始化
+    conversationRounds: [{
+      roundNumber: 1,
+      userLetter: {
+        content,
+        sentAt: now
+      }
+    }],
+    currentRound: 1,
+    maxRounds: isBottle ? 3 : 999,  // 漂流瓶限制3轮，其他无限制
+    isPenPalAdded: false
   };
   
   // 保存到localStorage
@@ -396,9 +408,19 @@ async function generateReply(letterId: string) {
   // 这里应该调用AI API生成回信内容
   // 暂时使用模拟内容
   const replyContent = generateMockReply(letter);
+  const now = Date.now();
+  
+  // 更新当前轮次的AI回复
+  const currentRoundData = letter.conversationRounds[letter.conversationRounds.length - 1];
+  if (currentRoundData) {
+    currentRoundData.aiReply = {
+      content: replyContent,
+      repliedAt: now
+    };
+  }
   
   letter.replyContent = replyContent;
-  letter.repliedAt = Date.now();
+  letter.repliedAt = now;
   letter.status = 'replied';
   
   updateLetterInStorage(letter);
@@ -671,4 +693,136 @@ export function clearLetterTimer(letterId: string) {
  */
 export function getActiveTimersCount(): number {
   return activeTimers.size;
+}
+
+/**
+ * 继续回信（多轮交流）
+ * @returns 新的信件ID，如果超过限制则返回null
+ */
+export function continueReply(
+  letterId: string,
+  content: string,
+  _senderName: string = '我'  // 保留参数以保持接口一致性，但在多轮交流中使用原letter的senderName
+): string | null {
+  const letters = getLettersFromStorage();
+  const letter = letters.find(l => l.id === letterId);
+  
+  if (!letter) {
+    return null;
+  }
+  
+  // 检查是否已加为笔友或是否还在轮数限制内
+  const canContinue = letter.isPenPalAdded || letter.currentRound < letter.maxRounds;
+  
+  if (!canContinue) {
+    console.log(`⚠️ 已达到最大轮数限制 (${letter.maxRounds}轮)`);
+    return null;
+  }
+  
+  const now = Date.now();
+  const replyDelay = calculateReplyDelay(false);
+  
+  // 增加轮数
+  letter.currentRound += 1;
+  
+  // 添加新一轮对话
+  letter.conversationRounds.push({
+    roundNumber: letter.currentRound,
+    userLetter: {
+      content,
+      sentAt: now
+    }
+  });
+  
+  // 更新信件状态
+  letter.status = 'sent';
+  letter.willReplyAt = now + replyDelay;
+  letter.hasUrged = false;
+  
+  updateLetterInStorage(letter);
+  
+  // 设置新的回信定时器
+  scheduleAutoReply(letter);
+  
+  console.log(`📮 继续第 ${letter.currentRound} 轮交流`);
+  
+  return letter.id;
+}
+
+/**
+ * 加为笔友
+ * 将漂流瓶AI加为长期笔友，解除轮数限制
+ */
+export function addAsPenPal(letterId: string): boolean {
+  const letters = getLettersFromStorage();
+  const letter = letters.find(l => l.id === letterId);
+  
+  if (!letter || !letter.isBottle || !letter.bottleAIProfile) {
+    return false;
+  }
+  
+  // 标记为已加笔友
+  letter.isPenPalAdded = true;
+  letter.maxRounds = 999; // 解除轮数限制
+  
+  updateLetterInStorage(letter);
+  
+  console.log(`💌 已将 ${letter.receiverName} 加为笔友！`);
+  
+  return true;
+}
+
+/**
+ * 检查是否可以继续回信
+ */
+export function canContinueReply(letterId: string): {
+  canContinue: boolean;
+  reason?: string;
+  currentRound: number;
+  maxRounds: number;
+  isLastRound: boolean;
+} {
+  const letter = getLetterById(letterId);
+  
+  if (!letter) {
+    return {
+      canContinue: false,
+      reason: '信件不存在',
+      currentRound: 0,
+      maxRounds: 0,
+      isLastRound: false
+    };
+  }
+  
+  if (letter.status !== 'replied') {
+    return {
+      canContinue: false,
+      reason: '等待回信中',
+      currentRound: letter.currentRound,
+      maxRounds: letter.maxRounds,
+      isLastRound: false
+    };
+  }
+  
+  // 已加为笔友或非漂流瓶，无限制
+  if (letter.isPenPalAdded || !letter.isBottle) {
+    return {
+      canContinue: true,
+      currentRound: letter.currentRound,
+      maxRounds: letter.maxRounds,
+      isLastRound: false
+    };
+  }
+  
+  // 漂流瓶模式，检查轮数限制
+  const reachedLimit = letter.currentRound >= letter.maxRounds;
+  const isLastRound = letter.currentRound === letter.maxRounds - 1;
+  
+  return {
+    canContinue: !reachedLimit,
+    reason: reachedLimit ? `已达到漂流瓶最大轮数限制 (${letter.maxRounds}轮)` : undefined,
+    currentRound: letter.currentRound,
+    maxRounds: letter.maxRounds,
+    isLastRound: isLastRound && !reachedLimit
+  };
 }

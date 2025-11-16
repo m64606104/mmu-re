@@ -926,6 +926,7 @@ function App() {
           <LetterBoxScreen
             onBack={() => navigateTo('home')}
             onWriteNew={() => navigateTo('letter-writing')}
+            userName={userProfile.username}
           />
         );
       case 'letter-writing':

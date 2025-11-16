@@ -12,11 +12,13 @@ import LetterDetailModal from './LetterDetailModal';
 interface LetterBoxScreenProps {
   onBack: () => void;
   onWriteNew: () => void;
+  userName: string;
 }
 
 const LetterBoxScreen: React.FC<LetterBoxScreenProps> = ({
   onBack,
-  onWriteNew
+  onWriteNew,
+  userName
 }) => {
   const [letters, setLetters] = useState<Letter[]>([]);
   const [selectedLetter, setSelectedLetter] = useState<Letter | null>(null);
@@ -191,6 +193,7 @@ const LetterBoxScreen: React.FC<LetterBoxScreenProps> = ({
           onUrge={() => {
             loadLetters(); // 催促后刷新
           }}
+          userName={userName}
         />
       )}
     </div>
