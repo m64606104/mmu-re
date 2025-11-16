@@ -6513,14 +6513,18 @@ ${doc.content}`;
                         const updatedMessages = currentConv.messages.map(m => {
                           if (m.id === newMessage.id && m.moneyTransfer?.groupRedPacket) {
                             const redPacket = m.moneyTransfer.groupRedPacket;
+                            // 🐛 修复：创建红包对象的深拷贝，触发React更新
                             return {
                               ...m,
                               moneyTransfer: {
                                 ...m.moneyTransfer,
                                 groupRedPacket: {
                                   ...redPacket,
-                                  // 红包领取信息已在 handleAIGroupRedPacketClaiming 中更新
-                                  // 这里直接使用最新的红包对象
+                                  // 🎯 关键：深拷贝claimedBy数组，确保React检测到变化
+                                  claimedBy: [...redPacket.claimedBy],
+                                  remainingCount: redPacket.remainingCount,
+                                  remainingAmount: redPacket.remainingAmount,
+                                  status: redPacket.status
                                 }
                               }
                             };
