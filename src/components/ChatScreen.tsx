@@ -5675,8 +5675,8 @@ ${doc.content}`;
                   }
                 }}
               >
-                <div className="w-9 h-9 rounded-full bg-white border border-red-200 flex items-center justify-center hover:border-red-300 transition-colors">
-                  <Gift className="w-4 h-4 text-red-500" />
+                <div className="w-9 h-9 rounded-full bg-white border border-gray-300 flex items-center justify-center hover:border-gray-400 transition-colors">
+                  <Gift className="w-4 h-4 text-gray-600" />
                 </div>
               </button>
               <button 
