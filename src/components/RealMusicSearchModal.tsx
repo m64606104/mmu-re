@@ -4,9 +4,8 @@
  */
 
 import React, { useState, useRef } from 'react';
-import { X, Search, Upload, Globe, Loader, AlertCircle, CheckCircle, TestTube } from 'lucide-react';
+import { X, Search, Upload, Globe, Loader, AlertCircle, CheckCircle, TestTube, Music } from 'lucide-react';
 import { RealMusicInfo, realMusicService } from '../utils/realMusicService';
-import RealMusicCard from './RealMusicCard';
 import audioTestService from '../utils/audioTestService';
 
 interface RealMusicSearchModalProps {
@@ -204,222 +203,197 @@ ${workingApis.length === 0 ? '⚠️ 所有音乐API都不可用，建议使用�
 
   return (
     <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-3xl shadow-2xl w-full max-w-4xl max-h-[90vh] overflow-hidden">
-        {/* 头部 */}
-        <div className="flex items-center justify-between px-6 py-5 border-b bg-gradient-to-r from-gray-50 to-white">
-          <div>
-            <h2 className="text-2xl font-bold text-gray-900">搜索并分享音乐</h2>
-            <p className="text-sm text-gray-500 mt-1">为 <span className="font-medium text-blue-600">{characterName}</span> 选择一首好听的歌</p>
-          </div>
-          <div className="flex items-center gap-3">
-            {/* 发送按钮 - 移到头部右侧 */}
-            <button
-              onClick={handleConfirmSelection}
-              disabled={!selectedMusic}
-              className="px-6 py-2.5 bg-gradient-to-r from-blue-500 to-blue-600 text-white rounded-xl hover:from-blue-600 hover:to-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-lg hover:shadow-xl disabled:shadow-none font-medium"
-              title={selectedMusic ? `发送: ${selectedMusic.title}` : '请选择音乐'}
-            >
-              确认分享
-            </button>
+      <div className="bg-white rounded-3xl shadow-2xl w-full max-w-2xl max-h-[85vh] overflow-hidden">
+        {/* 头部 - 参考图3设计 */}
+        <div className="bg-gradient-to-r from-blue-500 to-blue-600 p-6">
+          <div className="flex items-center justify-between">
+            <div className="flex-1">
+              <h2 className="text-2xl font-bold text-white">搜索并分享音乐</h2>
+              <p className="text-sm text-blue-100 mt-1">搜索可播放的音乐分享给 {characterName}</p>
+            </div>
             <button
               onClick={onClose}
-              className="p-2 hover:bg-gray-100 rounded-full transition-colors"
+              className="p-2 hover:bg-white/20 rounded-full transition-colors"
             >
-              <X className="w-5 h-5" />
+              <X className="w-6 h-6 text-white" />
             </button>
           </div>
+          
+          {/* 已选择提示 */}
+          {selectedMusic && (
+            <div className="mt-4 bg-white/20 backdrop-blur-sm rounded-xl p-3 flex items-center justify-between">
+              <div className="flex items-center gap-3 flex-1 min-w-0">
+                <div className="w-10 h-10 rounded-lg bg-white/20 flex items-center justify-center flex-shrink-0">
+                  <Music className="w-5 h-5 text-white" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-white font-medium truncate">{selectedMusic.title}</p>
+                  <p className="text-blue-100 text-sm truncate">{selectedMusic.artist}</p>
+                </div>
+              </div>
+              <button
+                onClick={handleConfirmSelection}
+                className="ml-3 px-6 py-2.5 bg-white text-blue-600 rounded-xl hover:bg-blue-50 transition-all font-medium shadow-lg flex-shrink-0"
+              >
+                发送
+              </button>
+            </div>
+          )}
         </div>
 
-        <div className="flex flex-col lg:flex-row h-[calc(90vh-5rem)]">
-          {/* 左侧选项卡 */}
-          <div className="lg:w-80 border-r bg-gradient-to-b from-gray-50 to-white">
-            <div className="p-4 space-y-3">
-              {tabs.map((tab) => (
+        <div className="flex flex-col h-[calc(85vh-10rem)]">
+          {/* 选项卡 - 横向布局 */}
+          <div className="flex border-b bg-gray-50">
+            {tabs.map((tab) => (
               <button
                 key={tab.id}
                 onClick={() => setActiveTab(tab.id as any)}
-                className={`w-full p-3 rounded-xl transition-all text-sm font-medium ${
+                className={`flex-1 py-3 px-4 transition-all text-sm font-medium border-b-2 ${
                   activeTab === tab.id
-                    ? 'bg-gradient-to-r from-blue-500 to-blue-600 text-white shadow-lg scale-105'
-                    : 'bg-white hover:bg-gray-50 text-gray-700 border border-gray-200 hover:border-blue-300'
+                    ? 'border-blue-500 text-blue-600 bg-white'
+                    : 'border-transparent text-gray-600 hover:text-gray-900 hover:bg-gray-100'
                 }`}
               >
                 <div className="flex items-center justify-center gap-2">
-                  <tab.icon className="w-5 h-5" />
-                  <div>{tab.label}</div>
+                  <tab.icon className="w-4 h-4" />
+                  <span>{tab.label}</span>
                 </div>
               </button>
             ))}
-            </div>
-            
-            {/* 音频测试按钮 */}
-            <div className="p-4 border-t">
-              <button
-                onClick={handleAudioTest}
-                disabled={isTesting}
-                className="w-full p-3 bg-gradient-to-r from-purple-500 to-purple-600 text-white rounded-xl hover:from-purple-600 hover:to-purple-700 disabled:opacity-50 transition-all shadow-md hover:shadow-lg flex items-center justify-center gap-2 font-medium"
-              >
-                {isTesting ? (
-                  <>
-                    <Loader className="w-4 h-4 animate-spin" />
-                    测试中...
-                  </>
-                ) : (
-                  <>
-                    <TestTube className="w-4 h-4" />
-                    音频兼容性测试
-                  </>
-                )}
-              </button>
-            </div>
-            
-            {/* 预览区域 */}
-            {selectedMusic && (
-              <div className="p-4 border-t bg-blue-50/50">
-                <h3 className="font-semibold text-gray-900 mb-3 flex items-center gap-2">
-                  <CheckCircle className="w-4 h-4 text-blue-500" />
-                  已选择
-                </h3>
-                <RealMusicCard 
-                  music={selectedMusic}
-                  className="w-full"
-                />
-              </div>
-            )}
           </div>
 
-          {/* 右侧内容区域 */}
-          <div className="flex-1 overflow-auto">
+          {/* 内容区域 */}
+          <div className="flex-1 overflow-auto bg-gray-50">
             <div className="p-6">
               {/* 在线搜索 */}
               {activeTab === 'search' && (
                 <div className="space-y-4">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      搜索音乐
-                    </label>
-                    <div className="flex gap-2">
+                  {/* 搜索框 - 参考图3设计 */}
+                  <div className="bg-white rounded-2xl p-4 shadow-sm">
+                    <div className="flex gap-3">
                       <input
                         type="text"
                         value={searchQuery}
                         onChange={(e) => setSearchQuery(e.target.value)}
-                        placeholder="输入歌曲名、歌手或专辑..."
-                        className="flex-1 px-4 py-3 border-2 border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
+                        placeholder="输入歌曲名或歌手..."
+                        className="flex-1 px-4 py-3 border-2 border-gray-200 rounded-xl focus:outline-none focus:border-blue-500 transition-colors"
                         onKeyPress={(e) => e.key === 'Enter' && handleSearch()}
                       />
                       <button
                         onClick={handleSearch}
                         disabled={isSearching || !searchQuery.trim()}
-                        className="px-6 py-3 bg-gradient-to-r from-blue-500 to-blue-600 text-white rounded-xl hover:from-blue-600 hover:to-blue-700 disabled:opacity-50 transition-all shadow-md hover:shadow-lg flex items-center gap-2 font-medium"
+                        className="px-6 py-3 bg-blue-500 text-white rounded-xl hover:bg-blue-600 disabled:opacity-50 transition-all font-medium shadow-md flex items-center gap-2 flex-shrink-0"
                       >
                         {isSearching ? (
                           <>
                             <Loader className="w-4 h-4 animate-spin" />
-                            搜索中...
+                            <span>搜索中</span>
                           </>
                         ) : (
                           <>
                             <Search className="w-4 h-4" />
-                            搜索
+                            <span>搜索</span>
                           </>
                         )}
                       </button>
                     </div>
-                    <p className="text-xs text-gray-500 mt-1">
-                      搜索来自多个免费音乐平台的可播放音乐
+                    <p className="text-xs text-gray-500 mt-2 flex items-center gap-1">
+                      <Music className="w-3 h-3" />
+                      免费音乐平台：Jamendo、iTunes 预览
                     </p>
                   </div>
                   
-                  {/* 搜索结果 */}
+                  {/* 搜索结果 - 参考图3的卡片设计 */}
                   {searchError && (
-                    <div className="flex items-center gap-2 p-4 bg-red-50 border border-red-200 rounded-lg text-red-700">
-                      <AlertCircle className="w-5 h-5" />
-                      <span>{searchError}</span>
+                    <div className="bg-white rounded-2xl p-4 shadow-sm">
+                      <div className="flex items-center gap-3 text-red-600">
+                        <AlertCircle className="w-5 h-5 flex-shrink-0" />
+                        <span className="text-sm">{searchError}</span>
+                      </div>
                     </div>
                   )}
                   
                   {searchResults.length > 0 && (
-                    <div className="space-y-4">
-                      <h3 className="font-semibold text-gray-900 flex items-center gap-2 text-lg">
-                        <CheckCircle className="w-5 h-5 text-green-500" />
-                        搜索结果 ({searchResults.length})
-                      </h3>
-                      <div className="grid gap-3">
-                        {searchResults.map((music, index) => (
-                          <div 
-                            key={`${music.id}-${index}`}
-                            onClick={() => setSelectedMusic(music)}
-                            className={`p-4 border-2 rounded-2xl hover:shadow-lg transition-all cursor-pointer ${
-                              selectedMusic?.id === music.id 
-                                ? 'border-blue-500 bg-gradient-to-br from-blue-50 to-white shadow-md' 
-                                : 'border-gray-200 hover:border-blue-300 bg-white'
-                            }`}
-                          >
-                            <div className="flex items-center justify-between">
-                              <div className="flex-1 min-w-0 pr-4">
-                                <h4 className="font-semibold text-gray-900 truncate" title={music.title}>{music.title}</h4>
-                                <p className="text-sm text-gray-600 truncate" title={music.artist}>{music.artist}</p>
-                                {music.album && (
-                                  <p className="text-xs text-gray-500 truncate" title={music.album}>{music.album}</p>
-                                )}
-                              </div>
-                              <div className="text-right flex-shrink-0">
-                                <div className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium ${
-                                  music.playable 
-                                    ? 'bg-green-100 text-green-700' 
-                                    : 'bg-gray-100 text-gray-600'
-                                }`}>
-                                  <div className={`w-2 h-2 rounded-full ${
-                                    music.playable ? 'bg-green-500 animate-pulse' : 'bg-gray-400'
-                                  }`} />
-                                  {music.playable ? '可播放' : '仅信息'}
-                                </div>
-                                <p className="text-xs text-gray-500 mt-1.5 capitalize font-medium">
-                                  {music.source}
-                                </p>
+                    <div className="space-y-3">
+                      {searchResults.map((music, index) => (
+                        <div 
+                          key={`${music.id}-${index}`}
+                          onClick={() => setSelectedMusic(music)}
+                          className={`bg-white rounded-2xl p-4 shadow-sm hover:shadow-md transition-all cursor-pointer ${
+                            selectedMusic?.id === music.id 
+                              ? 'ring-2 ring-blue-500' 
+                              : ''
+                          }`}
+                        >
+                          <div className="flex items-center gap-4">
+                            {/* 封面图 */}
+                            <div className="w-16 h-16 rounded-xl bg-gradient-to-br from-blue-100 to-purple-100 flex items-center justify-center flex-shrink-0 overflow-hidden">
+                              {music.coverUrl ? (
+                                <img src={music.coverUrl} alt="" className="w-full h-full object-cover" />
+                              ) : (
+                                <Music className="w-8 h-8 text-blue-400" />
+                              )}
+                            </div>
+                            
+                            {/* 音乐信息 */}
+                            <div className="flex-1 min-w-0">
+                              <h4 className="font-semibold text-gray-900 truncate">{music.title}</h4>
+                              <p className="text-sm text-gray-600 truncate">{music.artist}</p>
+                              <div className="flex items-center gap-2 mt-1.5">
                                 {/* 版本标识 */}
                                 {music.isFullVersion === false && (
-                                  <div className="text-xs text-orange-600 mt-1.5 font-semibold">
+                                  <span className="text-xs bg-orange-100 text-orange-700 px-2 py-0.5 rounded-full font-medium">
                                     30秒预览
-                                  </div>
+                                  </span>
                                 )}
                                 {music.isFullVersion === true && (
-                                  <div className="text-xs text-green-600 mt-1.5 font-semibold">
+                                  <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full font-medium">
                                     完整版
-                                  </div>
+                                  </span>
                                 )}
-                                {selectedMusic?.id === music.id && (
-                                  <div className="text-blue-600 text-sm mt-1.5 font-semibold flex items-center gap-1">
-                                    <CheckCircle className="w-3.5 h-3.5" />
-                                    已选
-                                  </div>
-                                )}
+                                <span className="text-xs text-gray-500 capitalize">
+                                  {music.source}
+                                </span>
                               </div>
                             </div>
+                            
+                            {/* 选择状态 */}
+                            <div className="flex-shrink-0">
+                              {selectedMusic?.id === music.id ? (
+                                <div className="w-6 h-6 rounded-full bg-blue-500 flex items-center justify-center">
+                                  <CheckCircle className="w-4 h-4 text-white" />
+                                </div>
+                              ) : (
+                                <div className="w-6 h-6 rounded-full border-2 border-gray-300" />
+                              )}
+                            </div>
                           </div>
-                        ))}
-                      </div>
+                        </div>
+                      ))}
                     </div>
                   )}
                 </div>
               )}
 
-              {/* 本地上传 */}
+              {/* 本地上传 - 优化设计 */}
               {activeTab === 'upload' && (
-                <div className="space-y-4">
+                <div className="bg-white rounded-2xl p-6 shadow-sm">
                   <div
                     onClick={() => fileInputRef.current?.click()}
-                    className="border-2 border-dashed border-gray-300 rounded-lg p-8 text-center hover:border-blue-400 transition-colors cursor-pointer"
+                    className="border-2 border-dashed border-blue-300 rounded-2xl p-12 text-center hover:border-blue-500 hover:bg-blue-50 transition-all cursor-pointer"
                   >
-                    <Upload className="w-12 h-12 text-gray-400 mx-auto mb-3" />
-                    <p className="text-lg font-medium text-gray-700">点击上传音频文件</p>
-                    <p className="text-sm text-gray-500 mt-1">
+                    <div className="w-20 h-20 rounded-full bg-blue-100 flex items-center justify-center mx-auto mb-4">
+                      <Upload className="w-10 h-10 text-blue-500" />
+                    </div>
+                    <p className="text-lg font-semibold text-gray-900">点击上传音频文件</p>
+                    <p className="text-sm text-gray-500 mt-2">
                       支持 MP3, WAV, AAC, M4A, OGG 等格式
                     </p>
                     {uploadedFile && (
-                      <p className="text-sm text-blue-600 mt-2">
-                        已选择: {uploadedFile.name}
-                      </p>
+                      <div className="mt-4 inline-flex items-center gap-2 px-4 py-2 bg-blue-100 text-blue-700 rounded-xl">
+                        <CheckCircle className="w-4 h-4" />
+                        <span className="text-sm font-medium">已选择: {uploadedFile.name}</span>
+                      </div>
                     )}
                   </div>
                   <input
@@ -432,54 +406,53 @@ ${workingApis.length === 0 ? '⚠️ 所有音乐API都不可用，建议使用�
                 </div>
               )}
 
-              {/* URL输入 */}
+              {/* URL输入 - 优化设计 */}
               {activeTab === 'url' && (
-                <div className="space-y-4">
+                <div className="bg-white rounded-2xl p-6 shadow-sm space-y-4">
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                    <label className="block text-sm font-semibold text-gray-900 mb-3">
                       音频链接
                     </label>
-                    <div className="flex gap-2">
+                    <div className="flex gap-3">
                       <input
                         type="url"
                         value={audioUrl}
                         onChange={(e) => setAudioUrl(e.target.value)}
                         placeholder="https://example.com/music.mp3"
-                        className="flex-1 px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        className="flex-1 px-4 py-3 border-2 border-gray-200 rounded-xl focus:outline-none focus:border-blue-500 transition-colors"
                       />
                       <button
                         onClick={handleUrlValidation}
                         disabled={urlValidating || !audioUrl.trim()}
-                        className="px-6 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 disabled:opacity-50 transition-colors flex items-center gap-2"
+                        className="px-6 py-3 bg-green-500 text-white rounded-xl hover:bg-green-600 disabled:opacity-50 transition-all font-medium shadow-md flex items-center gap-2 flex-shrink-0"
                       >
                         {urlValidating ? (
                           <>
                             <Loader className="w-4 h-4 animate-spin" />
-                            验证中...
+                            <span>验证中</span>
                           </>
                         ) : (
                           <>
                             <CheckCircle className="w-4 h-4" />
-                            验证
+                            <span>验证</span>
                           </>
                         )}
                       </button>
                     </div>
-                    <div className="flex items-center gap-2 mt-2">
-                      {urlValid === true && (
-                        <div className="flex items-center gap-1 text-green-600 text-sm">
-                          <CheckCircle className="w-4 h-4" />
-                          URL有效，可以播放
-                        </div>
-                      )}
-                      {urlValid === false && (
-                        <div className="flex items-center gap-1 text-red-600 text-sm">
-                          <AlertCircle className="w-4 h-4" />
-                          URL无效或无法播放
-                        </div>
-                      )}
-                    </div>
-                    <p className="text-xs text-gray-500 mt-1">
+                    {urlValid === true && (
+                      <div className="mt-3 flex items-center gap-2 text-green-600 bg-green-50 px-4 py-2 rounded-xl">
+                        <CheckCircle className="w-4 h-4" />
+                        <span className="text-sm font-medium">URL有效，可以播放</span>
+                      </div>
+                    )}
+                    {urlValid === false && (
+                      <div className="mt-3 flex items-center gap-2 text-red-600 bg-red-50 px-4 py-2 rounded-xl">
+                        <AlertCircle className="w-4 h-4" />
+                        <span className="text-sm font-medium">URL无效或无法播放</span>
+                      </div>
+                    )}
+                    <p className="text-xs text-gray-500 mt-2 flex items-center gap-1">
+                      <Globe className="w-3 h-3" />
                       请输入可直接访问的音频文件链接（支持CORS）
                     </p>
                   </div>
@@ -487,6 +460,27 @@ ${workingApis.length === 0 ? '⚠️ 所有音乐API都不可用，建议使用�
               )}
 
             </div>
+          </div>
+          
+          {/* 底部测试按钮 */}
+          <div className="border-t bg-white p-4">
+            <button
+              onClick={handleAudioTest}
+              disabled={isTesting}
+              className="w-full py-3 bg-gradient-to-r from-purple-500 to-pink-500 text-white rounded-xl hover:from-purple-600 hover:to-pink-600 disabled:opacity-50 transition-all font-medium shadow-md flex items-center justify-center gap-2"
+            >
+              {isTesting ? (
+                <>
+                  <Loader className="w-5 h-5 animate-spin" />
+                  <span>测试中...</span>
+                </>
+              ) : (
+                <>
+                  <TestTube className="w-5 h-5" />
+                  <span>音频兼容性测试</span>
+                </>
+              )}
+            </button>
           </div>
         </div>
       </div>

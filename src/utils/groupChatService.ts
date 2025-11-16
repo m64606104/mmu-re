@@ -25,7 +25,6 @@ export interface GroupChatCallback {
   onAIComplete?: (aiId: string, messages: Message[]) => void; // AI完成回复
   onAIError?: (aiId: string, error: string) => void; // AI回复出错
   onAllComplete?: (allReplies: GroupAIReply[]) => void; // 所有AI完成回复
-  getLatestMessages?: () => Message[]; // 🔥 新增：获取最新的消息列表
 }
 
 /**
@@ -351,8 +350,7 @@ async function generateAIReply(
   groupConversation: Conversation,
   apiConfig: ApiConfig,
   allConversations: Conversation[],
-  isFreeMode: boolean = false,
-  latestMessages?: Message[] // 🔥 新增：可选的最新消息列表
+  isFreeMode: boolean = false
 ): Promise<GroupAIReply> {
   const reply: GroupAIReply = {
     aiId: aiMember.id,
@@ -391,9 +389,7 @@ async function generateAIReply(
     );
     
     // 构建消息历史（最近20条）
-    // 🔥 优先使用传入的最新消息列表，确保每个AI都能看到前面AI的回复
-    const allMessages = latestMessages || groupConversation.messages;
-    const recentMessages = allMessages.slice(-20);
+    const recentMessages = groupConversation.messages.slice(-20);
     
     // 🕐 添加时间感知
     const lastUserMessage = recentMessages
@@ -524,13 +520,10 @@ export async function generateGroupChatReplies(
       await new Promise(resolve => setTimeout(resolve, 200)); // AI之间的间隔
     }
     
-    // 🔥 获取最新的消息列表（包括前面AI的回复）
-    const latestMessages = callbacks?.getLatestMessages?.() || groupConversation.messages;
-    
     // 🎯 新设计：先调用API，让"发送中"提示承担API时间
     // 第一个AI：在"发送中"期间调用API
     // 后续AI：在前一个AI完成后立即调用API
-    const reply = await generateAIReply(aiMember, groupConversation, apiConfig, allConversations, isFreeMode, latestMessages);
+    const reply = await generateAIReply(aiMember, groupConversation, apiConfig, allConversations, isFreeMode);
     allReplies.push(reply);
     
     // API返回后再显示打字动画（只有有内容时才显示）
@@ -652,13 +645,10 @@ async function generateSingleRound(
       await new Promise(resolve => setTimeout(resolve, 200)); // AI之间的间隔
     }
     
-    // 🔥 获取最新的消息列表（包括前面AI的回复）
-    const latestMessages = callbacks?.getLatestMessages?.() || groupConversation.messages;
-    
     // 🎯 新设计：先调用API，让"发送中"提示承担API时间
     // 第一个AI：在"发送中"期间调用API
     // 后续AI：在前一个AI完成后立即调用API
-    const reply = await generateAIReply(aiMember, groupConversation, apiConfig, allConversations, true, latestMessages);
+    const reply = await generateAIReply(aiMember, groupConversation, apiConfig, allConversations, true);
     roundReplies.push(reply);
     
     // API返回后再显示打字动画（只有有内容时才显示）
