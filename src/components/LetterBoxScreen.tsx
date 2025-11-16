@@ -6,7 +6,7 @@
 import React, { useState, useEffect } from 'react';
 import { Letter } from '../types/letter';
 import { getActiveLetters, archiveLetter } from '../utils/letterService';
-import { ArrowLeft, Mail, Send, Clock, Check, Users, Trash2, Archive } from 'lucide-react';
+import { ArrowLeft, Mail, Send, Clock, Check, Users, Trash2, Archive, Trophy } from 'lucide-react';
 import LetterDetailModal from './LetterDetailModal';
 
 interface LetterBoxScreenProps {
@@ -14,6 +14,7 @@ interface LetterBoxScreenProps {
   onWriteNew: () => void;
   onToPenPals: () => void;
   toArchived: () => void;
+  onToAchievements: () => void;
   userName: string;
 }
 
@@ -22,6 +23,7 @@ const LetterBoxScreen: React.FC<LetterBoxScreenProps> = ({
   onWriteNew,
   onToPenPals,
   toArchived,
+  onToAchievements,
   userName
 }) => {
   const [letters, setLetters] = useState<Letter[]>([]);
@@ -134,20 +136,29 @@ const LetterBoxScreen: React.FC<LetterBoxScreenProps> = ({
       </div>
 
       {/* 快捷功能区 */}
-      <div className="p-4 flex gap-3">
+      <div className="p-4 space-y-3">
+        <div className="flex gap-3">
+          <button
+            onClick={onToPenPals}
+            className="flex-1 px-4 py-3 bg-gradient-to-r from-pink-500 to-rose-500 text-white rounded-xl font-medium hover:shadow-lg transition-all flex items-center justify-center gap-2"
+          >
+            <Users size={18} />
+            我的笔友
+          </button>
+          <button
+            onClick={toArchived}
+            className="flex-1 px-4 py-3 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-xl font-medium transition-colors flex items-center justify-center gap-2"
+          >
+            <Trash2 size={18} />
+            回收站
+          </button>
+        </div>
         <button
-          onClick={onToPenPals}
-          className="flex-1 px-4 py-3 bg-gradient-to-r from-pink-500 to-rose-500 text-white rounded-xl font-medium hover:shadow-lg transition-all flex items-center justify-center gap-2"
+          onClick={onToAchievements}
+          className="w-full px-4 py-3 bg-gradient-to-r from-yellow-400 to-orange-500 text-white rounded-xl font-medium hover:shadow-lg transition-all flex items-center justify-center gap-2"
         >
-          <Users size={18} />
-          我的笔友
-        </button>
-        <button
-          onClick={toArchived}
-          className="flex-1 px-4 py-3 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-xl font-medium transition-colors flex items-center justify-center gap-2"
-        >
-          <Trash2 size={18} />
-          回收站
+          <Trophy size={18} />
+          成就中心
         </button>
       </div>
 
