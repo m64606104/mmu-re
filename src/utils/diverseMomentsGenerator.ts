@@ -623,14 +623,41 @@ export class DiverseMomentsGenerator {
   }
   
   /**
-   * 生成QQ空间游戏截图内容
+   * 生成QQ空间游戏截图内容 - 详细版本
+   * 详细描述截图中的具体游戏内容，而不是泛泛而谈
    */
   static generateQQGameContent(): { content: string; imageDescriptions: string[]; theme: string } {
     const qqContent = QQSpaceStyle.generateQQSpaceContent({} as any, 'game-screenshot');
     const formattedContent = QQSpaceStyle.formatQQSpaceContentForMoments(qqContent);
     
+    // 详细的游戏截图描述
+    const gameScenarios = [
+      {
+        title: '王者荣耀五杀瞬间',
+        details: '游戏截图显示：左上角显示"五杀"金色特效文字，中间是英雄击杀敌方的动作画面，右上角显示5-0的战绩，下方技能栏CD冷却中，小地图显示团战位置在中路。血条几乎见底但成功完成五杀。'
+      },
+      {
+        title: '原神抽卡金色传说',
+        details: '抽卡界面截图：屏幕中央是璀璨的金色光芒，五星角色"雷电将军"的立绘缓缓显现，左上角显示剩余原石数量，右下角是"再来十连"按钮，背景是紫色雷电特效。这是第73抽终于出金的激动瞬间。'
+      },
+      {
+        title: '和平精英吃鸡',
+        details: '游戏结算截图：大大的"大吉大利，今晚吃鸡！"金色文字，下方显示击杀数15，存活时间32分钟，排名1/100，MVP标志闪耀。左下角显示队友名称，右侧是详细数据统计面板。'
+      },
+      {
+        title: 'LOL超神战绩',
+        details: '游戏内截图：屏幕中央显示"超神！"红色特效字样，左侧显示战绩18-2-10，右上角显示游戏时间35:27，小地图上红方高地已被推平，敌方水晶血量仅剩30%。即将获得胜利。'
+      },
+      {
+        title: '蛋仔派对夺冠瞬间',
+        details: '胜利截图：可爱的蛋仔角色站在领奖台最高处，头顶皇冠特效，背景是五彩纸屑和气球，左侧显示本局淘汰32人，右侧显示连胜3场，底部是"恭喜获得冠军"的庆祝文字。'
+      }
+    ];
+    
+    const selectedScenario = gameScenarios[Math.floor(Math.random() * gameScenarios.length)];
+    
     const imageDescriptions = (qqContent.images || []).map((_, i) => 
-      `游戏截图${i + 1}：精彩的游戏画面，包含游戏界面、角色和场景`
+      `【${selectedScenario.title} - 截图${i + 1}】\n${selectedScenario.details}\n\n这是真实游戏内截图，清晰显示了以上所有界面元素和文字信息。`
     );
     
     return {

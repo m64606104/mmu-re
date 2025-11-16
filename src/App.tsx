@@ -28,6 +28,8 @@ import { MomentsAutoGenerator } from './components/MomentsAutoGenerator';
 import { AIMomentsInteractionManager } from './components/AIMomentsInteractionManager';
 import ProactiveMessagingService from './components/ProactiveMessagingService';
 import MessageNotification from './components/MessageNotification';
+import LetterNotification from './components/LetterNotification';
+import AchievementNotification from './components/AchievementNotification';
 import StorageMigrationPrompt from './components/StorageMigrationPrompt';
 import { smartLoad, smartSave, migrateToIndexedDB, checkMigrationNeeded, getStorageInfo } from './utils/storage';
 import { generateAIMoment } from './utils/aiMomentsGenerator';
@@ -1006,6 +1008,12 @@ function App() {
       
       {/* Toast通知容器 */}
       <ToastContainer />
+      
+      {/* 信件通知 */}
+      <LetterNotification />
+      
+      {/* 成就通知 */}
+      <AchievementNotification />
       
       {/* 存储迁移提示 */}
       {showMigrationPrompt && (

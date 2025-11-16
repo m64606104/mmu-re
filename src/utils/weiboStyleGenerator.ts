@@ -121,12 +121,38 @@ export class WeiboStyleGenerator {
   }
 
   /**
-   * 生成微博截图描述（用于朋友圈图片描述）
+   * 生成微博截图描述（用于朋友圈图片描述）- 详细版本
+   * 完整显示截图中的文字内容，而不是简单说"有一张截图"
    */
   static generateWeiboScreenshotDescription(weiboPost: WeiboPost): string {
     const { username, postTime, hashtag, content, engagement } = weiboPost;
     
-    return `微博截图：顶部显示话题标签"${hashtag}"，用户"${username}"在${postTime}发布内容："${content.substring(0, 50)}${content.length > 50 ? '...' : ''}"。底部显示转发${engagement.reposts}次，评论${engagement.comments}条，点赞${engagement.likes}次，阅读量${engagement.views}。整体采用简洁的白色背景，蓝色链接文字，符合微博经典设计风格。`;
+    // 详细描述截图内容，包含完整文字
+    const description = `【微博截图详细内容】
+
+📱 界面布局：
+顶部蓝色话题标签："${hashtag}"
+
+👤 发布者信息：
+用户名：${username}
+发布时间：${postTime}
+
+📝 微博正文：
+"${content}"
+
+💬 互动数据：
+🔄 转发 ${engagement.reposts} 次
+💬 评论 ${engagement.comments} 条  
+❤️ 点赞 ${engagement.likes} 次
+👀 阅读 ${engagement.views} 次
+
+🎨 视觉风格：
+简洁白色背景，蓝色超链接文字，标准微博设计风格
+
+---
+这是一张完整的微博内容截图，清晰展示了以上所有文字和数据信息。`;
+    
+    return description;
   }
 
   /**

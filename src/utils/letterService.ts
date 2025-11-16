@@ -4,6 +4,7 @@
  */
 
 import { Letter, BottleAI } from '../types/letter';
+import { checkLetterAchievements } from './achievementSystem';
 
 // 📮 预设AI角色池 - 用户可主动选择的固定角色
 export const PRESET_AI_POOL: BottleAI[] = [
@@ -334,6 +335,9 @@ export function sendLetter(
   // 设置自动回信定时器
   scheduleAutoReply(letter);
   
+  // 检查成就
+  checkLetterAchievements();
+  
   return letter;
 }
 
@@ -398,7 +402,7 @@ function scheduleAutoReply(letter: Letter) {
 }
 
 /**
- * 生成AI回信
+ * 生成AI回信 - 使用真实API
  */
 async function generateReply(letterId: string) {
   const letters = getLettersFromStorage();
@@ -408,28 +412,171 @@ async function generateReply(letterId: string) {
     return;
   }
   
-  // 这里应该调用AI API生成回信内容
-  // 暂时使用模拟内容
-  const replyContent = generateMockReply(letter);
-  const now = Date.now();
+  try {
+    // 调用真实AI API生成回信内容
+    const replyContent = await generateRealAIReply(letter);
+    const now = Date.now();
+    
+    // 更新当前轮次的AI回复
+    const currentRoundData = letter.conversationRounds[letter.conversationRounds.length - 1];
+    if (currentRoundData) {
+      currentRoundData.aiReply = {
+        content: replyContent,
+        repliedAt: now
+      };
+    }
+    
+    letter.replyContent = replyContent;
+    letter.repliedAt = now;
+    letter.status = 'replied';
+    
+    updateLetterInStorage(letter);
+    
+    // 触发通知
+    console.log(`📬 收到来自 ${letter.receiverName} 的回信！`);
+    
+    // 触发浏览器通知
+    triggerLetterNotification(letter);
+  } catch (error) {
+    console.error('生成AI回信失败:', error);
+    // 失败时使用备用回复
+    const replyContent = generateMockReply(letter);
+    const now = Date.now();
+    
+    const currentRoundData = letter.conversationRounds[letter.conversationRounds.length - 1];
+    if (currentRoundData) {
+      currentRoundData.aiReply = {
+        content: replyContent,
+        repliedAt: now
+      };
+    }
+    
+    letter.replyContent = replyContent;
+    letter.repliedAt = now;
+    letter.status = 'replied';
+    
+    updateLetterInStorage(letter);
+  }
+}
+
+/**
+ * 使用真实AI API生成回信内容
+ */
+async function generateRealAIReply(letter: Letter): Promise<string> {
+  // 获取API配置
+  const apiConfig = JSON.parse(localStorage.getItem('apiConfig') || '{}');
   
-  // 更新当前轮次的AI回复
-  const currentRoundData = letter.conversationRounds[letter.conversationRounds.length - 1];
-  if (currentRoundData) {
-    currentRoundData.aiReply = {
-      content: replyContent,
-      repliedAt: now
-    };
+  if (!apiConfig.baseUrl || !apiConfig.apiKey) {
+    throw new Error('API配置不完整');
   }
   
-  letter.replyContent = replyContent;
-  letter.repliedAt = now;
-  letter.status = 'replied';
+  // 构建AI人设提示
+  const aiProfile = letter.bottleAIProfile;
+  const personality = aiProfile ? `你是${letter.receiverName}，性格：${aiProfile.personality}，来自${aiProfile.location}，爱好：${aiProfile.hobby}。` : `你是${letter.receiverName}。`;
   
-  updateLetterInStorage(letter);
+  // 获取之前的对话历史
+  const conversationHistory = letter.conversationRounds
+    .filter(round => round.aiReply)
+    .slice(-3) // 最近3轮对话
+    .map(round => `用户: ${round.userLetter.content}\n你: ${round.aiReply?.content}`)
+    .join('\n\n');
   
-  // 触发通知（如果需要的话）
-  console.log(`📬 收到来自 ${letter.receiverName} 的回信！`);
+  const historyContext = conversationHistory ? `\n\n【之前的对话】:\n${conversationHistory}\n` : '';
+  
+  // 判断是否是第一次交流
+  const isFirstReply = letter.currentRound === 1;
+  const roundInfo = isFirstReply ? '这是你们第一次通过漂流瓶相遇。' : `这是你们的第${letter.currentRound}次交流。`;
+  
+  // 构建提示词
+  const prompt = `${personality}
+
+${roundInfo}${historyContext}
+
+【用户的来信】:
+${letter.content}
+
+请以${letter.receiverName}的身份给用户回信。要求：
+
+1. **字数要求**: 最少50字，最多2000字，根据用户信件长度和内容深度灵活调整
+2. **真实自然**: 像真人一样回信，有情感、有细节、有个人特色
+3. **回应内容**: 针对用户提到的话题进行回应，可以分享自己的想法、经历或感受
+4. **语气风格**: 根据性格特点选择合适的语气（活泼/文艺/理性/随性等）
+5. **增加细节**: 适当加入生活细节、场景描写、心理活动，让回信更真实
+6. **结尾自然**: 可以提问、分享期待、或表达情感，让对话延续
+
+注意：
+- 不要太官方或模板化
+- 可以有个人情绪和态度
+- 适当使用emoji和标点增加表现力
+- 如果用户信件很长或深入，你的回信也要相应有深度
+
+现在请回信：`;
+
+  // 调用API
+  const response = await fetch(`${apiConfig.baseUrl}/v1/chat/completions`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${apiConfig.apiKey}`
+    },
+    body: JSON.stringify({
+      model: apiConfig.modelName || 'gpt-3.5-turbo',
+      messages: [
+        {
+          role: 'system',
+          content: '你是一个真实的人，正在通过慢邮件与陌生人交流。你的回信要真诚、自然、有温度。'
+        },
+        {
+          role: 'user',
+          content: prompt
+        }
+      ],
+      temperature: 0.9,
+      max_tokens: 2000,
+      presence_penalty: 0.6,
+      frequency_penalty: 0.3
+    })
+  });
+
+  if (!response.ok) {
+    throw new Error(`API调用失败: ${response.statusText}`);
+  }
+
+  const data = await response.json();
+  let replyContent = data.choices[0]?.message?.content || '';
+  
+  // 验证字数
+  if (replyContent.length < 50) {
+    throw new Error('AI回复字数过少');
+  }
+  
+  // 限制最大字数
+  if (replyContent.length > 2000) {
+    replyContent = replyContent.substring(0, 2000) + '...';
+  }
+  
+  return replyContent.trim();
+}
+
+/**
+ * 触发信件通知
+ */
+function triggerLetterNotification(letter: Letter) {
+  // 检查通知权限
+  if ('Notification' in window && Notification.permission === 'granted') {
+    new Notification('📬 收到新回信', {
+      body: `${letter.receiverName} 回信了`,
+      icon: letter.receiverAvatar || '📮',
+      badge: '📬',
+      tag: `letter-${letter.id}`,
+      requireInteraction: false
+    });
+  }
+  
+  // 触发自定义事件，用于UI更新
+  window.dispatchEvent(new CustomEvent('letter-reply', {
+    detail: { letterId: letter.id, receiverName: letter.receiverName }
+  }));
 }
 
 /**
@@ -875,6 +1022,9 @@ export function addAsPenPal(letterId: string): boolean {
   letter.maxRounds = 999; // 解除轮数限制
   
   updateLetterInStorage(letter);
+  
+  // 检查成就
+  checkLetterAchievements();
   
   console.log(`💌 已将 ${letter.receiverName} 加为笔友！`);
   

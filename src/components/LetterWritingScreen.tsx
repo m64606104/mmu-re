@@ -2,10 +2,11 @@
  * 写信界面
  */
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Conversation } from '../types';
 import { sendLetter, getAllPresetAIs } from '../utils/letterService';
 import { ArrowLeft, Send, Sparkles, Users } from 'lucide-react';
+import LetterSendingAnimation from './LetterSendingAnimation';
 
 interface LetterWritingScreenProps {
   onBack: () => void;
@@ -28,6 +29,14 @@ const LetterWritingScreen: React.FC<LetterWritingScreenProps> = ({
     isBottle: boolean;
   } | null>(null);
   const [showReceiverModal, setShowReceiverModal] = useState(false);
+  const [showSendingAnimation, setShowSendingAnimation] = useState(false);
+
+  // 请求通知权限
+  useEffect(() => {
+    if ('Notification' in window && Notification.permission === 'default') {
+      Notification.requestPermission();
+    }
+  }, []);
 
   // 获取AI联系人列表（排除群聊，只保留有characterSettings的私聊）
   const aiContacts = conversations.filter(c => c.type === 'private' && c.characterSettings);
@@ -43,6 +52,9 @@ const LetterWritingScreen: React.FC<LetterWritingScreenProps> = ({
       return;
     }
 
+    // 显示发送动画
+    setShowSendingAnimation(true);
+
     // 寄出信件
     sendLetter(
       content,
@@ -52,9 +64,10 @@ const LetterWritingScreen: React.FC<LetterWritingScreenProps> = ({
       selectedReceiver.isBottle,
       userName
     );
+  };
 
-    alert(`✉️ 信件已寄出！\n\n${selectedReceiver.isBottle ? '你的信已经投入漂流瓶，等待有缘人的回信...' : `已寄给 ${selectedReceiver.name}，请耐心等待回信～`}\n\n预计1-5天内收到回复`);
-    
+  const handleAnimationComplete = () => {
+    setShowSendingAnimation(false);
     setContent('');
     setSelectedReceiver(null);
     onSent();
@@ -304,6 +317,13 @@ const LetterWritingScreen: React.FC<LetterWritingScreenProps> = ({
           </div>
         </div>
       )}
+
+      {/* 发送动画 */}
+      <LetterSendingAnimation
+        isVisible={showSendingAnimation}
+        onComplete={handleAnimationComplete}
+        receiverName={selectedReceiver?.name || ''}
+      />
     </div>
   );
 };
