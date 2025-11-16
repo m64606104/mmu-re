@@ -2907,10 +2907,16 @@ ${characterInfo?.languageStyle ? `语言风格：${characterInfo.languageStyle}`
         index: index + 1
       }));
       
-      // 🕐 生成增强的时间感知提示词（包含时间跨度分析）
+      // 🤖 获取最后一条AI消息的时间戳（用于AI时间感知）
+      const aiMessages = conversation.messages.filter(m => m.role === 'assistant');
+      const lastAIMessage = aiMessages[aiMessages.length - 1];
+      const lastAITimestamp = lastAIMessage?.timestamp;
+      
+      // 🕐 生成增强的时间感知提示词（包含时间跨度分析+AI消息时间感知）
       const timeAwarePrompt = buildTimeAwarePrompt(
         lastUserTimestamp, 
         lastUserMsgForTime?.content,
+        lastAITimestamp, // 🆕 添加AI消息时间戳
         oldestUnrepliedTimestamp,
         unrepliedMessagesInfo
       );

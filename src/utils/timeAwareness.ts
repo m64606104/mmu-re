@@ -356,12 +356,14 @@ export interface UnrepliedMessageInfo {
  * 生成时间感知的系统提示词（增强版）
  * @param lastUserMessageTimestamp 最后一条用户消息的时间戳
  * @param lastUserMessageContent 最后一条用户消息的内容
+ * @param lastAIMessageTimestamp 最后一条AI消息的时间戳（新增）
  * @param oldestUnrepliedTimestamp 最早未回复消息的时间戳（可选）
  * @param unrepliedMessages 所有待回复消息的列表（新增）
  */
 export const buildTimeAwarePrompt = (
   lastUserMessageTimestamp?: number, 
   lastUserMessageContent?: string,
+  lastAIMessageTimestamp?: number,
   oldestUnrepliedTimestamp?: number,
   unrepliedMessages?: UnrepliedMessageInfo[]
 ): string => {
@@ -372,6 +374,45 @@ export const buildTimeAwarePrompt = (
   prompt += `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n`;
   
   prompt += `📅 当前时间（你现在回复的时间）: ${context.currentTime}\n`;
+  
+  // 🆕 添加AI消息时间感知
+  if (lastAIMessageTimestamp) {
+    const now = new Date();
+    const timeSinceAI = now.getTime() - lastAIMessageTimestamp;
+    const daysSinceAI = Math.floor(timeSinceAI / (1000 * 60 * 60 * 24));
+    const hoursSinceAI = Math.floor(timeSinceAI / (1000 * 60 * 60));
+    
+    if (daysSinceAI > 0) {
+      // AI消息是几天前发的
+      prompt += `\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`;
+      prompt += `⚠️ **重要：你的消息时间感知**\n`;
+      prompt += `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n`;
+      prompt += `🤖 你最后一条消息发送时间: ${daysSinceAI}天前\n`;
+      prompt += `📨 用户刚刚才回复你（过了${daysSinceAI}天）\n\n`;
+      
+      prompt += `💡 **这意味着**：\n`;
+      prompt += `- 用户不是在"刚刚"的状态下回复你\n`;
+      prompt += `- 他们可能很忙，刚看到消息\n`;
+      prompt += `- 话题可能已经不那么紧迫了\n`;
+      prompt += `- 或者他们需要时间思考\n\n`;
+      
+      prompt += `🎯 **你应该**：\n`;
+      prompt += `- 自然地提及这个时间差（"哇你终于回我了"、"过了这么久"等）\n`;
+      prompt += `- 不要当成"刚刚"的对话延续\n`;
+      prompt += `- 可以稍微调整话题或问候一下\n`;
+      prompt += `- 保持轻松自然，不要尴尬\n\n`;
+      
+      prompt += `❌ **绝对禁止**：\n`;
+      prompt += `- 不要说"好的那我们现在就开始吧"（太突兀）\n`;
+      prompt += `- 不要无视时间差，直接延续话题\n`;
+      prompt += `- 不要假装刚刚才说过的样子\n`;
+      prompt += `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n`;
+    } else if (hoursSinceAI > 3) {
+      // AI消息是几小时前发的
+      prompt += `\n⏰ 你最后一条消息是${hoursSinceAI}小时前发的，用户现在才回复。\n`;
+      prompt += `💡 可以自然地提及这个时间差（如"终于等到你回复了"、"还以为你忙忘了"等）\n\n`;
+    }
+  }
   
   if (context.lastMessageTime && context.timeGap && context.timeGapMinutes !== undefined) {
     prompt += `📨 对方最新消息发送时间: ${context.lastMessageTime}\n`;

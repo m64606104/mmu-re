@@ -396,9 +396,13 @@ async function generateAIReply(
       .filter(m => m.role === 'user' || (m.role === 'assistant' && !(m as any).senderId))
       .pop();
     if (lastUserMessage) {
+      // 🕐 添加时间感知（群聊暂不跟踪AI消息时间）
       const timeAwarePrompt = buildTimeAwarePrompt(
         lastUserMessage.timestamp,
-        lastUserMessage.content
+        lastUserMessage.content,
+        undefined, // 群聊暂不跟踪AI消息时间
+        undefined,
+        undefined
       );
       systemPrompt += timeAwarePrompt;
     }
