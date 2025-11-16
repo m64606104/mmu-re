@@ -655,7 +655,6 @@ export default function ChatScreen({
   };
   const [currentInput, setCurrentInput] = useState('');
   const [isGenerating, setIsGenerating] = useState(false);
-  const [generationTask, setGenerationTask] = useState<GenerationTask | null>(null);
   const [showToolbar, setShowToolbar] = useState(false);
   const [showMoneyTransferModal, setShowMoneyTransferModal] = useState(false);
   const [showSendDocumentModal, setShowSendDocumentModal] = useState(false);
@@ -734,7 +733,6 @@ export default function ChatScreen({
     const unsubscribe = backgroundGenerationService.subscribe(
       conversation.id,
       (task: GenerationTask) => {
-        setGenerationTask(task);
         setIsGenerating(task.status === 'generating');
       }
     );
@@ -742,10 +740,8 @@ export default function ChatScreen({
     // 检查当前是否有正在进行的生成任务
     const currentTask = backgroundGenerationService.getTask(conversation.id);
     if (currentTask) {
-      setGenerationTask(currentTask);
       setIsGenerating(currentTask.status === 'generating');
     } else {
-      setGenerationTask(null);
       setIsGenerating(false);
     }
 
