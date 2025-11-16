@@ -21,29 +21,41 @@ const MessageNotification: React.FC<MessageNotificationProps> = ({
   const [notifications, setNotifications] = useState<NotificationData[]>([]);
   const [visible, setVisible] = useState<string | null>(null);
 
-  // 添加通知
+  // 添加通知（升级版：每条消息一个弹窗）
   const addNotification = (conversationId: string, messages: Message[]) => {
     const conversation = conversations.find(c => c.id === conversationId);
     if (!conversation || messages.length === 0) return;
 
-    const notification: NotificationData = {
-      id: `notif_${Date.now()}_${Math.random()}`,
-      conversation,
-      message: messages[0], // 显示第一条消息
-      timestamp: Date.now()
-    };
+    console.log(`📬 收到${messages.length}条新消息，为每条创建独立弹窗`);
 
-    setNotifications(prev => [notification, ...prev]);
-    setVisible(notification.id);
+    // 🎯 关键改进：为每条消息创建独立的弹窗
+    messages.forEach((message, index) => {
+      const notification: NotificationData = {
+        id: `notif_${Date.now()}_${index}_${Math.random()}`,
+        conversation,
+        message: message, // 每条消息独立显示
+        timestamp: Date.now() + index // 加上索引确保顺序
+      };
 
-    // 3秒后自动隐藏
-    setTimeout(() => {
-      setVisible(prev => prev === notification.id ? null : prev);
-      // 再等1秒后移除
+      // 延迟添加，避免同时出现（每个间隔200ms）
       setTimeout(() => {
-        setNotifications(prev => prev.filter(n => n.id !== notification.id));
-      }, 1000);
-    }, 3000);
+        setNotifications(prev => [...prev, notification]);
+        setVisible(prev => prev ? prev : notification.id);
+
+        // 5秒后自动隐藏并移除
+        setTimeout(() => {
+          setNotifications(prev => prev.filter(n => n.id !== notification.id));
+          // 如果这是当前显示的，切换到下一个
+          setVisible(prev => {
+            if (prev === notification.id) {
+              const remaining = notifications.filter(n => n.id !== notification.id);
+              return remaining.length > 0 ? remaining[0].id : null;
+            }
+            return prev;
+          });
+        }, 5000);
+      }, index * 200); // 每个弹窗延迟200ms出现
+    });
   };
 
   // 暴露给外部的方法
@@ -90,74 +102,84 @@ const MessageNotification: React.FC<MessageNotificationProps> = ({
 
   if (notifications.length === 0) return null;
 
-  // 只显示最新的通知
-  const currentNotification = notifications[0];
-  const isVisible = visible === currentNotification.id;
+  // 🎯 改进：显示所有通知（堆叠显示）
+  // 最多同时显示3个
+  const visibleNotifications = notifications.slice(0, 3);
 
   return (
     <div className="fixed top-0 left-0 right-0 z-[9999] pointer-events-none">
-      <div 
-        className={`
-          mx-auto max-w-md px-4 pt-2 pb-0
-          transform transition-all duration-300 ease-out
-          ${isVisible ? 'translate-y-0 opacity-100' : '-translate-y-full opacity-0'}
-        `}
-      >
-        <div 
-          onClick={() => handleClick(currentNotification.conversation.id, currentNotification.id)}
-          className="
-            bg-white rounded-2xl shadow-2xl overflow-hidden
-            pointer-events-auto cursor-pointer
-            hover:shadow-3xl transition-shadow duration-200
-            border border-gray-100
-          "
-        >
-          <div className="flex items-center gap-3 p-3">
-            {/* 头像 */}
-            <div className="flex-shrink-0">
-              {currentNotification.conversation.avatar ? (
-                <img
-                  src={currentNotification.conversation.avatar}
-                  alt={currentNotification.conversation.name}
-                  className="w-12 h-12 rounded-full object-cover"
-                />
-              ) : (
-                <div className="w-12 h-12 rounded-full bg-gradient-to-br from-blue-400 to-purple-500 flex items-center justify-center text-white font-semibold text-lg">
-                  {currentNotification.conversation.name.charAt(0)}
-                </div>
-              )}
-            </div>
-
-            {/* 内容 */}
-            <div className="flex-1 min-w-0">
-              <div className="flex items-center justify-between mb-0.5">
-                <h3 className="text-sm font-semibold text-gray-900 truncate">
-                  {currentNotification.conversation.characterSettings?.nickname || currentNotification.conversation.name}
-                </h3>
-                <button
-                  onClick={(e) => handleClose(currentNotification.id, e)}
-                  className="flex-shrink-0 p-1 hover:bg-gray-100 rounded-full transition-colors"
-                >
-                  <X size={14} className="text-gray-400" />
-                </button>
-              </div>
-              <p className="text-sm text-gray-600 truncate">
-                {formatMessageContent(currentNotification.message)}
-              </p>
-            </div>
-          </div>
-
-          {/* 底部进度条 */}
-          <div className="h-1 bg-gray-100 overflow-hidden">
+      {visibleNotifications.map((notification, index) => {
+        const isVisible = visible === notification.id || index === 0; // 第一个总是可见
+        
+        return (
+          <div 
+            key={notification.id}
+            className={`
+              mx-auto max-w-md px-4
+              transform transition-all duration-300 ease-out
+              ${isVisible ? 'translate-y-0 opacity-100' : '-translate-y-full opacity-0'}
+            `}
+            style={{
+              paddingTop: `${8 + index * 90}px` // 堆叠：每个弹窗间隔90px
+            }}
+          >
             <div 
-              className="h-full bg-blue-500 animate-progress"
-              style={{
-                animation: 'progress 3s linear forwards'
-              }}
-            />
+              onClick={() => handleClick(notification.conversation.id, notification.id)}
+              className="
+                bg-white rounded-2xl shadow-2xl overflow-hidden
+                pointer-events-auto cursor-pointer
+                hover:shadow-3xl transition-shadow duration-200
+                border border-gray-100
+              "
+            >
+              <div className="flex items-center gap-3 p-3">
+                {/* 头像 */}
+                <div className="flex-shrink-0">
+                  {notification.conversation.avatar ? (
+                    <img
+                      src={notification.conversation.avatar}
+                      alt={notification.conversation.name}
+                      className="w-12 h-12 rounded-full object-cover"
+                    />
+                  ) : (
+                    <div className="w-12 h-12 rounded-full bg-gradient-to-br from-blue-400 to-purple-500 flex items-center justify-center text-white font-semibold text-lg">
+                      {notification.conversation.name.charAt(0)}
+                    </div>
+                  )}
+                </div>
+
+                {/* 内容 */}
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center justify-between mb-0.5">
+                    <h3 className="text-sm font-semibold text-gray-900 truncate">
+                      {notification.conversation.characterSettings?.nickname || notification.conversation.name}
+                    </h3>
+                    <button
+                      onClick={(e) => handleClose(notification.id, e)}
+                      className="flex-shrink-0 p-1 hover:bg-gray-100 rounded-full transition-colors"
+                    >
+                      <X size={14} className="text-gray-400" />
+                    </button>
+                  </div>
+                  <p className="text-sm text-gray-600 truncate">
+                    {formatMessageContent(notification.message)}
+                  </p>
+                </div>
+              </div>
+
+              {/* 底部进度条 */}
+              <div className="h-1 bg-gray-100 overflow-hidden">
+                <div 
+                  className="h-full bg-blue-500 animate-progress"
+                  style={{
+                    animation: 'progress 5s linear forwards'
+                  }}
+                />
+              </div>
+            </div>
           </div>
-        </div>
-      </div>
+        );
+      })}
 
       {/* CSS动画 */}
       <style>{`
