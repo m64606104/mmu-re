@@ -1,5 +1,6 @@
-import { Message, ApiConfig, Conversation, CharacterSettings } from '../types';
+import { Conversation, Message, ApiConfig, CharacterSettings } from '../types';
 import { getErrorFromResponse, formatErrorMessage } from './apiErrorHandler';
+import { splitMessages } from './messageFormatter';
 
 /**
  * 群聊API服务
@@ -110,28 +111,21 @@ ${aiSettings.memoryEvents ? `记忆事件：${aiSettings.memoryEvents}` : ''}
 }
 
 /**
- * 解析AI回复消息并拆分
+ * 解析AI回复消息并拆分（使用私聊的splitMessages逻辑）
  */
 function parseAIResponse(content: string): Message[] {
   if (!content || content.trim() === '' || content.includes('[不回复]')) {
     return [];
   }
   
-  // 按双换行或单换行分割消息（群聊通常是短消息）
-  const parts = content.split(/\n\n|\n/).filter(p => p.trim());
-  const messages: Message[] = [];
-  
-  parts.forEach((part, index) => {
-    const trimmed = part.trim();
-    if (!trimmed) return;
-    
-    messages.push({
-      id: `${Date.now()}_${index}`,
-      role: 'assistant',
-      content: trimmed,
-      timestamp: Date.now() + index * 100,
-    });
-  });
+  // 使用私聊的消息分割逻辑，支持多条气泡
+  const contentArray = splitMessages(content);
+  const messages: Message[] = contentArray.map((text, index) => ({
+    id: `${Date.now()}_${index}_${Math.random()}`,
+    role: 'assistant' as const,
+    content: text,
+    timestamp: Date.now() + index * 100,
+  }));
   
   return messages;
 }
@@ -285,10 +279,7 @@ export async function generateGroupChatReplies(
   
   // 依次为每个AI生成回复
   for (const aiMember of aiMembers) {
-    // 通知开始
-    callbacks?.onAIStart?.(aiMember.id, aiMember.characterSettings?.nickname || aiMember.name);
-    
-    // 生成回复
+    // 生成回复（先不通知开始，等确认有消息再通知）
     const reply = await generateAIReply(aiMember, groupConversation, apiConfig, allConversations, isFreeMode);
     allReplies.push(reply);
     
@@ -298,16 +289,22 @@ export async function generateGroupChatReplies(
     }
     
     if (reply.messages.length === 0) {
-      // AI选择不回复
-      callbacks?.onAIComplete?.(reply.aiId, []);
+      // AI选择不回复，不显示打字动画
       continue;
     }
     
-    // 逐条发送消息（模拟打字效果）
-    for (const message of reply.messages) {
-      callbacks?.onAITyping?.(reply.aiId);
-      // 等待一小段时间模拟打字
-      await new Promise(resolve => setTimeout(resolve, 800));
+    // 通知开始（只在有消息时）
+    callbacks?.onAIStart?.(aiMember.id, aiMember.characterSettings?.nickname || aiMember.name);
+    
+    // 显示打字动画
+    callbacks?.onAITyping?.(reply.aiId);
+    
+    // 等待一段时间模拟思考
+    await new Promise(resolve => setTimeout(resolve, 1000));
+    
+    // 逐条发送消息
+    for (let i = 0; i < reply.messages.length; i++) {
+      const message = reply.messages[i];
       
       // 添加senderId以标识消息来源
       const messageWithSender = {
@@ -318,6 +315,11 @@ export async function generateGroupChatReplies(
       } as any;
       
       callbacks?.onAIMessage?.(reply.aiId, messageWithSender);
+      
+      // 每条消息之间短暂延迟
+      if (i < reply.messages.length - 1) {
+        await new Promise(resolve => setTimeout(resolve, 500));
+      }
     }
     
     callbacks?.onAIComplete?.(reply.aiId, reply.messages);
@@ -368,10 +370,7 @@ export async function generateGroupChatRepliesFreeMode(
   
   // 依次为选中的AI生成回复
   for (const aiMember of selectedAIs) {
-    // 通知开始
-    callbacks?.onAIStart?.(aiMember.id, aiMember.characterSettings?.nickname || aiMember.name);
-    
-    // 生成回复
+    // 生成回复（先不通知开始，等确认有消息再通知）
     const reply = await generateAIReply(aiMember, groupConversation, apiConfig, allConversations, true);
     allReplies.push(reply);
     
@@ -381,16 +380,22 @@ export async function generateGroupChatRepliesFreeMode(
     }
     
     if (reply.messages.length === 0) {
-      // AI选择不回复
-      callbacks?.onAIComplete?.(reply.aiId, []);
+      // AI选择不回复，不显示打字动画
       continue;
     }
     
-    // 逐条发送消息（模拟打字效果）
-    for (const message of reply.messages) {
-      callbacks?.onAITyping?.(reply.aiId);
-      // 等待一小段时间模拟打字
-      await new Promise(resolve => setTimeout(resolve, 800));
+    // 通知开始（只在有消息时）
+    callbacks?.onAIStart?.(aiMember.id, aiMember.characterSettings?.nickname || aiMember.name);
+    
+    // 显示打字动画
+    callbacks?.onAITyping?.(reply.aiId);
+    
+    // 等待一段时间模拟思考
+    await new Promise(resolve => setTimeout(resolve, 1000));
+    
+    // 逐条发送消息
+    for (let i = 0; i < reply.messages.length; i++) {
+      const message = reply.messages[i];
       
       // 添加senderId以标识消息来源
       const messageWithSender = {
@@ -401,6 +406,11 @@ export async function generateGroupChatRepliesFreeMode(
       } as any;
       
       callbacks?.onAIMessage?.(reply.aiId, messageWithSender);
+      
+      // 每条消息之间短暂延迟
+      if (i < reply.messages.length - 1) {
+        await new Promise(resolve => setTimeout(resolve, 500));
+      }
     }
     
     callbacks?.onAIComplete?.(reply.aiId, reply.messages);

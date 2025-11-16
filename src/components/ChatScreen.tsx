@@ -2587,6 +2587,9 @@ ${characterInfo?.languageStyle ? `语言风格：${characterInfo.languageStyle}`
       const isFreeMode = conversation.groupChatMode === 'free';
       const generateFunction = isFreeMode ? generateGroupChatRepliesFreeMode : generateGroupChatReplies;
       
+      // 使用ref来追踪最新的消息列表
+      let currentMessages = [...conversation.messages];
+      
       // 调用群聊服务
       const allReplies = await generateFunction(
         conversation,
@@ -2613,10 +2616,10 @@ ${characterInfo?.languageStyle ? `语言风格：${characterInfo.languageStyle}`
           },
           
           onAIMessage: (_aiId, message) => {
-            // 添加消息到对话
-            const updatedMessages = [...conversation.messages, message];
+            // 累积添加消息
+            currentMessages = [...currentMessages, message];
             onUpdateConversation(conversation.id, {
-              messages: updatedMessages,
+              messages: currentMessages,
               lastMessageTime: Date.now()
             });
           },
@@ -2647,8 +2650,9 @@ ${characterInfo?.languageStyle ? `语言风格：${characterInfo.languageStyle}`
                 content: '本轮没有AI回复',
                 timestamp: Date.now()
               };
+              currentMessages = [...currentMessages, systemMessage];
               onUpdateConversation(conversation.id, {
-                messages: [...conversation.messages, systemMessage],
+                messages: currentMessages,
                 lastMessageTime: Date.now()
               });
             }
@@ -2664,8 +2668,9 @@ ${characterInfo?.languageStyle ? `语言风格：${characterInfo.languageStyle}`
           content: '所有AI都选择不回复',
           timestamp: Date.now()
         };
+        currentMessages = [...currentMessages, systemMessage];
         onUpdateConversation(conversation.id, {
-          messages: [...conversation.messages, systemMessage],
+          messages: currentMessages,
           lastMessageTime: Date.now()
         });
       }
