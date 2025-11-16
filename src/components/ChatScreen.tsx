@@ -32,7 +32,6 @@ import { SmartHTMLGenerator } from '../utils/smartHTMLGenerator';
 import { SavedDocument } from '../utils/documentLibrary';
 import { sendMoney, receiveMoney, getBalance, aiPayForUser, refundGift } from '../utils/wallet';
 import { addTransaction as addAIFinanceTransaction, getAIFinanceData } from '../utils/aiFinance';
-import ActivityLogModal from './ActivityLogModal';
 import SubChatWindow from './SubChatWindow';
 import SubChatManager from './SubChatManager';
 import SubChatSuggestionModal from './SubChatSuggestionModal';
@@ -799,7 +798,6 @@ ${recentMessages}
   
   // AI状态相关state
   const [aiStatus, setAIStatus] = useState<any | null>(null);
-  const [showActivityModal, setShowActivityModal] = useState(false);
   
   // 搜索相关state
   const [showSearchModal, setShowSearchModal] = useState(false);
@@ -4523,13 +4521,7 @@ ${doc.content}`;
           <div className="flex flex-col">
             <h1 className="text-base font-semibold text-gray-900">{conversation.name}</h1>
             {conversation.type === 'private' && conversation.characterSettings ? (
-              <button 
-                onClick={() => {
-                  console.log('🚀 打开行为轨迹弹窗');
-                  setShowActivityModal(true);
-                }}
-                className="flex items-center gap-1 hover:bg-gray-50 px-2 py-0.5 -ml-2 rounded transition-colors text-left max-w-[200px]"
-              >
+              <div className="flex items-center gap-1 px-2 py-0.5 -ml-2">
                 <div className={`w-2 h-2 rounded-full flex-shrink-0 ${
                   aiStatus?.status === 'online' ? 'bg-green-500' :
                   aiStatus?.status === 'busy' ? 'bg-yellow-500' :
@@ -4537,10 +4529,10 @@ ${doc.content}`;
                   aiStatus?.status === 'away' ? 'bg-gray-400' :
                   'bg-gray-300'
                 }`}></div>
-                <span className="text-xs text-gray-500 truncate">
-                  {aiStatus?.currentActivitySummary || aiStatus?.statusText || '在线'}
+                <span className="text-xs text-gray-500 truncate max-w-[200px]">
+                  {aiStatus?.statusText || '在线'}
                 </span>
-              </button>
+              </div>
             ) : (
               <div className="flex items-center gap-1">
                 <div className="w-2 h-2 bg-green-500 rounded-full"></div>
@@ -5935,18 +5927,6 @@ ${doc.content}`;
           </div>
         </div>
       </div>
-    )}
-
-    {/* AI行为轨迹弹窗 */}
-    {conversation.type === 'private' && conversation.characterSettings && aiStatus && (
-      <ActivityLogModal
-        isOpen={showActivityModal}
-        onClose={() => setShowActivityModal(false)}
-        statusInfo={aiStatus}
-        conversation={conversation} // 传递conversation参数
-        aiName={conversation.characterSettings.nickname || conversation.name}
-        aiAvatar={conversation.characterSettings.avatar || conversation.avatar}
-      />
     )}
 
     {/* 消息操作菜单 */}
