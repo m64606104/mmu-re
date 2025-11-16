@@ -90,10 +90,10 @@ export const getMomentsData = async (contactId: string): Promise<MomentsData> =>
     todayPlans: [],
     settings: {
       autoGenerate: true,
-      minInterval: 24, // 最少24小时
-      maxInterval: 72, // 最多72小时（3天）
+      minInterval: 72,  // 最少3天（更真实）
+      maxInterval: 336, // 最多14天（2周）
       minPostsPerDay: 1,
-      maxPostsPerDay: 3  // 降低每日最大发布数量到3条
+      maxPostsPerDay: 2  // 最多2条
     }
   };
   
@@ -166,20 +166,27 @@ export const shouldGenerateMoment = async (contactId: string): Promise<{shouldGe
     // 新的一天，重置计数器
     const hoursSinceLastGeneration = (now - data.lastGeneratedTime) / 3600000;
     
-    // 检查是否超过最小间隔（1-3天）
+    // 检查是否超过最小间隔（3-14天）
     if (hoursSinceLastGeneration < data.settings.minInterval) {
       return {shouldGenerate: false, count: 0};
     }
     
-    // 更智能的概率计算：时间越长，生成概率越高
+    // 🎯 更真实的概率计算：模拟真实用户行为
     const timeFactor = Math.min(hoursSinceLastGeneration / data.settings.maxInterval, 1.0);
-    const baseChance = 0.3; // 基础30%概率
-    const timeBonus = timeFactor * 0.5; // 时间因子最多增加50%概率
-    const finalChance = Math.min(baseChance + timeBonus, 0.8); // 最高80%概率
+    const baseChance = 0.15; // 基础15%概率（更低）
+    const timeBonus = timeFactor * 0.45; // 时间因子增加45%概率
+    let finalChance = Math.min(baseChance + timeBonus, 0.6); // 最高60%概率
+    
+    // 📅 周末加成：周六日发朋友圈概率+20%
+    const dayOfWeek = new Date().getDay();
+    if (dayOfWeek === 0 || dayOfWeek === 6) {
+      finalChance = Math.min(finalChance + 0.2, 0.75);
+      console.log(`📅 周末加成：发布概率提升到 ${(finalChance * 100).toFixed(0)}%`);
+    }
     
     if (Math.random() < finalChance) {
-      // 更智能的数量决定：偏向少发朋友圈
-      const weights = [0.4, 0.35, 0.25]; // 1条:40%, 2条:35%, 3条:25%
+      // 🎲 更真实的数量决定：90%只发1条，10%连发2条
+      const weights = [0.9, 0.1]; // 1条:90%, 2条:10%
       let targetCount = 1;
       const random = Math.random();
       let cumulative = 0;
@@ -192,7 +199,8 @@ export const shouldGenerateMoment = async (contactId: string): Promise<{shouldGe
         }
       }
       
-      console.log(`📊 ${contactId} 今日朋友圈计划：${targetCount}条 (间隔${Math.round(hoursSinceLastGeneration)}小时后)`);
+      const days = Math.round(hoursSinceLastGeneration / 24);
+      console.log(`📊 ${contactId} 今日朋友圈计划：${targetCount}条 (距离上次${days}天)`);
       
       // 标记需要生成计划
       data.lastGenerationDate = today;
@@ -209,9 +217,9 @@ export const shouldGenerateMoment = async (contactId: string): Promise<{shouldGe
   } else {
     // 同一天，检查是否还有待发布的朋友圈
     if (data.todayGeneratedCount < data.todayTargetCount) {
-      // 检查距离上次发布是否有足够间隔（至少2小时）
+      // 检查距离上次发布是否有足够间隔（至少3小时，真实用户连发间隔）
       const hoursSinceLastPost = (now - data.lastGeneratedTime) / 3600000;
-      const minGapHours = 2 + Math.random() * 4; // 2-6小时随机间隔
+      const minGapHours = 3 + Math.random() * 3; // 3-6小时随机间隔（更真实）
       
       if (hoursSinceLastPost >= minGapHours) {
         console.log(`⏰ ${contactId} 可以发布下一条朋友圈 (已间隔${Math.round(hoursSinceLastPost)}小时)`);

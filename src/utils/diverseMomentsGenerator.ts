@@ -6,9 +6,10 @@
 import { Conversation } from '../types';
 import VirtualNewsGenerator from './virtualNewsGenerator';
 import WeiboStyleGenerator from './weiboStyleGenerator';
+// import * as RealMomentsContent from './realMomentsContentGenerator'; // TODO: 集成真实朋友圈内容
 
 export interface MomentsFormat {
-  type: 'text_only' | 'single_image' | 'multi_image' | 'news_sharing' | 'mood_check' | 'weibo_sharing';
+  type: 'text_only' | 'single_image' | 'multi_image' | 'news_sharing' | 'mood_check' | 'weibo_sharing' | 'music_sharing' | 'article_sharing' | 'coupon_sharing' | 'life_complaint' | 'big_event';
   textLength: 'short' | 'medium' | 'long';
   imageCount: number;
   hasHashtags: boolean;
@@ -106,14 +107,19 @@ export class DiverseMomentsGenerator {
     const variation = this.getContentVariation(conversation.id);
     const recentFormats = variation.formats.slice(0, 3); // 最近3次格式
     
-    // 格式权重（基础概率）
+    // 格式权重（基础概率）- 参考真实微信朋友圈/QQ空间
     const formatWeights = {
-      'text_only': 0.20,        // 20% - 纯文字
-      'single_image': 0.30,     // 30% - 单图
-      'multi_image': 0.18,      // 18% - 多图
-      'news_sharing': 0.12,     // 12% - 新闻分享
-      'mood_check': 0.05,       // 5% - 心情检查
-      'weibo_sharing': 0.15     // 15% - 微博分享
+      'text_only': 0.08,           // 8% - 纯文字（真实场景较少）
+      'single_image': 0.15,        // 15% - 单图
+      'multi_image': 0.10,         // 10% - 多图
+      'news_sharing': 0.05,        // 5% - 新闻分享
+      'mood_check': 0.03,          // 3% - 心情检查
+      'weibo_sharing': 0.05,       // 5% - 微博分享
+      'music_sharing': 0.20,       // 20% - 音乐分享（最常见）
+      'article_sharing': 0.12,     // 12% - 公众号文章
+      'coupon_sharing': 0.08,      // 8% - 优惠券广告
+      'life_complaint': 0.10,      // 10% - 生活吐槽+实物照片
+      'big_event': 0.04            // 4% - 大型活动/聚会（较少）
     };
     
     // 降低最近使用过的格式权重
@@ -204,6 +210,41 @@ export class DiverseMomentsGenerator {
         imageCount = 1; // 微博截图
         textLength = 'short';
         contentStyle = 'informative';
+        hasHashtags = true;
+        break;
+        
+      case 'music_sharing':
+        imageCount = 1; // 音乐卡片
+        textLength = 'short';
+        contentStyle = 'casual';
+        hasHashtags = false;
+        break;
+        
+      case 'article_sharing':
+        imageCount = 1; // 文章封面
+        textLength = 'short';
+        contentStyle = 'informative';
+        hasHashtags = false;
+        break;
+        
+      case 'coupon_sharing':
+        imageCount = 1; // 优惠券图片
+        textLength = 'short';
+        contentStyle = 'informative';
+        hasHashtags = true;
+        break;
+        
+      case 'life_complaint':
+        imageCount = Math.floor(Math.random() * 2) + 1; // 1-2张图
+        textLength = 'short';
+        contentStyle = 'casual';
+        hasHashtags = false;
+        break;
+        
+      case 'big_event':
+        imageCount = 6 + Math.floor(Math.random() * 4); // 6-9张图
+        textLength = 'short';
+        contentStyle = 'emotional';
         hasHashtags = true;
         break;
     }

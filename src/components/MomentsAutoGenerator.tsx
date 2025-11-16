@@ -95,17 +95,17 @@ export function MomentsAutoGenerator({ conversations, apiConfig, onMomentGenerat
 
   // 设置定时器
   useEffect(() => {
-    // 首次启动延迟1分钟后检查（避免启动时立即请求）
+    // 首次启动延迟5分钟后检查（避免启动时立即请求，更自然）
     const initialTimer = setTimeout(() => {
       console.log('🚀 朋友圈自动生成器启动');
       checkAndGenerate();
-    }, 60 * 1000); // 1分钟
+    }, 5 * 60 * 1000); // 5分钟
 
-    // 之后每6小时检查一次（进一步降低检查频率）
+    // 之后每24小时检查一次（模拟真实用户查看频率）
     timerRef.current = setInterval(() => {
-      console.log('⏰ 朋友圈定时检查触发');
+      console.log('⏰ 朋友圈定时检查触发（每天一次）');
       checkAndGenerate();
-    }, 6 * 60 * 60 * 1000); // 6小时
+    }, 24 * 60 * 60 * 1000); // 24小时
 
     return () => {
       clearTimeout(initialTimer);
