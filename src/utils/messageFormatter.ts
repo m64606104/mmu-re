@@ -84,7 +84,9 @@ export const splitMessages = (message: string): string[] => {
     /\[同意代付\]/g,              // 同意代付
     /\[拒绝代付\]/g,              // 拒绝代付
     /\[回复\s+(?:我|你)\s+说的"[^"]+"\]/g,  // 引用回复
-    /小红书瀑布流\[[\s\S]*?\]/g   // 小红书
+    /小红书瀑布流\[[\s\S]*?\]/g,   // 小红书
+    /\d+\.\d+%/g,  // 🎯 保护百分数（如 3.8%、9.9%）
+    /￥?\d+\.\d+[元亿万]?/g  // 🎯 保护金额（如99.9元、3.14亿）
   ];
   
   let protectedParts: string[] = [];
@@ -155,7 +157,8 @@ export const splitMessages = (message: string): string[] => {
   }
   
   // 主要分割符：句号、问号、感叹号、换行
-  const primaryDelimiters = /([。！？!?.\n]+)/g;
+  // ⚠️ 注意：不包含英文句号 `.`，避免切割数字小数点（如 3.8%、99.9元）
+  const primaryDelimiters = /([。！？!?\n]+)/g;
   
   const messages: string[] = [];
   
@@ -239,10 +242,14 @@ export const splitMessages = (message: string): string[] => {
     const msg = messages[i].trim();
     
     // 检查是否是单独的数字序号（包括各种格式）
-    const isNumberSequence = /^(?:\d+[.。]|[①②③④⑤⑥⑦⑧⑨⑩⑪⑫⑬⑭⑮⑯⑰⑱⑲⑳]|[➊➋➌➍➎➏➐➑➒➓]|[❶❷❸❹❺❻❼❽❾❿]|[⓵⓶⓷⓸⓹⓺⓻⓼⓽⓾]|[Ⅰ-Ⅻ]|[ⅰ-ⅻ])$/;
+    // 🎯 增强：避免误判小数点，只匹配整数+句号
+    const isNumberSequence = /^(?:\d+[.。]|[①-⑳]|[➊-➓]|[❶-❿]|[⓵-⓾]|[Ⅰ-Ⅻ]|[ⅰ-ⅻ])$/;
     
-    if (isNumberSequence.test(msg) && i + 1 < messages.length) {
-      // 与下一条消息合并
+    // 🚫 但不包括小数（如 3.8、99.9）
+    const isDecimalNumber = /^\d+\.\d+$/.test(msg);
+    
+    if (isNumberSequence.test(msg) && !isDecimalNumber && i + 1 < messages.length) {
+      // 与下一条消息合并（但不包括小数）
       const nextMsg = messages[i + 1];
       finalMessages.push(msg + ' ' + nextMsg);
       i++; // 跳过下一条
@@ -370,8 +377,8 @@ export const splitMessages = (message: string): string[] => {
       if (/^\[?\]?https?:\/\/[^\s]+$/.test(msg)) return false;
       // 过滤只有.html、.com等扩展名结尾的片段
       if (/^[a-z0-9\-]+\.(html?|com|net|org|cn|edu)\.?$/i.test(msg)) return false;
-      // 过滤纯数字+点（可能是URL的一部分）
-      if (/^\d+\.$/.test(msg) && msg.length < 10) return false;
+      // 🚫 移除过滤逻辑：不要过滤 "3." 这样的内容，因为可能是 "3.8%" 被错误切割
+      // if (/^\d+\.$/.test(msg) && msg.length < 10) return false;
       return true;
     });
   
