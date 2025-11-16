@@ -1,6 +1,7 @@
 import { Conversation, Message, ApiConfig, CharacterSettings } from '../types';
-import { getErrorFromResponse, formatErrorMessage } from './apiErrorHandler';
+import { chatCompletion } from './chatApi';
 import { splitMessages } from './messageFormatter';
+import { buildTimeAwarePrompt } from './timeAwareness';
 
 /**
  * 群聊API服务
@@ -54,6 +55,7 @@ function buildGroupChatSystemPrompt(
   aiSettings: CharacterSettings,
   groupName: string,
   otherMembers: Array<{ name: string; role: string }>, // 其他成员信息
+  userName: string, // 用户的名称
   isFreeMode: boolean = false // 是否为自由模式
 ): string {
   const membersList = otherMembers.map(m => `${m.name}(${m.role})`).join('、');
@@ -75,6 +77,7 @@ function buildGroupChatSystemPrompt(
 - ⚠️ 重要：这是一个真实的群聊，有多个AI成员和用户共同参与
 - 你需要意识到其他AI成员也是独立的个体，他们会独立思考和发言
 - 你需要在群聊中以自己的角色身份自然地参与对话${freeModeExtra}
+- 👤 用户名称：称呼对方为"${userName}"，而不是"用户"
 
 ${aiSettings.systemPrompt ? `人物设定：${aiSettings.systemPrompt}` : ''}
 ${aiSettings.personality ? `性格特征：${aiSettings.personality}` : ''}
@@ -299,8 +302,8 @@ export async function generateGroupChatReplies(
     // 显示打字动画
     callbacks?.onAITyping?.(reply.aiId);
     
-    // 等待一段时间模拟思考
-    await new Promise(resolve => setTimeout(resolve, 1000));
+    // 等待一段时间模拟思考（缩短到300ms）
+    await new Promise(resolve => setTimeout(resolve, 300));
     
     // 逐条发送消息
     for (let i = 0; i < reply.messages.length; i++) {
@@ -316,9 +319,9 @@ export async function generateGroupChatReplies(
       
       callbacks?.onAIMessage?.(reply.aiId, messageWithSender);
       
-      // 每条消息之间短暂延迟
+      // 每条消息之间短暂延迟（缩短到200ms）
       if (i < reply.messages.length - 1) {
-        await new Promise(resolve => setTimeout(resolve, 500));
+        await new Promise(resolve => setTimeout(resolve, 200));
       }
     }
     
@@ -390,8 +393,8 @@ export async function generateGroupChatRepliesFreeMode(
     // 显示打字动画
     callbacks?.onAITyping?.(reply.aiId);
     
-    // 等待一段时间模拟思考
-    await new Promise(resolve => setTimeout(resolve, 1000));
+    // 等待一段时间模拟思考（缩短到300ms）
+    await new Promise(resolve => setTimeout(resolve, 300));
     
     // 逐条发送消息
     for (let i = 0; i < reply.messages.length; i++) {
@@ -407,9 +410,9 @@ export async function generateGroupChatRepliesFreeMode(
       
       callbacks?.onAIMessage?.(reply.aiId, messageWithSender);
       
-      // 每条消息之间短暂延迟
+      // 每条消息之间短暂延迟（缩短到200ms）
       if (i < reply.messages.length - 1) {
-        await new Promise(resolve => setTimeout(resolve, 500));
+        await new Promise(resolve => setTimeout(resolve, 200));
       }
     }
     
