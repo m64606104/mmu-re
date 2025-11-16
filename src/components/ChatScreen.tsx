@@ -2713,12 +2713,21 @@ ${characterInfo?.languageStyle ? `语言风格：${characterInfo.languageStyle}`
       const isFreeMode = conversation.groupChatMode === 'free';
       const generateFunction = isFreeMode ? generateGroupChatRepliesFreeMode : generateGroupChatReplies;
       
+      // 🔥 修复：使用最新的消息列表创建更新后的conversation对象
+      const latestConversation = {
+        ...conversation,
+        messages: currentMessagesRef.current // 使用ref中的最新消息
+      };
+      
       // 调用群聊服务
       await generateFunction(
-        conversation,
+        latestConversation,
         apiConfig,
         conversations,
         {
+          // 🔥 提供获取最新消息的回调
+          getLatestMessages: () => currentMessagesRef.current,
+          
           onAIStart: (aiId, aiName) => {
             console.log(`🤖 ${aiName} 开始回复`);
             // 隐藏发送中提示，显示AI打字动画
