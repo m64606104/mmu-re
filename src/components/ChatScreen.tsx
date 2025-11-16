@@ -6248,33 +6248,51 @@ ${doc.content}`;
             
             // 🎁 AI智能领取群红包（异步处理）
             setTimeout(async () => {
-              const aiMembers = conversation.members
+              // 重新获取最新的对话数据，确保红包消息已添加
+              const updatedConv = conversations.find(c => c.id === conversation.id);
+              if (!updatedConv) return;
+              
+              const aiMembers = updatedConv.members
                 ?.map(mid => conversations.find(c => c.id === mid))
                 .filter(c => c && c.type === 'private') as Conversation[];
               
               if (aiMembers && aiMembers.length > 0) {
                 try {
+                  // 找到刚发送的红包消息
+                  const redPacketMsg = updatedConv.messages.find(m => 
+                    m.id === newMessage.id && 
+                    m.moneyTransfer?.type === 'groupRedPacket'
+                  );
+                  
+                  if (!redPacketMsg) {
+                    console.error('未找到红包消息');
+                    return;
+                  }
+                  
                   await handleAIGroupRedPacketClaiming(
-                    newMessage,
+                    redPacketMsg,
                     aiMembers,
-                    conversation,
-                    conversation.messages,
+                    updatedConv,
+                    updatedConv.messages,
                     apiConfig,
                     (_aiId, aiName, amount) => {
                       // AI领取成功，添加提示消息
                       console.log(`🎁 ${aiName} 领取了 ¥${amount.toFixed(2)}`);
                       
-                      // 可选：添加系统消息提示
-                      const claimMessage: Message = {
-                        id: `claim_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-                        role: 'system',
-                        content: `${aiName} 领取了红包`,
-                        timestamp: Date.now()
-                      };
-                      
-                      onUpdateConversation(conversation.id, {
-                        messages: [...conversation.messages, claimMessage]
-                      });
+                      // 更新红包消息并添加提示
+                      const currentConv = conversations.find(c => c.id === conversation.id);
+                      if (currentConv) {
+                        const claimMessage: Message = {
+                          id: `claim_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+                          role: 'system',
+                          content: `${aiName} 领取了红包`,
+                          timestamp: Date.now()
+                        };
+                        
+                        onUpdateConversation(conversation.id, {
+                          messages: [...currentConv.messages, claimMessage]
+                        });
+                      }
                     }
                   );
                 } catch (error) {

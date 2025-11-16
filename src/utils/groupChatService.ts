@@ -146,21 +146,98 @@ ${aiSettings.memoryEvents ? `记忆事件：${aiSettings.memoryEvents}` : ''}
 }
 
 /**
- * 解析AI回复消息并拆分（使用私聊的splitMessages逻辑）
+ * 解析AI回复消息并拆分（支持多媒体）
  */
 function parseAIResponse(content: string): Message[] {
   if (!content || content.trim() === '' || content.includes('[不回复]')) {
     return [];
   }
   
-  // 使用私聊的消息分割逻辑，支持多条气泡
-  const contentArray = splitMessages(content);
-  const messages: Message[] = contentArray.map((text, index) => ({
-    id: `${Date.now()}_${index}_${Math.random()}`,
-    role: 'assistant' as const,
-    content: text,
-    timestamp: Date.now() + index * 100,
-  }));
+  // 检测各种媒体类型
+  const imageMatches = [...content.matchAll(/\[图片[:：]([^\]]+)\]/g)];
+  const videoMatches = [...content.matchAll(/\[视频[:：]([^\]]+)\]/g)];
+  const voiceMatches = [...content.matchAll(/\[语音[:：](.+?)(?:[，,]\s*(?:时长)?(\d+)秒?)?\]/g)];
+  const stickerMatches = [...content.matchAll(/\[表情包[:：]([^\]]+)\]/g)];
+  
+  // 移除所有媒体标记，得到纯文本内容
+  let cleanText = content
+    .replace(/\[图片[:：][^\]]+\]/g, '')
+    .replace(/\[视频[:：][^\]]+\]/g, '')
+    .replace(/\[语音[:：].+?\]/g, '')
+    .replace(/\[表情包[:：][^\]]+\]/g, '')
+    .trim();
+  
+  const messages: Message[] = [];
+  let baseTimestamp = Date.now();
+  let msgIndex = 0;
+  
+  // 1. 添加所有图片消息
+  imageMatches.forEach((match) => {
+    messages.push({
+      id: `${baseTimestamp}_img_${msgIndex++}`,
+      role: 'assistant' as const,
+      content: '[图片]',
+      timestamp: baseTimestamp + msgIndex * 100,
+      mediaType: 'image',
+      mediaDescription: match[1],
+      isMediaDescriptionOnly: true
+    });
+  });
+  
+  // 2. 添加所有视频消息
+  videoMatches.forEach((match) => {
+    messages.push({
+      id: `${baseTimestamp}_video_${msgIndex++}`,
+      role: 'assistant' as const,
+      content: '[视频]',
+      timestamp: baseTimestamp + msgIndex * 100,
+      mediaType: 'video',
+      mediaDescription: match[1],
+      isMediaDescriptionOnly: true
+    });
+  });
+  
+  // 3. 添加所有语音消息
+  voiceMatches.forEach((match) => {
+    const voiceContent = match[1];
+    const duration = match[2] ? parseInt(match[2]) : 3;
+    messages.push({
+      id: `${baseTimestamp}_voice_${msgIndex++}`,
+      role: 'assistant' as const,
+      content: '[语音]',
+      timestamp: baseTimestamp + msgIndex * 100,
+      mediaType: 'voice',
+      mediaDescription: voiceContent,
+      voiceDuration: duration,
+      isMediaDescriptionOnly: true
+    });
+  });
+  
+  // 4. 添加所有表情包消息
+  stickerMatches.forEach((match) => {
+    messages.push({
+      id: `${baseTimestamp}_sticker_${msgIndex++}`,
+      role: 'assistant' as const,
+      content: '[表情包]',
+      timestamp: baseTimestamp + msgIndex * 100,
+      mediaType: 'sticker',
+      mediaDescription: match[1],
+      isMediaDescriptionOnly: true
+    });
+  });
+  
+  // 5. 添加纯文本消息（如果有）
+  if (cleanText) {
+    const contentArray = splitMessages(cleanText);
+    contentArray.forEach((text) => {
+      messages.push({
+        id: `${baseTimestamp}_text_${msgIndex++}`,
+        role: 'assistant' as const,
+        content: text,
+        timestamp: baseTimestamp + msgIndex * 100,
+      });
+    });
+  }
   
   return messages;
 }

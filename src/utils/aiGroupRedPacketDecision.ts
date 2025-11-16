@@ -207,11 +207,23 @@ export async function handleAIGroupRedPacketClaiming(
   }
 
   console.log(`🎁 开始处理群红包领取，AI成员数: ${aiMembers.length}`);
+  console.log(`🎁 红包剩余: ${redPacket.remainingCount}/${redPacket.totalCount}个`);
 
-  // 随机打乱AI顺序（模拟真实抢红包场景）
-  const shuffledAIs = [...aiMembers].sort(() => Math.random() - 0.5);
+  // 如果红包数量小于AI成员数，随机选择一部分AI参与
+  let participatingAIs = [...aiMembers];
+  if (redPacket.remainingCount < aiMembers.length) {
+    console.log(`⚠️ 红包数量(${redPacket.remainingCount})少于AI成员数(${aiMembers.length})，随机选择AI参与`);
+    // 随机打乱并选择前N个AI（N为红包数量）
+    participatingAIs = [...aiMembers]
+      .sort(() => Math.random() - 0.5)
+      .slice(0, redPacket.remainingCount);
+    console.log(`✅ 选中参与的AI: ${participatingAIs.map(ai => ai.name).join('、')}`);
+  } else {
+    // 如果红包足够，所有AI都可以参与，随机打乱顺序
+    participatingAIs = [...aiMembers].sort(() => Math.random() - 0.5);
+  }
 
-  for (const aiMember of shuffledAIs) {
+  for (const aiMember of participatingAIs) {
     // 检查红包是否还有剩余
     if (redPacket.remainingCount === 0) {
       console.log('🎁 红包已被领完');
