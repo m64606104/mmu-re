@@ -1036,11 +1036,11 @@ ${recentMessages}
     }
   }, [conversation.id]); // 切换对话时重新滚动到底部
   
-  // 🚚 定期更新配送状态（每30秒）
+  // 🚚 定期更新配送状态（每5分钟）
   useEffect(() => {
     const interval = setInterval(() => {
       setDeliveryRefreshTrigger(prev => prev + 1);
-    }, 30000); // 每30秒更新一次
+    }, 300000); // 每5分钟（300秒）更新一次，降低资源消耗
     
     return () => clearInterval(interval);
   }, []);
