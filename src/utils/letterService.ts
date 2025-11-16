@@ -73,11 +73,35 @@ export const PRESET_AI_POOL: BottleAI[] = [
   }
 ];
 
-// 🎲 随机生成AI人设的素材库
-const NAME_POOL = {
-  surnames: ['李', '王', '张', '刘', '陈', '杨', '赵', '黄', '周', '吴', '林', '徐', '孙', '马', '朱', '胡', '郭', '何', '高', '罗'],
-  givenNames: ['小安', '远', '书书', '雨', '温', '木木', '浪', '青灯', '星河', '南风', '北辰', '夏至', '秋分', '冬雪', '晨曦', '暮色', '云舒', '海棠', '竹影', '梅香'],
-  nicknames: ['阿', '小', '', '老']
+// 🎲 随机生成AI人设的素材库 - 咸鱼/淘宝风格
+const RANDOM_NAME_PARTS = {
+  // 形容词
+  adjectives: [
+    '沉默', '冰冷', '温柔', '孤独', '快乐', '忧郁', '自由', '神秘',
+    '迷茫', '清醒', '慵懒', '热情', '冷漠', '敏感', '坚强', '脆弱',
+    '勇敢', '胆小', '善良', '倔强', '随性', '认真', '粗心', '细腻',
+    '乐观', '悲观', '开朗', '内向', '活泼', '安静', '浪漫', '务实',
+    '文艺', '理性', '感性', '淡定', '焦虑', '洒脱', '纠结', '简单'
+  ],
+  // 名词（动物、植物、物品、自然）
+  nouns: [
+    // 动物类
+    '安康鱼', '北极熊', '企鹅', '海豹', '树懒', '考拉', '浣熊', '猫头鹰',
+    '仓鼠', '刺猬', '松鼠', '兔子', '猫咪', '柴犬', '金鱼', '海豚',
+    '海星', '水母', '蝴蝶', '蜻蜓', '萤火虫', '知了', '蟋蟀', '瓢虫',
+    
+    // 植物类
+    '向日葵', '薰衣草', '蒲公英', '雏菊', '茉莉', '桂花', '梅花', '樱花',
+    '竹子', '枫叶', '银杏', '柳树', '仙人掌', '多肉', '芦荟', '绿萝',
+    
+    // 物品类
+    '咖啡杯', '书签', '钢笔', '橡皮擦', '台灯', '闹钟', '相机', '吉他',
+    '明信片', '日记本', '风铃', '沙漏', '地球仪', '望远镜', '棒棒糖', '冰淇淋',
+    
+    // 自然类
+    '月亮', '星星', '云朵', '雨滴', '雪花', '彩虹', '晚霞', '晨曦',
+    '海浪', '清风', '春天', '秋天', '溪流', '山谷', '小岛', '灯塔'
+  ]
 };
 
 const AVATAR_POOL = ['🌊', '🎒', '📖', '🌙', '☕', '🌲', '🎸', '🕯️', '🌸', '🎨', '📷', '🎭', '🎪', '🎬', '🎮', '🎯', '🎲', '🎹', '🎺', '🎻'];
@@ -169,14 +193,10 @@ const HOBBY_TEMPLATES = [
  * 用于漂流瓶模式，每次回信都是不同的陌生笔友
  */
 export function generateRandomBottleAI(): BottleAI {
-  // 生成名字
-  const useSurname = Math.random() > 0.3; // 70%概率有姓氏
-  const surname = useSurname ? NAME_POOL.surnames[Math.floor(Math.random() * NAME_POOL.surnames.length)] : '';
-  const givenName = NAME_POOL.givenNames[Math.floor(Math.random() * NAME_POOL.givenNames.length)];
-  const useNickname = Math.random() > 0.6; // 40%概率用昵称前缀
-  const nickname = useNickname ? NAME_POOL.nicknames[Math.floor(Math.random() * NAME_POOL.nicknames.length)] : '';
-  
-  const name = surname + nickname + givenName;
+  // 生成名字：形容词 + 的 + 名词（咸鱼/淘宝风格）
+  const adjective = RANDOM_NAME_PARTS.adjectives[Math.floor(Math.random() * RANDOM_NAME_PARTS.adjectives.length)];
+  const noun = RANDOM_NAME_PARTS.nouns[Math.floor(Math.random() * RANDOM_NAME_PARTS.nouns.length)];
+  const name = `${adjective}的${noun}`;
   
   // 生成头像
   const avatar = AVATAR_POOL[Math.floor(Math.random() * AVATAR_POOL.length)];
