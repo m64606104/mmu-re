@@ -734,6 +734,28 @@ export const commentMomentPost = async (
   
   post.comments.push(newComment);
   await saveMomentsData(data);
+  
+  // 🔔 如果是回复用户的评论，创建通知
+  if (comment.replyTo && comment.authorId !== 'user') {
+    const repliedComment = post.comments.find(c => c.id === comment.replyTo);
+    
+    // 检查被回复的评论是否是用户发的
+    if (repliedComment && (repliedComment.authorId === 'user' || repliedComment.userId === 'user')) {
+      const { addMomentsNotification } = await import('./momentsNotifications');
+      
+      addMomentsNotification({
+        type: 'comment_reply',
+        momentId: postId,
+        commentId: repliedComment.id,
+        replyId: newComment.id,
+        replyAuthorId: comment.authorId,
+        replyAuthorName: comment.authorName,
+        replyContent: comment.content
+      });
+      
+      console.log(`🔔 创建朋友圈回复通知: ${comment.authorName} 回复了用户`);
+    }
+  }
 };
 
 /**
