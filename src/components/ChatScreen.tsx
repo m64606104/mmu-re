@@ -2745,10 +2745,21 @@ ${characterInfo?.languageStyle ? `语言风格：${characterInfo.languageStyle}`
           },
           
           onAIMessage: (_aiId, message) => {
-            // 累积添加消息
+            // 🎯 方案3：从最新的conversation.messages获取，保持用户插话的时间顺序
+            // 这样更符合真实群聊场景：用户可以在AI回复期间插话
+            const latestMessages = conversation.messages;
+            
+            // 累积AI消息到快照
             currentMessages = [...currentMessages, message];
+            
+            // 合并：最新消息列表 + 新的AI消息
+            // 注意：latestMessages可能包含用户在生成期间发送的消息
+            const updatedMessages = [...latestMessages, message];
+            
+            console.log(`📨 AI消息追加: 原${latestMessages.length}条 → 现${updatedMessages.length}条`);
+            
             onUpdateConversation(conversation.id, {
-              messages: currentMessages,
+              messages: updatedMessages,
               lastMessageTime: Date.now()
             });
           },
@@ -2780,24 +2791,19 @@ ${characterInfo?.languageStyle ? `语言风格：${characterInfo.languageStyle}`
                 消息ID: userNewMessages.map(m => m.id),
                 消息内容: userNewMessages.map(m => m.content.substring(0, 30))
               });
+            } else {
+              console.log('✅ 无新增用户消息（方案3：已在onAIMessage中实时追加）');
             }
             
-            // 📦 智能合并消息（AI回复 + 用户新消息）
-            const finalMessages = [
-              ...currentMessages,    // 包含初始消息 + AI回复
-              ...userNewMessages     // 用户在生成期间发送的新消息
-            ];
+            // 🎯 方案3：不需要再合并，消息已经在每次onAIMessage时追加了
+            // conversation.messages 已经是最新状态，包含：
+            // [原有消息] → [用户插话] → [AI回复1] → [用户插话] → [AI回复2]
+            const finalMessages = conversation.messages;
             
             console.log('📦 最终消息列表:', {
               总消息数: finalMessages.length,
               AI回复数: replies.length,
               用户新消息数: userNewMessages.length
-            });
-            
-            // 更新对话（使用合并后的消息列表）
-            onUpdateConversation(conversation.id, {
-              messages: finalMessages,
-              lastMessageTime: Date.now()
             });
             
             setIsGenerating(false);

@@ -388,8 +388,8 @@ async function generateAIReply(
       isFreeMode
     );
     
-    // 构建消息历史（最近20条）
-    const recentMessages = groupConversation.messages.slice(-20);
+    // 构建消息历史（最近30条，增加上下文窗口）
+    const recentMessages = groupConversation.messages.slice(-30);
     
     // 🕐 添加时间感知
     const lastUserMessage = recentMessages
