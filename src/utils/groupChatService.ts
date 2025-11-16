@@ -455,9 +455,14 @@ export async function generateGroupChatReplies(
   // 依次为每个AI生成回复
   for (let idx = 0; idx < aiMembers.length; idx++) {
     const aiMember = aiMembers[idx];
-    const isLastAI = idx === aiMembers.length - 1;
     
-    // 👉 先显示打字动画（在生成之前）
+    // 🎯 优化：如果不是第一个AI，先等待短暂间隔再显示打字动画
+    // 这样用户体验是：上一个AI发完 → 短暂间隔 → 下一个AI打字动画 → 消息
+    if (idx > 0) {
+      await new Promise(resolve => setTimeout(resolve, 200)); // 缩短到200ms，更流畅
+    }
+    
+    // 显示打字动画
     callbacks?.onAIStart?.(aiMember.id, aiMember.characterSettings?.nickname || aiMember.name);
     callbacks?.onAITyping?.(aiMember.id);
     
@@ -476,8 +481,8 @@ export async function generateGroupChatReplies(
       continue;
     }
     
-    // 等待一小段时间让打字动画显示（如果API返回很快）
-    await new Promise(resolve => setTimeout(resolve, 300));
+    // 🎯 优化：缩短等待时间，让打字动画更快显示消息
+    await new Promise(resolve => setTimeout(resolve, 200));
     
     // 逐条发送消息
     for (let i = 0; i < reply.messages.length; i++) {
@@ -499,18 +504,15 @@ export async function generateGroupChatReplies(
       
       callbacks?.onAIMessage?.(reply.aiId, messageWithSender);
       
-      // 每条消息之间延迟（500ms让用户有时间阅读）
+      // 🎯 优化：缩短消息间延迟，让对话更流畅
       if (i < reply.messages.length - 1) {
-        await new Promise(resolve => setTimeout(resolve, 500));
+        await new Promise(resolve => setTimeout(resolve, 400)); // 从500ms缩短到400ms
       }
     }
     
     callbacks?.onAIComplete?.(reply.aiId, reply.messages);
     
-    // AI之间的间隔（如果不是最后一个AI）
-    if (!isLastAI) {
-      await new Promise(resolve => setTimeout(resolve, 400));
-    }
+    // 注意：AI之间的间隔已经移到循环开头处理，这里不需要了
   }
   
   // 所有AI完成
@@ -574,9 +576,13 @@ async function generateSingleRound(
   // 依次为选中的AI生成回复
   for (let idx = 0; idx < selectedAIs.length; idx++) {
     const aiMember = selectedAIs[idx];
-    const isLastAI = idx === selectedAIs.length - 1;
     
-    // 👉 先显示打字动画（在生成之前）
+    // 🎯 优化：如果不是第一个AI，先等待短暂间隔再显示打字动画
+    if (idx > 0) {
+      await new Promise(resolve => setTimeout(resolve, 200)); // 缩短到200ms，更流畅
+    }
+    
+    // 显示打字动画
     callbacks?.onAIStart?.(aiMember.id, aiMember.characterSettings?.nickname || aiMember.name);
     callbacks?.onAITyping?.(aiMember.id);
     
@@ -595,8 +601,8 @@ async function generateSingleRound(
       continue;
     }
     
-    // 等待一小段时间让打字动画显示（如果API返回很快）
-    await new Promise(resolve => setTimeout(resolve, 300));
+    // 🎯 优化：缩短等待时间，让打字动画更快显示消息
+    await new Promise(resolve => setTimeout(resolve, 200));
     
     // 逐条发送消息
     for (let i = 0; i < reply.messages.length; i++) {
@@ -617,17 +623,15 @@ async function generateSingleRound(
       
       callbacks?.onAIMessage?.(reply.aiId, messageWithSender);
       
+      // 🎯 优化：缩短消息间延迟，让对话更流畅
       if (i < reply.messages.length - 1) {
-        await new Promise(resolve => setTimeout(resolve, 500));
+        await new Promise(resolve => setTimeout(resolve, 400)); // 从500ms缩短到400ms
       }
     }
     
     callbacks?.onAIComplete?.(reply.aiId, reply.messages);
     
-    // AI之间的间隔（如果不是最后一个AI）
-    if (!isLastAI) {
-      await new Promise(resolve => setTimeout(resolve, 400));
-    }
+    // 注意：AI之间的间隔已经移到循环开头处理，这里不需要了
   }
   
   return roundReplies.filter(r => r.messages.length > 0);

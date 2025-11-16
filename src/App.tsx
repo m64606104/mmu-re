@@ -24,7 +24,8 @@ import { MomentsAutoGenerator } from './components/MomentsAutoGenerator';
 import { AIMomentsInteractionManager } from './components/AIMomentsInteractionManager';
 import ProactiveMessagingService from './components/ProactiveMessagingService';
 import MessageNotification from './components/MessageNotification';
-import { smartLoad, smartSave, migrateToIndexedDB } from './utils/storage';
+import StorageMigrationPrompt from './components/StorageMigrationPrompt';
+import { smartLoad, smartSave, migrateToIndexedDB, checkMigrationNeeded, getStorageInfo } from './utils/storage';
 import { generateAIMoment } from './utils/aiMomentsGenerator';
 import { backgroundGenerationService } from './utils/backgroundGenerationService';
 
@@ -50,6 +51,7 @@ function App() {
     return saved ? JSON.parse(saved) : { wallpaper: 'gradient-5' };
   });
   const [currentShopType, setCurrentShopType] = useState<ShopType>('food');
+  const [showMigrationPrompt, setShowMigrationPrompt] = useState(false);
 
   // 桌面布局重置函数
   const resetDesktopLayout = useCallback(() => {
@@ -63,6 +65,27 @@ function App() {
     
     // 触发页面刷新以应用新布局
     window.location.reload();
+  }, []);
+
+  // 检查存储迁移需求
+  useEffect(() => {
+    const checkStorage = async () => {
+      // 检查是否需要迁移
+      const needsMigration = checkMigrationNeeded();
+      
+      if (needsMigration) {
+        // 检查localStorage使用率
+        const info = await getStorageInfo();
+        
+        // 如果使用率超过60%，显示迁移提示
+        if (info.localStorage.percentage > 60) {
+          console.log(`📊 localStorage使用率: ${info.localStorage.percentage.toFixed(1)}%，建议迁移`);
+          setShowMigrationPrompt(true);
+        }
+      }
+    };
+    
+    checkStorage();
   }, []);
 
   // 初始化对话数据
@@ -938,6 +961,18 @@ function App() {
       
       {/* Toast通知容器 */}
       <ToastContainer />
+      
+      {/* 存储迁移提示 */}
+      {showMigrationPrompt && (
+        <StorageMigrationPrompt
+          onClose={() => setShowMigrationPrompt(false)}
+          onMigrationComplete={() => {
+            setShowMigrationPrompt(false);
+            // 迁移完成后重新加载数据
+            window.location.reload();
+          }}
+        />
+      )}
     </>
   );
 }
