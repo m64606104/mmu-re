@@ -390,7 +390,7 @@ async function generateAIReply(
         ...apiMessages
       ],
       temperature: 0.8,
-      max_tokens: 1000, // 群聊回复通常较短
+      max_tokens: 2000, // 提升限制，避免回复被截断
     };
     
     const response = await fetch(`${apiConfig.baseUrl}/v1/chat/completions`, {
