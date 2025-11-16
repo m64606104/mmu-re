@@ -2675,10 +2675,18 @@ ${characterInfo?.languageStyle ? `语言风格：${characterInfo.languageStyle}`
             // 自由模式：如果没有AI回复，显示提示
             if (isFreeMode && replies.length === 0) {
               // 添加系统消息提示
+              // 随机选择一个友好的提示
+              const friendlyHints = [
+                '😊 大家好像都在忙哦，一会再问一次吧',
+                '👀 好像暂时没人看到消息呢',
+                '☕ 大家可能都去忙其他事了，稍后再聊~',
+                '💬 此刻无人回应，不妨等等看',
+              ];
+              const randomHint = friendlyHints[Math.floor(Math.random() * friendlyHints.length)];
               const systemMessage: Message = {
                 id: `system_${Date.now()}`,
                 role: 'system',
-                content: '本轮没有AI回复',
+                content: randomHint,
                 timestamp: Date.now()
               };
               currentMessages = [...currentMessages, systemMessage];
@@ -2693,10 +2701,18 @@ ${characterInfo?.languageStyle ? `语言风格：${characterInfo.languageStyle}`
       
       // 如果是自由模式且所有AI都选择不回复，也显示提示
       if (isFreeMode && allReplies.every(r => r.messages.length === 0)) {
+        // 随机选择一个友好的提示
+        const friendlyHints = [
+          '😊 大家好像都在忙哦，一会再问一次吧',
+          '👀 好像暂时没人看到消息呢',
+          '☕ 大家可能都去忙其他事了，稍后再聊~',
+          '💬 此刻无人回应，不妨等等看',
+        ];
+        const randomHint = friendlyHints[Math.floor(Math.random() * friendlyHints.length)];
         const systemMessage: Message = {
           id: `system_${Date.now()}`,
           role: 'system',
-          content: '所有AI都选择不回复',
+          content: randomHint,
           timestamp: Date.now()
         };
         currentMessages = [...currentMessages, systemMessage];

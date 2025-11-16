@@ -319,8 +319,8 @@ export async function generateGroupChatReplies(
     // 显示打字动画
     callbacks?.onAITyping?.(reply.aiId);
     
-    // 等待一段时间模拟思考（缩短到300ms）
-    await new Promise(resolve => setTimeout(resolve, 300));
+    // 显示输入动画后等待一小段时间让用户看到（实际思考在API调用中）
+    await new Promise(resolve => setTimeout(resolve, 800));
     
     // 逐条发送消息
     for (let i = 0; i < reply.messages.length; i++) {
@@ -336,13 +336,18 @@ export async function generateGroupChatReplies(
       
       callbacks?.onAIMessage?.(reply.aiId, messageWithSender);
       
-      // 每条消息之间短暂延迟（缩短到200ms）
+      // 每条消息之间延迟（500ms让用户有时间阅读）
       if (i < reply.messages.length - 1) {
-        await new Promise(resolve => setTimeout(resolve, 200));
+        await new Promise(resolve => setTimeout(resolve, 500));
       }
     }
     
     callbacks?.onAIComplete?.(reply.aiId, reply.messages);
+    
+    // AI之间留出间隔时间（800ms让用户看清楚是不同的AI）
+    if (aiMembers.indexOf(aiMember) < aiMembers.length - 1) {
+      await new Promise(resolve => setTimeout(resolve, 800));
+    }
   }
   
   // 所有AI完成
@@ -410,8 +415,8 @@ export async function generateGroupChatRepliesFreeMode(
     // 显示打字动画
     callbacks?.onAITyping?.(reply.aiId);
     
-    // 等待一段时间模拟思考（缩短到300ms）
-    await new Promise(resolve => setTimeout(resolve, 300));
+    // 显示输入动画后等待一小段时间让用户看到（实际思考在API调用中）
+    await new Promise(resolve => setTimeout(resolve, 800));
     
     // 逐条发送消息
     for (let i = 0; i < reply.messages.length; i++) {
@@ -427,13 +432,18 @@ export async function generateGroupChatRepliesFreeMode(
       
       callbacks?.onAIMessage?.(reply.aiId, messageWithSender);
       
-      // 每条消息之间短暂延迟（缩短到200ms）
+      // 每条消息之间延迟（500ms让用户有时间阅读）
       if (i < reply.messages.length - 1) {
-        await new Promise(resolve => setTimeout(resolve, 200));
+        await new Promise(resolve => setTimeout(resolve, 500));
       }
     }
     
     callbacks?.onAIComplete?.(reply.aiId, reply.messages);
+    
+    // AI之间留出间隔时间（800ms让用户看清楚是不同的AI）
+    if (selectedAIs.indexOf(aiMember) < selectedAIs.length - 1) {
+      await new Promise(resolve => setTimeout(resolve, 800));
+    }
   }
   
   // 所有AI完成
