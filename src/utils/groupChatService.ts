@@ -518,6 +518,7 @@ async function generateAIReply(
     const assistantMessage = data.choices[0]?.message?.content;
     
     // 解析回复（传入群成员信息，用于专属红包）
+    const parseStartTime = Date.now();
     const groupMembersInfo = members
       .map(mid => {
         const m = allConversations.find(c => c.id === mid);
@@ -529,6 +530,12 @@ async function generateAIReply(
       .filter(Boolean) as Array<{id: string; name: string}>;
     
     const messages = parseAIResponse(assistantMessage, groupMembersInfo, userName);
+    const parseDuration = Date.now() - parseStartTime;
+    
+    // 👍 性能监控：记录解析时间
+    if (parseDuration > 50) {
+      console.warn(`⚠️ 消息解析耗时较长: ${parseDuration}ms`);
+    }
     
     reply.messages = messages;
     reply.status = 'completed';
@@ -585,7 +592,12 @@ export async function generateGroupChatReplies(
     }
     
     // 调用API生成回复
+    const apiStartTime = Date.now();
     const reply = await generateAIReply(aiMember, groupConversation, apiConfig, allConversations, isFreeMode);
+    const apiDuration = Date.now() - apiStartTime;
+    
+    // 👍 性能监控：记录API调用时间
+    console.log(`⏱️ ${aiMember.characterSettings?.nickname || aiMember.name} API调用耗时: ${apiDuration}ms`);
     allReplies.push(reply);
     
     // API返回后处理
