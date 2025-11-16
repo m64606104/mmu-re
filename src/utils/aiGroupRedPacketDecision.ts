@@ -38,8 +38,14 @@ function buildRedPacketDecisionPrompt(
   const redPacketTypeDesc: Record<string, string> = {
     'average': '普通红包（平均分配）',
     'random': '拼手气红包（随机金额）',
-    'exclusive': '专属红包'
+    'exclusive': '专属红包',
+    'password': '口令红包（需要发送口令）'
   };
+
+  // 口令红包特殊说明
+  const passwordHint = redPacket.password 
+    ? `\n⚠️ 这是口令红包，需要发送口令："${redPacket.password}" 才能领取\n你需要考虑：这个口令适合你说吗？说出来会不会尴尬或不符合你的性格？`
+    : '';
 
   return `你是${aiName}。
 
@@ -53,7 +59,7 @@ ${personality}
 - 总金额: ¥${redPacket.totalAmount}
 - 总数量: ${redPacket.totalCount}个
 - 留言: ${redPacket.message || '无'}
-- 剩余: ${redPacket.remainingCount}/${redPacket.totalCount}个
+- 剩余: ${redPacket.remainingCount}/${redPacket.totalCount}个${passwordHint}
 ${memoryContext}
 
 【最近群聊内容】:
@@ -82,6 +88,14 @@ ${chatContext}
    - 符合你的性格吗？
    - 符合当前场景吗？
 
+${redPacket.password ? `5. **口令红包特别考虑**:
+   - 口令内容是："${redPacket.password}"
+   - 你愿意在群里说出这个口令吗？
+   - 这个口令对你来说尴尬吗？不合适吗？
+   - 示例：如果口令是"小a是小狗"，而你就是小a，你可能会觉得不想说这个
+   - 但如果你性格大大咧咧/不在乎，也可以选择领取
+   - 如果口令内容与你无关或者你不介意，可以正常领取
+` : ''}
 ⚠️ 重要规则：
 - 只回复"领取"或"不领取"，不要有任何其他内容
 - 不要解释原因
@@ -108,11 +122,6 @@ export async function aiDecideToClaimRedPacket(
       }
       // 是专属红包且是给这个AI的，直接领取
       return true;
-    }
-
-    // 口令红包：AI无法猜测口令，跳过
-    if (redPacket.password) {
-      return false;
     }
 
     // 已经领取过的不再领取
