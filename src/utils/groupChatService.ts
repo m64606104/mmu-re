@@ -390,8 +390,112 @@ export async function generateGroupChatReplies(
 }
 
 /**
- * 群聊生成服务 - 自由模式
- * 随机选择0到全部AI进行回复
+ * 检测对话是否自然结束
+ */
+function detectConversationEnd(replies: GroupAIReply[]): boolean {
+  if (replies.length === 0) return true;
+  
+  // 检查最后一轮回复的内容
+  const lastRoundContent = replies
+    .map(r => r.messages.map(m => m.content).join(' '))
+    .join(' ')
+    .toLowerCase();
+  
+  // 结束信号关键词
+  const endSignals = [
+    '再见', 'bye', '拜拜', '88',
+    '好的，就这样', '好了', '就这样吧',
+    '先这样', '先忙了', '去忙了',
+    '有事先走了', '改天聊',
+    '明白了', '知道了', '了解',
+    '没事了', '没问题了'
+  ];
+  
+  // 如果包含结束信号，判定为结束
+  return endSignals.some(signal => lastRoundContent.includes(signal));
+}
+
+/**
+ * 单轮生成函数
+ */
+async function generateSingleRound(
+  aiMembers: Conversation[],
+  groupConversation: Conversation,
+  apiConfig: ApiConfig,
+  allConversations: Conversation[],
+  callbacks?: GroupChatCallback
+): Promise<GroupAIReply[]> {
+  // 随机选择回复的AI数量 (0 到 全部)
+  const replyCount = Math.floor(Math.random() * (aiMembers.length + 1));
+  
+  // 如果没有AI回复，返回空数组
+  if (replyCount === 0) {
+    console.log('💤 本轮无AI回复');
+    return [];
+  }
+  
+  // 随机选择AI
+  const shuffled = [...aiMembers].sort(() => Math.random() - 0.5);
+  const selectedAIs = shuffled.slice(0, replyCount);
+  console.log(`✅ 选中的AI: ${selectedAIs.map(ai => ai.characterSettings?.nickname || ai.name).join('、')}`);
+  
+  const roundReplies: GroupAIReply[] = [];
+  
+  // 依次为选中的AI生成回复
+  for (const aiMember of selectedAIs) {
+    // 生成回复
+    const reply = await generateAIReply(aiMember, groupConversation, apiConfig, allConversations, true);
+    roundReplies.push(reply);
+    
+    if (reply.status === 'error') {
+      callbacks?.onAIError?.(reply.aiId, reply.error || '未知错误');
+      continue;
+    }
+    
+    if (reply.messages.length === 0) {
+      // AI选择不回复
+      continue;
+    }
+    
+    // 通知开始
+    callbacks?.onAIStart?.(aiMember.id, aiMember.characterSettings?.nickname || aiMember.name);
+    
+    // 显示打字动画
+    callbacks?.onAITyping?.(reply.aiId);
+    await new Promise(resolve => setTimeout(resolve, 800));
+    
+    // 逐条发送消息
+    for (let i = 0; i < reply.messages.length; i++) {
+      const message = reply.messages[i];
+      
+      const messageWithSender = {
+        ...message,
+        senderId: reply.aiId,
+        senderName: reply.aiName,
+        senderAvatar: reply.aiAvatar,
+      } as any;
+      
+      callbacks?.onAIMessage?.(reply.aiId, messageWithSender);
+      
+      if (i < reply.messages.length - 1) {
+        await new Promise(resolve => setTimeout(resolve, 500));
+      }
+    }
+    
+    callbacks?.onAIComplete?.(reply.aiId, reply.messages);
+    
+    // AI之间留出间隔
+    if (selectedAIs.indexOf(aiMember) < selectedAIs.length - 1) {
+      await new Promise(resolve => setTimeout(resolve, 800));
+    }
+  }
+  
+  return roundReplies.filter(r => r.messages.length > 0);
+}
+
+/**
+ * 群聊生成服务 - 自由模式（支持多轮回复）
+ * 随机选择0到全部AI进行回复，支持2-3轮循环
  */
 export async function generateGroupChatRepliesFreeMode(
   groupConversation: Conversation,
@@ -408,78 +512,50 @@ export async function generateGroupChatRepliesFreeMode(
     throw new Error('群聊中没有AI成员');
   }
   
-  // 随机选择回复的AI数量 (0 到 全部)
-  const replyCount = Math.floor(Math.random() * (aiMembers.length + 1));
-  console.log(`🎲 自由模式：从${aiMembers.length}个AI中随机选择${replyCount}个回复`);
-  
-  // 如果没有AI回复，返回空数组
-  if (replyCount === 0) {
-    console.log('💤 本轮无AI回复');
-    callbacks?.onAllComplete?.([]);
-    return [];
-  }
-  
-  // 随机选择AI
-  const shuffled = [...aiMembers].sort(() => Math.random() - 0.5);
-  const selectedAIs = shuffled.slice(0, replyCount);
-  console.log(`✅ 选中的AI: ${selectedAIs.map(ai => ai.characterSettings?.nickname || ai.name).join('、')}`);
-  
+  const MAX_ROUNDS = 3; // 最大轮数
+  let currentRound = 0;
   const allReplies: GroupAIReply[] = [];
   
-  // 依次为选中的AI生成回复
-  for (const aiMember of selectedAIs) {
-    // 生成回复（先不通知开始，等确认有消息再通知）
-    const reply = await generateAIReply(aiMember, groupConversation, apiConfig, allConversations, true);
-    allReplies.push(reply);
+  console.log(`🔄 自由模式：开始多轮回复，最多${MAX_ROUNDS}轮`);
+  
+  while (currentRound < MAX_ROUNDS) {
+    currentRound++;
+    console.log(`\n📍 第${currentRound}轮回复开始...`);
     
-    if (reply.status === 'error') {
-      callbacks?.onAIError?.(reply.aiId, reply.error || '未知错误');
-      continue;
+    // 生成本轮回复
+    const roundReplies = await generateSingleRound(
+      aiMembers,
+      groupConversation,
+      apiConfig,
+      allConversations,
+      callbacks
+    );
+    
+    // 收集所有回复
+    allReplies.push(...roundReplies);
+    
+    // 如果本轮没有任何AI回复，结束
+    if (roundReplies.length === 0) {
+      console.log('💤 本轮无人回复，对话结束');
+      break;
     }
     
-    if (reply.messages.length === 0) {
-      // AI选择不回复，不显示打字动画
-      continue;
+    // 检测对话是否自然结束
+    if (detectConversationEnd(roundReplies)) {
+      console.log('✋ 检测到对话自然结束');
+      break;
     }
     
-    // 通知开始（只在有消息时）
-    callbacks?.onAIStart?.(aiMember.id, aiMember.characterSettings?.nickname || aiMember.name);
-    
-    // 显示打字动画
-    callbacks?.onAITyping?.(reply.aiId);
-    
-    // 显示输入动画后等待一小段时间让用户看到（实际思考在API调用中）
-    await new Promise(resolve => setTimeout(resolve, 800));
-    
-    // 逐条发送消息
-    for (let i = 0; i < reply.messages.length; i++) {
-      const message = reply.messages[i];
-      
-      // 添加senderId以标识消息来源
-      const messageWithSender = {
-        ...message,
-        senderId: reply.aiId,
-        senderName: reply.aiName,
-        senderAvatar: reply.aiAvatar,
-      } as any;
-      
-      callbacks?.onAIMessage?.(reply.aiId, messageWithSender);
-      
-      // 每条消息之间延迟（500ms让用户有时间阅读）
-      if (i < reply.messages.length - 1) {
-        await new Promise(resolve => setTimeout(resolve, 500));
-      }
-    }
-    
-    callbacks?.onAIComplete?.(reply.aiId, reply.messages);
-    
-    // AI之间留出间隔时间（800ms让用户看清楚是不同的AI）
-    if (selectedAIs.indexOf(aiMember) < selectedAIs.length - 1) {
-      await new Promise(resolve => setTimeout(resolve, 800));
+    // 如果不是最后一轮，添加轮次间隔
+    if (currentRound < MAX_ROUNDS) {
+      console.log('⏳ 等待下一轮...');
+      await new Promise(resolve => setTimeout(resolve, 1000));
     }
   }
   
-  // 所有AI完成
+  console.log(`\n✅ 自由模式完成，共${currentRound}轮，${allReplies.length}个AI回复`);
+  
+  // 所有轮次完成
   callbacks?.onAllComplete?.(allReplies);
   
   return allReplies;
