@@ -4882,11 +4882,34 @@ ${doc.content}`;
               
               {/* 系统消息 - 居中显示 */}
               {message.role === 'system' ? (
-                <div className="flex justify-center my-2">
-                  <span className="text-xs text-gray-500 bg-gray-100 px-3 py-1.5 rounded-full">
-                    {message.content}
-                  </span>
-                </div>
+                <>
+                  {/* 红包领取通知 - 醒目样式 */}
+                  {(message as any).moneyTransfer?.isClaimNotification ? (
+                    <div className="flex justify-center my-2">
+                      <div className="bg-gradient-to-r from-red-50 to-orange-50 border border-red-200 rounded-xl px-4 py-2.5 shadow-sm">
+                        <div className="flex items-center gap-2">
+                          <span className="text-lg">🎁</span>
+                          <div className="text-sm">
+                            <span className="font-medium text-gray-900">
+                              {(message as any).moneyTransfer.claimerName}
+                            </span>
+                            <span className="text-gray-600"> 领取了你的红包 </span>
+                            <span className="font-bold text-red-600">
+                              ¥{(message as any).moneyTransfer.amount.toFixed(2)}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  ) : (
+                    /* 普通系统消息 */
+                    <div className="flex justify-center my-2">
+                      <span className="text-xs text-gray-500 bg-gray-100 px-3 py-1.5 rounded-full">
+                        {message.content}
+                      </span>
+                    </div>
+                  )}
+                </>
               ) : (
               <div id={`message-${message.id}`} className={`message-bubble flex gap-2 items-end transition-colors ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}>
                 {message.role === 'assistant' && (
@@ -6335,12 +6358,20 @@ ${doc.content}`;
                           return m;
                         });
                         
-                        // 添加领取提示消息
+                        // 添加醒目的领取提示消息（类似私聊红包样式）
                         const claimMessage: Message = {
                           id: `claim_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
                           role: 'system',
-                          content: `${aiName} 领取了红包`,
-                          timestamp: Date.now()
+                          content: `${aiName} 领取了你的红包`,
+                          timestamp: Date.now(),
+                          // 添加自定义样式标记
+                          moneyTransfer: {
+                            type: 'redPacket',
+                            amount: amount,
+                            status: 'received',
+                            isClaimNotification: true,
+                            claimerName: aiName
+                          } as any
                         };
                         
                         onUpdateConversation(conversation.id, {
