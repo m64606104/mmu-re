@@ -9,11 +9,14 @@ import WeiboStyleGenerator from './weiboStyleGenerator';
 // import * as RealMomentsContent from './realMomentsContentGenerator'; // TODO: 集成真实朋友圈内容
 
 export interface MomentsFormat {
-  type: 'text_only' | 'single_image' | 'multi_image' | 'news_sharing' | 'mood_check' | 'weibo_sharing' | 'music_sharing' | 'article_sharing' | 'coupon_sharing' | 'life_complaint' | 'big_event';
+  type: 'text_only' | 'single_image' | 'multi_image' | 'news_sharing' | 'mood_check' | 'weibo_sharing' | 'music_sharing' | 'article_sharing' | 'coupon_sharing' | 'life_complaint' | 'big_event' | 'repost_sharing' | 'text_image';
   textLength: 'short' | 'medium' | 'long';
   imageCount: number;
   hasHashtags: boolean;
   contentStyle: 'casual' | 'formal' | 'trendy' | 'emotional' | 'informative';
+  // 转发说说的特殊字段
+  originalAuthor?: string;  // 原作者
+  repostComment?: string;   // 转发评论
 }
 
 export interface ContentVariation {
@@ -108,18 +111,20 @@ export class DiverseMomentsGenerator {
     const recentFormats = variation.formats.slice(0, 3); // 最近3次格式
     
     // 格式权重（基础概率）- 参考真实微信朋友圈/QQ空间
-    const formatWeights = {
-      'text_only': 0.08,           // 8% - 纯文字（真实场景较少）
-      'single_image': 0.15,        // 15% - 单图
-      'multi_image': 0.10,         // 10% - 多图
-      'news_sharing': 0.05,        // 5% - 新闻分享
+    const formatWeights: Record<MomentsFormat['type'], number> = {
+      'text_only': 0.06,           // 6% - 纯文字（真实场景较少）
+      'single_image': 0.13,        // 13% - 单图
+      'multi_image': 0.09,         // 9% - 多图
+      'news_sharing': 0.04,        // 4% - 新闻分享
       'mood_check': 0.03,          // 3% - 心情检查
-      'weibo_sharing': 0.05,       // 5% - 微博分享
-      'music_sharing': 0.20,       // 20% - 音乐分享（最常见）
-      'article_sharing': 0.12,     // 12% - 公众号文章
-      'coupon_sharing': 0.08,      // 8% - 优惠券广告
-      'life_complaint': 0.10,      // 10% - 生活吐槽+实物照片
-      'big_event': 0.04            // 4% - 大型活动/聚会（较少）
+      'weibo_sharing': 0.04,       // 4% - 微博分享
+      'music_sharing': 0.18,       // 18% - 音乐分享（最常见）
+      'article_sharing': 0.10,     // 10% - 公众号文章
+      'coupon_sharing': 0.07,      // 7% - 优惠券广告
+      'life_complaint': 0.09,      // 9% - 生活吐槽+实物照片
+      'big_event': 0.03,           // 3% - 大型活动/聚会（较少）
+      'repost_sharing': 0.10,      // 10% - 转发说说（QQ空间经典）
+      'text_image': 0.04           // 4% - 全文字图片（小说/文章截图）
     };
     
     // 降低最近使用过的格式权重
@@ -247,6 +252,20 @@ export class DiverseMomentsGenerator {
         contentStyle = 'emotional';
         hasHashtags = true;
         break;
+        
+      case 'repost_sharing':
+        imageCount = Math.random() < 0.5 ? 1 : 0; // 50%概率带原图
+        textLength = 'medium'; // 包含原文+转发评论
+        contentStyle = 'casual';
+        hasHashtags = false;
+        break;
+        
+      case 'text_image':
+        imageCount = 1; // 全文字图片
+        textLength = 'short'; // 简短的配文
+        contentStyle = personality.includes('文艺') ? 'emotional' : 'informative';
+        hasHashtags = false;
+        break;
     }
     
     return {
@@ -267,7 +286,7 @@ export class DiverseMomentsGenerator {
     theme: string;
     format: MomentsFormat;
   } {
-    const format = this.selectOptimalFormat(conversation);
+    let format = this.selectOptimalFormat(conversation);
     const variation = this.getContentVariation(conversation.id);
     
     let content = '';
@@ -294,6 +313,20 @@ export class DiverseMomentsGenerator {
         
       case 'weibo_sharing':
         ({ content, imageDescriptions, theme } = this.generateWeiboSharingContent(conversation));
+        break;
+        
+      case 'repost_sharing':
+        {
+          const result = this.generateRepostContent(format, variation.themes);
+          content = result.content;
+          imageDescriptions = result.imageDescriptions;
+          theme = result.theme;
+          format = result.format;
+        }
+        break;
+        
+      case 'text_image':
+        ({ content, imageDescriptions, theme } = this.generateTextImageContent(format, variation.themes));
         break;
     }
     
@@ -494,6 +527,129 @@ export class DiverseMomentsGenerator {
     };
     
     return hashtagMap[theme] || ['#日常', '#生活'];
+  }
+  
+  /**
+   * 🔥 生成转发说说内容（QQ空间经典）
+   */
+  static generateRepostContent(
+    _format: MomentsFormat,
+    _recentThemes: string[]
+  ): { content: string; imageDescriptions: string[]; theme: string; format: MomentsFormat } {
+    // 虚拟的原作者列表
+    const originalAuthors = [
+      '科技前沿', '生活智慧', '情感语录', '励志文案', '搞笑段子',
+      '深夜语录', '音乐分享', '电影推荐', '美食达人', '旅行日记'
+    ];
+    
+    // 原始内容模板
+    const originalContents = [
+      '生活不会按你想要的方式进行，它会给你一段时间，让你孤独、迷茫又沉默忧郁。但如果靠这段时间跟自己独处，多看一本书，去做可以做的事，放下过去的人，等你度过低潮，那些独处的时光必定能照亮你的路，也是这些不堪陪你成熟。',
+      '人生很多事，终究会随着时间好起来。像很多人原本只是胖，久了就变成了肥。',
+      '不要让别人告诉你什么是你做不到的。只要有梦想，就要去追求。那些做不到的人总要告诉你，你也不行。想要什么就得去努力，去追求。',
+      '这段很萌，两个人互相取暖，然后就成了爱情的样子。',
+      '今天喜欢的事是吃瓜，明天喜欢的事是追剧，后天喜欢的事是睡觉，我就是这样一个善变又专一的人。',
+      '世界上最遥远的距离，不是生与死，而是我在阅读理解，而你在完形填空。',
+      '你的好，对别人来说就像一颗糖，吃了就没了；你的坏，对别人来说就像一个疤痕，留下了就永远存在。这就是人性。',
+      '不要因为走得太远，而忘记为什么出发。我们应该学会思考，学会分析，学会怀疑。'
+    ];
+    
+    // 转发评论模板
+    const repostComments = [
+      '说的太对了！',
+      '深有感触...',
+      '忍不住转发一下',
+      '这个能处，有事真说',
+      '哈哈哈哈确实',
+      '赞同！',
+      '我也这么觉得',
+      '说到心坎里了',
+      '很有道理',
+      '共鸣了'
+    ];
+    
+    const originalAuthor = originalAuthors[Math.floor(Math.random() * originalAuthors.length)];
+    const originalContent = originalContents[Math.floor(Math.random() * originalContents.length)];
+    const repostComment = Math.random() < 0.7 ? repostComments[Math.floor(Math.random() * repostComments.length)] : '';
+    
+    // QQ空间转发格式：@原作者: 原内容 // 我的评论（可选）
+    let content = `@${originalAuthor}: ${originalContent}`;
+    if (repostComment) {
+      content += `\n\n💬 ${repostComment}`;
+    }
+    
+    // 可能包含原图
+    const imageDescriptions = _format.imageCount > 0 ? 
+      [`${originalAuthor}分享的图片：精美设计，配色协调，传达出深刻的情感和理念`] : [];
+    
+    const format: MomentsFormat = {
+      ..._format,
+      originalAuthor,
+      repostComment: repostComment || undefined
+    };
+    
+    return {
+      content,
+      imageDescriptions,
+      theme: '转发分享',
+      format
+    };
+  }
+  
+  /**
+   * 🔥 生成全文字图片内容（小说/文章截图）
+   */
+  static generateTextImageContent(
+    _format: MomentsFormat,
+    _recentThemes: string[]
+  ): { content: string; imageDescriptions: string[]; theme: string } {
+    // 文本类型
+    const textTypes = [
+      { type: '小说截图', sources: ['网络小说', '言情小说', '玄幻小说', '都市小说', '古言小说'] },
+      { type: '美文摘录', sources: ['散文集', '诗歌集', '名著', '文学作品'] },
+      { type: '语录分享', sources: ['情感语录', '人生哲理', '励志金句', '心灵鸡汤'] },
+      { type: '对话截图', sources: ['聊天记录', '评论区', '社交平台'] },
+    ];
+    
+    const selected = textTypes[Math.floor(Math.random() * textTypes.length)];
+    const source = selected.sources[Math.floor(Math.random() * selected.sources.length)];
+    
+    // 配文模板
+    const captions = [
+      '今天喜欢这段...',
+      '这段很萌',
+      '太有共鸣了',
+      '摘录',
+      '好喜欢这个片段',
+      '今天分享这段',
+      `来自《${source}》`,
+      '很喜欢',
+      '推荐阅读',
+      '截图留念'
+    ];
+    
+    const caption = captions[Math.floor(Math.random() * captions.length)];
+    
+    // 小说/文章内容示例
+    const novelTexts = [
+      '他站在窗前，看着窗外的夜色，心中五味杂陈。从前种种，宛如昨日，却又仿佛隔世。他的手指轻轻摩挲着杯壁，眼神空洞而迷茫。良久，他叹了口气，转身离开。这一夜，他失眠了。',
+      '"你爱我吗？"她突然问道。\n他愣了一下，继续低头看书，"爱过。"\n"那现在呢？"\n"现在？"他抬起头，眼中满是疲惫，"现在只想好好生活。"',
+      '所谓成长，就是把原本看重的东西看轻一点，然后把原本看轻的东西看重一点。人生就是这样，在不断地放下与拾起中，找到平衡。',
+      '他终于明白了一个道理：这世上最难的，不是相爱，而是相守。爱情很美，但生活更实在。当激情褪去，剩下的只有柴米油盐，和永远磨合不完的性格差异。',
+      '阳光透过云层洒在身上，温暖而舒适。她坐在长椅上，捧着一本书，嘴角带着浅浅的微笑。这个午后，时光仿佛都慢了下来，一切都刚刚好。',
+      '人与人之间，最怕的不是误会，而是隔阂。误会可以解释，隔阂却需要时间去化解。而很多时候，我们都没有那么多时间。'
+    ];
+    
+    const textContent = novelTexts[Math.floor(Math.random() * novelTexts.length)];
+    
+    // 图片描述：全文字截图
+    const imageDescription = `${selected.type}：深色背景上的白色文字，内容为"${textContent.substring(0, 50)}..."，排版整齐，字体清晰，底部显示"${source}"`;
+    
+    return {
+      content: caption,
+      imageDescriptions: [imageDescription],
+      theme: selected.type
+    };
   }
 }
 
