@@ -6295,12 +6295,31 @@ ${doc.content}`;
                     updatedConv.messages,
                     apiConfig,
                     (_aiId, aiName, amount) => {
-                      // AI领取成功，添加提示消息
+                      // AI领取成功，更新红包消息和添加提示
                       console.log(`🎁 ${aiName} 领取了 ¥${amount.toFixed(2)}`);
                       
-                      // 更新红包消息并添加提示
                       const currentConv = conversations.find(c => c.id === conversation.id);
                       if (currentConv) {
+                        // 更新红包消息本身
+                        const updatedMessages = currentConv.messages.map(m => {
+                          if (m.id === newMessage.id && m.moneyTransfer?.groupRedPacket) {
+                            const redPacket = m.moneyTransfer.groupRedPacket;
+                            return {
+                              ...m,
+                              moneyTransfer: {
+                                ...m.moneyTransfer,
+                                groupRedPacket: {
+                                  ...redPacket,
+                                  // 红包领取信息已在 handleAIGroupRedPacketClaiming 中更新
+                                  // 这里直接使用最新的红包对象
+                                }
+                              }
+                            };
+                          }
+                          return m;
+                        });
+                        
+                        // 添加领取提示消息
                         const claimMessage: Message = {
                           id: `claim_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
                           role: 'system',
@@ -6309,7 +6328,7 @@ ${doc.content}`;
                         };
                         
                         onUpdateConversation(conversation.id, {
-                          messages: [...currentConv.messages, claimMessage]
+                          messages: [...updatedMessages, claimMessage]
                         });
                       }
                     }

@@ -145,9 +145,29 @@ const ShoppingScreen: React.FC<ShoppingScreenProps> = ({
     setCartItemCount(count);
   };
 
+  // 检查localStorage使用情况
+  const checkLocalStorageQuota = (): { used: number; available: number; percentage: number } => {
+    let used = 0;
+    for (let key in localStorage) {
+      if (localStorage.hasOwnProperty(key)) {
+        used += localStorage[key].length + key.length;
+      }
+    }
+    const available = 5 * 1024 * 1024; // 大约5MB
+    return {
+      used,
+      available,
+      percentage: (used / available) * 100
+    };
+  };
+
   // 保存AI生图配置
   const saveImageGenConfig = (config: { apiUrl: string; apiKey: string; model: string }) => {
     try {
+      // 检查localStorage配额
+      const quota = checkLocalStorageQuota();
+      console.log(`📊 localStorage使用情况: ${(quota.used / 1024).toFixed(2)}KB / ${(quota.available / 1024).toFixed(2)}KB (${quota.percentage.toFixed(1)}%)`);
+      
       // 保存到localStorage
       localStorage.setItem('image_gen_api_url', config.apiUrl);
       localStorage.setItem('image_gen_api_key', config.apiKey);
@@ -163,9 +183,16 @@ const ShoppingScreen: React.FC<ShoppingScreenProps> = ({
       });
       
       alert('✅ 配置已保存并生效！');
-    } catch (error) {
+    } catch (error: any) {
       console.error('❌ 保存配置失败:', error);
-      alert('❌ 保存配置失败，请重试');
+      
+      // 特殊处理配额超出错误
+      if (error.name === 'QuotaExceededError') {
+        const quota = checkLocalStorageQuota();
+        alert(`❌ 存储空间已满\n\n当前使用: ${(quota.used / 1024 / 1024).toFixed(2)}MB\n\n建议操作：\n1. 进入"设置"App\n2. 导出重要数据备份\n3. 清空历史数据\n4. 重新配置AI生图`);
+      } else {
+        alert(`❌ 保存配置失败: ${error.message || '未知错误'}\n\n请重试或清理存储空间`);
+      }
     }
   };
 
