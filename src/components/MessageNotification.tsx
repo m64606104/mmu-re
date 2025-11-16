@@ -20,31 +20,49 @@ const MessageNotification: React.FC<MessageNotificationProps> = ({
 }) => {
   const [notifications, setNotifications] = useState<NotificationData[]>([]);
   const [visible, setVisible] = useState<string | null>(null);
+  const [queue, setQueue] = useState<NotificationData[]>([]); // 通知队列
+  const [isProcessing, setIsProcessing] = useState(false);
 
-  // 添加通知
+  // 添加通知 - 为每条消息创建独立通知
   const addNotification = (conversationId: string, messages: Message[]) => {
     const conversation = conversations.find(c => c.id === conversationId);
     if (!conversation || messages.length === 0) return;
 
-    const notification: NotificationData = {
-      id: `notif_${Date.now()}_${Math.random()}`,
+    // 🔥 为每条消息创建独立的通知
+    const newNotifications = messages.map((message, index) => ({
+      id: `notif_${Date.now()}_${index}_${Math.random()}`,
       conversation,
-      message: messages[0], // 显示第一条消息
-      timestamp: Date.now()
-    };
+      message,
+      timestamp: Date.now() + index // 确保顺序
+    }));
 
-    setNotifications(prev => [notification, ...prev]);
-    setVisible(notification.id);
+    // 添加到队列
+    setQueue(prev => [...prev, ...newNotifications]);
+  };
+
+  // 处理队列中的通知
+  useEffect(() => {
+    if (queue.length === 0 || isProcessing) return;
+
+    setIsProcessing(true);
+    const nextNotification = queue[0];
+    
+    // 显示通知
+    setNotifications(prev => [nextNotification, ...prev]);
+    setVisible(nextNotification.id);
 
     // 3秒后自动隐藏
     setTimeout(() => {
-      setVisible(prev => prev === notification.id ? null : prev);
-      // 再等1秒后移除
+      setVisible(prev => prev === nextNotification.id ? null : prev);
+      
+      // 再等0.5秒后移除并处理下一个
       setTimeout(() => {
-        setNotifications(prev => prev.filter(n => n.id !== notification.id));
-      }, 1000);
+        setNotifications(prev => prev.filter(n => n.id !== nextNotification.id));
+        setQueue(prev => prev.slice(1)); // 移除已处理的
+        setIsProcessing(false);
+      }, 500);
     }, 3000);
-  };
+  }, [queue, isProcessing]);
 
   // 暴露给外部的方法
   useEffect(() => {
@@ -88,11 +106,11 @@ const MessageNotification: React.FC<MessageNotificationProps> = ({
     return message.content;
   };
 
-  if (notifications.length === 0) return null;
+  // 显示当前正在展示的通知
+  const currentNotification = notifications.find(n => n.id === visible);
+  if (!currentNotification) return null;
 
-  // 只显示最新的通知
-  const currentNotification = notifications[0];
-  const isVisible = visible === currentNotification.id;
+  const isVisible = true; // 找到的通知就是可见的
 
   return (
     <div className="fixed top-0 left-0 right-0 z-[9999] pointer-events-none">
