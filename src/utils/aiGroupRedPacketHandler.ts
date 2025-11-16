@@ -24,7 +24,7 @@ export function detectGroupRedPacket(message: Message): boolean {
  */
 export function shouldAIClaimRedPacket(
   aiId: string,
-  aiName: string,
+  _aiName: string,
   message: Message,
   aiPersonality?: string
 ): boolean {

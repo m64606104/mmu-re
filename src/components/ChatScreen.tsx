@@ -6150,7 +6150,7 @@ ${doc.content}`;
                         )
                       });
                     },
-                    (aiId, aiName, amount) => {
+                    (_aiId, aiName, amount) => {
                       // AI领取成功，添加提示消息
                       console.log(`🎁 ${aiName} 领取了 ¥${amount.toFixed(2)}`);
                       // 可选：添加系统消息提示
