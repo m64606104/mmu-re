@@ -5,71 +5,71 @@
 
 import { Letter, BottleAI } from '../types/letter';
 
-// 🌊 漂流瓶随机AI角色池
+// 🌊 漂流瓶随机AI角色池 - 更自然的真人设定
 const BOTTLE_AI_POOL: BottleAI[] = [
   {
     id: 'bottle_ai_1',
-    name: '海边的小羊',
-    avatar: '🐑',
-    personality: '温柔细腻，喜欢思考人生',
-    location: '海边小镇',
-    hobby: '看日出、写诗、收集贝壳'
+    name: '林小安',
+    avatar: '🌊',
+    personality: '有点慢热，但聊开了话很多。喜欢发呆和胡思乱想',
+    location: '厦门',
+    hobby: '海边散步、听歌、偶尔写点东西'
   },
   {
     id: 'bottle_ai_2',
-    name: '山间旅人',
+    name: '阿远',
     avatar: '🎒',
-    personality: '热爱冒险，乐观开朗',
-    location: '云南大理',
-    hobby: '徒步、摄影、品茶'
+    personality: '爱折腾，总想去没去过的地方。回信可能比较慢',
+    location: '在路上',
+    hobby: '背包旅行、拍照、尝试当地小吃'
   },
   {
     id: 'bottle_ai_3',
-    name: '书店老板娘',
-    avatar: '📚',
-    personality: '文艺安静，博览群书',
-    location: '江南古镇',
-    hobby: '阅读、咖啡、养猫'
+    name: '书书',
+    avatar: '📖',
+    personality: '不太爱说话，更喜欢写。回信时会很认真',
+    location: '成都',
+    hobby: '泡书店、喝咖啡、撸猫'
   },
   {
     id: 'bottle_ai_4',
-    name: '星空观测者',
-    avatar: '🔭',
-    personality: '浪漫理性，热爱科学',
-    location: '高原天文台',
-    hobby: '观星、天文学、音乐'
+    name: '夜雨',
+    avatar: '🌙',
+    personality: '晚上才清醒的人。喜欢安静，不喜欢太热闹',
+    location: '杭州',
+    hobby: '深夜看星星、听老歌、独处'
   },
   {
     id: 'bottle_ai_5',
-    name: '咖啡师艾米',
+    name: '小温',
     avatar: '☕',
-    personality: '热情友善，善于倾听',
-    location: '城市街角',
-    hobby: '烘焙咖啡、绘画、听故事'
+    personality: '温吞性格，做事不急不慢。是个很好的倾听者',
+    location: '南京',
+    hobby: '做手冲咖啡、画画、听人讲故事'
   },
   {
     id: 'bottle_ai_6',
-    name: '森林守护者',
+    name: '木木',
     avatar: '🌲',
-    personality: '沉稳平和，亲近自然',
-    location: '深山老林',
-    hobby: '观察动物、植物学、冥想'
+    personality: '话不多，但想说的话会好好说。喜欢待在自然里',
+    location: '云南',
+    hobby: '徒步、观鸟、发呆'
   },
   {
     id: 'bottle_ai_7',
-    name: '音乐流浪者',
+    name: '阿浪',
     avatar: '🎸',
-    personality: '自由洒脱，充满艺术气息',
-    location: '四处漂泊',
-    hobby: '弹吉他、写歌、旅行'
+    personality: '有点随性，不太在意别人看法。活得比较自我',
+    location: '各处流浪',
+    hobby: '弹吉他、写歌、搭车旅行'
   },
   {
     id: 'bottle_ai_8',
-    name: '灯塔守望人',
-    avatar: '🗼',
-    personality: '孤独却温暖，富有诗意',
-    location: '海角灯塔',
-    hobby: '写日记、观海、品酒'
+    name: '青灯',
+    avatar: '🕯️',
+    personality: '有点孤独，但不讨厌这种感觉。话少但走心',
+    location: '小岛上',
+    hobby: '写日记、看海、独饮'
   }
 ];
 
@@ -170,6 +170,9 @@ export function urgeLetter(letterId: string): boolean {
   return true;
 }
 
+// 📦 定时器管理 - 使用Map管理所有定时器，避免重复和泄漏
+const activeTimers = new Map<string, NodeJS.Timeout>();
+
 /**
  * 设置自动回信定时器
  */
@@ -178,16 +181,26 @@ function scheduleAutoReply(letter: Letter) {
     return;
   }
   
+  // 🔧 清除该信件的旧定时器（如果有）
+  if (activeTimers.has(letter.id)) {
+    clearTimeout(activeTimers.get(letter.id)!);
+    activeTimers.delete(letter.id);
+  }
+  
   const delay = letter.willReplyAt - Date.now();
   
   if (delay <= 0) {
     // 已经到时间了，立即回复
     generateReply(letter.id);
   } else {
-    // 设置定时器
-    setTimeout(() => {
+    // 设置新定时器并保存引用
+    const timerId = setTimeout(() => {
       generateReply(letter.id);
+      activeTimers.delete(letter.id); // 执行后移除
     }, delay);
+    
+    activeTimers.set(letter.id, timerId);
+    console.log(`⏰ 信件 ${letter.id} 定时器已设置，${Math.round(delay / 1000 / 60)}分钟后回复`);
   }
 }
 
@@ -217,57 +230,186 @@ async function generateReply(letterId: string) {
 }
 
 /**
- * 生成模拟回信内容
+ * 生成模拟回信内容 - 更自然的回信风格
  */
 function generateMockReply(letter: Letter): string {
+  // 根据信件内容长度和情绪，生成不同风格的回信
+  const isLongLetter = letter.content.length > 200;
+  const hasQuestion = letter.content.includes('?') || letter.content.includes('？');
+  
   const templates = [
-    `你好呀！很高兴收到你的来信。\n\n${letter.content.slice(0, 30)}... 看到这段话，我深有感触。\n\n我这边的生活也挺有趣的，最近${getRandomActivity()}。希望我们能继续保持联系！\n\n——${letter.receiverName}`,
+    // 简短随意风格
+    `嘿，收到你的信了。\n\n${extractKeyword(letter.content)}... 这个我也有点感触。说实话，${getRandomFeeling()}。\n\n${getRandomDailyLife()}\n\n有空再聊～`,
     
-    `读到你的信时，窗外${getRandomWeather()}。\n\n你说的那些事情让我想起了很多往事。${letter.content.slice(0, 20)}... 这句话特别打动我。\n\n有时候慢下来写信，反而能更好地表达内心的想法呢。\n\n期待你的下一封信！\n——${letter.receiverName}`,
+    // 细腻感性风格
+    `读你的信时，${getRandomMoment()}。\n\n"${extractKeyword(letter.content)}" 这段让我想了很久。我${getRandomThought()}。\n\n${getRandomSharing()}\n\n慢慢聊吧，不急。`,
     
-    `谢谢你的来信！\n\n在${letter.isBottle ? '茫茫大海中' : '众多朋友里'}收到你的信，感觉特别温暖。你提到的${extractKeyword(letter.content)}让我很感兴趣。\n\n我也有类似的经历：${getRandomStory()}\n\n希望这封信能给你带来一些慰藉。\n——${letter.receiverName}`
-  ];
+    // 朴实回应风格
+    `看到你的信了。${letter.isBottle ? '能通过漂流瓶认识你挺有意思' : '谢谢你还记得我'}。\n\n你说的那些${hasQuestion ? '问题' : '事'}，我觉得${getRandomOpinion()}。\n\n${getRandomLifeUpdate()}\n\n就这样吧，回见。`,
+    
+    // 深夜思考风格（适合长信）
+    isLongLetter ? `${getRandomNightMood()}\n\n看完你的信，想说的话有点多。${extractKeyword(letter.content)}... 这让我想起${getRandomMemory()}。\n\n${getRandomReflection()}\n\n晚了，先写到这。` : null,
+    
+    // 忙碌简短风格
+    `不好意思，这几天${getRandomBusyReason()}，回晚了。\n\n${extractKeyword(letter.content)} - 看到这个我挺${getRandomEmotion()}的。\n\n${getRandomQuickResponse()}\n\n改天细说。`
+  ].filter(Boolean) as string[];
   
   const index = Math.floor(Math.random() * templates.length);
   return templates[index];
 }
 
-// 辅助函数
-function getRandomActivity(): string {
-  const activities = [
-    '在学习新的技能',
-    '看了一本很棒的书',
-    '去了一个美丽的地方旅行',
-    '认识了一些有趣的朋友',
-    '尝试了新的爱好'
+// 辅助函数 - 更自然的真人化表达
+function getRandomFeeling(): string {
+  const feelings = [
+    '有时候也会这么想',
+    '可能每个人都经历过吧',
+    '我懂那种感觉',
+    '确实挺复杂的',
+    '说不上来，就那样吧'
   ];
-  return activities[Math.floor(Math.random() * activities.length)];
+  return feelings[Math.floor(Math.random() * feelings.length)];
 }
 
-function getRandomWeather(): string {
-  const weathers = [
-    '正下着小雨',
-    '阳光明媚',
-    '飘着雪花',
-    '刮着微风',
-    '云层很厚'
+function getRandomDailyLife(): string {
+  const life = [
+    '最近挺忙的，很多事。',
+    '这几天在家宅着，也挺舒服。',
+    '天气不错，出去走了走。',
+    '工作有点烦，不想多说。',
+    '状态还行，日子一天天过。'
   ];
-  return weathers[Math.floor(Math.random() * weathers.length)];
+  return life[Math.floor(Math.random() * life.length)];
+}
+
+function getRandomMoment(): string {
+  const moments = [
+    '窗外正下着小雨',
+    '已经是深夜了',
+    '正好在听歌',
+    '刚泡了杯咖啡',
+    '一个人在家'
+  ];
+  return moments[Math.floor(Math.random() * moments.length)];
+}
+
+function getRandomThought(): string {
+  const thoughts = [
+    '之前也想过类似的事',
+    '有段时间一直在纠结这个',
+    '现在想开了一些',
+    '还在摸索吧',
+    '也说不太清楚'
+  ];
+  return thoughts[Math.floor(Math.random() * thoughts.length)];
+}
+
+function getRandomSharing(): string {
+  const shares = [
+    '我这边也差不多，每天就那样。',
+    '有时候想得太多反而累。',
+    '最近在尝试不去想那么多。',
+    '慢慢来吧，急不得。',
+    '走一步看一步。'
+  ];
+  return shares[Math.floor(Math.random() * shares.length)];
+}
+
+function getRandomOpinion(): string {
+  const opinions = [
+    '没有标准答案',
+    '每个人情况不一样',
+    '可以试试看',
+    '顺其自然也不错',
+    '想太多没用'
+  ];
+  return opinions[Math.floor(Math.random() * opinions.length)];
+}
+
+function getRandomLifeUpdate(): string {
+  const updates = [
+    '我这边还好，照常。',
+    '最近在调整状态。',
+    '也没什么特别的。',
+    '一切如常。',
+    '日子还是要过。'
+  ];
+  return updates[Math.floor(Math.random() * updates.length)];
+}
+
+function getRandomNightMood(): string {
+  const moods = [
+    '深夜了，睡不着。',
+    '夜深人静的时候想得比较多。',
+    '又熬夜了。',
+    '今晚月色不错。',
+    '一个人的夜晚。'
+  ];
+  return moods[Math.floor(Math.random() * moods.length)];
+}
+
+function getRandomMemory(): string {
+  const memories = [
+    '之前的一些事',
+    '很久以前的自己',
+    '某个瞬间',
+    '那段时间',
+    '以前的经历'
+  ];
+  return memories[Math.floor(Math.random() * memories.length)];
+}
+
+function getRandomReflection(): string {
+  const reflections = [
+    '有些事情，时间会给答案。',
+    '人都是慢慢成长的吧。',
+    '想开了就好了。',
+    '也许这就是生活。',
+    '就这样吧。'
+  ];
+  return reflections[Math.floor(Math.random() * reflections.length)];
+}
+
+function getRandomBusyReason(): string {
+  const reasons = [
+    '有点忙',
+    '事情有点多',
+    '在忙工作',
+    '在外面',
+    '不在状态'
+  ];
+  return reasons[Math.floor(Math.random() * reasons.length)];
+}
+
+function getRandomEmotion(): string {
+  const emotions = [
+    '有点感慨',
+    '也有点触动',
+    '能理解',
+    '挺有感觉',
+    '有点共鸣'
+  ];
+  return emotions[Math.floor(Math.random() * emotions.length)];
+}
+
+function getRandomQuickResponse(): string {
+  const responses = [
+    '先这样。',
+    '回头再说。',
+    '之后再聊。',
+    '改天详细说。',
+    '晚点再写。'
+  ];
+  return responses[Math.floor(Math.random() * responses.length)];
 }
 
 function extractKeyword(content: string): string {
-  // 简单提取前10个字作为关键词
-  return content.slice(0, 10) + (content.length > 10 ? '...' : '');
-}
-
-function getRandomStory(): string {
-  const stories = [
-    '我也曾经历过类似的迷茫期，后来慢慢找到了方向',
-    '那时候我在海边散步，突然明白了很多事情',
-    '有一次我遇到了一个陌生人，他告诉我一个很有意思的道理',
-    '我记得那是一个雨天，我独自坐在咖啡馆里思考人生'
-  ];
-  return stories[Math.floor(Math.random() * stories.length)];
+  // 提取关键句子片段
+  const sentences = content.split(/[。！？\n]/);
+  const meaningful = sentences.find(s => s.trim().length > 5);
+  if (meaningful) {
+    return meaningful.slice(0, 20) + (meaningful.length > 20 ? '...' : '');
+  }
+  return content.slice(0, 15) + (content.length > 15 ? '...' : '');
 }
 
 function getRandomStampStyle(): Letter['stampStyle'] {
@@ -320,12 +462,35 @@ export function getLetterById(id: string): Letter | undefined {
 
 /**
  * 初始化定时器（应用启动时调用）
+ * 🔧 为所有未回复的信件恢复定时器
  */
 export function initializeLetterTimers() {
   const letters = getLettersFromStorage();
-  letters.forEach(letter => {
-    if (letter.status !== 'replied' && letter.willReplyAt) {
-      scheduleAutoReply(letter);
-    }
+  const pendingLetters = letters.filter(l => l.status !== 'replied' && l.willReplyAt);
+  
+  console.log(`📬 初始化慢邮件系统：共 ${letters.length} 封信，${pendingLetters.length} 封待回复`);
+  
+  pendingLetters.forEach(letter => {
+    const minutesLeft = Math.round((letter.willReplyAt! - Date.now()) / 1000 / 60);
+    console.log(`  - ${letter.receiverName}: ${minutesLeft > 0 ? minutesLeft + '分钟后' : '即将'}回复`);
+    scheduleAutoReply(letter);
   });
+}
+
+/**
+ * 清除指定信件的定时器
+ */
+export function clearLetterTimer(letterId: string) {
+  if (activeTimers.has(letterId)) {
+    clearTimeout(activeTimers.get(letterId)!);
+    activeTimers.delete(letterId);
+    console.log(`🗑️ 已清除信件 ${letterId} 的定时器`);
+  }
+}
+
+/**
+ * 获取当前活跃的定时器数量
+ */
+export function getActiveTimersCount(): number {
+  return activeTimers.size;
 }
