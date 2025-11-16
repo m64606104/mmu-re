@@ -2731,22 +2731,8 @@ ${characterInfo?.languageStyle ? `语言风格：${characterInfo.languageStyle}`
           },
           
           onAIMessage: (_aiId, message) => {
-            // 🔥 修复：从localStorage获取最新消息列表，确保不会覆盖用户消息
-            const storedConversations = localStorage.getItem('conversations');
-            if (storedConversations) {
-              const allConversations = JSON.parse(storedConversations) as Conversation[];
-              const currentConversation = allConversations.find((c: Conversation) => c.id === conversation.id);
-              if (currentConversation) {
-                // 基于最新的消息列表添加AI消息
-                const updatedMessages = [...currentConversation.messages, message];
-                onUpdateConversation(conversation.id, {
-                  messages: updatedMessages,
-                  lastMessageTime: Date.now()
-                });
-                return;
-              }
-            }
-            // 降级方案：如果无法从localStorage获取，使用conversation
+            // 🔥 修复：直接基于当前state添加消息，避免localStorage延迟导致的覆盖问题
+            // React state是即时更新的，而localStorage有300ms延迟
             onUpdateConversation(conversation.id, {
               messages: [...conversation.messages, message],
               lastMessageTime: Date.now()
@@ -2807,7 +2793,7 @@ ${characterInfo?.languageStyle ? `语言风格：${characterInfo.languageStyle}`
             
             // 自由模式：如果没有AI回复，显示提示
             // 🔥 但要确保不在"发送中"状态显示
-            if (isFreeMode && replies.length === 0 && !setShowSendingHint) {
+            if (isFreeMode && replies.length === 0 && !showSendingHint) {
               // 添加系统消息提示
               // 随机选择一个友好的提示
               const friendlyHints = [
@@ -4015,25 +4001,21 @@ ${doc.content}`;
           // 🎯 检查用户是否还在当前聊天页面
           const userStillOnPage = isComponentMountedRef.current;
           
-          // 🔥 修复：必须从localStorage获取最新消息列表
-          // 因为conversation prop可能已过时（在回调执行前用户可能发送了新消息）
-          const getLatestMessages = () => {
+          // 获取最新的conversation（可能已经从localStorage更新了）
+          const latestConversationData = localStorage.getItem('conversations');
+          let currentMessages = [...conversation.messages];
+          
+          if (latestConversationData) {
             try {
-              const storedData = localStorage.getItem('conversations');
-              if (storedData) {
-                const allConvs = JSON.parse(storedData) as Conversation[];
-                const latestConv = allConvs.find((c: Conversation) => c.id === conversationId);
-                if (latestConv) {
-                  return [...latestConv.messages];
-                }
+              const conversations = JSON.parse(latestConversationData);
+              const latestConv = conversations.find((c: Conversation) => c.id === conversationId);
+              if (latestConv) {
+                currentMessages = [...latestConv.messages];
               }
             } catch (e) {
-              console.error('获取最新消息失败:', e);
+              console.error('Failed to get latest conversation:', e);
             }
-            return [...conversation.messages];
-          };
-          
-          let currentMessages = getLatestMessages();
+          }
           
           if (userStillOnPage) {
             // 👤 用户还在页面：显示完整的输入动画
@@ -4054,18 +4036,12 @@ ${doc.content}`;
               // 隐藏输入动画
               setShowTyping(false);
               
-              // 🔥 关键修复：每次添加消息前都重新获取最新状态
-              currentMessages = getLatestMessages();
-              
               // 添加这条消息到conversation
               currentMessages = [...currentMessages, newMessages[i]];
               onUpdateConversation(conversationId, {
                 messages: currentMessages,
                 lastMessageTime: Date.now(),
               });
-              
-              // 🔥 等待一小段时间确保state更新完成
-              await new Promise(resolve => setTimeout(resolve, 50));
               
               // 🎁 处理订单响应（如果AI回复包含订单响应标记）
               if (newMessages[i].content) {
@@ -4165,9 +4141,6 @@ ${doc.content}`;
           } else {
             // 🚀 用户已离开：直接添加所有消息，不显示动画
             console.log('用户已离开页面，直接添加所有消息并显示通知');
-            
-            // 🔥 修复：再次获取最新状态
-            currentMessages = getLatestMessages();
             
             // 直接添加所有消息
             currentMessages = [...currentMessages, ...newMessages];
