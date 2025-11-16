@@ -24,6 +24,7 @@ export interface Letter {
   hasUrged: boolean;  // 是否已催促回复
   
   replyContent?: string;  // 回信内容
+  bottleAIProfile?: BottleAI;  // 漂流瓶AI的完整人设信息（用于生成回信）
   
   // 装饰元素
   stampStyle?: 'default' | 'vintage' | 'flower' | 'sea';  // 邮票样式

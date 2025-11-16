@@ -4,8 +4,8 @@
 
 import React, { useState } from 'react';
 import { Conversation } from '../types';
-import { sendLetter, getRandomBottleAI } from '../utils/letterService';
-import { ArrowLeft, Send, Sparkles } from 'lucide-react';
+import { sendLetter, getAllPresetAIs } from '../utils/letterService';
+import { ArrowLeft, Send, Sparkles, Users } from 'lucide-react';
 
 interface LetterWritingScreenProps {
   onBack: () => void;
@@ -60,16 +60,19 @@ const LetterWritingScreen: React.FC<LetterWritingScreenProps> = ({
     onSent();
   };
 
+  // 选择漂流瓶模式（不指定收信人，寄出时随机生成）
   const handleSelectBottle = () => {
-    const bottleAI = getRandomBottleAI();
     setSelectedReceiver({
-      id: bottleAI.id,
-      name: bottleAI.name,
-      avatar: bottleAI.avatar,
+      id: 'bottle_random',
+      name: '随机笔友',
+      avatar: '🌊',
       isBottle: true
     });
     setShowReceiverModal(false);
   };
+  
+  // 获取所有预设AI角色
+  const presetAIs = getAllPresetAIs();
 
   return (
     <div className="fixed inset-0 bg-gradient-to-br from-amber-50 via-orange-50 to-yellow-50 z-50 flex flex-col">
@@ -209,36 +212,81 @@ const LetterWritingScreen: React.FC<LetterWritingScreenProps> = ({
               </button>
 
               {/* AI联系人列表 */}
-              <div className="p-3 bg-gray-50 text-xs text-gray-500 font-medium">
-                我的联系人
+              {aiContacts.length > 0 && (
+                <>
+                  <div className="p-3 bg-gray-50 text-xs text-gray-500 font-medium">
+                    我的联系人
+                  </div>
+                  {aiContacts.map((contact) => (
+                    <button
+                      key={contact.id}
+                      onClick={() => {
+                        setSelectedReceiver({
+                          id: contact.id,
+                          name: contact.characterSettings?.nickname || contact.name,
+                          avatar: contact.avatar || '👤',
+                          isBottle: false
+                        });
+                        setShowReceiverModal(false);
+                      }}
+                      className="w-full px-6 py-4 hover:bg-gray-50 transition-colors border-b border-gray-100 text-left"
+                    >
+                      <div className="flex items-center gap-4">
+                        <div className="text-3xl">
+                          {contact.avatar || '👤'}
+                        </div>
+                        <div className="flex-1">
+                          <div className="font-medium text-gray-800">
+                            {contact.characterSettings?.nickname || contact.name}
+                          </div>
+                          {contact.characterSettings?.personality && (
+                            <div className="text-sm text-gray-500 truncate">
+                              {contact.characterSettings.personality.slice(0, 30)}...
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </button>
+                  ))}
+                </>
+              )}
+
+              {/* 预设AI角色区 */}
+              <div className="p-3 bg-amber-50 text-xs text-amber-700 font-medium flex items-center gap-2">
+                <Users size={14} />
+                预设笔友
               </div>
-              {aiContacts.map((contact) => (
+              {presetAIs.map((ai) => (
                 <button
-                  key={contact.id}
+                  key={ai.id}
                   onClick={() => {
                     setSelectedReceiver({
-                      id: contact.id,
-                      name: contact.characterSettings?.nickname || contact.name,
-                      avatar: contact.avatar || '👤',
+                      id: ai.id,
+                      name: ai.name,
+                      avatar: ai.avatar,
                       isBottle: false
                     });
                     setShowReceiverModal(false);
                   }}
-                  className="w-full px-6 py-4 hover:bg-gray-50 transition-colors border-b border-gray-100 text-left"
+                  className="w-full px-6 py-4 hover:bg-amber-50 transition-colors border-b border-gray-100 text-left"
                 >
                   <div className="flex items-center gap-4">
                     <div className="text-3xl">
-                      {contact.avatar || '👤'}
+                      {ai.avatar}
                     </div>
                     <div className="flex-1">
-                      <div className="font-medium text-gray-800">
-                        {contact.characterSettings?.nickname || contact.name}
+                      <div className="font-medium text-gray-800 flex items-center gap-2">
+                        {ai.name}
+                        <span className="text-xs bg-amber-100 text-amber-600 px-2 py-0.5 rounded-full">
+                          {ai.location}
+                        </span>
                       </div>
-                      {contact.characterSettings?.personality && (
-                        <div className="text-sm text-gray-500 truncate">
-                          {contact.characterSettings.personality.slice(0, 30)}...
-                        </div>
-                      )}
+                      <div className="text-sm text-gray-500 truncate">
+                        {ai.personality}
+                      </div>
+                      <div className="text-xs text-gray-400 mt-1">
+                        {ai.hobby}
+                      </div>
                     </div>
                   </div>
                 </button>

@@ -5,10 +5,10 @@
 
 import { Letter, BottleAI } from '../types/letter';
 
-// 🌊 漂流瓶随机AI角色池 - 更自然的真人设定
-const BOTTLE_AI_POOL: BottleAI[] = [
+// 📮 预设AI角色池 - 用户可主动选择的固定角色
+export const PRESET_AI_POOL: BottleAI[] = [
   {
-    id: 'bottle_ai_1',
+    id: 'preset_ai_1',
     name: '林小安',
     avatar: '🌊',
     personality: '有点慢热，但聊开了话很多。喜欢发呆和胡思乱想',
@@ -16,7 +16,7 @@ const BOTTLE_AI_POOL: BottleAI[] = [
     hobby: '海边散步、听歌、偶尔写点东西'
   },
   {
-    id: 'bottle_ai_2',
+    id: 'preset_ai_2',
     name: '阿远',
     avatar: '🎒',
     personality: '爱折腾，总想去没去过的地方。回信可能比较慢',
@@ -24,7 +24,7 @@ const BOTTLE_AI_POOL: BottleAI[] = [
     hobby: '背包旅行、拍照、尝试当地小吃'
   },
   {
-    id: 'bottle_ai_3',
+    id: 'preset_ai_3',
     name: '书书',
     avatar: '📖',
     personality: '不太爱说话，更喜欢写。回信时会很认真',
@@ -32,7 +32,7 @@ const BOTTLE_AI_POOL: BottleAI[] = [
     hobby: '泡书店、喝咖啡、撸猫'
   },
   {
-    id: 'bottle_ai_4',
+    id: 'preset_ai_4',
     name: '夜雨',
     avatar: '🌙',
     personality: '晚上才清醒的人。喜欢安静，不喜欢太热闹',
@@ -40,7 +40,7 @@ const BOTTLE_AI_POOL: BottleAI[] = [
     hobby: '深夜看星星、听老歌、独处'
   },
   {
-    id: 'bottle_ai_5',
+    id: 'preset_ai_5',
     name: '小温',
     avatar: '☕',
     personality: '温吞性格，做事不急不慢。是个很好的倾听者',
@@ -48,7 +48,7 @@ const BOTTLE_AI_POOL: BottleAI[] = [
     hobby: '做手冲咖啡、画画、听人讲故事'
   },
   {
-    id: 'bottle_ai_6',
+    id: 'preset_ai_6',
     name: '木木',
     avatar: '🌲',
     personality: '话不多，但想说的话会好好说。喜欢待在自然里',
@@ -56,7 +56,7 @@ const BOTTLE_AI_POOL: BottleAI[] = [
     hobby: '徒步、观鸟、发呆'
   },
   {
-    id: 'bottle_ai_7',
+    id: 'preset_ai_7',
     name: '阿浪',
     avatar: '🎸',
     personality: '有点随性，不太在意别人看法。活得比较自我',
@@ -64,7 +64,7 @@ const BOTTLE_AI_POOL: BottleAI[] = [
     hobby: '弹吉他、写歌、搭车旅行'
   },
   {
-    id: 'bottle_ai_8',
+    id: 'preset_ai_8',
     name: '青灯',
     avatar: '🕯️',
     personality: '有点孤独，但不讨厌这种感觉。话少但走心',
@@ -73,12 +73,153 @@ const BOTTLE_AI_POOL: BottleAI[] = [
   }
 ];
 
+// 🎲 随机生成AI人设的素材库
+const NAME_POOL = {
+  surnames: ['李', '王', '张', '刘', '陈', '杨', '赵', '黄', '周', '吴', '林', '徐', '孙', '马', '朱', '胡', '郭', '何', '高', '罗'],
+  givenNames: ['小安', '远', '书书', '雨', '温', '木木', '浪', '青灯', '星河', '南风', '北辰', '夏至', '秋分', '冬雪', '晨曦', '暮色', '云舒', '海棠', '竹影', '梅香'],
+  nicknames: ['阿', '小', '', '老']
+};
+
+const AVATAR_POOL = ['🌊', '🎒', '📖', '🌙', '☕', '🌲', '🎸', '🕯️', '🌸', '🎨', '📷', '🎭', '🎪', '🎬', '🎮', '🎯', '🎲', '🎹', '🎺', '🎻'];
+
+const LOCATION_POOL = [
+  '厦门', '成都', '杭州', '南京', '云南', '大理', '丽江', '青岛', '苏州', '西安',
+  '重庆', '长沙', '武汉', '广州', '深圳', '上海', '北京', '拉萨', '乌鲁木齐', '哈尔滨',
+  '在路上', '小岛上', '山里', '海边', '古镇', '乡下'
+];
+
+const PERSONALITY_TEMPLATES = [
+  // 慢热型
+  '有点慢热，但熟了话很多',
+  '不太主动，但聊开了挺有意思',
+  '需要时间才能打开话匣子',
+  
+  // 随性型
+  '比较随性，想到什么说什么',
+  '活得比较自我，不太在意别人看法',
+  '有点佛系，顺其自然',
+  
+  // 安静型
+  '话不多，但会好好回信',
+  '喜欢安静，不太爱热闹',
+  '更喜欢写而不是说',
+  
+  // 外向型
+  '挺外向的，喜欢认识新朋友',
+  '话痨预警，能聊很久',
+  '热情但不打扰，喜欢分享',
+  
+  // 文艺型
+  '有点文艺，喜欢记录生活',
+  '感性大于理性',
+  '喜欢思考和写作',
+  
+  // 理性型
+  '理工科思维，逻辑清晰',
+  '比较理性，喜欢分析问题',
+  '务实派，不太浪漫',
+  
+  // 夜猫子
+  '晚上才清醒的人',
+  '深夜emo选手',
+  '习惯晚睡，白天昏沉',
+  
+  // 独处型
+  '享受独处，但不排斥社交',
+  '有点孤独，但不讨厌这种感觉',
+  '喜欢一个人待着'
+];
+
+const HOBBY_TEMPLATES = [
+  // 阅读类
+  '看书、喝咖啡、发呆',
+  '泡书店、撸猫、写笔记',
+  '阅读、品茶、听雨',
+  
+  // 户外类
+  '徒步、拍照、看风景',
+  '骑行、露营、观星',
+  '爬山、游泳、跑步',
+  
+  // 文艺类
+  '写作、摄影、听音乐',
+  '画画、弹琴、看电影',
+  '书法、茶道、插花',
+  
+  // 宅家类
+  '追剧、玩游戏、做饭',
+  '手工、烘焙、养花',
+  '编程、看动漫、听播客',
+  
+  // 社交类
+  '和朋友聊天、逛街、吃饭',
+  '参加活动、认识新朋友',
+  '组织聚会、分享故事',
+  
+  // 混合类
+  '看书、旅行、尝试新事物',
+  '散步、思考、写日记',
+  '听歌、发呆、胡思乱想',
+  '咖啡、电影、深夜散步',
+  '骑车、摄影、收集故事'
+];
+
 /**
- * 获取随机漂流瓶AI
+ * 🎲 随机生成一个全新的AI人设
+ * 用于漂流瓶模式，每次回信都是不同的陌生笔友
  */
-export function getRandomBottleAI(): BottleAI {
-  const index = Math.floor(Math.random() * BOTTLE_AI_POOL.length);
-  return BOTTLE_AI_POOL[index];
+export function generateRandomBottleAI(): BottleAI {
+  // 生成名字
+  const useSurname = Math.random() > 0.3; // 70%概率有姓氏
+  const surname = useSurname ? NAME_POOL.surnames[Math.floor(Math.random() * NAME_POOL.surnames.length)] : '';
+  const givenName = NAME_POOL.givenNames[Math.floor(Math.random() * NAME_POOL.givenNames.length)];
+  const useNickname = Math.random() > 0.6; // 40%概率用昵称前缀
+  const nickname = useNickname ? NAME_POOL.nicknames[Math.floor(Math.random() * NAME_POOL.nicknames.length)] : '';
+  
+  const name = surname + nickname + givenName;
+  
+  // 生成头像
+  const avatar = AVATAR_POOL[Math.floor(Math.random() * AVATAR_POOL.length)];
+  
+  // 生成地点
+  const location = LOCATION_POOL[Math.floor(Math.random() * LOCATION_POOL.length)];
+  
+  // 生成性格（可能组合多个特点）
+  const personalityCount = Math.random() > 0.7 ? 2 : 1; // 30%概率组合两个性格特点
+  const personalities: string[] = [];
+  for (let i = 0; i < personalityCount; i++) {
+    const p = PERSONALITY_TEMPLATES[Math.floor(Math.random() * PERSONALITY_TEMPLATES.length)];
+    if (!personalities.includes(p)) {
+      personalities.push(p);
+    }
+  }
+  const personality = personalities.join('。');
+  
+  // 生成爱好
+  const hobby = HOBBY_TEMPLATES[Math.floor(Math.random() * HOBBY_TEMPLATES.length)];
+  
+  return {
+    id: `bottle_random_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+    name,
+    avatar,
+    personality,
+    location,
+    hobby
+  };
+}
+
+/**
+ * 获取预设AI角色（用户主动选择）
+ */
+export function getPresetAI(id: string): BottleAI | undefined {
+  return PRESET_AI_POOL.find(ai => ai.id === id);
+}
+
+/**
+ * 获取所有预设AI角色（供选择界面使用）
+ */
+export function getAllPresetAIs(): BottleAI[] {
+  return PRESET_AI_POOL;
 }
 
 /**
@@ -100,6 +241,7 @@ export function calculateReplyDelay(isUrged: boolean): number {
 
 /**
  * 寄出信件
+ * @param isBottle - true时随机生成新AI人设，false时使用传入的receiver信息
  */
 export function sendLetter(
   content: string,
@@ -112,15 +254,28 @@ export function sendLetter(
   const now = Date.now();
   const replyDelay = calculateReplyDelay(false);
   
+  // 🌊 漂流瓶模式：随机生成全新的AI人设
+  let finalReceiverId = receiverId;
+  let finalReceiverName = receiverName;
+  let finalReceiverAvatar = receiverAvatar;
+  let bottleAI: BottleAI | undefined;
+  
+  if (isBottle) {
+    bottleAI = generateRandomBottleAI();
+    finalReceiverId = bottleAI.id;
+    finalReceiverName = bottleAI.name;
+    finalReceiverAvatar = bottleAI.avatar;
+  }
+  
   const letter: Letter = {
     id: `letter_${now}_${Math.random().toString(36).substr(2, 9)}`,
     senderId: 'user',
     senderName: senderName,
     senderAvatar: '✉️',
     
-    receiverId,
-    receiverName,
-    receiverAvatar,
+    receiverId: finalReceiverId,
+    receiverName: finalReceiverName,
+    receiverAvatar: finalReceiverAvatar,
     
     content,
     
@@ -132,7 +287,10 @@ export function sendLetter(
     hasUrged: false,
     
     stampStyle: getRandomStampStyle(),
-    paperStyle: 'white'
+    paperStyle: 'white',
+    
+    // 保存AI人设信息（用于生成回信时参考）
+    bottleAIProfile: bottleAI
   };
   
   // 保存到localStorage
