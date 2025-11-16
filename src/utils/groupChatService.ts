@@ -796,7 +796,7 @@ export async function generateGroupChatRepliesFreeMode(
     throw new Error('群聊中没有AI成员');
   }
   
-  const MAX_ROUNDS = 3; // 最大轮数
+  const MAX_ROUNDS = 2; // 最大轮数（从3减少到2，优化体验）
   let currentRound = 0;
   const allReplies: GroupAIReply[] = [];
   
