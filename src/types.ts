@@ -126,6 +126,7 @@ export interface OrderMessage {
   status: 'pending' | 'accepted' | 'rejected' | 'paid'; // 待处理、已接受、已拒绝、已支付
   orderNumber?: string; // 订单号
   shippingAddress?: string; // 配送地址
+  createdAt?: number; // 订单创建时间戳（用于动态配送模拟）
   // 外卖专用字段
   deliveryInfo?: {
     storeName?: string; // 店铺名称

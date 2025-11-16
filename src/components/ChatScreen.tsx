@@ -37,6 +37,7 @@ import { addTransaction as addAIFinanceTransaction, getAIFinanceData } from '../
 import { backgroundGenerationService, GenerationTask } from '../utils/backgroundGenerationService';
 import { handleAIGroupRedPacketClaiming } from '../utils/aiGroupRedPacketDecision';
 import { processExpiredRedPacketRefund } from '../utils/groupRedPacket';
+import { calculateDeliveryStatus, formatEstimatedTime, getActiveStageIndex, getRiderInfo } from '../utils/orderDeliverySimulator';
 import SubChatWindow from './SubChatWindow';
 import SubChatManager from './SubChatManager';
 import SubChatSuggestionModal from './SubChatSuggestionModal';
@@ -863,6 +864,9 @@ ${recentMessages}
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const lastMessageCountRef = useRef(0);
   
+  // 🚚 配送状态刷新触发器（每30秒更新一次）
+  const [deliveryRefreshTrigger, setDeliveryRefreshTrigger] = useState(0);
+  
   // 检查用户是否在底部
   const isAtBottom = useCallback(() => {
     const container = messagesContainerRef.current;
@@ -1031,6 +1035,15 @@ ${recentMessages}
       });
     }
   }, [conversation.id]); // 切换对话时重新滚动到底部
+  
+  // 🚚 定期更新配送状态（每30秒）
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setDeliveryRefreshTrigger(prev => prev + 1);
+    }, 30000); // 每30秒更新一次
+    
+    return () => clearInterval(interval);
+  }, []);
   
   // 🔙 定期检查过期红包并自动退款
   useEffect(() => {
@@ -5308,38 +5321,70 @@ ${doc.content}`;
                         )}
 
                         {/* 饿了么外卖卡片 */}
-                        {message.order.source === 'eleme' && (
-                          <div className="bg-gradient-to-r from-yellow-400 to-yellow-500">
-                            {/* 黄色头部 */}
-                            <div className="text-gray-800 px-4 py-2.5">
-                              <div className="font-semibold text-sm">预计 20分钟后 送达</div>
-                              <div className="font-bold text-lg">正在为您火速配送</div>
-                            </div>
-                            {/* 白色内容区 */}
-                            <div className="bg-white p-4 space-y-3">
-                              {/* 骑手信息 */}
-                              <div className="flex items-center gap-3 pb-3 border-b">
-                                <div className="w-10 h-10 bg-gray-200 rounded-full flex items-center justify-center text-lg">👤</div>
-                                <div className="flex-1">
-                                  <div className="text-sm font-medium">李师傅 ★ 4.9</div>
-                                  <div className="text-xs text-gray-500">距离约 1.4km</div>
+                        {message.order.source === 'eleme' && message.order && (() => {
+                          // 计算动态配送状态
+                          const order = message.order;
+                          const orderTime = order.createdAt || message.timestamp;
+                          const deliveryStatus = calculateDeliveryStatus(orderTime);
+                          const activeStage = getActiveStageIndex(deliveryStatus);
+                          const riderInfo = getRiderInfo();
+                          const isDelivered = deliveryStatus.stage === 'delivered';
+                          
+                          // 触发刷新（使用deliveryRefreshTrigger）
+                          void deliveryRefreshTrigger;
+                          
+                          return (
+                            <div className="bg-gradient-to-r from-yellow-400 to-yellow-500">
+                              {/* 黄色头部 */}
+                              <div className="text-gray-800 px-4 py-2.5">
+                                <div className="font-semibold text-sm">
+                                  {isDelivered ? '✅ 已送达' : formatEstimatedTime(deliveryStatus.estimatedMinutes)}
                                 </div>
-                                <button className="p-2 bg-gray-100 rounded-full">☁️</button>
+                                <div className="font-bold text-lg flex items-center gap-2">
+                                  <span>{deliveryStatus.statusEmoji}</span>
+                                  <span>{deliveryStatus.stageText}</span>
+                                </div>
                               </div>
-                              {/* 配送进度 */}
-                              <div className="flex items-center justify-between text-xs text-gray-500 mb-2">
-                                <span>已接单</span>
-                                <span>已送出</span>
-                                <span className="font-bold text-gray-800">配送中</span>
-                                <span>送达</span>
-                              </div>
-                              <div className="h-1.5 bg-gray-200 rounded-full mb-4">
-                                <div className="h-full w-2/3 bg-gradient-to-r from-blue-500 to-blue-600 rounded-full"></div>
-                              </div>
+                              {/* 白色内容区 */}
+                              <div className="bg-white p-4 space-y-3">
+                                {!isDelivered && (
+                                  <>
+                                    {/* 骑手信息 */}
+                                    <div className="flex items-center gap-3 pb-3 border-b">
+                                      <div className="w-10 h-10 bg-gray-200 rounded-full flex items-center justify-center text-lg">👤</div>
+                                      <div className="flex-1">
+                                        <div className="text-sm font-medium">{riderInfo.name} ★ {riderInfo.rating}</div>
+                                        <div className="text-xs text-gray-500">
+                                          {deliveryStatus.riderDistance || '距离约 1.4km'}
+                                        </div>
+                                      </div>
+                                      <button className="p-2 bg-gray-100 rounded-full">📞</button>
+                                    </div>
+                                    {/* 配送进度 */}
+                                    <div className="flex items-center justify-between text-xs text-gray-500 mb-2">
+                                      {['已接单', '已取餐', '配送中', '送达'].map((text, idx) => (
+                                        <span key={idx} className={idx === activeStage ? 'font-bold text-gray-800' : ''}>
+                                          {text}
+                                        </span>
+                                      ))}
+                                    </div>
+                                    <div className="h-1.5 bg-gray-200 rounded-full mb-4">
+                                      <div 
+                                        className="h-full bg-gradient-to-r from-blue-500 to-blue-600 rounded-full transition-all duration-500"
+                                        style={{ width: `${deliveryStatus.progress}%` }}
+                                      ></div>
+                                    </div>
+                                  </>
+                                )}
+                                {isDelivered && (
+                                  <div className="text-center py-4 text-green-600 font-medium">
+                                    ✅ 订单已完成送达
+                                  </div>
+                                )}
                               {/* 商品列表 */}
                               <div className="border-t pt-3">
                                 <div className="font-semibold text-sm mb-2">商品和配送详情</div>
-                                {message.order.products.map((product, idx) => (
+                                {order.products.map((product, idx) => (
                                   <div key={idx} className="text-sm text-gray-700 mb-1">
                                     {product.name} ×{product.quantity} <span className="float-right">¥{product.price.toFixed(2)}</span>
                                   </div>
@@ -5351,13 +5396,13 @@ ${doc.content}`;
                                 <div className="text-sm text-gray-600">北京市东城区XX路XX号 XX公寓 (距) 1868****119</div>
                               </div>
                               {/* 订单备注 */}
-                              {message.order.message && (
+                              {order.message && (
                                 <div className="border-t pt-3">
                                   <div className="font-semibold text-sm mb-1">订单备注</div>
-                                  <div className="text-sm text-gray-600">{message.order.message}</div>
+                                  <div className="text-sm text-gray-600">{order.message}</div>
                                 </div>
                               )}
-                              {message.role === 'assistant' && message.order.status === 'pending' && (
+                              {message.role === 'assistant' && order.status === 'pending' && !isDelivered && (
                                 <div className="flex gap-2 mt-3">
                                   <button onClick={(e) => { e.stopPropagation(); handleAcceptOrder(message); }}
                                     className="flex-1 py-2 bg-gradient-to-r from-yellow-400 to-yellow-500 text-gray-800 rounded-lg font-medium">确认收货</button>
@@ -5367,7 +5412,8 @@ ${doc.content}`;
                               )}
                             </div>
                           </div>
-                        )}
+                        );
+                      })()}
 
                         {/* 电影票卡片 (优化样式) */}
                         {message.order.source === 'movie' && (
