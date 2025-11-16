@@ -2705,11 +2705,8 @@ ${characterInfo?.languageStyle ? `语言风格：${characterInfo.languageStyle}`
       const isFreeMode = conversation.groupChatMode === 'free';
       const generateFunction = isFreeMode ? generateGroupChatRepliesFreeMode : generateGroupChatReplies;
       
-      // 使用ref来追踪最新的消息列表
-      let currentMessages = [...conversation.messages];
-      
       // 调用群聊服务
-      const allReplies = await generateFunction(
+      await generateFunction(
         conversation,
         apiConfig,
         conversations,
@@ -2734,10 +2731,24 @@ ${characterInfo?.languageStyle ? `语言风格：${characterInfo.languageStyle}`
           },
           
           onAIMessage: (_aiId, message) => {
-            // 累积添加消息
-            currentMessages = [...currentMessages, message];
+            // 🔥 修复：从localStorage获取最新消息列表，确保不会覆盖用户消息
+            const storedConversations = localStorage.getItem('conversations');
+            if (storedConversations) {
+              const allConversations = JSON.parse(storedConversations) as Conversation[];
+              const currentConversation = allConversations.find((c: Conversation) => c.id === conversation.id);
+              if (currentConversation) {
+                // 基于最新的消息列表添加AI消息
+                const updatedMessages = [...currentConversation.messages, message];
+                onUpdateConversation(conversation.id, {
+                  messages: updatedMessages,
+                  lastMessageTime: Date.now()
+                });
+                return;
+              }
+            }
+            // 降级方案：如果无法从localStorage获取，使用conversation
             onUpdateConversation(conversation.id, {
-              messages: currentMessages,
+              messages: [...conversation.messages, message],
               lastMessageTime: Date.now()
             });
           },
@@ -2759,13 +2770,24 @@ ${characterInfo?.languageStyle ? `语言风格：${characterInfo.languageStyle}`
             setCurrentTypingAI(null);
             setShowSendingHint(false);
             
+            // 🔥 获取最新的消息列表
+            const storedConversations = localStorage.getItem('conversations');
+            let latestMessages = conversation.messages;
+            if (storedConversations) {
+              const allConversations = JSON.parse(storedConversations) as Conversation[];
+              const currentConversation = allConversations.find((c: Conversation) => c.id === conversation.id);
+              if (currentConversation) {
+                latestMessages = currentConversation.messages;
+              }
+            }
+            
             // 🚀 通知后台服务生成完成
-            backgroundGenerationService.completeGeneration(conversation.id, currentMessages);
+            backgroundGenerationService.completeGeneration(conversation.id, latestMessages);
             
             // 🧠 群聊记忆总结（后台处理）
             if (conversation.type === 'group' && conversation.members) {
               setTimeout(() => {
-                performGroupMemorySummary(currentMessages).catch(err => {
+                performGroupMemorySummary(latestMessages).catch(err => {
                   console.error('群聊记忆总结失败:', err);
                 });
               }, 1000); // 延迟1秒后执行，避免阻塞
@@ -2784,7 +2806,8 @@ ${characterInfo?.languageStyle ? `语言风格：${characterInfo.languageStyle}`
             }
             
             // 自由模式：如果没有AI回复，显示提示
-            if (isFreeMode && replies.length === 0) {
+            // 🔥 但要确保不在"发送中"状态显示
+            if (isFreeMode && replies.length === 0 && !setShowSendingHint) {
               // 添加系统消息提示
               // 随机选择一个友好的提示
               const friendlyHints = [
@@ -2800,9 +2823,9 @@ ${characterInfo?.languageStyle ? `语言风格：${characterInfo.languageStyle}`
                 content: randomHint,
                 timestamp: Date.now()
               };
-              currentMessages = [...currentMessages, systemMessage];
+              const updatedMessages = [...latestMessages, systemMessage];
               onUpdateConversation(conversation.id, {
-                messages: currentMessages,
+                messages: updatedMessages,
                 lastMessageTime: Date.now()
               });
             }
@@ -2810,28 +2833,8 @@ ${characterInfo?.languageStyle ? `语言风格：${characterInfo.languageStyle}`
         }
       );
       
-      // 如果是自由模式且所有AI都选择不回复，也显示提示
-      if (isFreeMode && allReplies.every(r => r.messages.length === 0)) {
-        // 随机选择一个友好的提示
-        const friendlyHints = [
-          '😊 大家好像都在忙哦，一会再问一次吧',
-          '👀 好像暂时没人看到消息呢',
-          '☕ 大家可能都去忙其他事了，稍后再聊~',
-          '💬 此刻无人回应，不妨等等看',
-        ];
-        const randomHint = friendlyHints[Math.floor(Math.random() * friendlyHints.length)];
-        const systemMessage: Message = {
-          id: `system_${Date.now()}`,
-          role: 'system',
-          content: randomHint,
-          timestamp: Date.now()
-        };
-        currentMessages = [...currentMessages, systemMessage];
-        onUpdateConversation(conversation.id, {
-          messages: currentMessages,
-          lastMessageTime: Date.now()
-        });
-      }
+      // 🔥 这个逻辑已经在onAllComplete中处理了，这里是重复的，注释掉
+      // 如果是自由模式且所有AI都选择不回复，已在onAllComplete中显示提示
     } catch (error: any) {
       console.error('群聊生成失败:', error);
       alert('群聊生成失败: ' + error.message);
