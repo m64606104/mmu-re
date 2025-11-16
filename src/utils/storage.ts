@@ -9,7 +9,19 @@
  */
 
 // 定义哪些数据应该用 IndexedDB（大数据）
-const LARGE_DATA_KEYS = ['conversations', 'messages', 'chat_history', 'moments_data'];
+const LARGE_DATA_KEYS = [
+  'conversations',           // 对话列表（最大）
+  'messages',
+  'chat_history',
+  'moments_data',           // 朋友圈数据
+  'chat_memory_banks',      // 聊天记忆库
+  'group_chat_memories',    // 群聊记忆
+  'ai_finance_data',        // AI财务数据
+  'relationships',          // 关系网络
+  'documents_library',      // 文档库
+  'moments_interactions',   // 朋友圈互动
+  'music_library'           // 音乐库
+];
 
 // 判断是否应该使用 IndexedDB
 const shouldUseIndexedDB = (key: string): boolean => {
@@ -310,4 +322,138 @@ export const clearAllStorage = async (): Promise<void> => {
   } catch (error) {
     console.error('❌ IndexedDB 清空失败:', error);
   }
+};
+
+/**
+ * 批量迁移所有大数据到IndexedDB
+ */
+export const migrateAllToIndexedDB = async (): Promise<{
+  success: boolean;
+  migratedKeys: string[];
+  errors: { key: string; error: string }[];
+}> => {
+  console.log('🚀 开始批量迁移数据：localStorage → IndexedDB');
+  
+  const migratedKeys: string[] = [];
+  const errors: { key: string; error: string }[] = [];
+  
+  // 找出所有应该使用 IndexedDB 的键
+  const keysToMigrate: string[] = [];
+  for (let i = 0; i < localStorage.length; i++) {
+    const key = localStorage.key(i);
+    if (key && shouldUseIndexedDB(key)) {
+      keysToMigrate.push(key);
+    }
+  }
+  
+  console.log(`📋 发现 ${keysToMigrate.length} 个需要迁移的键:`, keysToMigrate);
+  
+  // 逐个迁移
+  for (const key of keysToMigrate) {
+    try {
+      const success = await migrateToIndexedDB(key);
+      if (success) {
+        migratedKeys.push(key);
+      }
+    } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : '未知错误';
+      errors.push({ key, error: errorMsg });
+      console.error(`❌ 迁移失败 (${key}):`, error);
+    }
+  }
+  
+  console.log(`✅ 迁移完成：成功 ${migratedKeys.length}，失败 ${errors.length}`);
+  
+  return {
+    success: errors.length === 0,
+    migratedKeys,
+    errors
+  };
+};
+
+/**
+ * 检查是否需要迁移
+ */
+export const checkMigrationNeeded = (): boolean => {
+  for (let i = 0; i < localStorage.length; i++) {
+    const key = localStorage.key(i);
+    if (key && shouldUseIndexedDB(key)) {
+      return true;
+    }
+  }
+  return false;
+};
+
+/**
+ * 获取存储使用情况
+ */
+export const getStorageInfo = async (): Promise<{
+  localStorage: {
+    used: number;
+    usedMB: number;
+    quota: number;
+    quotaMB: number;
+    percentage: number;
+    itemCount: number;
+    largeDataInLocalStorage: string[]; // 应该迁移的大数据
+  };
+  indexedDB: {
+    used: number;
+    usedMB: number;
+    quota: number;
+    quotaMB: number;
+    percentage: number;
+  };
+}> => {
+  // localStorage 信息
+  let localStorageUsed = 0;
+  let localStorageItemCount = 0;
+  const largeDataInLocalStorage: string[] = [];
+  
+  for (let i = 0; i < localStorage.length; i++) {
+    const key = localStorage.key(i);
+    if (key) {
+      const item = localStorage.getItem(key);
+      if (item) {
+        localStorageUsed += item.length * 2; // UTF-16, 每字符2字节
+        localStorageItemCount++;
+        
+        // 检查是否为大数据
+        if (shouldUseIndexedDB(key)) {
+          largeDataInLocalStorage.push(key);
+        }
+      }
+    }
+  }
+  
+  const localStorageQuota = 10 * 1024 * 1024; // 估计 10MB
+  
+  // IndexedDB 信息（通过 Storage API）
+  let indexedDBUsed = 0;
+  let indexedDBQuota = 0;
+  
+  if ('storage' in navigator && 'estimate' in navigator.storage) {
+    const estimate = await navigator.storage.estimate();
+    indexedDBUsed = estimate.usage || 0;
+    indexedDBQuota = estimate.quota || 0;
+  }
+  
+  return {
+    localStorage: {
+      used: localStorageUsed,
+      usedMB: localStorageUsed / 1024 / 1024,
+      quota: localStorageQuota,
+      quotaMB: localStorageQuota / 1024 / 1024,
+      percentage: (localStorageUsed / localStorageQuota) * 100,
+      itemCount: localStorageItemCount,
+      largeDataInLocalStorage
+    },
+    indexedDB: {
+      used: indexedDBUsed,
+      usedMB: indexedDBUsed / 1024 / 1024,
+      quota: indexedDBQuota,
+      quotaMB: indexedDBQuota / 1024 / 1024,
+      percentage: indexedDBQuota ? (indexedDBUsed / indexedDBQuota) * 100 : 0
+    }
+  };
 };
