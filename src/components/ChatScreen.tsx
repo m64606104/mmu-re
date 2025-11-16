@@ -34,6 +34,7 @@ import { SmartHTMLGenerator } from '../utils/smartHTMLGenerator';
 import { SavedDocument } from '../utils/documentLibrary';
 import { sendMoney, receiveMoney, getBalance, aiPayForUser, refundGift } from '../utils/wallet';
 import { addTransaction as addAIFinanceTransaction, getAIFinanceData } from '../utils/aiFinance';
+import { backgroundGenerationService, GenerationTask } from '../utils/backgroundGenerationService';
 import SubChatWindow from './SubChatWindow';
 import SubChatManager from './SubChatManager';
 import SubChatSuggestionModal from './SubChatSuggestionModal';
@@ -654,6 +655,7 @@ export default function ChatScreen({
   };
   const [currentInput, setCurrentInput] = useState('');
   const [isGenerating, setIsGenerating] = useState(false);
+  const [generationTask, setGenerationTask] = useState<GenerationTask | null>(null);
   const [showToolbar, setShowToolbar] = useState(false);
   const [showMoneyTransferModal, setShowMoneyTransferModal] = useState(false);
   const [showSendDocumentModal, setShowSendDocumentModal] = useState(false);
@@ -725,6 +727,33 @@ export default function ChatScreen({
       onUpdateConversation(conversation.id, { unreadCount: 0 });
     }
   }, [conversation.id, conversation.unreadCount, onUpdateConversation]);
+
+  // 🚀 订阅后台生成服务的状态更新
+  useEffect(() => {
+    // 订阅当前对话的生成任务状态
+    const unsubscribe = backgroundGenerationService.subscribe(
+      conversation.id,
+      (task: GenerationTask) => {
+        setGenerationTask(task);
+        setIsGenerating(task.status === 'generating');
+      }
+    );
+
+    // 检查当前是否有正在进行的生成任务
+    const currentTask = backgroundGenerationService.getTask(conversation.id);
+    if (currentTask) {
+      setGenerationTask(currentTask);
+      setIsGenerating(currentTask.status === 'generating');
+    } else {
+      setGenerationTask(null);
+      setIsGenerating(false);
+    }
+
+    // 清理订阅
+    return () => {
+      unsubscribe();
+    };
+  }, [conversation.id]);
   
   // 生成智能的不回复提示
   const generateContextualHint = async (conversationData: Conversation) => {
@@ -2581,6 +2610,8 @@ ${characterInfo?.languageStyle ? `语言风格：${characterInfo.languageStyle}`
 
   // 群聊生成函数
   const handleGroupChatGenerate = async () => {
+    // 🚀 启动后台生成任务
+    backgroundGenerationService.startGeneration(conversation.id);
     setIsGenerating(true);
     setShowSendingHint(true);
 
@@ -2642,6 +2673,9 @@ ${characterInfo?.languageStyle ? `语言风格：${characterInfo.languageStyle}`
             setCurrentTypingAI(null);
             setShowSendingHint(false);
             
+            // 🚀 通知后台服务生成完成
+            backgroundGenerationService.completeGeneration(conversation.id, currentMessages);
+            
             // 自由模式：如果没有AI回复，显示提示
             if (isFreeMode && replies.length === 0) {
               // 添加系统消息提示
@@ -2681,6 +2715,9 @@ ${characterInfo?.languageStyle ? `语言风格：${characterInfo.languageStyle}`
       setIsGenerating(false);
       setCurrentTypingAI(null);
       setShowSendingHint(false);
+      
+      // 🚀 通知后台服务生成失败
+      backgroundGenerationService.failGeneration(conversation.id, error.message || '未知错误');
     }
   };
 
@@ -2701,6 +2738,8 @@ ${characterInfo?.languageStyle ? `语言风格：${characterInfo.languageStyle}`
       return;
     }
 
+    // 🚀 启动后台生成任务
+    backgroundGenerationService.startGeneration(conversation.id);
     setIsGenerating(true);
     setShowSendingHint(true);
 
@@ -3977,6 +4016,9 @@ ${doc.content}`;
             // 所有消息显示完毕，隐藏生成状态
             setIsGenerating(false);
             
+            // 🚀 通知后台服务生成完成
+            backgroundGenerationService.completeGeneration(conversationId, currentMessages);
+            
           } else {
             // 🚀 用户已离开：直接添加所有消息，不显示动画
             console.log('用户已离开页面，直接添加所有消息并显示通知');
@@ -4050,6 +4092,9 @@ ${doc.content}`;
             
             // 显示消息通知（用户已离开页面）
             showMessageNotification(conversationId, newMessages);
+            
+            // 🚀 通知后台服务生成完成（用户离开的情况）
+            backgroundGenerationService.completeGeneration(conversationId, currentMessages);
           }
           
           // 使用最终的消息列表（确保同步）
@@ -4110,6 +4155,9 @@ ${doc.content}`;
       setShowSendingHint(false);
       setShowTyping(false);
       setIsGenerating(false);
+      
+      // 🚀 通知后台服务生成失败
+      backgroundGenerationService.failGeneration(conversation.id, errorMessage);
     }
   };
 
