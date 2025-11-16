@@ -21,6 +21,9 @@ export default function UserGuide({ onBack }: UserGuideProps) {
 
   const sections = [
     { id: 'quick-start', name: '快速上手' },
+    { id: 'chat-features', name: '聊天功能' },
+    { id: 'character-settings', name: '角色设置' },
+    { id: 'group-chat', name: '群聊功能' },
     { id: 'advanced-settings', name: '高级设置' },
     { id: 'settings-app', name: '设置App' },
     { id: 'chat-app', name: '聊天App' },

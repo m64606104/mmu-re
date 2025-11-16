@@ -123,6 +123,14 @@ const GroupRedPacketCard: React.FC<GroupRedPacketCardProps> = ({
             )}
           </div>
 
+          {/* 口令显示 */}
+          {redPacket.password && !userClaimed && !isExpired && redPacket.status !== 'finished' && (
+            <div className="mb-4 bg-white/10 rounded-lg p-3 border border-white/20">
+              <div className="text-white/70 text-xs mb-1">红包口令</div>
+              <div className="text-white font-medium text-sm">"{redPacket.password}"</div>
+            </div>
+          )}
+
           {/* 状态显示 */}
           {userClaimed ? (
             <div className="text-center py-4">

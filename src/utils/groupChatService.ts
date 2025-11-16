@@ -158,6 +158,7 @@ function parseAIResponse(content: string): Message[] {
   const videoMatches = [...content.matchAll(/\[视频[:：]([^\]]+)\]/g)];
   const voiceMatches = [...content.matchAll(/\[语音[:：](.+?)(?:[，,]\s*(?:时长)?(\d+)秒?)?\]/g)];
   const stickerMatches = [...content.matchAll(/\[表情包[:：]([^\]]+)\]/g)];
+  const redPacketMatches = [...content.matchAll(/\[(?:发)?群红包(?:[:：]([^\]]+))?\]/g)];
   
   // 移除所有媒体标记，得到纯文本内容
   let cleanText = content
@@ -165,6 +166,7 @@ function parseAIResponse(content: string): Message[] {
     .replace(/\[视频[:：][^\]]+\]/g, '')
     .replace(/\[语音[:：].+?\]/g, '')
     .replace(/\[表情包[:：][^\]]+\]/g, '')
+    .replace(/\[(?:发)?群红包(?:[:：][^\]]+)?\]/g, '')
     .trim();
   
   const messages: Message[] = [];
@@ -226,7 +228,50 @@ function parseAIResponse(content: string): Message[] {
     });
   });
   
-  // 5. 添加纯文本消息（如果有）
+  // 5. 添加所有群红包消息
+  redPacketMatches.forEach((match) => {
+    const desc = match[1] || '恭喜发财，大吉大利';
+    // 解析红包信息：金额，数量，口令等
+    const amountMatch = desc.match(/(\d+(?:\.\d+)?)[元]/);
+    const countMatch = desc.match(/(\d+)[个]/);
+    const passwordMatch = desc.match(/口令[:：](.+?)(?:[，,。]|$)/);
+    
+    const totalAmount = amountMatch ? parseFloat(amountMatch[1]) : 200;
+    const totalCount = countMatch ? parseInt(countMatch[1]) : 3;
+    const redPacketId = `ai_redpacket_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    const messageText = desc.replace(/\d+(?:\.\d+)?元/, '').replace(/\d+个/, '').replace(/口令[:：].+?(?:[，,。]|$)/, '').trim() || '恭喜发财，大吉大利';
+    
+    messages.push({
+      id: `${baseTimestamp}_redpacket_${msgIndex++}`,
+      role: 'assistant' as const,
+      content: '[群红包]',
+      timestamp: baseTimestamp + msgIndex * 100,
+      moneyTransfer: {
+        type: 'groupRedPacket',
+        amount: totalAmount,
+        message: messageText,
+        status: 'pending',
+        groupRedPacket: {
+          id: redPacketId,
+          senderId: '', // 会在generateAIReply中设置
+          senderName: '',
+          message: messageText,
+          totalAmount: totalAmount,
+          totalCount: totalCount,
+          remainingCount: totalCount,
+          remainingAmount: totalAmount,
+          redPacketType: passwordMatch ? 'random' : 'random', // 口令红包也是拼手气
+          password: passwordMatch ? passwordMatch[1].trim() : undefined,
+          claimedBy: [],
+          createdAt: Date.now(),
+          expiredAt: Date.now() + 24 * 60 * 60 * 1000,
+          status: 'active'
+        }
+      }
+    });
+  });
+  
+  // 6. 添加纯文本消息（如果有）
   if (cleanText) {
     const contentArray = splitMessages(cleanText);
     contentArray.forEach((text) => {
@@ -446,6 +491,12 @@ export async function generateGroupChatReplies(
         senderAvatar: reply.aiAvatar,
       } as any;
       
+      // 🎁 如果是群红包消息，更新红包信息中的发送者
+      if (messageWithSender.moneyTransfer?.type === 'groupRedPacket' && messageWithSender.moneyTransfer.groupRedPacket) {
+        messageWithSender.moneyTransfer.groupRedPacket.senderId = reply.aiId;
+        messageWithSender.moneyTransfer.groupRedPacket.senderName = reply.aiName;
+      }
+      
       callbacks?.onAIMessage?.(reply.aiId, messageWithSender);
       
       // 每条消息之间延迟（500ms让用户有时间阅读）
@@ -557,6 +608,12 @@ async function generateSingleRound(
         senderName: reply.aiName,
         senderAvatar: reply.aiAvatar,
       } as any;
+      
+      // 🎁 如果是群红包消息，更新红包信息中的发送者
+      if (messageWithSender.moneyTransfer?.type === 'groupRedPacket' && messageWithSender.moneyTransfer.groupRedPacket) {
+        messageWithSender.moneyTransfer.groupRedPacket.senderId = reply.aiId;
+        messageWithSender.moneyTransfer.groupRedPacket.senderName = reply.aiName;
+      }
       
       callbacks?.onAIMessage?.(reply.aiId, messageWithSender);
       

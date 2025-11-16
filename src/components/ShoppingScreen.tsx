@@ -319,9 +319,22 @@ const ShoppingScreen: React.FC<ShoppingScreenProps> = ({
       setProductActions({ addedToMall: false, addedToCart: false });
       setShowProductModal(true);
     } catch (error) {
-      console.log('🎨 AI生图失败:', error);
+      console.error('🎨 AI生图失败:', error);
       const errorMessage = error instanceof Error ? error.message : '未知错误';
-      alert(`❌ AI生图失败: ${errorMessage}\n\n请检查:\n1. API地址是否正确\n2. API Key是否有效\n3. 模型是否支持生图\n4. 网络连接是否正常`);
+      
+      // 根据错误类型提供更详细的提示
+      let helpMessage = '';
+      if (errorMessage.includes('model_not_found') || errorMessage.includes('503')) {
+        helpMessage = `\n\n⚠️ 模型不可用问题：\n当前模型: ${imageGenConfig.model}\n\n解决方案：\n1. 点击商城设置图标⚙️\n2. 重新"调取可用模型"\n3. 选择一个新的可用模型\n4. 保存配置后重试\n\n💡 提示: API服务商的模型可能会变动，定期更新模型列表可避免此问题`;
+      } else if (errorMessage.includes('401') || errorMessage.includes('403')) {
+        helpMessage = '\n\n🔑 API Key可能已失效，请检查并更新';
+      } else if (errorMessage.includes('timeout') || errorMessage.includes('network')) {
+        helpMessage = '\n\n🌐 网络连接问题，请检查网络后重试';
+      } else {
+        helpMessage = '\n\n请检查:\n1. API地址是否正确\n2. API Key是否有效\n3. 选择其他可用模型\n4. 网络连接是否正常';
+      }
+      
+      alert(`❌ AI生图失败\n\n${errorMessage}${helpMessage}`);
       setGeneratingImages(new Set([...generatingImages].filter(id => id !== productId)));
       setIsSearching(false);
     }
