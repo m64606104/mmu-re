@@ -44,6 +44,17 @@ function formatMessageForAI(msg: Message): string {
     content += ` [用户发送了表情包：${msg.mediaDescription}]`;
   }
   
+  // 处理红包消息
+  if (msg.moneyTransfer?.type === 'groupRedPacket' && msg.moneyTransfer.groupRedPacket) {
+    const rp = msg.moneyTransfer.groupRedPacket;
+    const typeText = rp.redPacketType === 'average' ? '普通红包' : rp.redPacketType === 'exclusive' ? '专属红包' : '拼手气红包';
+    content += ` [用户发送了群红包：${typeText}，总金额${rp.totalAmount}元，${rp.totalCount}个，留言"${rp.message}"]`;
+  } else if (msg.moneyTransfer?.type === 'redPacket') {
+    content += ` [用户发送了红包：${msg.moneyTransfer.amount}元，留言"${msg.moneyTransfer.message}"]`;
+  } else if (msg.moneyTransfer?.type === 'transfer') {
+    content += ` [用户转账：${msg.moneyTransfer.amount}元，留言"${msg.moneyTransfer.message}"]`;
+  }
+  
   return content.trim();
 }
 
@@ -158,6 +169,9 @@ function parseAIResponse(content: string): Message[] {
   const videoMatches = [...content.matchAll(/\[视频[:：]([^\]]+)\]/g)];
   const voiceMatches = [...content.matchAll(/\[语音[:：](.+?)(?:[，,]\s*(?:时长)?(\d+)秒?)?\]/g)];
   const stickerMatches = [...content.matchAll(/\[表情包[:：]([^\]]+)\]/g)];
+  // 支持两种格式：
+  // 1. 标准格式：[发群红包:类型:金额:数量:留言] 例如 [发群红包:random:10:5:大家抢红包啦]
+  // 2. 简化格式：[发群红包:描述] 或 [群红包]
   const redPacketMatches = [...content.matchAll(/\[(?:发)?群红包(?:[:：]([^\]]+))?\]/g)];
   
   // 移除所有媒体标记，得到纯文本内容
@@ -230,16 +244,57 @@ function parseAIResponse(content: string): Message[] {
   
   // 5. 添加所有群红包消息
   redPacketMatches.forEach((match) => {
-    const desc = match[1] || '恭喜发财，大吉大利';
-    // 解析红包信息：金额，数量，口令等
-    const amountMatch = desc.match(/(\d+(?:\.\d+)?)[元]/);
-    const countMatch = desc.match(/(\d+)[个]/);
-    const passwordMatch = desc.match(/口令[:：](.+?)(?:[，,。]|$)/);
+    const desc = match[1] || '';
+    let redPacketType: 'random' | 'average' | 'exclusive' = 'random';
+    let totalAmount = 10;
+    let totalCount = 3;
+    let messageText = '恭喜发财，大吉大利';
+    let password: string | undefined;
     
-    const totalAmount = amountMatch ? parseFloat(amountMatch[1]) : 200;
-    const totalCount = countMatch ? parseInt(countMatch[1]) : 3;
+    // 尝试解析标准格式：类型:金额:数量:留言
+    // 例如：random:10:5:大家抢红包啦 或 average:20:10:平分红包
+    const standardParts = desc.split(':');
+    if (standardParts.length >= 4) {
+      // 标准格式：[发群红包:类型:金额:数量:留言]
+      const type = standardParts[0].trim();
+      const amount = parseFloat(standardParts[1]);
+      const count = parseInt(standardParts[2]);
+      const message = standardParts.slice(3).join(':').trim();
+      
+      if (['random', 'average', 'exclusive'].includes(type) && !isNaN(amount) && !isNaN(count)) {
+        redPacketType = type as 'random' | 'average' | 'exclusive';
+        totalAmount = amount;
+        totalCount = count;
+        messageText = message || '恭喜发财，大吉大利';
+      }
+    } else {
+      // 简化格式或旧格式：解析描述文本
+      const amountMatch = desc.match(/(\d+(?:\.\d+)?)[元]/);
+      const countMatch = desc.match(/(\d+)[个]/);
+      const passwordMatch = desc.match(/口令[:：](.+?)(?:[，,。]|$)/);
+      const typeMatch = desc.match(/(普通|拼手气|专属)/);
+      
+      totalAmount = amountMatch ? parseFloat(amountMatch[1]) : 10;
+      totalCount = countMatch ? parseInt(countMatch[1]) : 3;
+      password = passwordMatch ? passwordMatch[1].trim() : undefined;
+      
+      if (typeMatch) {
+        if (typeMatch[1] === '普通') redPacketType = 'average';
+        else if (typeMatch[1] === '专属') redPacketType = 'exclusive';
+        else redPacketType = 'random';
+      } else {
+        redPacketType = password ? 'random' : 'random';
+      }
+      
+      messageText = desc
+        .replace(/\d+(?:\.\d+)?元/, '')
+        .replace(/\d+个/, '')
+        .replace(/口令[:：].+?(?:[，,。]|$)/, '')
+        .replace(/(普通|拼手气|专属)/, '')
+        .trim() || '恭喜发财，大吉大利';
+    }
+    
     const redPacketId = `ai_redpacket_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-    const messageText = desc.replace(/\d+(?:\.\d+)?元/, '').replace(/\d+个/, '').replace(/口令[:：].+?(?:[，,。]|$)/, '').trim() || '恭喜发财，大吉大利';
     
     messages.push({
       id: `${baseTimestamp}_redpacket_${msgIndex++}`,
@@ -260,8 +315,8 @@ function parseAIResponse(content: string): Message[] {
           totalCount: totalCount,
           remainingCount: totalCount,
           remainingAmount: totalAmount,
-          redPacketType: passwordMatch ? 'random' : 'random', // 口令红包也是拼手气
-          password: passwordMatch ? passwordMatch[1].trim() : undefined,
+          redPacketType: redPacketType,
+          password: password,
           claimedBy: [],
           createdAt: Date.now(),
           expiredAt: Date.now() + 24 * 60 * 60 * 1000,
