@@ -35,6 +35,7 @@ import { SavedDocument } from '../utils/documentLibrary';
 import { sendMoney, receiveMoney, getBalance, aiPayForUser, refundGift } from '../utils/wallet';
 import { addTransaction as addAIFinanceTransaction, getAIFinanceData } from '../utils/aiFinance';
 import { backgroundGenerationService, GenerationTask } from '../utils/backgroundGenerationService';
+import { handleAIGroupRedPacketClaiming } from '../utils/aiGroupRedPacketHandler';
 import SubChatWindow from './SubChatWindow';
 import SubChatManager from './SubChatManager';
 import SubChatSuggestionModal from './SubChatSuggestionModal';
@@ -6129,6 +6130,44 @@ ${doc.content}`;
 
             setShowToolbar(false);
             setShowGroupRedPacketModal(false);
+            
+            // 🎁 AI自动领取群红包（异步处理）
+            if (conversation.type === 'group' && conversation.members) {
+              setTimeout(async () => {
+                const aiMembers = conversation.members
+                  ?.map(mid => conversations.find(c => c.id === mid))
+                  .filter(c => c && c.type === 'private') as Conversation[];
+                
+                if (aiMembers && aiMembers.length > 0) {
+                  await handleAIGroupRedPacketClaiming(
+                    newMessage,
+                    aiMembers,
+                    (updatedMessage) => {
+                      // 更新消息中的红包状态
+                      onUpdateConversation(conversation.id, {
+                        messages: conversation.messages.map(m => 
+                          m.id === updatedMessage.id ? updatedMessage : m
+                        )
+                      });
+                    },
+                    (aiId, aiName, amount) => {
+                      // AI领取成功，添加提示消息
+                      console.log(`🎁 ${aiName} 领取了 ¥${amount.toFixed(2)}`);
+                      // 可选：添加系统消息提示
+                      const claimMessage: Message = {
+                        id: `claim_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+                        role: 'system',
+                        content: `${aiName} 领取了红包`,
+                        timestamp: Date.now()
+                      };
+                      onUpdateConversation(conversation.id, {
+                        messages: [...conversation.messages, claimMessage]
+                      });
+                    }
+                  );
+                }
+              }, 2000); // 延迟2秒后开始领取
+            }
           } else {
             alert('发送失败');
           }
