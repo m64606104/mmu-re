@@ -4775,7 +4775,7 @@ ${doc.content}`;
                     )}
                     
                     {/* 红包/转账消息气泡 */}
-                    {message.moneyTransfer && (
+                    {message.moneyTransfer && message.moneyTransfer.type !== 'groupRedPacket' && (
                       <div className={`p-0 rounded-2xl overflow-hidden mb-2 ${
                         message.role === 'user' 
                           ? 'bg-gradient-to-br from-yellow-400 to-orange-400' 
@@ -4836,6 +4836,38 @@ ${doc.content}`;
                             </button>
                           </div>
                         )}
+                      </div>
+                    )}
+                    
+                    {/* 群红包卡片 */}
+                    {message.moneyTransfer?.type === 'groupRedPacket' && message.moneyTransfer.groupRedPacket && (
+                      <div className="mb-2">
+                        <GroupRedPacketCard
+                          redPacket={message.moneyTransfer.groupRedPacket}
+                          currentUserId="user"
+                          currentUserName={userProfile?.name || '你'}
+                          onClaim={(amount) => {
+                            receiveMoney(amount, 'groupRedPacket', conversation.id, '群红包');
+                          }}
+                          onUpdate={(updatedRedPacket) => {
+                            const updatedMessages = conversation.messages.map(m => {
+                              if (m.id === message.id && m.moneyTransfer?.groupRedPacket) {
+                                return {
+                                  ...m,
+                                  moneyTransfer: {
+                                    ...m.moneyTransfer,
+                                    groupRedPacket: updatedRedPacket
+                                  }
+                                };
+                              }
+                              return m;
+                            });
+                            
+                            onUpdateConversation(conversation.id, {
+                              messages: updatedMessages
+                            });
+                          }}
+                        />
                       </div>
                     )}
                     
@@ -5632,14 +5664,26 @@ ${doc.content}`;
                   <MapPin className="w-4 h-4 text-gray-600" />
                 </div>
               </button>
-              <button 
-                className="flex-shrink-0"
-                onClick={() => setShowMoneyTransferModal(true)}
-              >
-                <div className="w-9 h-9 rounded-full bg-white border border-gray-300 flex items-center justify-center hover:border-gray-400 transition-colors">
-                  <CreditCard className="w-4 h-4 text-gray-600" />
-                </div>
-              </button>
+              {/* 红包/转账按钮 - 私聊显示普通红包，群聊显示群红包 */}
+              {conversation.type === 'private' ? (
+                <button 
+                  className="flex-shrink-0"
+                  onClick={() => setShowMoneyTransferModal(true)}
+                >
+                  <div className="w-9 h-9 rounded-full bg-white border border-gray-300 flex items-center justify-center hover:border-gray-400 transition-colors">
+                    <CreditCard className="w-4 h-4 text-gray-600" />
+                  </div>
+                </button>
+              ) : (
+                <button 
+                  className="flex-shrink-0"
+                  onClick={() => setShowGroupRedPacketModal(true)}
+                >
+                  <div className="w-9 h-9 rounded-full bg-white border border-red-200 flex items-center justify-center hover:border-red-400 transition-colors">
+                    <CreditCard className="w-4 h-4 text-red-500" />
+                  </div>
+                </button>
+              )}
               <button 
                 className="flex-shrink-0"
                 onClick={() => setShowSendDocumentModal(true)}
@@ -5990,6 +6034,59 @@ ${doc.content}`;
             alert('发送失败');
           }
         }}
+      />
+    )}
+
+    {/* 群红包弹窗 */}
+    {conversation.type === 'group' && showGroupRedPacketModal && (
+      <GroupRedPacketModal
+        isOpen={showGroupRedPacketModal}
+        onClose={() => setShowGroupRedPacketModal(false)}
+        onSend={(redPacket, message) => {
+          // 检查余额
+          const balance = getBalance();
+          if (balance < redPacket.totalAmount) {
+            alert('余额不足，请先充值');
+            return;
+          }
+
+          // 发送群红包
+          const success = sendMoney(redPacket.totalAmount, 'groupRedPacket', conversation.id, message);
+          if (success) {
+            const newMessage: Message = {
+              id: `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+              role: 'user',
+              content: '',
+              timestamp: Date.now(),
+              moneyTransfer: {
+                type: 'groupRedPacket',
+                amount: redPacket.totalAmount,
+                message,
+                status: 'pending',
+                groupRedPacket: redPacket,
+              }
+            };
+
+            onUpdateConversation(conversation.id, {
+              messages: [...conversation.messages, newMessage],
+              lastMessageTime: Date.now()
+            });
+
+            setShowToolbar(false);
+            setShowGroupRedPacketModal(false);
+          } else {
+            alert('发送失败');
+          }
+        }}
+        groupMembers={conversation.members?.map(mid => {
+          const member = conversations.find(c => c.id === mid);
+          return {
+            id: mid,
+            name: member?.characterSettings?.nickname || member?.name || '未知'
+          };
+        }) || []}
+        currentUserId="user"
+        currentUserName={userProfile?.name || '你'}
       />
     )}
 
