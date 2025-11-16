@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { ChevronLeft, Send, Mic, Sparkles, Smile, BellOff, Bell, Pause, Play, Image as ImageIcon, Video, Phone, MapPin, FileText, Plus, CreditCard, Search, MessageCircle, MessageSquare, Eye, Music } from 'lucide-react';
+import { ChevronLeft, Send, Mic, Sparkles, Smile, BellOff, Bell, Pause, Play, Image as ImageIcon, Video, Phone, MapPin, FileText, Plus, CreditCard, Search, MessageCircle, MessageSquare, Eye, Music, Gift } from 'lucide-react';
 import { Conversation, Message, ApiConfig, UserProfile, DocumentMessage, GroupRedPacketInfo } from '../types';
 import MoneyTransferModal from './MoneyTransferModal';
 import GroupRedPacketModal from './GroupRedPacketModal';
@@ -5664,26 +5664,21 @@ ${doc.content}`;
                   <MapPin className="w-4 h-4 text-gray-600" />
                 </div>
               </button>
-              {/* 红包/转账按钮 - 私聊显示普通红包，群聊显示群红包 */}
-              {conversation.type === 'private' ? (
-                <button 
-                  className="flex-shrink-0"
-                  onClick={() => setShowMoneyTransferModal(true)}
-                >
-                  <div className="w-9 h-9 rounded-full bg-white border border-gray-300 flex items-center justify-center hover:border-gray-400 transition-colors">
-                    <CreditCard className="w-4 h-4 text-gray-600" />
-                  </div>
-                </button>
-              ) : (
-                <button 
-                  className="flex-shrink-0"
-                  onClick={() => setShowGroupRedPacketModal(true)}
-                >
-                  <div className="w-9 h-9 rounded-full bg-white border border-red-200 flex items-center justify-center hover:border-red-400 transition-colors">
-                    <CreditCard className="w-4 h-4 text-red-500" />
-                  </div>
-                </button>
-              )}
+              {/* 红包按钮 - 私聊打开普通红包，群聊打开群红包 */}
+              <button 
+                className="flex-shrink-0"
+                onClick={() => {
+                  if (conversation.type === 'group') {
+                    setShowGroupRedPacketModal(true);
+                  } else {
+                    setShowMoneyTransferModal(true);
+                  }
+                }}
+              >
+                <div className="w-9 h-9 rounded-full bg-white border border-red-200 flex items-center justify-center hover:border-red-300 transition-colors">
+                  <Gift className="w-4 h-4 text-red-500" />
+                </div>
+              </button>
               <button 
                 className="flex-shrink-0"
                 onClick={() => setShowSendDocumentModal(true)}
