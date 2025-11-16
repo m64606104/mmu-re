@@ -26,6 +26,7 @@ import ProactiveMessagingService from './components/ProactiveMessagingService';
 import MessageNotification from './components/MessageNotification';
 import { smartLoad, smartSave, migrateToIndexedDB } from './utils/storage';
 import { generateAIMoment } from './utils/aiMomentsGenerator';
+import { backgroundGenerationService } from './utils/backgroundGenerationService';
 
 function App() {
   const [currentScreen, setCurrentScreen] = useState<Screen>('home');
@@ -161,6 +162,36 @@ function App() {
     
     loadData();
   }, []);
+
+  // 🚀 注册后台生成服务的消息更新回调
+  useEffect(() => {
+    // 为每个对话注册消息更新回调
+    conversations.forEach(conv => {
+      backgroundGenerationService.registerMessageUpdateCallback(
+        conv.id,
+        (conversationId: string, newMessages: Message[]) => {
+          // 更新对话消息
+          setConversations(prev => prev.map(c => {
+            if (c.id === conversationId) {
+              return {
+                ...c,
+                messages: newMessages,
+                lastMessageTime: Date.now(),
+              };
+            }
+            return c;
+          }));
+        }
+      );
+    });
+
+    // 清理：组件卸载时注销所有回调
+    return () => {
+      conversations.forEach(conv => {
+        backgroundGenerationService.unregisterMessageUpdateCallback(conv.id);
+      });
+    };
+  }, [conversations.map(c => c.id).join(',')]);
 
   // 保存数据到智能存储
   useEffect(() => {
