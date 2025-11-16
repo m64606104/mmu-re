@@ -69,12 +69,40 @@ export interface Message {
 
 // 💰 红包/转账类型
 export interface MoneyTransfer {
-  type: 'redPacket' | 'transfer'; // 红包或转账
+  type: 'redPacket' | 'transfer' | 'groupRedPacket'; // 红包、转账或群红包
   amount: number; // 金额
   message?: string; // 红包/转账留言
   status: 'pending' | 'received' | 'returned'; // 待领取、已领取、已退回
   receivedAt?: number; // 领取时间
   originalAmount?: number; // 原始金额（用于退回时显示）
+  // 群红包特有字段
+  groupRedPacket?: GroupRedPacketInfo;
+}
+
+// 群红包详细信息
+export interface GroupRedPacketInfo {
+  id: string; // 红包ID
+  senderId: string; // 发送者ID
+  senderName: string; // 发送者名称
+  message?: string; // 红包留言
+  totalAmount: number; // 总金额
+  totalCount: number; // 红包总数
+  remainingCount: number; // 剩余个数
+  remainingAmount: number; // 剩余金额
+  redPacketType: 'average' | 'random' | 'exclusive'; // 普通/拼手气/专属
+  password?: string; // 口令（口令红包）
+  exclusiveUserId?: string; // 专属用户ID（专属红包）
+  exclusiveUserName?: string; // 专属用户名称
+  claimedBy: Array<{
+    userId: string;
+    userName: string;
+    amount: number;
+    timestamp: number;
+    isLuckiest?: boolean; // 是否为手气最佳
+  }>;
+  createdAt: number; // 创建时间
+  expiredAt: number; // 过期时间（24小时后）
+  status: 'active' | 'finished' | 'expired'; // 进行中/已领完/已过期
 }
 
 // 📄 文档消息类型

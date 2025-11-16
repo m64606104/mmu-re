@@ -170,7 +170,7 @@ async function generateAIReply(
     otherMembers.push({ name: userName, role: '群主' });
     
     // 构建系统提示
-    const systemPrompt = buildGroupChatSystemPrompt(
+    let systemPrompt = buildGroupChatSystemPrompt(
       aiMember.characterSettings!,
       groupConversation.name,
       otherMembers,
@@ -180,6 +180,18 @@ async function generateAIReply(
     
     // 构建消息历史（最近20条）
     const recentMessages = groupConversation.messages.slice(-20);
+    
+    // 🕐 添加时间感知
+    const lastUserMessage = recentMessages
+      .filter(m => m.role === 'user' || (m.role === 'assistant' && !(m as any).senderId))
+      .pop();
+    if (lastUserMessage) {
+      const timeAwarePrompt = buildTimeAwarePrompt(
+        lastUserMessage.timestamp,
+        lastUserMessage.content
+      );
+      systemPrompt += timeAwarePrompt;
+    }
     const apiMessages = recentMessages.map(msg => {
       if (msg.role === 'system') {
         return null; // 跳过系统消息
