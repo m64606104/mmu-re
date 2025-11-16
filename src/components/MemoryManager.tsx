@@ -29,6 +29,27 @@ export default function MemoryManager({ conversationId, conversationName, onClos
   const [newMemoryCategory, setNewMemoryCategory] = useState('其他');
   const [newMemoryImportance, setNewMemoryImportance] = useState<'low' | 'medium' | 'high'>('medium');
   const [showAddForm, setShowAddForm] = useState(false);
+  
+  // 私聊自定义间隔相关状态
+  const presetIntervals = [15, 25, 50, 100];
+  const isCustomInterval = !presetIntervals.includes(settings.autoSummaryInterval);
+  const [customInterval, setCustomInterval] = useState(
+    isCustomInterval ? settings.autoSummaryInterval : 50
+  );
+  const [intervalMode, setIntervalMode] = useState<'preset' | 'custom'>(
+    isCustomInterval ? 'custom' : 'preset'
+  );
+  
+  // 群聊自定义间隔相关状态
+  const groupPresetIntervals = [30, 50, 100, 200];
+  const currentGroupInterval = settings.groupSummaryInterval || 50;
+  const isCustomGroupInterval = !groupPresetIntervals.includes(currentGroupInterval);
+  const [customGroupInterval, setCustomGroupInterval] = useState(
+    isCustomGroupInterval ? currentGroupInterval : 50
+  );
+  const [groupIntervalMode, setGroupIntervalMode] = useState<'preset' | 'custom'>(
+    isCustomGroupInterval ? 'custom' : 'preset'
+  );
 
   const categories = [
     '个人信息', '喜好', '事件', '关系', '习惯', '情感', 
@@ -151,18 +172,160 @@ export default function MemoryManager({ conversationId, conversationName, onClos
           </div>
           
           {settings.enableAutoSummary && (
-            <div className="flex items-center gap-3 text-sm">
-              <span className="text-gray-600">总结间隔：</span>
-              <select
-                value={settings.autoSummaryInterval}
-                onChange={(e) => setSettings({ ...settings, autoSummaryInterval: Number(e.target.value) })}
-                className="px-3 py-1.5 border border-gray-300 rounded-lg text-sm"
-              >
-                <option value={15}>每15条消息</option>
-                <option value={25}>每25条消息</option>
-                <option value={50}>每50条消息</option>
-                <option value={100}>每100条消息</option>
-              </select>
+            <div className="space-y-3">
+              {/* 间隔模式选择 */}
+              <div className="flex items-center gap-3 text-sm">
+                <span className="text-gray-600">总结间隔：</span>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => setIntervalMode('preset')}
+                    className={`px-3 py-1.5 rounded-lg text-sm transition-colors ${
+                      intervalMode === 'preset'
+                        ? 'bg-purple-100 text-purple-700 border-2 border-purple-300'
+                        : 'bg-gray-100 text-gray-600 border-2 border-transparent hover:border-gray-300'
+                    }`}
+                  >
+                    预设
+                  </button>
+                  <button
+                    onClick={() => setIntervalMode('custom')}
+                    className={`px-3 py-1.5 rounded-lg text-sm transition-colors ${
+                      intervalMode === 'custom'
+                        ? 'bg-purple-100 text-purple-700 border-2 border-purple-300'
+                        : 'bg-gray-100 text-gray-600 border-2 border-transparent hover:border-gray-300'
+                    }`}
+                  >
+                    自定义
+                  </button>
+                </div>
+              </div>
+              
+              {/* 预设间隔选择 */}
+              {intervalMode === 'preset' && (
+                <div className="flex items-center gap-2 text-sm">
+                  <select
+                    value={settings.autoSummaryInterval}
+                    onChange={(e) => setSettings({ ...settings, autoSummaryInterval: Number(e.target.value) })}
+                    className="flex-1 px-3 py-1.5 border border-gray-300 rounded-lg text-sm"
+                  >
+                    <option value={15}>每15条消息</option>
+                    <option value={25}>每25条消息</option>
+                    <option value={50}>每50条消息</option>
+                    <option value={100}>每100条消息</option>
+                  </select>
+                </div>
+              )}
+              
+              {/* 自定义间隔输入 */}
+              {intervalMode === 'custom' && (
+                <div className="flex items-center gap-2 text-sm">
+                  <span className="text-gray-600">每</span>
+                  <input
+                    type="number"
+                    min="10"
+                    max="500"
+                    value={customInterval}
+                    onChange={(e) => {
+                      const value = Math.max(10, Math.min(500, Number(e.target.value)));
+                      setCustomInterval(value);
+                      setSettings({ ...settings, autoSummaryInterval: value });
+                    }}
+                    className="w-24 px-3 py-1.5 border border-gray-300 rounded-lg text-sm text-center"
+                  />
+                  <span className="text-gray-600">条消息</span>
+                </div>
+              )}
+              
+              <p className="text-xs text-gray-500 pl-1">
+                {intervalMode === 'custom' 
+                  ? '💡 自定义范围：10-500条消息' 
+                  : '💡 选择合适的间隔可以平衡记忆质量和API消耗'
+                }
+              </p>
+              
+              {/* 分隔线 */}
+              <div className="border-t border-gray-200 my-3"></div>
+              
+              {/* 群聊记忆间隔设置 */}
+              <div className="space-y-3">
+                <div className="flex items-center gap-2">
+                  <span className="text-sm font-medium text-gray-700">群聊记忆总结：</span>
+                  <span className="text-xs text-gray-500">(适用于该AI加入的群聊)</span>
+                </div>
+                
+                {/* 群聊间隔模式选择 */}
+                <div className="flex items-center gap-3 text-sm">
+                  <span className="text-gray-600">群聊间隔：</span>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => setGroupIntervalMode('preset')}
+                      className={`px-3 py-1.5 rounded-lg text-sm transition-colors ${
+                        groupIntervalMode === 'preset'
+                          ? 'bg-purple-100 text-purple-700 border-2 border-purple-300'
+                          : 'bg-gray-100 text-gray-600 border-2 border-transparent hover:border-gray-300'
+                      }`}
+                    >
+                      预设
+                    </button>
+                    <button
+                      onClick={() => setGroupIntervalMode('custom')}
+                      className={`px-3 py-1.5 rounded-lg text-sm transition-colors ${
+                        groupIntervalMode === 'custom'
+                          ? 'bg-purple-100 text-purple-700 border-2 border-purple-300'
+                          : 'bg-gray-100 text-gray-600 border-2 border-transparent hover:border-gray-300'
+                      }`}
+                    >
+                      自定义
+                    </button>
+                  </div>
+                </div>
+                
+                {/* 预设群聊间隔选择 */}
+                {groupIntervalMode === 'preset' && (
+                  <div className="flex items-center gap-2 text-sm">
+                    <select
+                      value={currentGroupInterval}
+                      onChange={(e) => setSettings({ 
+                        ...settings, 
+                        groupSummaryInterval: Number(e.target.value) 
+                      })}
+                      className="flex-1 px-3 py-1.5 border border-gray-300 rounded-lg text-sm"
+                    >
+                      <option value={30}>每30条消息</option>
+                      <option value={50}>每50条消息（推荐）</option>
+                      <option value={100}>每100条消息</option>
+                      <option value={200}>每200条消息</option>
+                    </select>
+                  </div>
+                )}
+                
+                {/* 自定义群聊间隔输入 */}
+                {groupIntervalMode === 'custom' && (
+                  <div className="flex items-center gap-2 text-sm">
+                    <span className="text-gray-600">每</span>
+                    <input
+                      type="number"
+                      min="10"
+                      max="500"
+                      value={customGroupInterval}
+                      onChange={(e) => {
+                        const value = Math.max(10, Math.min(500, Number(e.target.value)));
+                        setCustomGroupInterval(value);
+                        setSettings({ ...settings, groupSummaryInterval: value });
+                      }}
+                      className="w-24 px-3 py-1.5 border border-gray-300 rounded-lg text-sm text-center"
+                    />
+                    <span className="text-gray-600">条群聊消息</span>
+                  </div>
+                )}
+                
+                <p className="text-xs text-gray-500 pl-1">
+                  {groupIntervalMode === 'custom' 
+                    ? '💡 群聊建议设置稍高的间隔（30-200条）' 
+                    : '💡 群聊消息较多，建议使用较大的间隔值'
+                  }
+                </p>
+              </div>
             </div>
           )}
         </div>
