@@ -2708,6 +2708,16 @@ ${characterInfo?.languageStyle ? `语言风格：${characterInfo.languageStyle}`
       // 使用ref来追踪最新的消息列表
       let currentMessages = [...conversation.messages];
       
+      // 📸 创建消息ID快照（用于检测用户在生成期间发送的新消息）
+      const messageIdsSnapshot = new Set(
+        conversation.messages.map(m => m.id)
+      );
+      
+      console.log('📸 创建消息快照:', {
+        快照时刻消息数: conversation.messages.length,
+        最后一条消息: conversation.messages[conversation.messages.length - 1]?.content?.substring(0, 20) || 'N/A'
+      });
+      
       // 调用群聊服务
       // 无人回复检查已在 onAllComplete 回调中处理，避免误报
       await generateFunction(
@@ -2756,12 +2766,45 @@ ${characterInfo?.languageStyle ? `语言风格：${characterInfo.languageStyle}`
           
           onAllComplete: (replies) => {
             console.log('🎉 所有AI完成回复');
+            
+            // 🔍 检测用户在生成期间发送的新消息
+            const userNewMessages = conversation.messages.filter(m => 
+              !messageIdsSnapshot.has(m.id) &&  // 不在快照中
+              m.role === 'user'                  // 是用户消息
+            );
+            
+            if (userNewMessages.length > 0) {
+              console.log('📬 检测到用户新消息:', {
+                新消息数: userNewMessages.length,
+                消息ID: userNewMessages.map(m => m.id),
+                消息内容: userNewMessages.map(m => m.content.substring(0, 30))
+              });
+            }
+            
+            // 📦 智能合并消息（AI回复 + 用户新消息）
+            const finalMessages = [
+              ...currentMessages,    // 包含初始消息 + AI回复
+              ...userNewMessages     // 用户在生成期间发送的新消息
+            ];
+            
+            console.log('📦 最终消息列表:', {
+              总消息数: finalMessages.length,
+              AI回复数: replies.length,
+              用户新消息数: userNewMessages.length
+            });
+            
+            // 更新对话（使用合并后的消息列表）
+            onUpdateConversation(conversation.id, {
+              messages: finalMessages,
+              lastMessageTime: Date.now()
+            });
+            
             setIsGenerating(false);
             setCurrentTypingAI(null);
             setShowSendingHint(false);
             
             // 🚀 通知后台服务生成完成
-            backgroundGenerationService.completeGeneration(conversation.id, currentMessages);
+            backgroundGenerationService.completeGeneration(conversation.id, finalMessages);
             
             // 🧠 群聊记忆总结（后台处理）
             if (conversation.type === 'group' && conversation.members) {
@@ -2772,16 +2815,34 @@ ${characterInfo?.languageStyle ? `语言风格：${characterInfo.languageStyle}`
               }, 1000); // 延迟1秒后执行，避免阻塞
             }
             
-            // 📝 检查是否有用户在AI回复时发送的消息
-            if (pendingUserMessages.length > 0) {
-              console.log(`📬 检测到${pendingUserMessages.length}条待处理用户消息，触发新一轮生成`);
-              setPendingUserMessages([]); // 清空待处理队列
+            // 📝 处理用户新消息（标记为待处理，触发下一轮回复）
+            if (userNewMessages.length > 0) {
+              console.log('📝 用户新消息将在下一轮处理');
               
-              // 延迟一下再触发，让用户看清楚上一轮已完成
+              // 合并到待处理队列（包含旧的和新的）
+              const allPendingIds = [
+                ...pendingUserMessages,
+                ...userNewMessages.map(m => m.id)
+              ];
+              setPendingUserMessages(allPendingIds);
+              
+              // 延迟触发新一轮生成，让用户看清楚上一轮已完成
               setTimeout(() => {
+                console.log('🔄 触发新一轮AI回复，处理用户新消息');
                 handleGroupChatGenerate();
               }, 1000);
               return; // 不显示无人回应提示
+            }
+            
+            // 检查旧的待处理消息（兼容性）
+            if (pendingUserMessages.length > 0) {
+              console.log(`📬 检测到${pendingUserMessages.length}条旧的待处理用户消息，触发新一轮生成`);
+              setPendingUserMessages([]); // 清空待处理队列
+              
+              setTimeout(() => {
+                handleGroupChatGenerate();
+              }, 1000);
+              return;
             }
             
             // 自由模式：如果没有AI回复，显示提示
@@ -2801,9 +2862,9 @@ ${characterInfo?.languageStyle ? `语言风格：${characterInfo.languageStyle}`
                 content: randomHint,
                 timestamp: Date.now()
               };
-              currentMessages = [...currentMessages, systemMessage];
+              const messagesWithHint = [...finalMessages, systemMessage];
               onUpdateConversation(conversation.id, {
-                messages: currentMessages,
+                messages: messagesWithHint,
                 lastMessageTime: Date.now()
               });
             }
