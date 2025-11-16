@@ -6418,8 +6418,13 @@ ${doc.content}`;
     {showGroupSettings && conversation.type === 'group' && (
       <GroupChatSettingsModal
         conversation={conversation}
+        conversations={conversations}
         onClose={() => setShowGroupSettings(false)}
         onUpdateConversation={onUpdateConversation}
+        onDeleteConversation={() => {
+          // 调用删除对话的函数，通过onBack返回
+          onBack();
+        }}
       />
     )}
     </>

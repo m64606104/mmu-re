@@ -1,27 +1,103 @@
 import React, { useState } from 'react';
-import { X, Users, MessageCircle, Info } from 'lucide-react';
+import { X, Users, MessageCircle, Info, Image as ImageIcon, UserPlus, UserMinus, Trash2, Camera } from 'lucide-react';
 import { Conversation } from '../types';
 
 interface GroupChatSettingsModalProps {
   conversation: Conversation;
+  conversations: Conversation[]; // 需要用于成员选择
   onClose: () => void;
   onUpdateConversation: (conversationId: string, updates: Partial<Conversation>) => void;
+  onDeleteConversation?: (conversationId: string) => void; // 删除群功能
 }
 
 const GroupChatSettingsModal: React.FC<GroupChatSettingsModalProps> = ({
   conversation,
+  conversations,
   onClose,
   onUpdateConversation,
+  onDeleteConversation,
 }) => {
+  const [activeTab, setActiveTab] = useState<'info' | 'mode' | 'members'>('info');
   const [groupChatMode, setGroupChatMode] = useState<'sequential' | 'free'>(
     conversation.groupChatMode || 'sequential'
   );
+  const [groupName, setGroupName] = useState(conversation.name);
+  const [groupRemark, setGroupRemark] = useState(conversation.groupRemark || '');
+  const [groupAvatar, setGroupAvatar] = useState(conversation.avatar || '');
+  const [showAddMember, setShowAddMember] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [selectedNewMembers, setSelectedNewMembers] = useState<string[]>([]);
+  
+  const imageInputRef = React.useRef<HTMLInputElement>(null);
 
   const handleSave = () => {
     onUpdateConversation(conversation.id, {
+      name: groupName,
+      groupRemark: groupRemark,
+      avatar: groupAvatar,
       groupChatMode: groupChatMode,
     });
     onClose();
+  };
+
+  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setGroupAvatar(reader.result as string);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const handleConfirmAddMembers = () => {
+    if (selectedNewMembers.length === 0) return;
+    const currentMembers = conversation.members || [];
+    const newMembers = [...new Set([...currentMembers, ...selectedNewMembers])];
+    onUpdateConversation(conversation.id, {
+      members: newMembers,
+    });
+    setSelectedNewMembers([]);
+    setShowAddMember(false);
+  };
+
+  const toggleMemberSelection = (memberId: string) => {
+    setSelectedNewMembers(prev =>
+      prev.includes(memberId)
+        ? prev.filter(id => id !== memberId)
+        : [...prev, memberId]
+    );
+  };
+
+  const handleRemoveMember = (memberId: string) => {
+    const currentMembers = conversation.members || [];
+    const newMembers = currentMembers.filter(id => id !== memberId);
+    onUpdateConversation(conversation.id, {
+      members: newMembers,
+    });
+  };
+
+  const handleDeleteGroup = () => {
+    if (onDeleteConversation) {
+      onDeleteConversation(conversation.id);
+      onClose();
+    }
+  };
+
+  // 获取成员信息
+  const getMembers = () => {
+    return (conversation.members || [])
+      .map(memberId => conversations.find(c => c.id === memberId))
+      .filter(c => c) as Conversation[];
+  };
+
+  // 获取可添加的联系人（排除已在群内的）
+  const getAvailableContacts = () => {
+    const memberIds = conversation.members || [];
+    return conversations.filter(c => 
+      c.type === 'private' && !memberIds.includes(c.id)
+    );
   };
 
   return (
@@ -41,35 +117,124 @@ const GroupChatSettingsModal: React.FC<GroupChatSettingsModalProps> = ({
           </button>
         </div>
 
+        {/* 标签页 */}
+        <div className="flex border-b border-gray-200 bg-white">
+          <button
+            onClick={() => setActiveTab('info')}
+            className={`flex-1 py-3 px-4 text-sm font-medium transition-colors ${
+              activeTab === 'info'
+                ? 'text-blue-600 border-b-2 border-blue-600'
+                : 'text-gray-600 hover:text-gray-900'
+            }`}
+          >
+            群信息
+          </button>
+          <button
+            onClick={() => setActiveTab('mode')}
+            className={`flex-1 py-3 px-4 text-sm font-medium transition-colors ${
+              activeTab === 'mode'
+                ? 'text-blue-600 border-b-2 border-blue-600'
+                : 'text-gray-600 hover:text-gray-900'
+            }`}
+          >
+            回复模式
+          </button>
+          <button
+            onClick={() => setActiveTab('members')}
+            className={`flex-1 py-3 px-4 text-sm font-medium transition-colors ${
+              activeTab === 'members'
+                ? 'text-blue-600 border-b-2 border-blue-600'
+                : 'text-gray-600 hover:text-gray-900'
+            }`}
+          >
+            成员管理
+          </button>
+        </div>
+
         {/* 内容区域 */}
-        <div className="p-6 space-y-6 overflow-y-auto max-h-[calc(80vh-140px)]">
-          {/* 群聊信息 */}
-          <div className="bg-gray-50 rounded-xl p-4">
-            <div className="flex items-center gap-3 mb-3">
-              <div className="w-12 h-12 rounded-full overflow-hidden border-2 border-white shadow-md">
-                {conversation.avatar ? (
-                  <img src={conversation.avatar} alt={conversation.name} className="w-full h-full object-cover" />
-                ) : (
-                  <div className="w-full h-full bg-gradient-to-br from-blue-400 to-purple-500 flex items-center justify-center">
-                    <span className="text-white font-semibold">{conversation.name.charAt(0)}</span>
-                  </div>
-                )}
-              </div>
+        <div className="p-6 space-y-6 overflow-y-auto max-h-[calc(80vh-200px)]">
+          {/* 群信息标签页 */}
+          {activeTab === 'info' && (
+            <div className="space-y-4">
+              {/* 群头像 */}
               <div>
-                <div className="font-semibold text-gray-900">{conversation.name}</div>
-                <div className="text-sm text-gray-500">{conversation.members?.length || 0} 名成员</div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">群头像</label>
+                <div className="flex items-center gap-4">
+                  <div className="relative w-20 h-20 rounded-full overflow-hidden border-2 border-gray-200 shadow-md">
+                    {groupAvatar ? (
+                      <img src={groupAvatar} alt="群头像" className="w-full h-full object-cover" />
+                    ) : (
+                      <div className="w-full h-full bg-gradient-to-br from-blue-400 to-purple-500 flex items-center justify-center">
+                        <span className="text-white text-2xl font-semibold">{groupName.charAt(0)}</span>
+                      </div>
+                    )}
+                    <button
+                      onClick={() => imageInputRef.current?.click()}
+                      className="absolute inset-0 bg-black/50 flex items-center justify-center opacity-0 hover:opacity-100 transition-opacity"
+                    >
+                      <Camera className="w-6 h-6 text-white" />
+                    </button>
+                  </div>
+                  <div className="flex-1">
+                    <button
+                      onClick={() => imageInputRef.current?.click()}
+                      className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors flex items-center gap-2"
+                    >
+                      <ImageIcon className="w-4 h-4" />
+                      上传图片
+                    </button>
+                    <input
+                      ref={imageInputRef}
+                      type="file"
+                      accept="image/*"
+                      onChange={handleImageUpload}
+                      className="hidden"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* 群名称 */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">群名称</label>
+                <input
+                  type="text"
+                  value={groupName}
+                  onChange={(e) => setGroupName(e.target.value)}
+                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  placeholder="请输入群名称"
+                />
+              </div>
+
+              {/* 群备注 */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">群备注</label>
+                <textarea
+                  value={groupRemark}
+                  onChange={(e) => setGroupRemark(e.target.value)}
+                  rows={3}
+                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none"
+                  placeholder="请输入群备注（可选）"
+                />
+              </div>
+
+              {/* 删除群 */}
+              <div className="pt-4 border-t border-gray-200">
+                <button
+                  onClick={() => setShowDeleteConfirm(true)}
+                  className="w-full py-3 bg-red-50 text-red-600 rounded-lg hover:bg-red-100 transition-colors flex items-center justify-center gap-2 font-medium"
+                >
+                  <Trash2 className="w-4 h-4" />
+                  删除群聊
+                </button>
               </div>
             </div>
-            {conversation.groupRemark && (
-              <div className="text-sm text-gray-600">
-                备注：{conversation.groupRemark}
-              </div>
-            )}
-          </div>
+          )}
 
-          {/* 回复模式选择 */}
-          <div>
-            <div className="flex items-center gap-2 mb-3">
+          {/* 回复模式标签页 */}
+          {activeTab === 'mode' && (
+            <div className="space-y-4">
+            <div className="flex items-center gap-2">
               <MessageCircle className="w-5 h-5 text-blue-500" />
               <h3 className="font-semibold text-gray-900">回复模式</h3>
             </div>
@@ -119,7 +284,6 @@ const GroupChatSettingsModal: React.FC<GroupChatSettingsModalProps> = ({
                 </div>
               </button>
             </div>
-          </div>
 
           {/* 自由模式说明 */}
           {groupChatMode === 'free' && (
@@ -136,6 +300,79 @@ const GroupChatSettingsModal: React.FC<GroupChatSettingsModalProps> = ({
                     <li>如果没有AI回复，会显示提示信息</li>
                   </ul>
                 </div>
+              </div>
+            </div>
+          )}
+            </div>
+          )}
+
+          {/* 成员管理标签页 */}
+          {activeTab === 'members' && (
+            <div className="space-y-4">
+              {/* 添加成员按钮 */}
+              <button
+                onClick={() => setShowAddMember(true)}
+                className="w-full py-3 bg-blue-50 text-blue-600 rounded-lg hover:bg-blue-100 transition-colors flex items-center justify-center gap-2 font-medium"
+              >
+                <UserPlus className="w-4 h-4" />
+                添加成员
+              </button>
+
+              {/* 成员列表 */}
+              <div className="space-y-2">
+                <div className="text-sm font-medium text-gray-700 mb-3">
+                  群成员 ({getMembers().length})
+                </div>
+                {getMembers().map(member => (
+                  <div
+                    key={member.id}
+                    className="flex items-center justify-between p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors"
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-full overflow-hidden border-2 border-white shadow-sm">
+                        {member.characterSettings?.avatar || member.avatar ? (
+                          <img
+                            src={member.characterSettings?.avatar || member.avatar}
+                            alt={member.characterSettings?.nickname || member.name}
+                            className="w-full h-full object-cover"
+                          />
+                        ) : (
+                          <div className="w-full h-full bg-gradient-to-br from-blue-400 to-purple-500 flex items-center justify-center">
+                            <span className="text-white text-sm font-semibold">
+                              {(member.characterSettings?.nickname || member.name).charAt(0)}
+                            </span>
+                          </div>
+                        )}
+                      </div>
+                      <div>
+                        <div className="font-medium text-gray-900">
+                          {member.characterSettings?.nickname || member.name}
+                        </div>
+                        {member.characterSettings?.personality && (
+                          <div className="text-xs text-gray-500">
+                            {member.characterSettings.personality.slice(0, 20)}...
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => {
+                        if (window.confirm(`确定要将 ${member.characterSettings?.nickname || member.name} 移出群聊吗？`)) {
+                          handleRemoveMember(member.id);
+                        }
+                      }}
+                      className="p-2 text-red-500 hover:bg-red-50 rounded-lg transition-colors"
+                      title="移出群聊"
+                    >
+                      <UserMinus className="w-4 h-4" />
+                    </button>
+                  </div>
+                ))}
+                {getMembers().length === 0 && (
+                  <div className="text-center py-8 text-gray-400">
+                    暂无成员
+                  </div>
+                )}
               </div>
             </div>
           )}
@@ -157,6 +394,136 @@ const GroupChatSettingsModal: React.FC<GroupChatSettingsModalProps> = ({
           </button>
         </div>
       </div>
+
+      {/* 添加成员弹窗 */}
+      {showAddMember && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 backdrop-blur-sm">
+          <div className="bg-white rounded-2xl w-[90%] max-w-md max-h-[70vh] overflow-hidden shadow-2xl flex flex-col">
+            {/* 标题栏 */}
+            <div className="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
+              <h3 className="text-lg font-semibold text-gray-900">添加群成员</h3>
+              <button
+                onClick={() => {
+                  setShowAddMember(false);
+                  setSelectedNewMembers([]);
+                }}
+                className="p-2 hover:bg-gray-100 rounded-full transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* 联系人列表 */}
+            <div className="flex-1 overflow-y-auto p-4">
+              {getAvailableContacts().length === 0 ? (
+                <div className="text-center py-8 text-gray-400">
+                  没有可添加的联系人
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {getAvailableContacts().map(contact => (
+                    <button
+                      key={contact.id}
+                      onClick={() => toggleMemberSelection(contact.id)}
+                      className={`w-full flex items-center gap-3 p-3 rounded-lg transition-colors ${
+                        selectedNewMembers.includes(contact.id)
+                          ? 'bg-blue-50 border-2 border-blue-500'
+                          : 'bg-gray-50 border-2 border-transparent hover:bg-gray-100'
+                      }`}
+                    >
+                      <div className="w-12 h-12 rounded-full overflow-hidden border-2 border-white shadow-sm">
+                        {contact.characterSettings?.avatar || contact.avatar ? (
+                          <img
+                            src={contact.characterSettings?.avatar || contact.avatar}
+                            alt={contact.characterSettings?.nickname || contact.name}
+                            className="w-full h-full object-cover"
+                          />
+                        ) : (
+                          <div className="w-full h-full bg-gradient-to-br from-blue-400 to-purple-500 flex items-center justify-center">
+                            <span className="text-white font-semibold">
+                              {(contact.characterSettings?.nickname || contact.name).charAt(0)}
+                            </span>
+                          </div>
+                        )}
+                      </div>
+                      <div className="flex-1 text-left">
+                        <div className="font-medium text-gray-900">
+                          {contact.characterSettings?.nickname || contact.name}
+                        </div>
+                        {contact.characterSettings?.personality && (
+                          <div className="text-sm text-gray-500">
+                            {contact.characterSettings.personality.slice(0, 30)}...
+                          </div>
+                        )}
+                      </div>
+                      {selectedNewMembers.includes(contact.id) && (
+                        <div className="w-6 h-6 bg-blue-500 rounded-full flex items-center justify-center">
+                          <div className="w-3 h-3 bg-white rounded-full"></div>
+                        </div>
+                      )}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* 底部按钮 */}
+            <div className="p-4 border-t border-gray-200 flex gap-3">
+              <button
+                onClick={() => {
+                  setShowAddMember(false);
+                  setSelectedNewMembers([]);
+                }}
+                className="flex-1 py-3 bg-gray-100 text-gray-700 rounded-xl font-medium hover:bg-gray-200 transition-colors"
+              >
+                取消
+              </button>
+              <button
+                onClick={handleConfirmAddMembers}
+                disabled={selectedNewMembers.length === 0}
+                className={`flex-1 py-3 rounded-xl font-medium transition-all ${
+                  selectedNewMembers.length > 0
+                    ? 'bg-blue-500 text-white hover:bg-blue-600'
+                    : 'bg-gray-200 text-gray-400 cursor-not-allowed'
+                }`}
+              >
+                添加 {selectedNewMembers.length > 0 && `(${selectedNewMembers.length})`}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 删除确认弹窗 */}
+      {showDeleteConfirm && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 backdrop-blur-sm">
+          <div className="bg-white rounded-2xl w-[90%] max-w-sm p-6 shadow-2xl">
+            <div className="text-center mb-6">
+              <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                <Trash2 className="w-8 h-8 text-red-600" />
+              </div>
+              <h3 className="text-lg font-semibold text-gray-900 mb-2">确认删除群聊？</h3>
+              <p className="text-sm text-gray-600">
+                删除后，群聊记录将被永久清除，且无法恢复
+              </p>
+            </div>
+            <div className="flex gap-3">
+              <button
+                onClick={() => setShowDeleteConfirm(false)}
+                className="flex-1 py-3 bg-gray-100 text-gray-700 rounded-xl font-medium hover:bg-gray-200 transition-colors"
+              >
+                取消
+              </button>
+              <button
+                onClick={handleDeleteGroup}
+                className="flex-1 py-3 bg-red-500 text-white rounded-xl font-medium hover:bg-red-600 transition-colors"
+              >
+                确认删除
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
