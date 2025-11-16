@@ -322,7 +322,10 @@ export function sendLetter(
     }],
     currentRound: 1,
     maxRounds: isBottle ? 3 : 999,  // 漂流瓶限制3轮，其他无限制
-    isPenPalAdded: false
+    isPenPalAdded: false,
+    
+    // 管理初始化
+    isArchived: false
   };
   
   // 保存到localStorage
@@ -693,6 +696,112 @@ export function clearLetterTimer(letterId: string) {
  */
 export function getActiveTimersCount(): number {
   return activeTimers.size;
+}
+
+/**
+ * 归档信件（放入回收站）
+ */
+export function archiveLetter(letterId: string): boolean {
+  const letters = getLettersFromStorage();
+  const letter = letters.find(l => l.id === letterId);
+  
+  if (!letter) {
+    return false;
+  }
+  
+  letter.isArchived = true;
+  letter.archivedAt = Date.now();
+  
+  updateLetterInStorage(letter);
+  
+  console.log(`🗑️ 已归档信件: ${letter.receiverName}`);
+  
+  return true;
+}
+
+/**
+ * 恢复信件（从回收站取出）
+ */
+export function unarchiveLetter(letterId: string): boolean {
+  const letters = getLettersFromStorage();
+  const letter = letters.find(l => l.id === letterId);
+  
+  if (!letter) {
+    return false;
+  }
+  
+  letter.isArchived = false;
+  letter.archivedAt = undefined;
+  
+  updateLetterInStorage(letter);
+  
+  console.log(`♻️ 已恢复信件: ${letter.receiverName}`);
+  
+  return true;
+}
+
+/**
+ * 永久删除信件
+ */
+export function deleteLetter(letterId: string): boolean {
+  const letters = getLettersFromStorage();
+  const index = letters.findIndex(l => l.id === letterId);
+  
+  if (index === -1) {
+    return false;
+  }
+  
+  // 清除定时器
+  clearLetterTimer(letterId);
+  
+  // 从数组中删除
+  letters.splice(index, 1);
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(letters));
+  
+  console.log(`🗑️ 已永久删除信件`);
+  
+  return true;
+}
+
+/**
+ * 获取所有笔友（已加为笔友的漂流瓶AI）
+ */
+export function getAllPenPals(): Letter[] {
+  return getLettersFromStorage()
+    .filter(l => l.isPenPalAdded && !l.isArchived)
+    .sort((a, b) => (b.repliedAt || b.sentAt) - (a.repliedAt || a.sentAt));
+}
+
+/**
+ * 获取活跃信件（未归档）
+ */
+export function getActiveLetters(): Letter[] {
+  return getLettersFromStorage()
+    .filter(l => !l.isArchived)
+    .sort((a, b) => b.sentAt - a.sentAt);
+}
+
+/**
+ * 获取归档信件（回收站）
+ */
+export function getArchivedLetters(): Letter[] {
+  return getLettersFromStorage()
+    .filter(l => l.isArchived)
+    .sort((a, b) => (b.archivedAt || 0) - (a.archivedAt || 0));
+}
+
+/**
+ * 获取笔友统计信息
+ */
+export function getPenPalStats() {
+  const penPals = getAllPenPals();
+  
+  return {
+    total: penPals.length,
+    totalRounds: penPals.reduce((sum, l) => sum + l.currentRound, 0),
+    locations: [...new Set(penPals.map(l => l.bottleAIProfile?.location).filter(Boolean))],
+    recentActive: penPals.slice(0, 5)
+  };
 }
 
 /**

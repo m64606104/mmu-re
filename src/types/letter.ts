@@ -32,6 +32,10 @@ export interface Letter {
   maxRounds: number;  // 最大轮数限制（漂流瓶专属，默认3轮）
   isPenPalAdded: boolean;  // 是否已加为笔友
   
+  // 管理相关
+  isArchived: boolean;  // 是否已归档（放入回收站）
+  archivedAt?: number;  // 归档时间
+  
   // 装饰元素
   stampStyle?: 'default' | 'vintage' | 'flower' | 'sea';  // 邮票样式
   paperStyle?: 'white' | 'vintage' | 'blue';  // 信纸样式

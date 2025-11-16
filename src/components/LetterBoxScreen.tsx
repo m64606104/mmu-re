@@ -5,19 +5,23 @@
 
 import React, { useState, useEffect } from 'react';
 import { Letter } from '../types/letter';
-import { getAllLetters } from '../utils/letterService';
-import { ArrowLeft, Mail, Send, Clock, Check } from 'lucide-react';
+import { getActiveLetters, archiveLetter } from '../utils/letterService';
+import { ArrowLeft, Mail, Send, Clock, Check, Users, Trash2, Archive } from 'lucide-react';
 import LetterDetailModal from './LetterDetailModal';
 
 interface LetterBoxScreenProps {
   onBack: () => void;
   onWriteNew: () => void;
+  onToPenPals: () => void;
+  toArchived: () => void;
   userName: string;
 }
 
 const LetterBoxScreen: React.FC<LetterBoxScreenProps> = ({
   onBack,
   onWriteNew,
+  onToPenPals,
+  toArchived,
   userName
 }) => {
   const [letters, setLetters] = useState<Letter[]>([]);
@@ -31,8 +35,18 @@ const LetterBoxScreen: React.FC<LetterBoxScreenProps> = ({
   }, []);
 
   const loadLetters = () => {
-    const allLetters = getAllLetters();
-    setLetters(allLetters);
+    const activeLetters = getActiveLetters();
+    setLetters(activeLetters);
+  };
+
+  const handleArchive = (letterId: string, receiverName: string) => {
+    if (confirm(`确定要归档与 ${receiverName} 的信件吗？\n\n归档后可在回收站中恢复`)) {
+      const success = archiveLetter(letterId);
+      if (success) {
+        alert('📦 已归档');
+        loadLetters();
+      }
+    }
   };
 
   const formatTime = (timestamp: number) => {
@@ -119,14 +133,31 @@ const LetterBoxScreen: React.FC<LetterBoxScreenProps> = ({
         </button>
       </div>
 
+      {/* 快捷功能区 */}
+      <div className="p-4 flex gap-3">
+        <button
+          onClick={onToPenPals}
+          className="flex-1 px-4 py-3 bg-gradient-to-r from-pink-500 to-rose-500 text-white rounded-xl font-medium hover:shadow-lg transition-all flex items-center justify-center gap-2"
+        >
+          <Users size={18} />
+          我的笔友
+        </button>
+        <button
+          onClick={toArchived}
+          className="flex-1 px-4 py-3 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-xl font-medium transition-colors flex items-center justify-center gap-2"
+        >
+          <Trash2 size={18} />
+          回收站
+        </button>
+      </div>
+
       {/* 信件列表 */}
-      <div className="flex-1 overflow-y-auto p-4">
+      <div className="flex-1 overflow-y-auto px-4 pb-4">
         <div className="max-w-2xl mx-auto space-y-4">
           {letters.map((letter) => (
-            <button
+            <div
               key={letter.id}
-              onClick={() => setSelectedLetter(letter)}
-              className="w-full bg-white rounded-2xl shadow-md hover:shadow-xl transition-all p-4 text-left relative overflow-hidden group"
+              className="w-full bg-white rounded-2xl shadow-md hover:shadow-xl transition-all p-4 relative overflow-hidden group"
             >
               {/* 已回复标记 */}
               {letter.status === 'replied' && (
@@ -142,12 +173,21 @@ const LetterBoxScreen: React.FC<LetterBoxScreenProps> = ({
                 <span className="text-2xl">{getStampEmoji(letter.stampStyle)}</span>
               </div>
 
-              <div className="pr-16">
+              {/* 主要内容区（可点击） */}
+              <div 
+                onClick={() => setSelectedLetter(letter)}
+                className="pr-16 cursor-pointer"
+              >
                 {/* 收信人 */}
                 <div className="flex items-center gap-2 mb-2">
                   <span className="text-lg">{letter.receiverAvatar}</span>
                   <span className="font-medium text-gray-800">{letter.receiverName}</span>
-                  {letter.isBottle && (
+                  {letter.isPenPalAdded && (
+                    <span className="text-xs bg-pink-100 text-pink-600 px-2 py-0.5 rounded-full">
+                      笔友
+                    </span>
+                  )}
+                  {letter.isBottle && !letter.isPenPalAdded && (
                     <span className="text-xs bg-blue-100 text-blue-600 px-2 py-0.5 rounded-full">
                       漂流瓶
                     </span>
@@ -174,10 +214,25 @@ const LetterBoxScreen: React.FC<LetterBoxScreenProps> = ({
                         等待回信
                       </span>
                     )}
+                    <span className="text-gray-400">
+                      {letter.currentRound} 轮
+                    </span>
                   </div>
                 </div>
               </div>
-            </button>
+
+              {/* 归档按钮 */}
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleArchive(letter.id, letter.receiverName);
+                }}
+                className="absolute bottom-4 right-4 p-2 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors opacity-0 group-hover:opacity-100"
+                title="归档"
+              >
+                <Archive size={16} className="text-gray-600" />
+              </button>
+            </div>
           ))}
         </div>
       </div>

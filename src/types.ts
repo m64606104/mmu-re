@@ -394,7 +394,7 @@ export interface MemoryBank {
   };
 }
 
-export type Screen = 'home' | 'settings' | 'social' | 'chat' | 'character-settings' | 'new-conversation' | 'profile' | 'moments' | 'contacts' | 'add-friend' | 'create-group' | 'theme' | 'guide' | 'relationships' | 'announcement' | 'wallet' | 'shopping' | 'user-system' | 'order-history' | 'database' | 'letterbox' | 'letter-writing';
+export type Screen = 'home' | 'settings' | 'social' | 'chat' | 'character-settings' | 'new-conversation' | 'profile' | 'moments' | 'contacts' | 'add-friend' | 'create-group' | 'theme' | 'guide' | 'relationships' | 'announcement' | 'wallet' | 'shopping' | 'user-system' | 'order-history' | 'database' | 'letterbox' | 'letter-writing' | 'pen-pals' | 'archived-letters';
 
 // 购物类型
 export type ShopType = 'food' | 'movie' | 'shopping';

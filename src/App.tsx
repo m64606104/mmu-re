@@ -21,6 +21,8 @@ import OrderHistoryScreen from './components/OrderHistoryScreen';
 import DatabaseScreen from './components/DatabaseScreen';
 import LetterBoxScreen from './components/LetterBoxScreen';
 import LetterWritingScreen from './components/LetterWritingScreen';
+import PenPalListScreen from './components/PenPalListScreen';
+import ArchivedLettersScreen from './components/ArchivedLettersScreen';
 import ToastContainer from './components/ToastContainer';
 import { MomentsAutoGenerator } from './components/MomentsAutoGenerator';
 import { AIMomentsInteractionManager } from './components/AIMomentsInteractionManager';
@@ -926,7 +928,26 @@ function App() {
           <LetterBoxScreen
             onBack={() => navigateTo('home')}
             onWriteNew={() => navigateTo('letter-writing')}
+            onToPenPals={() => navigateTo('pen-pals')}
+            toArchived={() => navigateTo('archived-letters')}
             userName={userProfile.username}
+          />
+        );
+      case 'pen-pals':
+        return (
+          <PenPalListScreen
+            onBack={() => navigateTo('letterbox')}
+            onWriteTo={() => {
+              // 跟转到写信页面
+              navigateTo('letter-writing');
+            }}
+            userName={userProfile.username}
+          />
+        );
+      case 'archived-letters':
+        return (
+          <ArchivedLettersScreen
+            onBack={() => navigateTo('letterbox')}
           />
         );
       case 'letter-writing':
