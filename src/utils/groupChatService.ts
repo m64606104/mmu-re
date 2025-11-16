@@ -833,7 +833,7 @@ export async function generateGroupChatRepliesFreeMode(
     // 如果不是最后一轮，添加轮次间隔
     if (currentRound < MAX_ROUNDS) {
       console.log('⏳ 等待下一轮...');
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      await new Promise(resolve => setTimeout(resolve, 300)); // 优化：从1000ms减少到300ms
     }
   }
   
