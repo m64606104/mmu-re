@@ -3,7 +3,7 @@
  * 处理写信、寄出、回复延迟、漂流瓶等功能
  */
 
-import { Letter, BottleAI } from '../types/letter';
+import { Letter, BottleAI, LetterRound } from '../types/letter';
 import { checkLetterAchievements } from './achievementSystem';
 
 // 📮 预设AI角色池 - 用户可主动选择的固定角色
@@ -1246,7 +1246,48 @@ const STORAGE_KEY = 'slow_letters';
 function getLettersFromStorage(): Letter[] {
   try {
     const data = localStorage.getItem(STORAGE_KEY);
-    return data ? JSON.parse(data) : [];
+    if (!data) return [];
+    
+    const letters: Letter[] = JSON.parse(data);
+    
+    // 🔧 数据迁移：为旧数据补充 conversationRounds 字段
+    const migratedLetters = letters.map(letter => {
+      if (!letter.conversationRounds || letter.conversationRounds.length === 0) {
+        // 旧数据结构迁移
+        const rounds: LetterRound[] = [{
+          roundNumber: 1,
+          userLetter: {
+            content: letter.content,
+            sentAt: letter.sentAt
+          }
+        }];
+        
+        // 如果有回复内容，添加到第一轮
+        if (letter.replyContent && letter.repliedAt) {
+          rounds[0].aiReply = {
+            content: letter.replyContent,
+            repliedAt: letter.repliedAt
+          };
+        }
+        
+        return {
+          ...letter,
+          conversationRounds: rounds,
+          currentRound: letter.currentRound || 1,
+          maxRounds: letter.maxRounds || (letter.isBottle ? 3 : 999),
+          isPenPalAdded: letter.isPenPalAdded || false
+        };
+      }
+      return letter;
+    });
+    
+    // 如果有迁移，保存回去
+    if (migratedLetters.some((_, i) => !letters[i].conversationRounds)) {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(migratedLetters));
+      console.log('📦 已迁移旧信件数据到新格式');
+    }
+    
+    return migratedLetters;
   } catch (error) {
     console.error('读取信件失败:', error);
     return [];

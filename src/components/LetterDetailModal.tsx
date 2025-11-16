@@ -124,7 +124,8 @@ const LetterDetailModal: React.FC<LetterDetailModalProps> = ({
 
         {/* 信件内容 - 显示所有轮次 */}
         <div className="p-6 overflow-y-auto max-h-[calc(90vh-250px)]">
-          {letter.conversationRounds.map((round, index) => (
+          {letter.conversationRounds && letter.conversationRounds.length > 0 ? (
+            letter.conversationRounds.map((round, index) => (
             <div key={round.roundNumber} className="mb-6">
               {/* 轮次标记 */}
               {letter.conversationRounds.length > 1 && (
@@ -195,7 +196,16 @@ const LetterDetailModal: React.FC<LetterDetailModalProps> = ({
                 </div>
               )}
             </div>
-          ))}
+          ))
+          ) : (
+            <div className="bg-amber-50 border-2 border-dashed border-amber-300 rounded-2xl p-6 text-center">
+              <div className="text-5xl mb-3">⚠️</div>
+              <div className="text-gray-700 font-medium mb-2">信件数据格式错误</div>
+              <div className="text-sm text-gray-500">
+                请尝试刷新页面或联系技术支持
+              </div>
+            </div>
+          )}
 
           {/* 继续回信输入框 */}
           {showReplyInput && replyStatus.canContinue && (
