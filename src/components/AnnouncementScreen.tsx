@@ -54,6 +54,121 @@ export default function AnnouncementScreen({ onBack }: AnnouncementScreenProps) 
 
         {/* 公告列表 */}
         <div className="space-y-4">
+          {/* 11.16 更新 - 群聊功能全面升级 */}
+          <div className="bg-gradient-to-br from-cyan-500/20 to-blue-500/20 border-2 border-cyan-400/50 rounded-xl p-4 shadow-lg mb-4">
+            <div className="flex items-start gap-3 mb-3">
+              <div className="w-10 h-10 rounded-full bg-gradient-to-br from-cyan-500 to-blue-500 flex items-center justify-center flex-shrink-0">
+                <Bell className="w-5 h-5 text-white" />
+              </div>
+              <div className="flex-1">
+                <h3 className="text-lg font-bold text-white mb-1">📱 群聊功能全面升级</h3>
+                <p className="text-xs text-gray-300">2024年11月16日 重磅更新</p>
+              </div>
+            </div>
+            <div className="pl-13 space-y-3">
+              <div>
+                <h4 className="text-sm font-semibold text-cyan-200 mb-2">核心功能</h4>
+                
+                <div className="space-y-2 mb-3">
+                  <div>
+                    <p className="text-gray-100 text-sm leading-relaxed">
+                      <strong>🧠 群聊记忆库系统</strong><br />
+                      完整的群聊记忆管理！现在AI能够记住群聊中的对话内容了。每50条消息自动总结一次，记录群友的性格特点、讨论的话题、互动内容和群规则。让AI在群聊中的表现更加智能和连贯。
+                    </p>
+                  </div>
+                  
+                  <div>
+                    <p className="text-gray-100 text-sm leading-relaxed">
+                      <strong>⚙️ 自定义记忆总结间隔</strong><br />
+                      想要更精细的记忆控制？现在可以自定义记忆总结间隔了！支持10-500条消息任意设定和预设值，让AI的记忆频率完全由你掌控。
+                    </p>
+                  </div>
+                  
+                  <div>
+                    <p className="text-gray-100 text-sm leading-relaxed">
+                      <strong>🎁 AI智能领取群红包</strong><br />
+                      告别简单概率判断！AI现在会基于性格、群聊记忆、上下文和关系等多维度真实思考是否领取红包。活泼的AI更积极，高冷的AI更矜持，完全模拟真实抢红包场景。
+                    </p>
+                  </div>
+                  
+                  <div>
+                    <p className="text-gray-100 text-sm leading-relaxed">
+                      <strong>🔐 口令红包智能决策</strong><br />
+                      AI不再自动跳过口令红包，而是会评估口令内容。如果口令是"小Emma是小可爱"，Emma可能会觉得尴尬选择不领取；但如果她性格大大咧咧，也可能无所谓地领取。
+                    </p>
+                  </div>
+                  
+                  <div>
+                    <p className="text-gray-100 text-sm leading-relaxed">
+                      <strong>🔄 自由模式多轮回复</strong><br />
+                      让对话自然延续！自由模式支持2-3轮循环回复了。AI会根据对话热度自动决定是否继续参与，对话体验更加自然流畅。
+                    </p>
+                  </div>
+                  
+                  <div>
+                    <p className="text-gray-100 text-sm leading-relaxed">
+                      <strong>💬 用户可在AI回复时发消息</strong><br />
+                      不再被打断！现在AI回复时你也能继续发消息了。你的消息会立即显示，AI完成本轮回复后自动处理你的新消息，让群聊互动更加自由自然。
+                    </p>
+                  </div>
+                </div>
+              </div>
+              
+              <div>
+                <h4 className="text-sm font-semibold text-blue-200 mb-2">体验优化</h4>
+                
+                <div className="space-y-2 mb-3">
+                  <div>
+                    <p className="text-gray-100 text-sm leading-relaxed">
+                      <strong>🎨 输入动画零延迟</strong><br />
+                      消除所有空白期！优化了AI切换时的输入动画显示时机。不再有让人困惑的空白等待期。
+                    </p>
+                  </div>
+                  
+                  <div>
+                    <p className="text-gray-100 text-sm leading-relaxed">
+                      <strong>⚡ 回复间隔优化</strong><br />
+                      对话更加紧凑！节省50%等待时间。对话节奏更快更流畅。
+                    </p>
+                  </div>
+                </div>
+              </div>
+              
+              <div>
+                <h4 className="text-sm font-semibold text-teal-200 mb-2">Bug修复</h4>
+                
+                <div className="space-y-2 mb-3">
+                  <div>
+                    <p className="text-gray-100 text-sm leading-relaxed">
+                      <strong>🎭 表情包正确显示</strong><br />
+                      修复了群聊媒体解析问题！现在AI在群聊发送的表情包、图片、视频都能正确显示了。
+                    </p>
+                  </div>
+                  
+                  <div>
+                    <p className="text-gray-100 text-sm leading-relaxed">
+                      <strong>🎁 红包数量限制</strong><br />
+                      公平分配机制！当红包数量少于群成员时，系统会随机选择部分AI参与领取。
+                    </p>
+                  </div>
+                  
+                  <div>
+                    <p className="text-gray-100 text-sm leading-relaxed">
+                      <strong>🔧 红包检测修复</strong><br />
+                      AI能正确检测红包了！修复了AI说"没有红包"的问题，现在AI能准确检测和领取红包。
+                    </p>
+                  </div>
+                </div>
+              </div>
+              
+              <div className="bg-cyan-500/20 border border-cyan-400/50 rounded-lg p-3 mt-2">
+                <p className="text-xs text-cyan-100 leading-relaxed">
+                  💡 <strong>群聊记忆使用</strong>: 角色设置 → 记忆管理 → 查看群聊记忆，可以看到AI记住了哪些群聊内容
+                </p>
+              </div>
+            </div>
+          </div>
+
           {/* 11.13 更新 - 音乐功能与交互优化 */}
           <div className="bg-gradient-to-br from-pink-500/20 to-rose-500/20 border-2 border-pink-400/50 rounded-xl p-4 shadow-lg mb-4">
             <div className="flex items-start gap-3 mb-3">
