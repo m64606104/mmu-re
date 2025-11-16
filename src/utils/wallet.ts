@@ -333,14 +333,20 @@ export const aiPayForUser = (
 };
 
 /**
- * 退回礼物（从用户余额扣款退回，AI余额不变）
+ * 退回礼物
+ * 注意：礼物不涉及用户的真实钱包，因为：
+ * - AI送礼物是用AI的虚拟货币（智能财务系统）
+ * - 用户接受礼物不会收到钱，只是收礼物
+ * - 用户退回礼物也不应该有账单记录
  */
 export const refundGift = (
   amount: number,
   productName: string,
-  conversationId: string
+  _conversationId: string // 保留参数签名以兼容现有调用，但不使用
 ): boolean => {
-  // 用户余额增加（退款）
-  addTransaction('income', amount, 'shopping', `退回礼物: ${productName}`, conversationId);
+  // ✅ 修复：礼物退回不应该给用户增加收入
+  // AI送礼物是送礼物，不是送钱
+  // 退回礼物也不涉及用户钱包
+  console.log(`🎁 退回礼物: ${productName} (¥${amount})，不计入用户账单`);
   return true;
 };

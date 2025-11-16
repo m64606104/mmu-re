@@ -179,3 +179,38 @@ export function validatePassword(redPacket: GroupRedPacketInfo, password: string
   }
   return redPacket.password === password;
 }
+
+/**
+ * 处理过期红包退款
+ * 将未领取的金额退回给发送者
+ */
+export function processExpiredRedPacketRefund(
+  redPacket: GroupRedPacketInfo,
+  onRefund?: (senderId: string, senderName: string, refundAmount: number) => void
+): { refunded: boolean; amount: number } {
+  // 检查是否过期
+  if (!checkRedPacketExpired(redPacket)) {
+    return { refunded: false, amount: 0 };
+  }
+  
+  // 检查是否还有剩余金额
+  if (redPacket.remainingAmount <= 0) {
+    return { refunded: false, amount: 0 };
+  }
+  
+  // 退款金额
+  const refundAmount = redPacket.remainingAmount;
+  
+  // 标记为已退款
+  redPacket.remainingAmount = 0;
+  redPacket.remainingCount = 0;
+  
+  // 回调通知
+  if (onRefund) {
+    onRefund(redPacket.senderId, redPacket.senderName, refundAmount);
+  }
+  
+  console.log(`🔙 红包过期退款: ${redPacket.senderName} 收到退款 ¥${refundAmount.toFixed(2)}`);
+  
+  return { refunded: true, amount: refundAmount };
+}

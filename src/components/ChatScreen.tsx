@@ -36,6 +36,7 @@ import { sendMoney, receiveMoney, getBalance, aiPayForUser, refundGift } from '.
 import { addTransaction as addAIFinanceTransaction, getAIFinanceData } from '../utils/aiFinance';
 import { backgroundGenerationService, GenerationTask } from '../utils/backgroundGenerationService';
 import { handleAIGroupRedPacketClaiming } from '../utils/aiGroupRedPacketDecision';
+import { processExpiredRedPacketRefund } from '../utils/groupRedPacket';
 import SubChatWindow from './SubChatWindow';
 import SubChatManager from './SubChatManager';
 import SubChatSuggestionModal from './SubChatSuggestionModal';
@@ -1030,6 +1031,54 @@ ${recentMessages}
       });
     }
   }, [conversation.id]); // 切换对话时重新滚动到底部
+  
+  // 🔙 定期检查过期红包并自动退款
+  useEffect(() => {
+    // 每分钟检查一次过期红包
+    const checkInterval = setInterval(() => {
+      let hasRefund = false;
+      const updatedMessages = conversation.messages.map(msg => {
+        if (msg.moneyTransfer?.type === 'groupRedPacket' && msg.moneyTransfer.groupRedPacket) {
+          const redPacket = msg.moneyTransfer.groupRedPacket;
+          
+          // 处理过期退款
+          const result = processExpiredRedPacketRefund(
+            redPacket,
+            (senderId, senderName, refundAmount) => {
+              console.log(`🔙 红包过期退款: ${senderName} 收到 ¥${refundAmount.toFixed(2)}`);
+              
+              // 如果是用户发的红包，退款到用户余额
+              if (senderId === 'user' || msg.role === 'user') {
+                receiveMoney(refundAmount, 'redPacket', conversation.id, '红包过期退回');
+                hasRefund = true;
+              }
+            }
+          );
+          
+          if (result.refunded) {
+            // 返回更新后的消息（红包状态已在processExpiredRedPacketRefund中更新）
+            return {
+              ...msg,
+              moneyTransfer: {
+                ...msg.moneyTransfer,
+                groupRedPacket: redPacket
+              }
+            };
+          }
+        }
+        return msg;
+      });
+      
+      // 如果有退款，更新对话
+      if (hasRefund) {
+        onUpdateConversation(conversation.id, {
+          messages: updatedMessages
+        });
+      }
+    }, 60000); // 每60秒检查一次
+    
+    return () => clearInterval(checkInterval);
+  }, [conversation.id, conversation.messages, onUpdateConversation]);
   
   // 语音相关state
   const [isRecording, setIsRecording] = useState(false);
