@@ -695,6 +695,9 @@ export default function ChatScreen({
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   
+  // 🔥 用于追踪最新消息列表的ref，解决竞态条件问题
+  const currentMessagesRef = useRef<Message[]>(conversation.messages);
+  
   // 消息操作相关状态
   const [selectedMessageId, setSelectedMessageId] = useState<string | null>(null);
   const [menuPosition, setMenuPosition] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
@@ -728,6 +731,11 @@ export default function ChatScreen({
   // 计算子聊天统计
   const subChatUnreadCount = getTotalUnreadCount(conversation);
   const pendingSubChatsCount = getPendingSubChatsCount(conversation);
+  
+  // 🔥 同步更新currentMessagesRef，确保始终指向最新的消息列表
+  useEffect(() => {
+    currentMessagesRef.current = conversation.messages;
+  }, [conversation.messages]);
   
   // 🔥 确保用户查看聊天时，未读消息始终为 0
   useEffect(() => {
@@ -2731,10 +2739,14 @@ ${characterInfo?.languageStyle ? `语言风格：${characterInfo.languageStyle}`
           },
           
           onAIMessage: (_aiId, message) => {
-            // 🔥 修复：直接基于当前state添加消息，避免localStorage延迟导致的覆盖问题
-            // React state是即时更新的，而localStorage有300ms延迟
+            // 🔥 修复竞态条件：使用ref跟踪最新的消息列表
+            // 不使用localStorage读取，因为会导致竞态条件
+            const currentMessages = currentMessagesRef.current;
+            const updatedMessages = [...currentMessages, message];
+            currentMessagesRef.current = updatedMessages; // 立即更新ref
+            
             onUpdateConversation(conversation.id, {
-              messages: [...conversation.messages, message],
+              messages: updatedMessages,
               lastMessageTime: Date.now()
             });
           },
@@ -2756,16 +2768,8 @@ ${characterInfo?.languageStyle ? `语言风格：${characterInfo.languageStyle}`
             setCurrentTypingAI(null);
             setShowSendingHint(false);
             
-            // 🔥 获取最新的消息列表
-            const storedConversations = localStorage.getItem('conversations');
-            let latestMessages = conversation.messages;
-            if (storedConversations) {
-              const allConversations = JSON.parse(storedConversations) as Conversation[];
-              const currentConversation = allConversations.find((c: Conversation) => c.id === conversation.id);
-              if (currentConversation) {
-                latestMessages = currentConversation.messages;
-              }
-            }
+            // 🔥 使用ref中的最新消息列表
+            const latestMessages = currentMessagesRef.current;
             
             // 🚀 通知后台服务生成完成
             backgroundGenerationService.completeGeneration(conversation.id, latestMessages);
@@ -2793,7 +2797,7 @@ ${characterInfo?.languageStyle ? `语言风格：${characterInfo.languageStyle}`
             
             // 自由模式：如果没有AI回复，显示提示
             // 🔥 但要确保不在"发送中"状态显示
-            if (isFreeMode && replies.length === 0 && !showSendingHint) {
+            if (isFreeMode && replies.length === 0 && !setShowSendingHint) {
               // 添加系统消息提示
               // 随机选择一个友好的提示
               const friendlyHints = [
@@ -3928,18 +3932,15 @@ ${doc.content}`;
                 timestamp: Date.now(),
               };
               
-              // 从localStorage获取最新的消息列表
-              const storedConversations = localStorage.getItem('conversations');
-              if (storedConversations) {
-                const allConversations = JSON.parse(storedConversations) as Conversation[];
-                const currentConversation = allConversations.find((c: Conversation) => c.id === conversationId);
-                if (currentConversation) {
-                  onUpdateConversation(conversationId, {
-                    messages: [...currentConversation.messages, errorMessage],
-                    lastMessageTime: Date.now(),
-                  });
-                }
-              }
+              // 🔥 使用ref获取最新的消息列表
+              const currentMessages = currentMessagesRef.current;
+              const updatedMessages = [...currentMessages, errorMessage];
+              currentMessagesRef.current = updatedMessages;
+              
+              onUpdateConversation(conversationId, {
+                messages: updatedMessages,
+                lastMessageTime: Date.now(),
+              });
               
               return;
             }
@@ -3958,19 +3959,16 @@ ${doc.content}`;
                 timestamp: Date.now(),
               };
               
-              // 从localStorage获取最新的消息列表
-              const storedConversations = localStorage.getItem('conversations');
-              if (storedConversations) {
-                const allConversations = JSON.parse(storedConversations) as Conversation[];
-                const currentConversation = allConversations.find((c: Conversation) => c.id === conversationId);
-                if (currentConversation) {
-                  console.log('💾 添加系统提示消息到聊天记录');
-                  onUpdateConversation(conversationId, {
-                    messages: [...currentConversation.messages, systemMessage],
-                    lastMessageTime: Date.now(),
-                  });
-                }
-              }
+              // 🔥 使用ref获取最新的消息列表
+              const currentMessages = currentMessagesRef.current;
+              const updatedMessages = [...currentMessages, systemMessage];
+              currentMessagesRef.current = updatedMessages;
+              
+              console.log('💾 添加系统提示消息到聊天记录');
+              onUpdateConversation(conversationId, {
+                messages: updatedMessages,
+                lastMessageTime: Date.now(),
+              });
             }).catch(error => {
               console.error('生成智能提示失败:', error);
               // 如果生成智能提示也失败了，就使用一个简单的系统消息
@@ -3982,17 +3980,14 @@ ${doc.content}`;
                 timestamp: Date.now(),
               };
               
-              const storedConversations = localStorage.getItem('conversations');
-              if (storedConversations) {
-                const allConversations = JSON.parse(storedConversations) as Conversation[];
-                const currentConversation = allConversations.find((c: Conversation) => c.id === conversationId);
-                if (currentConversation) {
-                  onUpdateConversation(conversationId, {
-                    messages: [...currentConversation.messages, fallbackMessage],
-                    lastMessageTime: Date.now(),
-                  });
-                }
-              }
+              const currentMessages = currentMessagesRef.current;
+              const updatedMessages = [...currentMessages, fallbackMessage];
+              currentMessagesRef.current = updatedMessages;
+              
+              onUpdateConversation(conversationId, {
+                messages: updatedMessages,
+                lastMessageTime: Date.now(),
+              });
             });
             
             return;
@@ -4001,21 +3996,8 @@ ${doc.content}`;
           // 🎯 检查用户是否还在当前聊天页面
           const userStillOnPage = isComponentMountedRef.current;
           
-          // 获取最新的conversation（可能已经从localStorage更新了）
-          const latestConversationData = localStorage.getItem('conversations');
-          let currentMessages = [...conversation.messages];
-          
-          if (latestConversationData) {
-            try {
-              const conversations = JSON.parse(latestConversationData);
-              const latestConv = conversations.find((c: Conversation) => c.id === conversationId);
-              if (latestConv) {
-                currentMessages = [...latestConv.messages];
-              }
-            } catch (e) {
-              console.error('Failed to get latest conversation:', e);
-            }
-          }
+          // 🔥 使用ref获取最新的消息列表
+          let currentMessages = [...currentMessagesRef.current];
           
           if (userStillOnPage) {
             // 👤 用户还在页面：显示完整的输入动画
@@ -4038,6 +4020,7 @@ ${doc.content}`;
               
               // 添加这条消息到conversation
               currentMessages = [...currentMessages, newMessages[i]];
+              currentMessagesRef.current = currentMessages; // 🔥 同步更新ref
               onUpdateConversation(conversationId, {
                 messages: currentMessages,
                 lastMessageTime: Date.now(),
@@ -4051,6 +4034,7 @@ ${doc.content}`;
               // 💰 处理红包/转账响应（如果AI回复包含红包响应）
               if (newMessages[i].moneyTransfer) {
                 currentMessages = processAIMoneyResponse(newMessages[i], currentMessages);
+                currentMessagesRef.current = currentMessages; // 🔥 同步更新ref
                 // 🔥 更新到conversation
                 onUpdateConversation(conversationId, {
                   messages: currentMessages
@@ -4066,6 +4050,7 @@ ${doc.content}`;
                   handleAIInitiateSubChat(purpose, suggestedName);
                   // 从消息列表中移除这个系统消息
                   currentMessages = currentMessages.filter(msg => msg.id !== newMessages[i].id);
+                  currentMessagesRef.current = currentMessages; // 🔥 同步更新ref
                   onUpdateConversation(conversationId, {
                     messages: currentMessages
                   });
@@ -4144,6 +4129,7 @@ ${doc.content}`;
             
             // 直接添加所有消息
             currentMessages = [...currentMessages, ...newMessages];
+            currentMessagesRef.current = currentMessages; // 🔥 同步更新ref
             onUpdateConversation(conversationId, {
               messages: currentMessages,
               lastMessageTime: Date.now(),
@@ -4160,6 +4146,7 @@ ${doc.content}`;
               }
             }
             
+            currentMessagesRef.current = currentMessages; // 🔥 同步更新ref
             // 🔥 更新到conversation
             onUpdateConversation(conversationId, {
               messages: currentMessages
