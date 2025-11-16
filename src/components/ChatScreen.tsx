@@ -1,7 +1,9 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { ChevronLeft, Send, Mic, Sparkles, Smile, BellOff, Bell, Pause, Play, Image as ImageIcon, Video, Phone, MapPin, FileText, Plus, CreditCard, Search, MessageCircle, MessageSquare, Eye, Music } from 'lucide-react';
-import { Conversation, Message, ApiConfig, UserProfile, DocumentMessage } from '../types';
+import { Conversation, Message, ApiConfig, UserProfile, DocumentMessage, GroupRedPacketInfo } from '../types';
 import MoneyTransferModal from './MoneyTransferModal';
+import GroupRedPacketModal from './GroupRedPacketModal';
+import GroupRedPacketCard from './GroupRedPacketCard';
 import SendDocumentModal from './SendDocumentModal';
 import DocumentLibraryModal from './DocumentLibraryModal';
 import WordStyleDocumentCard from './WordStyleDocumentCard';
@@ -679,6 +681,7 @@ export default function ChatScreen({
   // 群聊相关状态
   const [currentTypingAI, setCurrentTypingAI] = useState<{id: string; name: string; avatar?: string} | null>(null);
   const [showGroupSettings, setShowGroupSettings] = useState(false);
+  const [showGroupRedPacketModal, setShowGroupRedPacketModal] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   

@@ -19,7 +19,7 @@ export interface Transaction {
   id: string;
   type: 'income' | 'expense'; // 收入或支出
   amount: number; // 金额
-  category: 'redPacket' | 'transfer' | 'shopping' | 'recharge' | 'other'; // 交易类别
+  category: 'redPacket' | 'transfer' | 'groupRedPacket' | 'shopping' | 'recharge' | 'other'; // 交易类别
   description: string; // 描述
   timestamp: number; // 时间戳
   relatedConversationId?: string; // 关联的对话ID
@@ -133,11 +133,11 @@ export const getBalance = (): number => {
 };
 
 /**
- * 发送红包/转账
+ * 发送红包/转账/群红包
  */
 export const sendMoney = (
   amount: number,
-  type: 'redPacket' | 'transfer',
+  type: 'redPacket' | 'transfer' | 'groupRedPacket',
   conversationId: string,
   message?: string
 ): boolean => {
@@ -146,7 +146,9 @@ export const sendMoney = (
     return false;
   }
   
-  const description = type === 'redPacket' 
+  const description = type === 'groupRedPacket'
+    ? `发出群红包${message ? `: ${message}` : ''}`
+    : type === 'redPacket' 
     ? `发出红包${message ? `: ${message}` : ''}` 
     : `转账${message ? `: ${message}` : ''}`;
   
@@ -155,15 +157,17 @@ export const sendMoney = (
 };
 
 /**
- * 接收红包/转账
+ * 接收红包/转账/群红包
  */
 export const receiveMoney = (
   amount: number,
-  type: 'redPacket' | 'transfer',
+  type: 'redPacket' | 'transfer' | 'groupRedPacket',
   conversationId: string,
   message?: string
 ): void => {
-  const description = type === 'redPacket' 
+  const description = type === 'groupRedPacket'
+    ? `领取群红包${message ? `: ${message}` : ''}`
+    : type === 'redPacket' 
     ? `收到红包${message ? `: ${message}` : ''}` 
     : `收到转账${message ? `: ${message}` : ''}`;
   
