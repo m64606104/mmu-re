@@ -520,19 +520,19 @@ export async function generateGroupChatReplies(
       await new Promise(resolve => setTimeout(resolve, 200)); // AI之间的间隔
     }
     
-    // 🎯 新设计：先调用API，让"发送中"提示承担API时间
-    // 第一个AI：在"发送中"期间调用API
-    // 后续AI：在前一个AI完成后立即调用API
+    // 🎯 新设计：先显示输入中动画，再调用API
+    // 这样用户在API调用期间也能看到"xxx 正在输入..."
+    // 第一个AI："消息发送中" → onAIStart → 显示输入中动画 → API调用
+    // 后续AI：前一个完成 → onAIStart → 显示输入中动画 → API调用
+    callbacks?.onAIStart?.(aiMember.id, aiMember.characterSettings?.nickname || aiMember.name);
+    callbacks?.onAITyping?.(aiMember.id);
+    
+    // 调用API生成回复（用户在此期间看到输入中动画）
     const reply = await generateAIReply(aiMember, groupConversation, apiConfig, allConversations, isFreeMode);
     allReplies.push(reply);
     
-    // API返回后再显示打字动画（只有有内容时才显示）
+    // API返回后，短暂延迟让用户看到打字效果
     if (reply.status !== 'error' && reply.messages.length > 0) {
-      // 显示打字动画
-      callbacks?.onAIStart?.(aiMember.id, aiMember.characterSettings?.nickname || aiMember.name);
-      callbacks?.onAITyping?.(aiMember.id);
-      
-      // 打字动画延迟（让用户看到打字效果）
       await new Promise(resolve => setTimeout(resolve, 200));
     }
     
@@ -645,19 +645,17 @@ async function generateSingleRound(
       await new Promise(resolve => setTimeout(resolve, 200)); // AI之间的间隔
     }
     
-    // 🎯 新设计：先调用API，让"发送中"提示承担API时间
-    // 第一个AI：在"发送中"期间调用API
-    // 后续AI：在前一个AI完成后立即调用API
+    // 🎯 新设计：先显示输入中动画，再调用API
+    // 这样用户在API调用期间也能看到"xxx 正在输入..."
+    callbacks?.onAIStart?.(aiMember.id, aiMember.characterSettings?.nickname || aiMember.name);
+    callbacks?.onAITyping?.(aiMember.id);
+    
+    // 调用API生成回复（用户在此期间看到输入中动画）
     const reply = await generateAIReply(aiMember, groupConversation, apiConfig, allConversations, true);
     roundReplies.push(reply);
     
-    // API返回后再显示打字动画（只有有内容时才显示）
+    // API返回后，短暂延迟让用户看到打字效果
     if (reply.status !== 'error' && reply.messages.length > 0) {
-      // 显示打字动画
-      callbacks?.onAIStart?.(aiMember.id, aiMember.characterSettings?.nickname || aiMember.name);
-      callbacks?.onAITyping?.(aiMember.id);
-      
-      // 打字动画延迟（让用户看到打字效果）
       await new Promise(resolve => setTimeout(resolve, 200));
     }
     

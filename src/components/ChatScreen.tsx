@@ -2755,8 +2755,9 @@ ${characterInfo?.languageStyle ? `语言风格：${characterInfo.languageStyle}`
           
           onAIComplete: (aiId, messages) => {
             console.log(`✅ ${aiId} 完成回复，共${messages.length}条消息`);
-            // 清除当前AI的打字动画
-            setCurrentTypingAI(null);
+            // 🎯 不清除打字动画，让下一个AI的onAIStart自动覆盖
+            // 这样AI之间的衔接更流畅，用户始终看到"正在输入..."
+            // 只在onAllComplete时才清除
           },
           
           onAIError: (aiId, error) => {
