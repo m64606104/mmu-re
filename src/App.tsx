@@ -19,6 +19,8 @@ import ShoppingScreen from './components/ShoppingScreen';
 import UserSystemScreen from './components/UserSystemScreen';
 import OrderHistoryScreen from './components/OrderHistoryScreen';
 import DatabaseScreen from './components/DatabaseScreen';
+import LetterBoxScreen from './components/LetterBoxScreen';
+import LetterWritingScreen from './components/LetterWritingScreen';
 import ToastContainer from './components/ToastContainer';
 import { MomentsAutoGenerator } from './components/MomentsAutoGenerator';
 import { AIMomentsInteractionManager } from './components/AIMomentsInteractionManager';
@@ -28,6 +30,7 @@ import StorageMigrationPrompt from './components/StorageMigrationPrompt';
 import { smartLoad, smartSave, migrateToIndexedDB, checkMigrationNeeded, getStorageInfo } from './utils/storage';
 import { generateAIMoment } from './utils/aiMomentsGenerator';
 import { backgroundGenerationService } from './utils/backgroundGenerationService';
+import { initializeLetterTimers } from './utils/letterService';
 
 function App() {
   const [currentScreen, setCurrentScreen] = useState<Screen>('home');
@@ -252,6 +255,10 @@ function App() {
     return () => clearInterval(processIncomeInterval);
   }, []);
 
+  // 📬 初始化慢邮件定时器
+  useEffect(() => {
+    initializeLetterTimers();
+  }, []);
 
   useEffect(() => {
     // 🚀 性能优化：朋友圈数据也使用防抖保存
@@ -912,6 +919,22 @@ function App() {
           <DatabaseScreen
             conversations={conversations}
             onBack={() => navigateTo('home')}
+          />
+        );
+      case 'letterbox':
+        return (
+          <LetterBoxScreen
+            onBack={() => navigateTo('home')}
+            onWriteNew={() => navigateTo('letter-writing')}
+          />
+        );
+      case 'letter-writing':
+        return (
+          <LetterWritingScreen
+            onBack={() => navigateTo('letterbox')}
+            onSent={() => navigateTo('letterbox')}
+            conversations={conversations}
+            userName={userProfile.username}
           />
         );
       default:

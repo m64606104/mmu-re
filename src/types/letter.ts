@@ -1,0 +1,41 @@
+/**
+ * 慢邮件/写信功能类型定义
+ */
+
+export interface Letter {
+  id: string;
+  senderId: string;  // 'user' 或 AI的ID
+  senderName: string;
+  senderAvatar?: string;
+  
+  receiverId: string;  // 'user' 或 AI的ID，漂流瓶可能是动态生成的AI
+  receiverName: string;
+  receiverAvatar?: string;
+  
+  content: string;
+  
+  sentAt: number;  // 寄出时间戳
+  willReplyAt?: number;  // 预计回复时间（1-5天）
+  repliedAt?: number;  // 实际回复时间
+  
+  status: 'sending' | 'sent' | 'delivered' | 'replied';  // 寄出中、已寄出、已送达、已回复
+  
+  isBottle: boolean;  // 是否是漂流瓶
+  hasUrged: boolean;  // 是否已催促回复
+  
+  replyContent?: string;  // 回信内容
+  
+  // 装饰元素
+  stampStyle?: 'default' | 'vintage' | 'flower' | 'sea';  // 邮票样式
+  paperStyle?: 'white' | 'vintage' | 'blue';  // 信纸样式
+}
+
+// 漂流瓶随机AI角色池
+export interface BottleAI {
+  id: string;
+  name: string;
+  avatar: string;
+  personality: string;  // 性格描述
+  location: string;  // 虚拟位置
+  hobby: string;  // 爱好
+}
