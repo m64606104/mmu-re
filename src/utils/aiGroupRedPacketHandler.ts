@@ -1,10 +1,11 @@
 /**
  * AI群红包自动领取处理器
- * 让AI能够智能地领取群红包
+ * 让AI基于角色设定、上下文和记忆自主决定是否领取红包
  */
 
-import { Message } from '../types';
+import { Message, ApiConfig, CharacterSettings, Conversation } from '../types';
 import { claimRedPacket } from './groupRedPacket';
+import { aiDecideClaimRedPacket } from './aiGroupRedPacketDecision';
 
 /**
  * 检测消息中是否包含群红包
@@ -19,21 +20,31 @@ export function detectGroupRedPacket(message: Message): boolean {
 }
 
 /**
- * AI决定是否领取红包
- * 基于AI性格和红包类型
+ * AI决定是否领取红包（使用AI智能决策）
  */
-export function shouldAIClaimRedPacket(
-  aiId: string,
-  _aiName: string,
+export async function shouldAIClaimRedPacket(
+  aiSettings: CharacterSettings,
   message: Message,
-  aiPersonality?: string
-): boolean {
+  recentMessages: Message[],
+  groupName: string,
+  apiConfig: ApiConfig
+): Promise<boolean> {
   const redPacket = message.moneyTransfer?.groupRedPacket;
   if (!redPacket) return false;
 
+  // 已经领取过的不再领取
+  const alreadyClaimed = redPacket.claimedBy.some(
+    claim => claim.userId === aiSettings.userId
+  );
+  if (alreadyClaimed) {
+    return false;
+  }
+
   // 专属红包：只有指定的AI才能领取
   if (redPacket.redPacketType === 'exclusive') {
-    return redPacket.exclusiveUserId === aiId;
+    if (redPacket.exclusiveUserId !== aiSettings.userId) {
+      return false;
+    }
   }
 
   // 口令红包：AI无法猜测口令，跳过
@@ -41,43 +52,21 @@ export function shouldAIClaimRedPacket(
     return false;
   }
 
-  // 已经领取过的不再领取
-  const alreadyClaimed = redPacket.claimedBy.some(claim => claim.userId === aiId);
-  if (alreadyClaimed) {
+  // 使用AI智能决策
+  try {
+    const decision = await aiDecideClaimRedPacket(
+      aiSettings,
+      redPacket,
+      recentMessages,
+      groupName,
+      redPacket.senderName,
+      apiConfig
+    );
+    return decision;
+  } catch (error) {
+    console.error('AI红包决策失败:', error);
     return false;
   }
-
-  // 基于AI性格决定领取概率
-  let claimProbability = 0.7; // 默认70%概率领取
-
-  if (aiPersonality) {
-    const lowerPersonality = aiPersonality.toLowerCase();
-    
-    // 活跃、外向的AI更倾向于抢红包
-    if (lowerPersonality.includes('活泼') || lowerPersonality.includes('外向') || 
-        lowerPersonality.includes('热情') || lowerPersonality.includes('开朗')) {
-      claimProbability = 0.9;
-    }
-    
-    // 内向、冷静的AI不太积极抢红包
-    if (lowerPersonality.includes('内向') || lowerPersonality.includes('冷静') || 
-        lowerPersonality.includes('沉稳') || lowerPersonality.includes('安静')) {
-      claimProbability = 0.4;
-    }
-    
-    // 高冷、傲娇的AI更少抢红包
-    if (lowerPersonality.includes('高冷') || lowerPersonality.includes('傲娇') || 
-        lowerPersonality.includes('清高')) {
-      claimProbability = 0.2;
-    }
-  }
-
-  // 拼手气红包：所有AI都更积极
-  if (redPacket.redPacketType === 'random') {
-    claimProbability = Math.min(claimProbability * 1.3, 0.95);
-  }
-
-  return Math.random() < claimProbability;
 }
 
 /**
