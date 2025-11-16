@@ -99,14 +99,48 @@ const generateNextCheckTime = (minInterval: number, maxInterval: number): number
  */
 const buildProactiveMessagePrompt = (conversation: Conversation): string => {
   const memories = getMemoryBank(conversation.id).memories;
-  const recentMessages = conversation.messages.slice(-10);
+  const recentMessages = conversation.messages.slice(-20); // 增加上下文数量
   
+  // 🕒 构建带时间信息的对话上下文
   let context = '';
   if (recentMessages.length > 0) {
-    context = '\n\n【最近对话】\n' + recentMessages.map(m => {
-      const speaker = m.role === 'user' ? '用户' : 'AI';
-      return `${speaker}: ${m.content}`;
-    }).join('\n');
+    context = '\n\n【最近对话记录】\n';
+    
+    // 找到最后一条用户消息和最后一条AI消息
+    const lastUserMsg = [...recentMessages].reverse().find(m => m.role === 'user');
+    const lastAIMsg = [...recentMessages].reverse().find(m => m.role === 'assistant');
+    
+    // 添加时间戳
+    recentMessages.forEach(m => {
+      const speaker = m.role === 'user' ? '用户' : '你';
+      const time = new Date(m.timestamp);
+      const timeStr = `${time.getMonth()+1}/${time.getDate()} ${String(time.getHours()).padStart(2,'0')}:${String(time.getMinutes()).padStart(2,'0')}`;
+      context += `[${timeStr}] ${speaker}: ${m.content}\n`;
+    });
+    
+    // 🕒 分析时间间隔
+    const now = Date.now();
+    if (lastAIMsg) {
+      const timeSinceLastAI = now - lastAIMsg.timestamp;
+      const hoursSince = Math.floor(timeSinceLastAI / (1000 * 60 * 60));
+      const minutesSince = Math.floor((timeSinceLastAI % (1000 * 60 * 60)) / (1000 * 60));
+      
+      if (hoursSince > 0) {
+        context += `\n⚠️ 你最后一条消息是${hoursSince}小时${minutesSince}分钟前发的\n`;
+      } else if (minutesSince > 30) {
+        context += `\n⚠️ 你最后一条消息是${minutesSince}分钟前发的\n`;
+      }
+    }
+    
+    if (lastUserMsg) {
+      const timeSinceLastUser = now - lastUserMsg.timestamp;
+      const hoursSinceUser = Math.floor(timeSinceLastUser / (1000 * 60 * 60));
+      const minutesSinceUser = Math.floor((timeSinceLastUser % (1000 * 60 * 60)) / (1000 * 60));
+      
+      if (hoursSinceUser > 0) {
+        context += `⚠️ 用户最后一条消息是${hoursSinceUser}小时${minutesSinceUser}分钟前发的\n`;
+      }
+    }
   }
   
   let memoryContext = '';
@@ -114,30 +148,47 @@ const buildProactiveMessagePrompt = (conversation: Conversation): string => {
     memoryContext = '\n\n【记忆】\n' + memories.slice(0, 5).map(m => `- ${m.content}`).join('\n');
   }
   
+  // 🕒 详细的时间信息
   const currentTime = new Date();
+  const year = currentTime.getFullYear();
+  const month = currentTime.getMonth() + 1;
+  const date = currentTime.getDate();
   const hour = currentTime.getHours();
-  const timeContext = hour < 12 ? '早上' : hour < 18 ? '下午' : '晚上';
+  const minute = currentTime.getMinutes();
+  const weekDay = ['\u5468\u65e5','\u5468\u4e00','\u5468\u4e8c','\u5468\u4e09','\u5468\u56db','\u5468\u4e94','\u5468\u516d'][currentTime.getDay()];
+  const timePeriod = hour < 6 ? '\u51cc\u6668' : hour < 9 ? '\u65e9\u4e0a' : hour < 12 ? '\u4e0a\u5348' : hour < 14 ? '\u4e2d\u5348' : hour < 18 ? '\u4e0b\u5348' : hour < 22 ? '\u665a\u4e0a' : '\u6df1\u591c';
+  
+  const fullTimeContext = `${year}年${month}月${date}日 ${weekDay} ${timePeriod} ${String(hour).padStart(2,'0')}:${String(minute).padStart(2,'0')}`;
   
   return `
-你是${conversation.characterSettings?.nickname || conversation.name}，现在是${timeContext}。
+你是${conversation.characterSettings?.nickname || conversation.name}。
 
-你想主动发送一条消息给用户，可能是：
-- 分享你的近况或想法
-- 询问对方最近怎么样
-- 分享有趣的事情
-- 表达关心
-- 闲聊
+🕒 当前时间: ${fullTimeContext}
 
-【要求】：
-- 保持自然、真实的对话风格
-- 不要过于正式或生硬
-- 消息要简短，1-2句话即可
-- 根据你们之前的对话和记忆来选择话题
-- 不要重复之前说过的内容
+🤔 情境分析：
+你现在想主动给用户发条消息。但请注意：
+
+⛔ 禁止行为：
+- ⛔ 绝对不要只是机械式的打招呼（例如："早！"、"早上好"、"下午好"）
+- ⛔ 不要重复相同的内容或模式
+- ⛔ 不要忽略之前的对话内容
+
+✅ 应该做的：
+1. **基于上下文**: 从之前的对话中找到可以继续的话题
+2. **自然衔接**: 像真人一样基于之前说过的话来开启新话题
+3. **分享生活**: 分享你的近况、想法、看到的有趣事情
+4. **表达关心**: 如果对方之前提到什么事，可以问后续
+5. **真实感**: 像真人朋友一样，不要像机器人
+
+📝 示例（好的主动消息）：
+- "我刚看到一个好笑的视频，想起了你之前说的..."
+- "诶，你上次提到的那个事怎么样了？"
+- "今天遇到了一件超离谱的事...（然后分享）"
+- "突然想起你上次问的XXX，我发现..."
 ${context}
 ${memoryContext}
 
-请生成一条自然的主动消息：
+🎯 现在，请生成一条自然、有上下文联系的主动消息（直接输出消息内容，不需要其他说明）：
 `.trim();
 };
 
@@ -173,8 +224,8 @@ export const sendProactiveMessage = async (
         messages: [
           { role: 'user', content: prompt }
         ],
-        temperature: 0.8,
-        max_tokens: 100,
+        temperature: 0.85, // 提高一些创造性
+        max_tokens: 200, // 增加token限制，允许更长的表达
       })
     });
     
