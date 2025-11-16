@@ -456,19 +456,26 @@ export async function generateGroupChatReplies(
   for (let idx = 0; idx < aiMembers.length; idx++) {
     const aiMember = aiMembers[idx];
     
-    // 🎯 优化：如果不是第一个AI，先等待短暂间隔再显示打字动画
-    // 这样用户体验是：上一个AI发完 → 短暂间隔 → 下一个AI打字动画 → 消息
+    // 🎯 优化：如果不是第一个AI，先等待短暂间隔
     if (idx > 0) {
-      await new Promise(resolve => setTimeout(resolve, 200)); // 缩短到200ms，更流畅
+      await new Promise(resolve => setTimeout(resolve, 200)); // AI之间的间隔
     }
     
-    // 显示打字动画
-    callbacks?.onAIStart?.(aiMember.id, aiMember.characterSettings?.nickname || aiMember.name);
-    callbacks?.onAITyping?.(aiMember.id);
-    
-    // 生成回复（此时用户已经看到打字动画）
+    // 🎯 新设计：先调用API，让"发送中"提示承担API时间
+    // 第一个AI：在"发送中"期间调用API
+    // 后续AI：在前一个AI完成后立即调用API
     const reply = await generateAIReply(aiMember, groupConversation, apiConfig, allConversations, isFreeMode);
     allReplies.push(reply);
+    
+    // API返回后再显示打字动画（只有有内容时才显示）
+    if (reply.status !== 'error' && reply.messages.length > 0) {
+      // 显示打字动画
+      callbacks?.onAIStart?.(aiMember.id, aiMember.characterSettings?.nickname || aiMember.name);
+      callbacks?.onAITyping?.(aiMember.id);
+      
+      // 打字动画延迟（让用户看到打字效果）
+      await new Promise(resolve => setTimeout(resolve, 200));
+    }
     
     if (reply.status === 'error') {
       callbacks?.onAIError?.(reply.aiId, reply.error || '未知错误');
@@ -476,15 +483,12 @@ export async function generateGroupChatReplies(
     }
     
     if (reply.messages.length === 0) {
-      // AI选择不回复，隐藏打字动画
+      // AI选择不回复
       callbacks?.onAIComplete?.(reply.aiId, []);
       continue;
     }
     
-    // 🎯 优化：缩短等待时间，让打字动画更快显示消息
-    await new Promise(resolve => setTimeout(resolve, 200));
-    
-    // 逐条发送消息
+    // 逐条发送消息（打字动画延迟已在上面的470-478行处理）
     for (let i = 0; i < reply.messages.length; i++) {
       const message = reply.messages[i];
       
@@ -577,18 +581,26 @@ async function generateSingleRound(
   for (let idx = 0; idx < selectedAIs.length; idx++) {
     const aiMember = selectedAIs[idx];
     
-    // 🎯 优化：如果不是第一个AI，先等待短暂间隔再显示打字动画
+    // 🎯 优化：如果不是第一个AI，先等待短暂间隔
     if (idx > 0) {
-      await new Promise(resolve => setTimeout(resolve, 200)); // 缩短到200ms，更流畅
+      await new Promise(resolve => setTimeout(resolve, 200)); // AI之间的间隔
     }
     
-    // 显示打字动画
-    callbacks?.onAIStart?.(aiMember.id, aiMember.characterSettings?.nickname || aiMember.name);
-    callbacks?.onAITyping?.(aiMember.id);
-    
-    // 生成回复（此时用户已经看到打字动画）
+    // 🎯 新设计：先调用API，让"发送中"提示承担API时间
+    // 第一个AI：在"发送中"期间调用API
+    // 后续AI：在前一个AI完成后立即调用API
     const reply = await generateAIReply(aiMember, groupConversation, apiConfig, allConversations, true);
     roundReplies.push(reply);
+    
+    // API返回后再显示打字动画（只有有内容时才显示）
+    if (reply.status !== 'error' && reply.messages.length > 0) {
+      // 显示打字动画
+      callbacks?.onAIStart?.(aiMember.id, aiMember.characterSettings?.nickname || aiMember.name);
+      callbacks?.onAITyping?.(aiMember.id);
+      
+      // 打字动画延迟（让用户看到打字效果）
+      await new Promise(resolve => setTimeout(resolve, 200));
+    }
     
     if (reply.status === 'error') {
       callbacks?.onAIError?.(reply.aiId, reply.error || '未知错误');
@@ -596,15 +608,12 @@ async function generateSingleRound(
     }
     
     if (reply.messages.length === 0) {
-      // AI选择不回复，隐藏打字动画
+      // AI选择不回复
       callbacks?.onAIComplete?.(reply.aiId, []);
       continue;
     }
     
-    // 🎯 优化：缩短等待时间，让打字动画更快显示消息
-    await new Promise(resolve => setTimeout(resolve, 200));
-    
-    // 逐条发送消息
+    // 逐条发送消息（打字动画延迟已处理）
     for (let i = 0; i < reply.messages.length; i++) {
       const message = reply.messages[i];
       
