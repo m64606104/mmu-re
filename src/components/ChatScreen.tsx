@@ -1982,38 +1982,53 @@ ${characterInfo?.languageStyle ? `语言风格：${characterInfo.languageStyle}`
     // 所以这里不需要自动回复了
   };
 
-  // 处理图片上传
+  // 处理图片上传（支持多图）
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
 
     try {
-      // 读取图片为base64
-      const reader = new FileReader();
-      reader.onload = () => {
-        const imageData = reader.result as string;
+      const newMessages: Message[] = [];
+      const baseTimestamp = Date.now();
+      
+      // 处理每张图片
+      for (let i = 0; i < files.length; i++) {
+        const file = files[i];
         
-        // 创建用户消息（显示图片）
-        const userMessage: Message = {
-          id: `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-          role: 'user',
-          content: '[图片]',
-          timestamp: Date.now(),
-          mediaType: 'image',
-          mediaUrl: imageData
-        };
-
-        // 只添加到聊天记录，不自动生成回复
-        onUpdateConversation(conversation.id, {
-          messages: [...conversation.messages, userMessage],
-          lastMessageTime: Date.now()
+        // 读取图片为base64
+        await new Promise<void>((resolve) => {
+          const reader = new FileReader();
+          reader.onload = () => {
+            const imageData = reader.result as string;
+            
+            // 创建用户消息（显示图片）
+            const userMessage: Message = {
+              id: `msg_${baseTimestamp + i}_${Math.random().toString(36).substr(2, 9)}`,
+              role: 'user',
+              content: '[图片]',
+              timestamp: baseTimestamp + i,
+              mediaType: 'image',
+              mediaUrl: imageData
+            };
+            
+            newMessages.push(userMessage);
+            resolve();
+          };
+          
+          reader.readAsDataURL(file);
         });
+      }
+      
+      // 一次性添加所有图片到聊天记录，不自动生成回复
+      onUpdateConversation(conversation.id, {
+        messages: [...conversation.messages, ...newMessages],
+        lastMessageTime: Date.now()
+      });
 
-        // 关闭工具栏
-        setShowToolbar(false);
-      };
-
-      reader.readAsDataURL(file);
+      // 关闭工具栏
+      setShowToolbar(false);
+      
+      console.log(`✅ 已发送${files.length}张图片`);
 
     } catch (error) {
       console.error('图片上传失败:', error);
@@ -5809,6 +5824,7 @@ ${doc.content}`;
                 ref={imageInputRef}
                 type="file"
                 accept="image/*"
+                multiple
                 className="hidden"
                 onChange={handleImageUpload}
               />
