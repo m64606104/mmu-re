@@ -2745,21 +2745,31 @@ ${characterInfo?.languageStyle ? `语言风格：${characterInfo.languageStyle}`
           },
           
           onAIMessage: (_aiId, message) => {
-            // 🎯 方案3：从最新的conversation.messages获取，保持用户插话的时间顺序
-            // 这样更符合真实群聊场景：用户可以在AI回复期间插话
-            const latestMessages = conversation.messages;
+            // 🐛 修复方案3的bug：正确处理消息合并
             
-            // 累积AI消息到快照
+            // 1️⃣ 累积AI消息到快照
             currentMessages = [...currentMessages, message];
             
-            // 合并：最新消息列表 + 新的AI消息
-            // 注意：latestMessages可能包含用户在生成期间发送的消息
-            const updatedMessages = [...latestMessages, message];
+            // 2️⃣ 提取用户在生成期间发送的新消息
+            const currentConversationMessages = conversation.messages;
+            const userNewMessages = currentConversationMessages.filter(m => {
+              const isNewUser = !messageIdsSnapshot.has(m.id) && m.role === 'user';
+              const notInCurrent = !currentMessages.some(cm => cm.id === m.id);
+              return isNewUser && notInCurrent;
+            });
             
-            console.log(`📨 AI消息追加: 原${latestMessages.length}条 → 现${updatedMessages.length}条`);
+            if (userNewMessages.length > 0) {
+              console.log(`🆕 检测到${userNewMessages.length}条用户新消息，保留`);
+            }
             
+            // 3️⃣ 合并：currentMessages（快照+AI消息） + 用户新消息
+            const mergedMessages = [...currentMessages, ...userNewMessages];
+            
+            console.log(`📦 消息合并: 快照+AI=${currentMessages.length}, 用户新增=${userNewMessages.length}, 总计=${mergedMessages.length}`);
+            
+            // 4️⃣ 更新对话
             onUpdateConversation(conversation.id, {
-              messages: updatedMessages,
+              messages: mergedMessages,
               lastMessageTime: Date.now()
             });
           },
@@ -2795,10 +2805,10 @@ ${characterInfo?.languageStyle ? `语言风格：${characterInfo.languageStyle}`
               console.log('✅ 无新增用户消息（方案3：已在onAIMessage中实时追加）');
             }
             
-            // 🎯 方案3：不需要再合并，消息已经在每次onAIMessage时追加了
-            // conversation.messages 已经是最新状态，包含：
-            // [原有消息] → [用户插话] → [AI回复1] → [用户插话] → [AI回复2]
-            const finalMessages = conversation.messages;
+            // 🐛 修复：使用currentMessages作为基础，再添加用户新消息
+            // currentMessages = 快照 + 所有AI消息（不会丢失）
+            // userNewMessages = 用户在生成期间发的消息
+            const finalMessages = [...currentMessages, ...userNewMessages];
             
             console.log('📦 最终消息列表:', {
               总消息数: finalMessages.length,

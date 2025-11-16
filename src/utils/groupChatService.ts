@@ -520,19 +520,30 @@ export async function generateGroupChatReplies(
       await new Promise(resolve => setTimeout(resolve, 200)); // AI之间的间隔
     }
     
-    // 🎯 新设计：先显示输入中动画，再调用API
-    // 这样用户在API调用期间也能看到"xxx 正在输入..."
-    // 第一个AI："消息发送中" → onAIStart → 显示输入中动画 → API调用
-    // 后续AI：前一个完成 → onAIStart → 显示输入中动画 → API调用
-    callbacks?.onAIStart?.(aiMember.id, aiMember.characterSettings?.nickname || aiMember.name);
-    callbacks?.onAITyping?.(aiMember.id);
+    // 🎯 改进策略：第一个AI等API返回再显示动画，避免"输入中→无人回复"的尴尬
+    // 第一个AI：保持"消息发送中" → API调用 → 有回复才显示输入中动画
+    // 后续AI：先显示输入中动画 → API调用（因为肯定有人在回复）
+    const isFirstAI = idx === 0;
     
-    // 调用API生成回复（用户在此期间看到输入中动画）
+    if (!isFirstAI) {
+      // 后续AI：提前显示输入中动画
+      callbacks?.onAIStart?.(aiMember.id, aiMember.characterSettings?.nickname || aiMember.name);
+      callbacks?.onAITyping?.(aiMember.id);
+    }
+    
+    // 调用API生成回复
     const reply = await generateAIReply(aiMember, groupConversation, apiConfig, allConversations, isFreeMode);
     allReplies.push(reply);
     
-    // API返回后，短暂延迟让用户看到打字效果
+    // API返回后处理
     if (reply.status !== 'error' && reply.messages.length > 0) {
+      // 有回复
+      if (isFirstAI) {
+        // 第一个AI：现在才显示输入中动画
+        callbacks?.onAIStart?.(aiMember.id, aiMember.characterSettings?.nickname || aiMember.name);
+        callbacks?.onAITyping?.(aiMember.id);
+      }
+      // 短暂延迟让用户看到打字效果
       await new Promise(resolve => setTimeout(resolve, 200));
     }
     
@@ -645,17 +656,28 @@ async function generateSingleRound(
       await new Promise(resolve => setTimeout(resolve, 200)); // AI之间的间隔
     }
     
-    // 🎯 新设计：先显示输入中动画，再调用API
-    // 这样用户在API调用期间也能看到"xxx 正在输入..."
-    callbacks?.onAIStart?.(aiMember.id, aiMember.characterSettings?.nickname || aiMember.name);
-    callbacks?.onAITyping?.(aiMember.id);
+    // 🎯 改进策略：第一个AI等API返回再显示动画（同顺序模式）
+    const isFirstAI = idx === 0;
     
-    // 调用API生成回复（用户在此期间看到输入中动画）
+    if (!isFirstAI) {
+      // 后续AI：提前显示输入中动画
+      callbacks?.onAIStart?.(aiMember.id, aiMember.characterSettings?.nickname || aiMember.name);
+      callbacks?.onAITyping?.(aiMember.id);
+    }
+    
+    // 调用API生成回复
     const reply = await generateAIReply(aiMember, groupConversation, apiConfig, allConversations, true);
     roundReplies.push(reply);
     
-    // API返回后，短暂延迟让用户看到打字效果
+    // API返回后处理
     if (reply.status !== 'error' && reply.messages.length > 0) {
+      // 有回复
+      if (isFirstAI) {
+        // 第一个AI：现在才显示输入中动画
+        callbacks?.onAIStart?.(aiMember.id, aiMember.characterSettings?.nickname || aiMember.name);
+        callbacks?.onAITyping?.(aiMember.id);
+      }
+      // 短暂延迟让用户看到打字效果
       await new Promise(resolve => setTimeout(resolve, 200));
     }
     
