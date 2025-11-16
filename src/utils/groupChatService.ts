@@ -1,5 +1,4 @@
 import { Conversation, Message, ApiConfig, CharacterSettings } from '../types';
-import { chatCompletion } from './chatApi';
 import { splitMessages } from './messageFormatter';
 import { buildTimeAwarePrompt } from './timeAwareness';
 
@@ -163,13 +162,19 @@ async function generateAIReply(
           role: m ? 'AI成员' : '用户'
         };
       });
-    otherMembers.push({ name: '用户', role: '群主' });
+    
+    // 获取用户名称（从localStorage或默认值）
+    const userSettings = JSON.parse(localStorage.getItem('userSettings') || '{}');
+    const userName = userSettings.nickname || userSettings.name || '你';
+    
+    otherMembers.push({ name: userName, role: '群主' });
     
     // 构建系统提示
     const systemPrompt = buildGroupChatSystemPrompt(
       aiMember.characterSettings!,
       groupConversation.name,
       otherMembers,
+      userName,
       isFreeMode
     );
     
@@ -231,8 +236,8 @@ async function generateAIReply(
     });
     
     if (!response.ok) {
-      const errorInfo = await getErrorFromResponse(response);
-      throw new Error(formatErrorMessage(errorInfo));
+      const errorText = await response.text();
+      throw new Error(`API错误: ${response.status} - ${errorText}`);
     }
     
     const data = await response.json();
