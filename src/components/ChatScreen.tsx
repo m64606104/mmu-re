@@ -661,6 +661,7 @@ export default function ChatScreen({
   };
   const [currentInput, setCurrentInput] = useState('');
   const [isGenerating, setIsGenerating] = useState(false);
+  const [pendingUserMessages, setPendingUserMessages] = useState<string[]>([]); // AI回复时用户发送的消息
   const [showToolbar, setShowToolbar] = useState(false);
   const [showMoneyTransferModal, setShowMoneyTransferModal] = useState(false);
   const [showSendDocumentModal, setShowSendDocumentModal] = useState(false);
@@ -1814,6 +1815,12 @@ ${characterInfo?.languageStyle ? `语言风格：${characterInfo.languageStyle}`
       lastMessageTime: Date.now(),
     });
 
+    // 如果AI正在生成，将用户消息添加到待处理队列
+    if (isGenerating && conversation.type === 'group') {
+      setPendingUserMessages(prev => [...prev, newMessage.id]);
+      console.log('📝 用户在AI回复时发送消息，将在下轮处理');
+    }
+
     setCurrentInput('');
     setPendingMessages([]); // 清除剩余消息
     setShowAllSentHint(false);
@@ -2685,6 +2692,18 @@ ${characterInfo?.languageStyle ? `语言风格：${characterInfo.languageStyle}`
                   console.error('群聊记忆总结失败:', err);
                 });
               }, 1000); // 延迟1秒后执行，避免阻塞
+            }
+            
+            // 📝 检查是否有用户在AI回复时发送的消息
+            if (pendingUserMessages.length > 0) {
+              console.log(`📬 检测到${pendingUserMessages.length}条待处理用户消息，触发新一轮生成`);
+              setPendingUserMessages([]); // 清空待处理队列
+              
+              // 延迟一下再触发，让用户看清楚上一轮已完成
+              setTimeout(() => {
+                handleGroupChatGenerate();
+              }, 1000);
+              return; // 不显示无人回应提示
             }
             
             // 自由模式：如果没有AI回复，显示提示
@@ -5939,9 +5958,9 @@ ${doc.content}`;
                   e.target.style.height = Math.min(e.target.scrollHeight, 120) + 'px';
                 }}
                 onKeyPress={handleKeyPress}
-                placeholder={messageBeingEdited ? "编辑消息..." : quotedMessage ? "回复消息..." : "输入消息..."}
+                placeholder={messageBeingEdited ? "编辑消息..." : quotedMessage ? "回复消息..." : isGenerating && conversation.type === 'group' ? "输入消息（将在下轮回复）..." : "输入消息..."}
                 className="flex-1 outline-none text-[15px] bg-transparent text-gray-900 placeholder-gray-400 resize-none overflow-y-auto max-h-[120px] min-h-[24px]"
-                disabled={isGenerating}
+                disabled={false}
                 rows={1}
                 style={{ height: '24px' }}
               />
@@ -5949,7 +5968,7 @@ ${doc.content}`;
             {currentInput.trim() ? (
               <button
                 onClick={handleSendMessage}
-                disabled={isGenerating}
+                disabled={false}
                 className="w-10 h-10 bg-blue-500 text-white rounded-full hover:bg-blue-600 active:scale-95 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex-shrink-0 flex items-center justify-center shadow-md"
               >
                 <Send className="w-5 h-5" />
