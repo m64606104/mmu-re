@@ -458,7 +458,7 @@ export async function generateGroupChatReplies(
     
     // AI之间的间隔（如果不是最后一个AI）
     if (!isLastAI) {
-      await new Promise(resolve => setTimeout(resolve, 800));
+      await new Promise(resolve => setTimeout(resolve, 400));
     }
   }
   
@@ -569,7 +569,7 @@ async function generateSingleRound(
     
     // AI之间的间隔（如果不是最后一个AI）
     if (!isLastAI) {
-      await new Promise(resolve => setTimeout(resolve, 800));
+      await new Promise(resolve => setTimeout(resolve, 400));
     }
   }
   
