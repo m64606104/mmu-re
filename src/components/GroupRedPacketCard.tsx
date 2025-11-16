@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Gift, Users, Clock, Trophy, Lock } from 'lucide-react';
+import { Gift, Users, Trophy, Lock } from 'lucide-react';
 import { GroupRedPacketInfo } from '../types';
 import { claimRedPacket, checkRedPacketExpired, getRedPacketDetails, validatePassword } from '../utils/groupRedPacket';
 
@@ -16,7 +16,6 @@ const GroupRedPacketCard: React.FC<GroupRedPacketCardProps> = ({
   redPacket,
   currentUserId,
   currentUserName,
-  isGroup = true,
   onClaim,
   onUpdate,
 }) => {

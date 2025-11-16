@@ -25,7 +25,6 @@ import { AIMomentsInteractionManager } from './components/AIMomentsInteractionMa
 import ProactiveMessagingService from './components/ProactiveMessagingService';
 import MessageNotification from './components/MessageNotification';
 import { smartLoad, smartSave, migrateToIndexedDB } from './utils/storage';
-import SmartActivityScheduler from './components/SmartActivityScheduler';
 import { generateAIMoment } from './utils/aiMomentsGenerator';
 
 function App() {
@@ -904,13 +903,6 @@ function App() {
         apiConfig={apiConfig}
         onNewMessage={addMessageToConversation}
         onUpdateSettings={updateProactiveMessagingTime}
-      />
-      
-      {/* 智能行为轨迹调度器 - 后台运行 */}
-      <SmartActivityScheduler
-        conversations={conversations}
-        apiConfig={apiConfig}
-        intervalMinutes={90}
       />
       
       {/* Toast通知容器 */}
