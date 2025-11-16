@@ -132,10 +132,13 @@ ${aiSettings.memoryEvents ? `记忆事件：${aiSettings.memoryEvents}` : ''}
    示例："[文档:会议记录:记录:今天的讨论要点]"
    使用场景：分享文件、笔记
 
-6. 🎁 **群红包**：[发群红包:类型:金额:数量:留言]
+6. 🎁 **群红包**：[发群红包:类型:金额:数量:留言]或[发群红包:exclusive:金额:数量:@用户名:留言]
    红包类型: average(普通), random(拼手气), exclusive(专属)
-   示例："[发群红包:random:10:5:大家抢红包啦]"
-   使用场景：节日、庆祝、活跃氛围
+   示例：
+   - 普通红包："[发群红包:average:10:5:大家分红包]"
+   - 拼手气红包："[发群红包:random:10:5:拼手气啦]"
+   - 专属红包："[发群红包:exclusive:8.88:1:@小明:你的专属红包]"
+   使用场景：节日、庆祝、活跃氛围、给特定成员发红包
 
 **混合发送**：
 - 可以连续发送多种媒体
@@ -159,7 +162,11 @@ ${aiSettings.memoryEvents ? `记忆事件：${aiSettings.memoryEvents}` : ''}
 /**
  * 解析AI回复消息并拆分（支持多媒体）
  */
-function parseAIResponse(content: string): Message[] {
+function parseAIResponse(
+  content: string, 
+  groupMembers?: Array<{id: string; name: string}>,  // 群成员信息，用于解析专属红包
+  userName?: string  // 用户名称
+): Message[] {
   if (!content || content.trim() === '' || content.includes('[不回复]')) {
     return [];
   }
@@ -251,21 +258,55 @@ function parseAIResponse(content: string): Message[] {
     let messageText = '恭喜发财，大吉大利';
     let password: string | undefined;
     
-    // 尝试解析标准格式：类型:金额:数量:留言
-    // 例如：random:10:5:大家抢红包啦 或 average:20:10:平分红包
+    // 🎯 尝试解析标准格式
+    // 普通/拼手气：[发群红包:类型:金额:数量:留言]
+    // 专属红包：[发群红包:exclusive:金额:数量:@用户名:留言]
     const standardParts = desc.split(':');
+    let exclusiveUserId: string | undefined;
+    let exclusiveUserName: string | undefined;
+    
     if (standardParts.length >= 4) {
-      // 标准格式：[发群红包:类型:金额:数量:留言]
       const type = standardParts[0].trim();
       const amount = parseFloat(standardParts[1]);
       const count = parseInt(standardParts[2]);
-      const message = standardParts.slice(3).join(':').trim();
       
       if (['random', 'average', 'exclusive'].includes(type) && !isNaN(amount) && !isNaN(count)) {
         redPacketType = type as 'random' | 'average' | 'exclusive';
         totalAmount = amount;
         totalCount = count;
-        messageText = message || '恭喜发财，大吉大利';
+        
+        // 🎯 处理专属红包
+        if (type === 'exclusive' && standardParts.length >= 5) {
+          // 格式：exclusive:金额:数量:@用户名:留言
+          const targetUser = standardParts[3].trim().replace(/^@/, ''); // 移除@符号
+          messageText = standardParts.slice(4).join(':').trim() || '你的专属红包';
+          
+          // 查找用户
+          if (groupMembers && targetUser) {
+            // 先在群成员中查找
+            const member = groupMembers.find(m => 
+              m.name === targetUser || 
+              m.name.includes(targetUser) || 
+              targetUser.includes(m.name)
+            );
+            
+            if (member) {
+              exclusiveUserId = member.id;
+              exclusiveUserName = member.name;
+              console.log(`🎯 专属红包指定给: ${exclusiveUserName} (${exclusiveUserId})`);
+            } else if (userName && (targetUser === userName || userName.includes(targetUser))) {
+              // 如果是用户
+              exclusiveUserId = 'user';
+              exclusiveUserName = userName;
+              console.log(`🎯 专屟红包指定给用户: ${userName}`);
+            } else {
+              console.warn(`⚠️ 未找到用户 "${targetUser}"，专属红包将无法领取`);
+            }
+          }
+        } else {
+          // 普通/拼手气红包
+          messageText = standardParts.slice(3).join(':').trim() || '恭喜发财，大吉大利';
+        }
       }
     } else {
       // 简化格式或旧格式：解析描述文本
@@ -317,6 +358,8 @@ function parseAIResponse(content: string): Message[] {
           remainingAmount: totalAmount,
           redPacketType: redPacketType,
           password: password,
+          exclusiveUserId: exclusiveUserId,  // 🎯 专属用户ID
+          exclusiveUserName: exclusiveUserName,  // 🎯 专属用户名称
           claimedBy: [],
           createdAt: Date.now(),
           expiredAt: Date.now() + 24 * 60 * 60 * 1000,
@@ -474,8 +517,18 @@ async function generateAIReply(
     
     const assistantMessage = data.choices[0]?.message?.content;
     
-    // 解析回复
-    const messages = parseAIResponse(assistantMessage);
+    // 解析回复（传入群成员信息，用于专属红包）
+    const groupMembersInfo = members
+      .map(mid => {
+        const m = allConversations.find(c => c.id === mid);
+        return m ? {
+          id: m.id,
+          name: m.characterSettings?.nickname || m.name
+        } : null;
+      })
+      .filter(Boolean) as Array<{id: string; name: string}>;
+    
+    const messages = parseAIResponse(assistantMessage, groupMembersInfo, userName);
     
     reply.messages = messages;
     reply.status = 'completed';
@@ -543,8 +596,7 @@ export async function generateGroupChatReplies(
         callbacks?.onAIStart?.(aiMember.id, aiMember.characterSettings?.nickname || aiMember.name);
         callbacks?.onAITyping?.(aiMember.id);
       }
-      // 短暂延迟让用户看到打字效果
-      await new Promise(resolve => setTimeout(resolve, 200));
+      // ✅ 移除延迟：已经有输入动画，不需要额外等待
     }
     
     if (reply.status === 'error') {
@@ -580,7 +632,7 @@ export async function generateGroupChatReplies(
       
       // 🎯 优化：缩短消息间延迟，让对话更流畅
       if (i < reply.messages.length - 1) {
-        await new Promise(resolve => setTimeout(resolve, 400)); // 从500ms缩短到400ms
+        await new Promise(resolve => setTimeout(resolve, 300)); // 从400ms缩短到300ms
       }
     }
     
@@ -713,7 +765,7 @@ async function generateSingleRound(
       
       // 🎯 优化：缩短消息间延迟，让对话更流畅
       if (i < reply.messages.length - 1) {
-        await new Promise(resolve => setTimeout(resolve, 400)); // 从500ms缩短到400ms
+        await new Promise(resolve => setTimeout(resolve, 300)); // 从400ms缩短到300ms
       }
     }
     
