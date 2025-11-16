@@ -4,9 +4,11 @@
 
 import React, { useState, useEffect } from 'react';
 import { Conversation } from '../types';
-import { sendLetter, getAllPresetAIs } from '../utils/letterService';
-import { ArrowLeft, Send, Sparkles, Users } from 'lucide-react';
+import { sendLetter, getAllPresetAIs, getCustomPenPals, saveCustomPenPal } from '../utils/letterService';
+import { BottleAI } from '../types/letter';
+import { ArrowLeft, Send, Sparkles, Users, UserPlus } from 'lucide-react';
 import LetterSendingAnimation from './LetterSendingAnimation';
+import CustomPenPalCreator from './CustomPenPalCreator';
 
 interface LetterWritingScreenProps {
   onBack: () => void;
@@ -27,9 +29,12 @@ const LetterWritingScreen: React.FC<LetterWritingScreenProps> = ({
     name: string;
     avatar: string;
     isBottle: boolean;
+    bottleAIProfile?: BottleAI;
   } | null>(null);
   const [showReceiverModal, setShowReceiverModal] = useState(false);
   const [showSendingAnimation, setShowSendingAnimation] = useState(false);
+  const [showCustomPenPalCreator, setShowCustomPenPalCreator] = useState(false);
+  const [customPenPals, setCustomPenPals] = useState<BottleAI[]>([]);
 
   // 请求通知权限
   useEffect(() => {
@@ -40,6 +45,11 @@ const LetterWritingScreen: React.FC<LetterWritingScreenProps> = ({
 
   // 获取AI联系人列表（排除群聊，只保留有characterSettings的私聊）
   const aiContacts = conversations.filter(c => c.type === 'private' && c.characterSettings);
+  
+  // 加载自定义笔友
+  useEffect(() => {
+    setCustomPenPals(getCustomPenPals());
+  }, [showReceiverModal]);
 
   const handleSendLetter = () => {
     if (!content.trim()) {
@@ -55,8 +65,8 @@ const LetterWritingScreen: React.FC<LetterWritingScreenProps> = ({
     // 显示发送动画
     setShowSendingAnimation(true);
 
-    // 寄出信件
-    sendLetter(
+    // 寄出信件（如果是自定义笔友，传入完整的bottleAIProfile）
+    const letter = sendLetter(
       content,
       selectedReceiver.id,
       selectedReceiver.name,
@@ -64,6 +74,29 @@ const LetterWritingScreen: React.FC<LetterWritingScreenProps> = ({
       selectedReceiver.isBottle,
       userName
     );
+    
+    // 如果是自定义笔友，需要手动设置bottleAIProfile
+    if (selectedReceiver.bottleAIProfile) {
+      const letters = JSON.parse(localStorage.getItem('slow_letters') || '[]');
+      const letterIndex = letters.findIndex((l: any) => l.id === letter.id);
+      if (letterIndex !== -1) {
+        letters[letterIndex].bottleAIProfile = selectedReceiver.bottleAIProfile;
+        letters[letterIndex].isPenPalAdded = true; // 自定义笔友直接标记为笔友
+        letters[letterIndex].maxRounds = 999; // 无限制
+        localStorage.setItem('slow_letters', JSON.stringify(letters));
+      }
+    }
+  };
+  
+  const handleCreateCustomPenPal = (penPal: BottleAI) => {
+    const success = saveCustomPenPal(penPal);
+    if (success) {
+      setCustomPenPals(getCustomPenPals());
+      setShowCustomPenPalCreator(false);
+      alert(`✨ 成功创建笔友「${penPal.name}」\n\n已自动加入笔友列表，可以随时写信交流！`);
+    } else {
+      alert('创建失败，请重试');
+    }
   };
 
   const handleAnimationComplete = () => {
@@ -304,6 +337,71 @@ const LetterWritingScreen: React.FC<LetterWritingScreenProps> = ({
                   </div>
                 </button>
               ))}
+              
+              {/* 自定义笔友区 */}
+              {customPenPals.length > 0 && (
+                <>
+                  <div className="p-3 bg-purple-50 text-xs text-purple-700 font-medium flex items-center gap-2">
+                    <Sparkles size={14} />
+                    我的自定义笔友
+                  </div>
+                  {customPenPals.map((penPal) => (
+                    <button
+                      key={penPal.id}
+                      onClick={() => {
+                        setSelectedReceiver({
+                          id: penPal.id,
+                          name: penPal.name,
+                          avatar: penPal.avatar,
+                          isBottle: false,
+                          bottleAIProfile: penPal
+                        });
+                        setShowReceiverModal(false);
+                      }}
+                      className="w-full px-6 py-4 hover:bg-purple-50 transition-colors border-b border-gray-100 text-left"
+                    >
+                      <div className="flex items-center gap-4">
+                        <div className="text-3xl">
+                          {penPal.avatar}
+                        </div>
+                        <div className="flex-1">
+                          <div className="font-medium text-gray-800 flex items-center gap-2">
+                            {penPal.name}
+                            <span className="text-xs bg-purple-100 text-purple-600 px-2 py-0.5 rounded-full">
+                              自定义
+                            </span>
+                          </div>
+                          <div className="text-sm text-gray-500 truncate">
+                            {penPal.customRolePrompt?.slice(0, 50)}...
+                          </div>
+                        </div>
+                      </div>
+                    </button>
+                  ))}
+                </>
+              )}
+              
+              {/* 创建自定义笔友按钮 */}
+              <button
+                onClick={() => {
+                  setShowReceiverModal(false);
+                  setShowCustomPenPalCreator(true);
+                }}
+                className="w-full px-6 py-4 hover:bg-purple-50 transition-colors border-b-2 border-purple-200 text-left bg-gradient-to-r from-purple-50 to-pink-50"
+              >
+                <div className="flex items-center gap-4">
+                  <div className="w-12 h-12 rounded-full bg-gradient-to-br from-purple-400 to-pink-400 flex items-center justify-center">
+                    <UserPlus size={24} className="text-white" />
+                  </div>
+                  <div className="flex-1">
+                    <div className="font-medium text-gray-800 flex items-center gap-2">
+                      创建自定义笔友
+                      <Sparkles size={16} className="text-purple-500" />
+                    </div>
+                    <div className="text-sm text-gray-500">创建影视、小说、动漫角色作为笔友</div>
+                  </div>
+                </div>
+              </button>
             </div>
 
             <div className="p-4 border-t border-gray-200">
@@ -324,6 +422,14 @@ const LetterWritingScreen: React.FC<LetterWritingScreenProps> = ({
         onComplete={handleAnimationComplete}
         receiverName={selectedReceiver?.name || ''}
       />
+      
+      {/* 自定义笔友创建器 */}
+      {showCustomPenPalCreator && (
+        <CustomPenPalCreator
+          onClose={() => setShowCustomPenPalCreator(false)}
+          onConfirm={handleCreateCustomPenPal}
+        />
+      )}
     </div>
   );
 };

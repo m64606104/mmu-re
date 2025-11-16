@@ -4,9 +4,9 @@
  */
 
 import React, { useState, useEffect } from 'react';
-import { Letter } from '../types/letter';
-import { getAllPenPals, getPenPalStats } from '../utils/letterService';
-import { ArrowLeft, MapPin, Heart, MessageCircle, Mail } from 'lucide-react';
+import { Letter, BottleAI } from '../types/letter';
+import { getAllPenPals, getPenPalStats, getCustomPenPals } from '../utils/letterService';
+import { ArrowLeft, MapPin, Heart, MessageCircle, Mail, Sparkles } from 'lucide-react';
 import LetterDetailModal from './LetterDetailModal';
 
 interface PenPalListScreenProps {
@@ -21,6 +21,7 @@ const PenPalListScreen: React.FC<PenPalListScreenProps> = ({
   userName
 }) => {
   const [penPals, setPenPals] = useState<Letter[]>([]);
+  const [customPenPals, setCustomPenPals] = useState<BottleAI[]>([]);
   const [stats, setStats] = useState<ReturnType<typeof getPenPalStats>>();
   const [selectedLetter, setSelectedLetter] = useState<Letter | null>(null);
 
@@ -30,8 +31,10 @@ const PenPalListScreen: React.FC<PenPalListScreenProps> = ({
 
   const loadPenPals = () => {
     const pals = getAllPenPals();
+    const customPals = getCustomPenPals();
     const statistics = getPenPalStats();
     setPenPals(pals);
+    setCustomPenPals(customPals);
     setStats(statistics);
   };
 
@@ -96,15 +99,86 @@ const PenPalListScreen: React.FC<PenPalListScreenProps> = ({
 
       {/* 笔友列表 */}
       <div className="flex-1 overflow-y-auto px-4 pb-4">
-        {penPals.length === 0 ? (
+        {penPals.length === 0 && customPenPals.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full text-gray-400">
             <Heart size={64} className="mb-4 opacity-30" />
             <div className="text-lg mb-2">还没有笔友</div>
             <div className="text-sm">试试投漂流瓶，遇到聊得来的就加为笔友吧～</div>
           </div>
         ) : (
-          <div className="space-y-3">
-            {penPals.map((letter) => (
+          <div className="space-y-4">
+            {/* 自定义笔友区 */}
+            {customPenPals.length > 0 && (
+              <>
+                <div className="flex items-center gap-2 text-sm font-medium text-purple-700 px-2">
+                  <Sparkles size={16} />
+                  我的自定义笔友 ({customPenPals.length})
+                </div>
+                {customPenPals.map((penPal) => (
+                  <div
+                    key={penPal.id}
+                    className="bg-gradient-to-br from-purple-50 to-pink-50 rounded-2xl shadow-md p-4 hover:shadow-lg transition-all border border-purple-100"
+                  >
+                    <div className="flex items-start gap-4">
+                      {/* 头像 */}
+                      <div className="text-4xl flex-shrink-0">
+                        {penPal.avatar}
+                      </div>
+
+                      {/* 信息区 */}
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 mb-1">
+                          <span className="font-medium text-gray-800">
+                            {penPal.name}
+                          </span>
+                          <span className="text-xs bg-purple-100 text-purple-600 px-2 py-0.5 rounded-full">
+                            自定义角色
+                          </span>
+                        </div>
+
+                        {/* 角色设定 */}
+                        <div className="space-y-1 mb-3">
+                          <div className="text-xs text-gray-600 line-clamp-2">
+                            {penPal.customRolePrompt}
+                          </div>
+                          {penPal.customBackground && (
+                            <div className="text-xs text-gray-500 line-clamp-1">
+                              💭 {penPal.customBackground}
+                            </div>
+                          )}
+                        </div>
+
+                        {/* 操作按钮 */}
+                        <div className="flex gap-2">
+                          <button
+                            onClick={() => onWriteTo(
+                              penPal.id,
+                              penPal.name,
+                              penPal.avatar
+                            )}
+                            className="flex-1 px-3 py-2 bg-gradient-to-r from-purple-500 to-pink-500 hover:shadow-lg text-white rounded-xl text-sm font-medium transition-all flex items-center justify-center gap-1"
+                          >
+                            <Mail size={16} />
+                            写信
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </>
+            )}
+            
+            {/* 已通信笔友区 */}
+            {penPals.length > 0 && (
+              <>
+                {customPenPals.length > 0 && (
+                  <div className="flex items-center gap-2 text-sm font-medium text-pink-700 px-2 pt-2">
+                    <Heart size={16} />
+                    已通信笔友 ({penPals.length})
+                  </div>
+                )}
+                {penPals.map((letter) => (
               <div
                 key={letter.id}
                 className="bg-white rounded-2xl shadow-md p-4 hover:shadow-lg transition-all"
@@ -177,6 +251,8 @@ const PenPalListScreen: React.FC<PenPalListScreenProps> = ({
                 </div>
               </div>
             ))}
+              </>
+            )}
           </div>
         )}
       </div>

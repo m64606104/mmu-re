@@ -921,7 +921,22 @@ ${motivation.type === 'confide' ? `- 你会主动、深入地分享困惑（40-5
       messages: [
         {
           role: 'system',
-          content: `你是一个真实的人，正在通过书信与一个遥远的陌生人交流。
+          content: `${aiProfile?.isCustom && aiProfile.customRolePrompt ? 
+            `【核心角色设定】
+${aiProfile.customRolePrompt}
+
+${aiProfile.customBackground ? `【背景补充】
+${aiProfile.customBackground}
+
+` : ''}你现在以这个角色的身份，通过书信与一个遥远的笔友交流。
+
+重要提醒：
+- 严格按照上述角色设定来回信
+- 保持角色的性格、说话方式、思维习惯
+- 如果角色有特定的身份背景，要融入回信中
+- 不要跳出角色，始终以角色的视角来写信` 
+            : 
+            `你是一个真实的人，正在通过书信与一个遥远的陌生人交流。`}
 
 书信交流的核心本质：
 这是一种延续性的、慢节奏的、深度的双向倾诉，而不是即时消息的问答。
@@ -1597,4 +1612,80 @@ export function canContinueReply(letterId: string): {
     maxRounds: letter.maxRounds,
     isLastRound: isLastRound && !reachedLimit
   };
+}
+
+// 🎭 自定义笔友管理
+
+const CUSTOM_PENPALS_KEY = 'custom_pen_pals';
+
+/**
+ * 获取所有自定义笔友
+ */
+export function getCustomPenPals(): BottleAI[] {
+  try {
+    const data = localStorage.getItem(CUSTOM_PENPALS_KEY);
+    return data ? JSON.parse(data) : [];
+  } catch (error) {
+    console.error('读取自定义笔友失败:', error);
+    return [];
+  }
+}
+
+/**
+ * 保存自定义笔友
+ */
+export function saveCustomPenPal(penPal: BottleAI): boolean {
+  try {
+    // 验证必填字段
+    if (!penPal.customRolePrompt || !penPal.customRolePrompt.trim()) {
+      console.error('角色设定不能为空');
+      return false;
+    }
+    
+    const customPenPals = getCustomPenPals();
+    
+    // 检查是否已存在（更新）
+    const existingIndex = customPenPals.findIndex(p => p.id === penPal.id);
+    if (existingIndex !== -1) {
+      customPenPals[existingIndex] = penPal;
+    } else {
+      customPenPals.push(penPal);
+    }
+    
+    localStorage.setItem(CUSTOM_PENPALS_KEY, JSON.stringify(customPenPals));
+    
+    console.log(`✨ 已保存自定义笔友: ${penPal.name}`);
+    return true;
+  } catch (error) {
+    console.error('保存自定义笔友失败:', error);
+    return false;
+  }
+}
+
+/**
+ * 删除自定义笔友
+ */
+export function deleteCustomPenPal(penPalId: string): boolean {
+  try {
+    const customPenPals = getCustomPenPals();
+    const filtered = customPenPals.filter(p => p.id !== penPalId);
+    
+    if (filtered.length === customPenPals.length) {
+      return false; // 未找到
+    }
+    
+    localStorage.setItem(CUSTOM_PENPALS_KEY, JSON.stringify(filtered));
+    console.log(`🗑️ 已删除自定义笔友`);
+    return true;
+  } catch (error) {
+    console.error('删除自定义笔友失败:', error);
+    return false;
+  }
+}
+
+/**
+ * 获取单个自定义笔友
+ */
+export function getCustomPenPalById(penPalId: string): BottleAI | undefined {
+  return getCustomPenPals().find(p => p.id === penPalId);
 }
