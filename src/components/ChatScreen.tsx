@@ -35,7 +35,6 @@ import { SavedDocument } from '../utils/documentLibrary';
 import { sendMoney, receiveMoney, getBalance, aiPayForUser, refundGift } from '../utils/wallet';
 import { addTransaction as addAIFinanceTransaction, getAIFinanceData } from '../utils/aiFinance';
 import { backgroundGenerationService, GenerationTask } from '../utils/backgroundGenerationService';
-import { handleAIGroupRedPacketClaiming } from '../utils/aiGroupRedPacketHandler';
 import SubChatWindow from './SubChatWindow';
 import SubChatManager from './SubChatManager';
 import SubChatSuggestionModal from './SubChatSuggestionModal';
@@ -63,7 +62,12 @@ import {
   parseMemorySummaryResponse,
   addMemory,
   updateSummaryCounter,
-  getMemoryBank
+  getMemoryBank,
+  shouldTriggerGroupMemorySummary,
+  updateGroupSummaryCounter,
+  buildGroupMemorySummaryPrompt,
+  getGroupMemories,
+  addGroupMemory
 } from '../utils/memorySystem';
 // import { detectMemes } from '../utils/memeSystem'; // 已删除热梗系统
 import { buildTimeAwarePrompt, UnrepliedMessageInfo } from '../utils/timeAwareness';
@@ -2673,6 +2677,15 @@ ${characterInfo?.languageStyle ? `语言风格：${characterInfo.languageStyle}`
             // 🚀 通知后台服务生成完成
             backgroundGenerationService.completeGeneration(conversation.id, currentMessages);
             
+            // 🧠 群聊记忆总结（后台处理）
+            if (conversation.type === 'group' && conversation.members) {
+              setTimeout(() => {
+                performGroupMemorySummary(currentMessages).catch(err => {
+                  console.error('群聊记忆总结失败:', err);
+                });
+              }, 1000); // 延迟1秒后执行，避免阻塞
+            }
+            
             // 自由模式：如果没有AI回复，显示提示
             if (isFreeMode && replies.length === 0) {
               // 添加系统消息提示
@@ -4501,6 +4514,107 @@ ${doc.content}`;
   };
   */
 
+  // 🧠 执行群聊记忆总结
+  const performGroupMemorySummary = async (currentMessages: Message[]) => {
+    try {
+      // 检查是否需要总结
+      if (!shouldTriggerGroupMemorySummary(conversation.id, currentMessages.length)) {
+        console.log('🧠 群聊消息数未达到总结阈值，跳过');
+        return;
+      }
+      
+      console.log('🧠 开始群聊记忆总结...');
+      
+      // 获取群成员名称
+      const groupMembers = conversation.members
+        ?.map(mid => {
+          const member = conversations.find(c => c.id === mid);
+          return member?.characterSettings?.nickname || member?.name || '未知';
+        }) || [];
+      
+      // 获取当前AI成员（可能有多个）
+      const aiMember = conversation.members
+        ?.map(mid => conversations.find(c => c.id === mid))
+        .find(c => c && c.type === 'private');
+      
+      if (!aiMember) {
+        console.error('未找到AI成员');
+        return;
+      }
+      
+      const aiName = aiMember.characterSettings?.nickname || aiMember.name;
+      const groupMemories = getGroupMemories(aiMember.id, conversation.id);
+      
+      // 构建群聊记忆总结提示词
+      const summaryPrompt = buildGroupMemorySummaryPrompt(
+        conversation.name,
+        aiName,
+        currentMessages,
+        groupMembers,
+        groupMemories
+      );
+      
+      // 调用AI进行总结
+      const response = await fetch(`${apiConfig.baseUrl}/v1/chat/completions`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${apiConfig.apiKey}`,
+        },
+        body: JSON.stringify({
+          model: apiConfig.modelName,
+          messages: [
+            { role: 'user', content: summaryPrompt }
+          ],
+          temperature: 0.3,
+        })
+      });
+      
+      if (!response.ok) {
+        const errorInfo = await getErrorFromResponse(response);
+        console.error('群聊记忆总结失败:', formatErrorMessage(errorInfo));
+        return;
+      }
+      
+      const data = await response.json();
+      const summaryResponse = data.choices?.[0]?.message?.content;
+      
+      if (!summaryResponse) {
+        console.error('未收到有效的群聊记忆总结');
+        return;
+      }
+      
+      // 解析总结结果
+      const memories = parseMemorySummaryResponse(summaryResponse);
+      
+      if (memories.length > 0) {
+        console.log(`🧠 群聊提取到 ${memories.length} 条新记忆`);
+        
+        // 添加到群聊记忆库
+        memories.forEach((mem: { content: string; importance: 'low' | 'medium' | 'high'; category?: string }) => {
+          addGroupMemory(
+            aiMember.id,
+            conversation.id,
+            conversation.name,
+            mem.content,
+            mem.category || '群聊话题',
+            mem.importance
+          );
+        });
+        
+        console.log(`✅ 已保存 ${memories.length} 条群聊记忆`);
+      } else {
+        console.log('🧠 本次群聊没有值得记忆的新信息');
+      }
+      
+      // 更新群聊总结计数器
+      updateGroupSummaryCounter(aiMember.id, currentMessages.length);
+      
+    } catch (error) {
+      console.error('群聊记忆总结失败:', error);
+    }
+  };
+
   // 🧠 执行记忆总结
   const performMemorySummary = async (currentMessages: Message[]) => {
     try {
@@ -6131,43 +6245,8 @@ ${doc.content}`;
             setShowToolbar(false);
             setShowGroupRedPacketModal(false);
             
-            // 🎁 AI自动领取群红包（异步处理）
-            if (conversation.type === 'group' && conversation.members) {
-              setTimeout(async () => {
-                const aiMembers = conversation.members
-                  ?.map(mid => conversations.find(c => c.id === mid))
-                  .filter(c => c && c.type === 'private') as Conversation[];
-                
-                if (aiMembers && aiMembers.length > 0) {
-                  await handleAIGroupRedPacketClaiming(
-                    newMessage,
-                    aiMembers,
-                    (updatedMessage) => {
-                      // 更新消息中的红包状态
-                      onUpdateConversation(conversation.id, {
-                        messages: conversation.messages.map(m => 
-                          m.id === updatedMessage.id ? updatedMessage : m
-                        )
-                      });
-                    },
-                    (_aiId, aiName, amount) => {
-                      // AI领取成功，添加提示消息
-                      console.log(`🎁 ${aiName} 领取了 ¥${amount.toFixed(2)}`);
-                      // 可选：添加系统消息提示
-                      const claimMessage: Message = {
-                        id: `claim_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-                        role: 'system',
-                        content: `${aiName} 领取了红包`,
-                        timestamp: Date.now()
-                      };
-                      onUpdateConversation(conversation.id, {
-                        messages: [...conversation.messages, claimMessage]
-                      });
-                    }
-                  );
-                }
-              }, 2000); // 延迟2秒后开始领取
-            }
+            // TODO: AI自动领取群红包功能（待实现）
+            // 需要先完成群聊记忆库和自定义总结间隔功能
           } else {
             alert('发送失败');
           }
