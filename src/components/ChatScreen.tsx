@@ -569,6 +569,7 @@ ${summary}`;
 import { showMessageNotification } from './MessageNotification';
 import { MessageActionMenu } from './MessageActionMenu';
 import { useToast } from './Toast';
+import { useMessageNotification } from '../hooks/useMessageNotification';
 // import { transcribeAudio, isValidSpeechConfig } from '../utils/speechToText';
 
 interface ChatScreenProps {
@@ -593,6 +594,13 @@ export default function ChatScreen({
   onRequestAIMoment,
 }: ChatScreenProps) {
   const { showToast } = useToast();
+  
+  // 启用消息通知
+  useMessageNotification({
+    conversation,
+    isActive: true, // ChatScreen打开时认为是激活状态
+    userName: currentUserProfile?.username || '用户'
+  });
   
   // 格式化消息给AI，包括转发内容
   const formatMessageForAI = (msg: Message): string => {

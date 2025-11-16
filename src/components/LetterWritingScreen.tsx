@@ -6,6 +6,7 @@ import React, { useState, useEffect } from 'react';
 import { Conversation } from '../types';
 import { sendLetter, getAllPresetAIs, getCustomPenPals, saveCustomPenPal } from '../utils/letterService';
 import { BottleAI } from '../types/letter';
+import { getSafeAvatar } from '../utils/avatarHelper';
 import { ArrowLeft, Send, Sparkles, Users, UserPlus } from 'lucide-react';
 import LetterSendingAnimation from './LetterSendingAnimation';
 import CustomPenPalCreator from './CustomPenPalCreator';
@@ -171,7 +172,7 @@ const LetterWritingScreen: React.FC<LetterWritingScreenProps> = ({
             >
               {selectedReceiver ? (
                 <div className="flex items-center gap-3">
-                  <span className="text-2xl">{selectedReceiver.avatar}</span>
+                  <span className="text-2xl">{getSafeAvatar(selectedReceiver.avatar, '💌')}</span>
                   <div>
                     <div className="text-sm text-gray-500">收信人</div>
                     <div className="font-medium text-gray-800 flex items-center gap-2">
@@ -270,7 +271,7 @@ const LetterWritingScreen: React.FC<LetterWritingScreenProps> = ({
                         setSelectedReceiver({
                           id: contact.id,
                           name: contact.characterSettings?.nickname || contact.name,
-                          avatar: contact.avatar || '👤',
+                          avatar: getSafeAvatar(contact.avatar, '👤'),
                           isBottle: false
                         });
                         setShowReceiverModal(false);
@@ -279,7 +280,7 @@ const LetterWritingScreen: React.FC<LetterWritingScreenProps> = ({
                     >
                       <div className="flex items-center gap-4">
                         <div className="text-3xl">
-                          {contact.avatar || '👤'}
+                          {getSafeAvatar(contact.avatar, '👤')}
                         </div>
                         <div className="flex-1">
                           <div className="font-medium text-gray-800">
