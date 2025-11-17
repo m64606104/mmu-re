@@ -15,13 +15,13 @@ interface TimelineEvent {
   receiverAvatar: string;
   status: 'sent' | 'replied';
   letterId: string;
-  roundIndex: number;
+  roundNumber: number;
 }
 
 interface LetterTimelineScreenProps {
   letter: Letter;
   onBack: () => void;
-  onViewDetail: (roundIndex: number) => void;
+  onViewDetail: (roundNumber: number) => void;
 }
 
 export default function LetterTimelineScreen({ letter, onBack, onViewDetail }: LetterTimelineScreenProps) {
@@ -40,7 +40,7 @@ export default function LetterTimelineScreen({ letter, onBack, onViewDetail }: L
         receiverAvatar: letter.receiverAvatar || '📮',
         status: round.aiReply ? 'replied' : 'sent',
         letterId: letter.id,
-        roundIndex: round.roundNumber - 1
+        roundNumber: round.roundNumber
       });
       
       // AI的回信
@@ -53,7 +53,7 @@ export default function LetterTimelineScreen({ letter, onBack, onViewDetail }: L
           receiverAvatar: letter.receiverAvatar || '📮',
           status: 'replied',
           letterId: letter.id,
-          roundIndex: round.roundNumber - 1
+          roundNumber: round.roundNumber
         });
       }
     });
@@ -105,7 +105,7 @@ export default function LetterTimelineScreen({ letter, onBack, onViewDetail }: L
                 <div 
                   key={event.id}
                   className={`relative flex items-center ${isSent ? 'justify-end' : 'justify-start'} cursor-pointer`}
-                  onClick={() => onViewDetail(event.roundIndex)}
+                  onClick={() => onViewDetail(event.roundNumber)}
                 >
                   {/* 左侧（收信） */}
                   {!isSent && (
