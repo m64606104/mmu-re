@@ -6,8 +6,9 @@
 import React, { useState, useEffect } from 'react';
 import { Letter } from '../types/letter';
 import { getActiveLetters, archiveLetter } from '../utils/letterService';
-import { ArrowLeft, Mail, Send, Clock, Check, Users, Trash2, Archive, Trophy } from 'lucide-react';
+import { ArrowLeft, Mail, Send, Clock, Check, Users, Trash2, Archive, Trophy, Database } from 'lucide-react';
 import LetterDetailModal from './LetterDetailModal';
+import LetterDataManagement from './LetterDataManagement';
 
 interface LetterBoxScreenProps {
   onBack: () => void;
@@ -28,6 +29,7 @@ const LetterBoxScreen: React.FC<LetterBoxScreenProps> = ({
 }) => {
   const [letters, setLetters] = useState<Letter[]>([]);
   const [selectedLetter, setSelectedLetter] = useState<Letter | null>(null);
+  const [showDataManagement, setShowDataManagement] = useState(false);
 
   useEffect(() => {
     loadLetters();
@@ -127,12 +129,22 @@ const LetterBoxScreen: React.FC<LetterBoxScreenProps> = ({
           <ArrowLeft size={24} className="text-gray-700" />
         </button>
         <h1 className="text-lg font-semibold text-gray-800">信箱</h1>
-        <button
-          onClick={onWriteNew}
-          className="p-2 hover:bg-orange-100 rounded-full transition-colors"
-        >
-          <Send size={24} className="text-orange-600" />
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setShowDataManagement(true)}
+            className="p-2 hover:bg-blue-100 rounded-full transition-colors"
+            title="数据管理"
+          >
+            <Database size={20} className="text-blue-600" />
+          </button>
+          <button
+            onClick={onWriteNew}
+            className="p-2 hover:bg-orange-100 rounded-full transition-colors"
+            title="写信"
+          >
+            <Send size={20} className="text-orange-600" />
+          </button>
+        </div>
       </div>
 
       {/* 快捷功能区 */}
@@ -260,6 +272,15 @@ const LetterBoxScreen: React.FC<LetterBoxScreenProps> = ({
             loadLetters(); // 催促后刷新
           }}
           userName={userName}
+        />
+      )}
+
+      {/* 数据管理模态框 */}
+      {showDataManagement && (
+        <LetterDataManagement
+          onClose={() => setShowDataManagement(false)}
+          letters={letters}
+          onRefresh={loadLetters}
         />
       )}
     </div>

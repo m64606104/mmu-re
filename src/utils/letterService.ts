@@ -404,7 +404,7 @@ function scheduleAutoReply(letter: Letter) {
 /**
  * 生成AI回信 - 使用真实API
  */
-async function generateReply(letterId: string) {
+async function generateReply(letterId: string, retryCount: number = 0) {
   const letters = getLettersFromStorage();
   const letter = letters.find(l => l.id === letterId);
   
@@ -438,24 +438,39 @@ async function generateReply(letterId: string) {
     // 触发浏览器通知
     triggerLetterNotification(letter);
   } catch (error) {
-    console.error('生成AI回信失败:', error);
-    // 失败时使用备用回复
-    const replyContent = generateMockReply(letter);
-    const now = Date.now();
+    console.error(`生成AI回信失败 (第${retryCount + 1}次尝试):`, error);
     
-    const currentRoundData = letter.conversationRounds[letter.conversationRounds.length - 1];
-    if (currentRoundData) {
-      currentRoundData.aiReply = {
-        content: replyContent,
-        repliedAt: now
-      };
+    // 最多重试3次
+    if (retryCount < 3) {
+      const retryDelay = Math.pow(2, retryCount) * 1000; // 指数退避：1s, 2s, 4s
+      console.log(`⏳ ${retryDelay / 1000}秒后重试...`);
+      
+      setTimeout(() => {
+        generateReply(letterId, retryCount + 1);
+      }, retryDelay);
+    } else {
+      // 重试失败后，标记为错误状态
+      console.error('❌ API调用多次失败，请检查API配置');
+      
+      // 将信件标记为待回复状态，不使用模板回复
+      letter.status = 'sent';
+      // 延长回复时间15分钟后再试
+      letter.willReplyAt = Date.now() + 15 * 60 * 1000;
+      letter.hasUrged = false;
+      
+      updateLetterInStorage(letter);
+      
+      // 重新调度
+      scheduleAutoReply(letter);
+      
+      // 可以考虑显示通知告知用户
+      if ('Notification' in window && Notification.permission === 'granted') {
+        new Notification('⚠️ 回信生成失败', {
+          body: `${letter.receiverName}的回信生成失败，将在15分钟后重试。请检查API配置。`,
+          icon: '⚠️'
+        });
+      }
     }
-    
-    letter.replyContent = replyContent;
-    letter.repliedAt = now;
-    letter.status = 'replied';
-    
-    updateLetterInStorage(letter);
   }
 }
 
@@ -1064,189 +1079,6 @@ function triggerLetterNotification(letter: Letter) {
   window.dispatchEvent(new CustomEvent('letter-reply', {
     detail: { letterId: letter.id, receiverName: letter.receiverName }
   }));
-}
-
-/**
- * 生成模拟回信内容 - 更自然的回信风格
- */
-function generateMockReply(letter: Letter): string {
-  // 根据信件内容长度和情绪，生成不同风格的回信
-  const isLongLetter = letter.content.length > 200;
-  const hasQuestion = letter.content.includes('?') || letter.content.includes('？');
-  
-  const templates = [
-    // 简短随意风格
-    `嘿，收到你的信了。\n\n${extractKeyword(letter.content)}... 这个我也有点感触。说实话，${getRandomFeeling()}。\n\n${getRandomDailyLife()}\n\n有空再聊～`,
-    
-    // 细腻感性风格
-    `读你的信时，${getRandomMoment()}。\n\n"${extractKeyword(letter.content)}" 这段让我想了很久。我${getRandomThought()}。\n\n${getRandomSharing()}\n\n慢慢聊吧，不急。`,
-    
-    // 朴实回应风格
-    `看到你的信了。${letter.isBottle ? '能通过漂流瓶认识你挺有意思' : '谢谢你还记得我'}。\n\n你说的那些${hasQuestion ? '问题' : '事'}，我觉得${getRandomOpinion()}。\n\n${getRandomLifeUpdate()}\n\n就这样吧，回见。`,
-    
-    // 深夜思考风格（适合长信）
-    isLongLetter ? `${getRandomNightMood()}\n\n看完你的信，想说的话有点多。${extractKeyword(letter.content)}... 这让我想起${getRandomMemory()}。\n\n${getRandomReflection()}\n\n晚了，先写到这。` : null,
-    
-    // 忙碌简短风格
-    `不好意思，这几天${getRandomBusyReason()}，回晚了。\n\n${extractKeyword(letter.content)} - 看到这个我挺${getRandomEmotion()}的。\n\n${getRandomQuickResponse()}\n\n改天细说。`
-  ].filter(Boolean) as string[];
-  
-  const index = Math.floor(Math.random() * templates.length);
-  return templates[index];
-}
-
-// 辅助函数 - 更自然的真人化表达
-function getRandomFeeling(): string {
-  const feelings = [
-    '有时候也会这么想',
-    '可能每个人都经历过吧',
-    '我懂那种感觉',
-    '确实挺复杂的',
-    '说不上来，就那样吧'
-  ];
-  return feelings[Math.floor(Math.random() * feelings.length)];
-}
-
-function getRandomDailyLife(): string {
-  const life = [
-    '最近挺忙的，很多事。',
-    '这几天在家宅着，也挺舒服。',
-    '天气不错，出去走了走。',
-    '工作有点烦，不想多说。',
-    '状态还行，日子一天天过。'
-  ];
-  return life[Math.floor(Math.random() * life.length)];
-}
-
-function getRandomMoment(): string {
-  const moments = [
-    '窗外正下着小雨',
-    '已经是深夜了',
-    '正好在听歌',
-    '刚泡了杯咖啡',
-    '一个人在家'
-  ];
-  return moments[Math.floor(Math.random() * moments.length)];
-}
-
-function getRandomThought(): string {
-  const thoughts = [
-    '之前也想过类似的事',
-    '有段时间一直在纠结这个',
-    '现在想开了一些',
-    '还在摸索吧',
-    '也说不太清楚'
-  ];
-  return thoughts[Math.floor(Math.random() * thoughts.length)];
-}
-
-function getRandomSharing(): string {
-  const shares = [
-    '我这边也差不多，每天就那样。',
-    '有时候想得太多反而累。',
-    '最近在尝试不去想那么多。',
-    '慢慢来吧，急不得。',
-    '走一步看一步。'
-  ];
-  return shares[Math.floor(Math.random() * shares.length)];
-}
-
-function getRandomOpinion(): string {
-  const opinions = [
-    '没有标准答案',
-    '每个人情况不一样',
-    '可以试试看',
-    '顺其自然也不错',
-    '想太多没用'
-  ];
-  return opinions[Math.floor(Math.random() * opinions.length)];
-}
-
-function getRandomLifeUpdate(): string {
-  const updates = [
-    '我这边还好，照常。',
-    '最近在调整状态。',
-    '也没什么特别的。',
-    '一切如常。',
-    '日子还是要过。'
-  ];
-  return updates[Math.floor(Math.random() * updates.length)];
-}
-
-function getRandomNightMood(): string {
-  const moods = [
-    '深夜了，睡不着。',
-    '夜深人静的时候想得比较多。',
-    '又熬夜了。',
-    '今晚月色不错。',
-    '一个人的夜晚。'
-  ];
-  return moods[Math.floor(Math.random() * moods.length)];
-}
-
-function getRandomMemory(): string {
-  const memories = [
-    '之前的一些事',
-    '很久以前的自己',
-    '某个瞬间',
-    '那段时间',
-    '以前的经历'
-  ];
-  return memories[Math.floor(Math.random() * memories.length)];
-}
-
-function getRandomReflection(): string {
-  const reflections = [
-    '有些事情，时间会给答案。',
-    '人都是慢慢成长的吧。',
-    '想开了就好了。',
-    '也许这就是生活。',
-    '就这样吧。'
-  ];
-  return reflections[Math.floor(Math.random() * reflections.length)];
-}
-
-function getRandomBusyReason(): string {
-  const reasons = [
-    '有点忙',
-    '事情有点多',
-    '在忙工作',
-    '在外面',
-    '不在状态'
-  ];
-  return reasons[Math.floor(Math.random() * reasons.length)];
-}
-
-function getRandomEmotion(): string {
-  const emotions = [
-    '有点感慨',
-    '也有点触动',
-    '能理解',
-    '挺有感觉',
-    '有点共鸣'
-  ];
-  return emotions[Math.floor(Math.random() * emotions.length)];
-}
-
-function getRandomQuickResponse(): string {
-  const responses = [
-    '先这样。',
-    '回头再说。',
-    '之后再聊。',
-    '改天详细说。',
-    '晚点再写。'
-  ];
-  return responses[Math.floor(Math.random() * responses.length)];
-}
-
-function extractKeyword(content: string): string {
-  // 提取关键句子片段
-  const sentences = content.split(/[。！？\n]/);
-  const meaningful = sentences.find(s => s.trim().length > 5);
-  if (meaningful) {
-    return meaningful.slice(0, 20) + (meaningful.length > 20 ? '...' : '');
-  }
-  return content.slice(0, 15) + (content.length > 15 ? '...' : '');
 }
 
 function getRandomStampStyle(): Letter['stampStyle'] {

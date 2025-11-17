@@ -6,7 +6,8 @@
 import React, { useState } from 'react';
 import { Letter } from '../types/letter';
 import { urgeLetter, canContinueReply, continueReply, addAsPenPal } from '../utils/letterService';
-import { X, Zap, MailPlus, UserPlus, Send } from 'lucide-react';
+import { X, Zap, MailPlus, UserPlus, Send, Maximize2 } from 'lucide-react';
+import FullScreenReplyComposer from './FullScreenReplyComposer';
 
 interface LetterDetailModalProps {
   letter: Letter;
@@ -23,6 +24,7 @@ const LetterDetailModal: React.FC<LetterDetailModalProps> = ({
 }) => {
   const [replyContent, setReplyContent] = useState('');
   const [showReplyInput, setShowReplyInput] = useState(false);
+  const [showFullScreenComposer, setShowFullScreenComposer] = useState(false);
   
   const replyStatus = canContinueReply(letter.id);
   const handleUrge = () => {
@@ -36,18 +38,22 @@ const LetterDetailModal: React.FC<LetterDetailModalProps> = ({
     }
   };
   
-  const handleContinueReply = () => {
-    if (!replyContent.trim()) {
+  const handleContinueReply = (content?: string) => {
+    const contentToSend = content || replyContent;
+    
+    if (!contentToSend.trim()) {
       alert('请输入回信内容');
       return;
     }
     
-    const result = continueReply(letter.id, replyContent.trim(), userName);
+    const result = continueReply(letter.id, contentToSend.trim(), userName);
     if (result) {
       alert(`✉️ 已寄出第 ${replyStatus.currentRound + 1} 轮回信！\n\n预计1-5天内收到回复`);
       setReplyContent('');
       setShowReplyInput(false);
+      setShowFullScreenComposer(false);
       onUrge();
+      onClose();
     } else {
       alert('无法继续回信：已达到最大轮数限制');
     }
@@ -83,8 +89,20 @@ const LetterDetailModal: React.FC<LetterDetailModalProps> = ({
     }
   };
 
+  // 全屏回信界面
+  if (showFullScreenComposer) {
+    return (
+      <FullScreenReplyComposer
+        letter={letter}
+        userName={userName}
+        onSend={handleContinueReply}
+        onBack={() => setShowFullScreenComposer(false)}
+      />
+    );
+  }
+
   return (
-    <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 overflow-y-auto"
+    <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4 overflow-y-auto"
       onClick={onClose}
     >
       <div
@@ -219,8 +237,15 @@ const LetterDetailModal: React.FC<LetterDetailModalProps> = ({
               />
               <div className="flex gap-2 mt-3">
                 <button
-                  onClick={handleContinueReply}
-                  className="flex-1 px-4 py-2 bg-gradient-to-r from-green-500 to-emerald-500 text-white rounded-xl font-medium hover:shadow-lg transition-all flex items-center justify-center gap-2"
+                  onClick={() => setShowFullScreenComposer(true)}
+                  className="px-4 py-2 bg-gray-100 text-gray-700 rounded-xl font-medium hover:bg-gray-200 transition-colors flex items-center justify-center gap-2"
+                  title="全屏写信"
+                >
+                  <Maximize2 size={16} />
+                </button>
+                <button
+                  onClick={() => handleContinueReply()}
+                  className="flex-1 px-4 py-2 bg-gradient-to-r from-orange-500 to-amber-500 text-white rounded-xl font-medium hover:shadow-lg transition-all flex items-center justify-center gap-2"
                 >
                   <Send size={18} />
                   寄出
@@ -243,9 +268,9 @@ const LetterDetailModal: React.FC<LetterDetailModalProps> = ({
               {/* 操作按钮 */}
               <div className="flex gap-3">
                 <button
-                  onClick={() => setShowReplyInput(true)}
+                  onClick={() => setShowFullScreenComposer(true)}
                   disabled={showReplyInput}
-                  className="flex-1 px-4 py-2.5 bg-gradient-to-r from-green-500 to-emerald-500 text-white rounded-xl font-medium hover:shadow-lg transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="flex-1 px-4 py-2.5 bg-gradient-to-r from-orange-500 to-amber-500 text-white rounded-xl font-medium hover:shadow-lg transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   <MailPlus size={18} />
                   继续回信
@@ -254,7 +279,7 @@ const LetterDetailModal: React.FC<LetterDetailModalProps> = ({
                 {letter.isBottle && !letter.isPenPalAdded && (
                   <button
                     onClick={handleAddAsPenPal}
-                    className="flex-1 px-4 py-2.5 bg-gradient-to-r from-pink-500 to-rose-500 text-white rounded-xl font-medium hover:shadow-lg transition-all flex items-center justify-center gap-2"
+                    className="flex-1 px-4 py-2.5 bg-gradient-to-r from-blue-500 to-indigo-500 text-white rounded-xl font-medium hover:shadow-lg transition-all flex items-center justify-center gap-2"
                   >
                     <UserPlus size={18} />
                     加为笔友
