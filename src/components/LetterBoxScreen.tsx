@@ -7,7 +7,7 @@ import React, { useState, useEffect } from 'react';
 import { Letter } from '../types/letter';
 import { getActiveLetters, archiveLetter } from '../utils/letterService';
 import { ArrowLeft, Mail, Send, Clock, Check, Users, Trash2, Archive, Trophy, Database, Heart, Award, Bell } from 'lucide-react';
-import LetterDetailModal from './LetterDetailModal';
+import LetterDetailView from './LetterDetailView';
 import LetterDataManagement from './LetterDataManagement';
 
 interface LetterBoxScreenProps {
@@ -323,19 +323,18 @@ const LetterBoxScreen: React.FC<LetterBoxScreenProps> = ({
         </div>
       </div>
 
-      {/* 信件详情模态框 */}
+      {/* 信件详情 - 使用新的卡片视图 */}
       {selectedLetter && (
-        <LetterDetailModal
-          letter={selectedLetter}
-          onClose={() => {
-            setSelectedLetter(null);
-            loadLetters(); // 关闭时刷新列表
-          }}
-          onUrge={() => {
-            loadLetters(); // 催促后刷新
-          }}
-          userName={userName}
-        />
+        <div className="fixed inset-0 z-50 bg-white">
+          <LetterDetailView
+            letter={selectedLetter}
+            onBack={() => {
+              setSelectedLetter(null);
+              loadLetters(); // 关闭时刷新列表
+            }}
+            userName={userName}
+          />
+        </div>
       )}
 
       {/* 数据管理模态框 */}
