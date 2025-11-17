@@ -4,11 +4,12 @@
  * 参考慢邮件App的卡片设计
  */
 
-import { ArrowLeft, Check, Zap, UserPlus } from 'lucide-react';
+import { ArrowLeft, Check, Zap, UserPlus, FileDown } from 'lucide-react';
 import { Letter } from '../types/letter';
 import { getCurrentStamp } from '../utils/stampSystem';
 import { useEffect, useRef, useState } from 'react';
 import { urgeLetter, addAsPenPal, canContinueReply } from '../utils/letterService';
+import PDFExportModal from './PDFExportModal';
 
 interface LetterCardsViewProps {
   letter: Letter;
@@ -23,6 +24,7 @@ export default function LetterCardsView({ letter, onBack, onViewTimeline, userNa
   const currentStamp = getCurrentStamp();
   const roundRefs = useRef<{ [key: number]: HTMLDivElement | null }>({});
   const [localLetter, setLocalLetter] = useState(letter);
+  const [showPDFExport, setShowPDFExport] = useState(false);
   
   useEffect(() => {
     setLocalLetter(letter);
@@ -83,9 +85,9 @@ export default function LetterCardsView({ letter, onBack, onViewTimeline, userNa
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-orange-50 via-amber-50 to-yellow-50 flex flex-col pb-20">
+    <div className="h-screen bg-gradient-to-br from-orange-50 via-amber-50 to-yellow-50 flex flex-col">
       {/* 顶部栏 */}
-      <div className="bg-white/80 backdrop-blur-sm border-b border-orange-200 px-4 py-4 flex items-center gap-3 sticky top-0 z-10">
+      <div className="bg-white/80 backdrop-blur-sm border-b border-orange-200 px-4 py-4 flex items-center gap-3 flex-shrink-0 z-10">
         <button onClick={onBack} className="p-2 hover:bg-gray-100 rounded-full transition-colors">
           <ArrowLeft size={24} className="text-gray-600" />
         </button>
@@ -96,6 +98,13 @@ export default function LetterCardsView({ letter, onBack, onViewTimeline, userNa
             {!letter.isBottle && <span>✈️ 12月10日</span>}
           </div>
         </div>
+        <button 
+          onClick={() => setShowPDFExport(true)}
+          className="p-2 hover:bg-orange-100 rounded-full transition-colors"
+          title="导出PDF"
+        >
+          <FileDown size={20} className="text-orange-600" />
+        </button>
         <button 
           onClick={onViewTimeline}
           className="px-3 py-1.5 bg-blue-100 text-blue-600 rounded-full text-xs font-medium hover:bg-blue-200 transition-colors"
@@ -290,6 +299,14 @@ export default function LetterCardsView({ letter, onBack, onViewTimeline, userNa
           )}
         </div>
       </div>
+
+      {/* PDF导出模态框 */}
+      {showPDFExport && (
+        <PDFExportModal
+          letter={localLetter}
+          onClose={() => setShowPDFExport(false)}
+        />
+      )}
     </div>
   );
 }

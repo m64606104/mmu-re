@@ -209,7 +209,7 @@ export default function BottleFishingScreen({ onBack, userName }: BottleFishingS
 
             {/* 显示打捞到的瓶子 */}
             {currentBottle && !showReplyBox && (
-              <div className="relative z-10 w-full max-w-md">
+              <div className="relative z-10 w-full max-w-md animate-fadeIn">
                 <div className="bg-white rounded-3xl shadow-2xl overflow-hidden transform hover:scale-105 transition-transform">
                   {/* 瓶子头部 */}
                   <div className="bg-gradient-to-r from-amber-100 to-orange-100 px-6 py-4">
@@ -277,6 +277,30 @@ export default function BottleFishingScreen({ onBack, userName }: BottleFishingS
               </div>
             )}
           </div>
+
+          {/* 回信时显示原文 */}
+          {showReplyBox && currentBottle && (
+            <div className="mb-4 bg-white rounded-3xl shadow-lg overflow-hidden">
+              {/* 原文区域 */}
+              <div className="bg-gradient-to-r from-amber-50 to-orange-50 px-5 py-3 border-b border-gray-200">
+                <div className="flex items-center gap-2">
+                  <span className="text-sm font-medium text-gray-700">📖 原文内容</span>
+                  <span className="text-xs text-gray-500">({currentBottle.senderName})</span>
+                </div>
+              </div>
+              <div className="p-5 max-h-48 overflow-y-auto">
+                <div 
+                  className="text-gray-800 leading-relaxed whitespace-pre-wrap font-serif text-sm"
+                  style={{
+                    lineHeight: '1.8',
+                    fontFamily: '"Noto Serif SC", "STSong", serif'
+                  }}
+                >
+                  {currentBottle.content}
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* 回信输入框 */}
           {showReplyBox && currentBottle && (
