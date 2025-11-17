@@ -352,6 +352,53 @@ export function sendLetter(
   // 检查成就
   checkLetterAchievements();
   
+  // 🎫 检查邮票解锁
+  setTimeout(() => {
+    try {
+      import('./stampSystem').then(({ checkAndUnlockStamps, getStampCollection }) => {
+        const allLetters = getAllLetters();
+        const sentCount = allLetters.length;
+        const repliedCount = allLetters.filter(l => l.status === 'replied').length;
+        const bottleCount = allLetters.filter(l => l.isBottle).length;
+        
+        const unlockedStamps = checkAndUnlockStamps({
+          sentLetters: sentCount,
+          receivedReplies: repliedCount,
+          bottlesSent: bottleCount
+        });
+        
+        if (unlockedStamps.length > 0) {
+          import('./letterNotificationSystem').then(({ createStampUnlockedNotification }) => {
+            const collection = getStampCollection();
+            unlockedStamps.forEach(stampId => {
+              const stamp = collection.stamps[stampId];
+              if (stamp) {
+                createStampUnlockedNotification(stampId, stamp.name);
+              }
+            });
+          });
+        }
+      });
+    } catch (e) {
+      console.log('邮票系统未启用');
+    }
+  }, 500);
+  
+  // 📬 创建发送成功通知
+  setTimeout(() => {
+    try {
+      import('./letterNotificationSystem').then(({ createLetterDeliveredNotification }) => {
+        if (isBottle) {
+          createLetterDeliveredNotification(letter.id, '漂流瓶');
+        } else {
+          createLetterDeliveredNotification(letter.id, finalReceiverName);
+        }
+      });
+    } catch (e) {
+      console.log('通知系统未启用');
+    }
+  }, 500);
+  
   return letter;
 }
 
@@ -451,6 +498,49 @@ async function generateReply(letterId: string, retryCount: number = 0) {
     
     // 触发浏览器通知
     triggerLetterNotification(letter);
+    
+    // 💌 创建回信通知
+    setTimeout(() => {
+      try {
+        import('./letterNotificationSystem').then(({ createReplyReceivedNotification }) => {
+          createReplyReceivedNotification(
+            letter.id, 
+            letter.receiverName, 
+            letter.receiverAvatar || '📮'
+          );
+        });
+      } catch (e) {
+        console.log('通知系统未启用');
+      }
+    }, 500);
+    
+    // 🎫 检查邮票解锁（收到回信）
+    setTimeout(() => {
+      try {
+        import('./stampSystem').then(({ checkAndUnlockStamps, getStampCollection }) => {
+          const allLetters = getAllLetters();
+          const repliedCount = allLetters.filter(l => l.status === 'replied').length;
+          
+          const unlockedStamps = checkAndUnlockStamps({
+            receivedReplies: repliedCount
+          });
+          
+          if (unlockedStamps.length > 0) {
+            import('./letterNotificationSystem').then(({ createStampUnlockedNotification }) => {
+              const collection = getStampCollection();
+              unlockedStamps.forEach(stampId => {
+                const stamp = collection.stamps[stampId];
+                if (stamp) {
+                  createStampUnlockedNotification(stampId, stamp.name);
+                }
+              });
+            });
+          }
+        });
+      } catch (e) {
+        console.log('邮票系统未启用');
+      }
+    }, 500);
   } catch (error) {
     console.error(`生成AI回信失败 (第${retryCount + 1}次尝试):`, error);
     

@@ -6,7 +6,7 @@
 import React, { useState, useEffect } from 'react';
 import { Letter } from '../types/letter';
 import { getActiveLetters, archiveLetter } from '../utils/letterService';
-import { ArrowLeft, Mail, Send, Clock, Check, Users, Trash2, Archive, Trophy, Database, Heart } from 'lucide-react';
+import { ArrowLeft, Mail, Send, Clock, Check, Users, Trash2, Archive, Trophy, Database, Heart, Award, Bell } from 'lucide-react';
 import LetterDetailModal from './LetterDetailModal';
 import LetterDataManagement from './LetterDataManagement';
 
@@ -17,6 +17,8 @@ interface LetterBoxScreenProps {
   toArchived: () => void;
   onToAchievements: () => void;
   onToFavorites: () => void;
+  onToStampCollection: () => void;
+  onToNotifications: () => void;
   userName: string;
 }
 
@@ -27,18 +29,32 @@ const LetterBoxScreen: React.FC<LetterBoxScreenProps> = ({
   toArchived,
   onToAchievements,
   onToFavorites,
+  onToStampCollection,
+  onToNotifications,
   userName
 }) => {
   const [letters, setLetters] = useState<Letter[]>([]);
   const [selectedLetter, setSelectedLetter] = useState<Letter | null>(null);
   const [showDataManagement, setShowDataManagement] = useState(false);
+  const [unreadCount, setUnreadCount] = useState(0);
 
   useEffect(() => {
     loadLetters();
+    loadUnreadCount();
     // 每10秒刷新一次，检查是否有新回信
-    const interval = setInterval(loadLetters, 10000);
+    const interval = setInterval(() => {
+      loadLetters();
+      loadUnreadCount();
+    }, 10000);
     return () => clearInterval(interval);
   }, []);
+
+  const loadUnreadCount = () => {
+    // 动态导入避免循环依赖
+    import('../utils/letterNotificationSystem').then(({ getUnreadCount }) => {
+      setUnreadCount(getUnreadCount());
+    });
+  };
 
   const loadLetters = () => {
     const activeLetters = getActiveLetters();
@@ -165,6 +181,27 @@ const LetterBoxScreen: React.FC<LetterBoxScreenProps> = ({
           >
             <Heart size={18} />
             我的收藏
+          </button>
+        </div>
+        <div className="flex gap-3">
+          <button
+            onClick={onToStampCollection}
+            className="flex-1 px-4 py-3 bg-gradient-to-r from-amber-400 to-orange-500 text-white rounded-xl font-medium hover:shadow-lg transition-all flex items-center justify-center gap-2"
+          >
+            <Award size={18} />
+            邮票收集
+          </button>
+          <button
+            onClick={onToNotifications}
+            className="flex-1 px-4 py-3 bg-gradient-to-r from-blue-400 to-indigo-500 text-white rounded-xl font-medium hover:shadow-lg transition-all flex items-center justify-center gap-2 relative"
+          >
+            <Bell size={18} />
+            消息通知
+            {unreadCount > 0 && (
+              <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs font-bold px-2 py-0.5 rounded-full min-w-[20px] text-center shadow-lg animate-pulse">
+                {unreadCount > 99 ? '99+' : unreadCount}
+              </span>
+            )}
           </button>
         </div>
         <div className="flex gap-3">

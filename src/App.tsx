@@ -938,6 +938,8 @@ function App() {
             toArchived={() => navigateTo('archived-letters')}
             onToAchievements={() => navigateTo('achievements')}
             onToFavorites={() => navigateTo('favorite-letters')}
+            onToStampCollection={() => navigateTo('stamp-collection')}
+            onToNotifications={() => navigateTo('letter-notifications')}
             userName={userProfile.username}
           />
         );
