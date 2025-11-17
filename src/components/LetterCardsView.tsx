@@ -68,7 +68,14 @@ export default function LetterCardsView({ letter, onBack, onViewTimeline: _onVie
     
     const result = continueReply(localLetter.id, replyContent.trim(), userName);
     if (result) {
-      alert(`✉️ 已寄出第 ${replyStatus.currentRound + 1} 轮回信！\n\n预计1-5天内收到回复`);
+      // 获取更新后的信件信息
+      import('../utils/letterService').then(({ getLetterById }) => {
+        const updatedLetter = getLetterById(localLetter.id);
+        const willReplyTime = updatedLetter?.willReplyAt 
+          ? formatFullTime(updatedLetter.willReplyAt) 
+          : '几天内';
+        alert(`✉️ 已寄出第 ${replyStatus.currentRound + 1} 轮回信！\n\n预计 ${willReplyTime} 左右收到回复`);
+      });
       setReplyContent('');
       setShowReplyInput(false);
       if (onRefresh) {
@@ -270,13 +277,18 @@ export default function LetterCardsView({ letter, onBack, onViewTimeline: _onVie
                 {!round.aiReply && localLetter.status === 'sent' && (
                   <div className="mb-4 bg-amber-50 border-2 border-dashed border-amber-300 rounded-2xl p-6 text-center">
                     <div className="text-4xl mb-2">⏳</div>
-                    <div className="text-gray-700 font-medium">等待回信中...</div>
-                    <div className="text-sm text-gray-500 mt-1 mb-3">
+                    <div className="text-gray-700 font-medium mb-2">等待回信中...</div>
+                    {localLetter.willReplyAt && (
+                      <div className="text-base text-amber-700 font-medium mb-1">
+                        预计送达时间
+                      </div>
+                    )}
+                    <div className="text-sm text-gray-600 mb-3">
                       {localLetter.hasUrged 
-                        ? '已催促，预计很快收到回信'
+                        ? '✨ 已催促，预计 15-30 分钟内收到回信'
                         : localLetter.willReplyAt 
-                          ? `预计 ${formatFullTime(localLetter.willReplyAt)} 左右收到回信`
-                          : '预计 1-5 天收到回信'
+                          ? `📅 ${formatFullTime(localLetter.willReplyAt)} 左右`
+                          : '📅 预计 1-5 天收到回信'
                       }
                     </div>
                     {!localLetter.hasUrged && (
@@ -287,6 +299,11 @@ export default function LetterCardsView({ letter, onBack, onViewTimeline: _onVie
                         <Zap size={18} />
                         催促回复
                       </button>
+                    )}
+                    {localLetter.hasUrged && (
+                      <div className="text-xs text-gray-500 mt-2">
+                        已催促，请耐心等待
+                      </div>
                     )}
                   </div>
                 )}
