@@ -87,9 +87,9 @@ export default function LetterSmallCardsView({
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-purple-50 to-pink-50 flex flex-col">
+    <div className="h-full bg-gradient-to-br from-blue-50 via-purple-50 to-pink-50 flex flex-col">
       {/* 顶部栏 */}
-      <div className="bg-white/80 backdrop-blur-sm border-b border-purple-200 px-4 py-4 flex items-center gap-3">
+      <div className="bg-white/80 backdrop-blur-sm border-b border-purple-200 px-4 py-4 flex items-center gap-3 shrink-0">
         <button onClick={onBack} className="p-2 hover:bg-gray-100 rounded-full transition-colors">
           <ArrowLeft size={24} className="text-gray-600" />
         </button>
@@ -103,7 +103,7 @@ export default function LetterSmallCardsView({
       </div>
 
       {/* 卡片列表 */}
-      <div className="flex-1 overflow-y-auto p-4">
+      <div className="flex-1 overflow-y-auto p-4" style={{ minHeight: 0 }}>
         <div className="max-w-2xl mx-auto space-y-3">
           {cards.map((card) => (
             <button

@@ -5,7 +5,7 @@
  */
 
 import { useState, useEffect } from 'react';
-import { ArrowLeft, Mail } from 'lucide-react';
+import { Mail } from 'lucide-react';
 import { Letter } from '../types/letter';
 import { getActiveLetters } from '../utils/letterService';
 
@@ -24,7 +24,7 @@ interface LetterBoxListViewProps {
   onOpenBox: (box: LetterBox) => void;
 }
 
-export default function LetterBoxListView({ onBack, onOpenBox }: LetterBoxListViewProps) {
+export default function LetterBoxListView({ onBack: _onBack, onOpenBox }: LetterBoxListViewProps) {
   const [boxes, setBoxes] = useState<LetterBox[]>([]);
 
   useEffect(() => {
@@ -98,12 +98,9 @@ export default function LetterBoxListView({ onBack, onOpenBox }: LetterBoxListVi
   ];
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-orange-50 via-amber-50 to-yellow-50 flex flex-col">
+    <div className="h-full bg-gradient-to-br from-orange-50 via-amber-50 to-yellow-50 flex flex-col">
       {/* 顶部栏 */}
-      <div className="bg-white/80 backdrop-blur-sm border-b border-orange-200 px-4 py-4 flex items-center gap-3">
-        <button onClick={onBack} className="p-2 hover:bg-gray-100 rounded-full transition-colors">
-          <ArrowLeft size={24} className="text-gray-600" />
-        </button>
+      <div className="bg-white/80 backdrop-blur-sm border-b border-orange-200 px-4 py-4 flex items-center gap-3 shrink-0">
         <div className="flex-1">
           <h1 className="text-lg font-bold text-gray-800">📦 文件箱</h1>
           <div className="text-xs text-gray-500">按笔友分组的信件</div>
@@ -111,7 +108,7 @@ export default function LetterBoxListView({ onBack, onOpenBox }: LetterBoxListVi
       </div>
 
       {/* 文件箱网格 */}
-      <div className="flex-1 overflow-y-auto p-4">
+      <div className="flex-1 overflow-y-auto p-4" style={{ minHeight: 0 }}>
         <div className="max-w-2xl mx-auto">
           {boxes.length === 0 ? (
             <div className="text-center py-20">

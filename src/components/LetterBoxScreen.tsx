@@ -9,6 +9,8 @@ import { getActiveLetters, archiveLetter } from '../utils/letterService';
 import { Mail, Send, Clock, Check, Users, Trash2, Archive, Trophy, Heart, Bell, Waves, Inbox } from 'lucide-react';
 import LetterDetailView from './LetterDetailView';
 import LetterDataManagement from './LetterDataManagement';
+import LetterBoxListView from './LetterBoxListView';
+import LetterSmallCardsView from './LetterSmallCardsView';
 
 interface LetterBoxScreenProps {
   onBack: () => void;
@@ -24,6 +26,17 @@ interface LetterBoxScreenProps {
 }
 
 type BottomTab = 'inbox' | 'favorites' | 'penpals' | 'trash';
+type ViewMode = 'list' | 'filebox' | 'smallcards' | 'detail';
+
+interface LetterBox {
+  receiverId: string;
+  receiverName: string;
+  receiverAvatar: string;
+  letters: Letter[];
+  totalRounds: number;
+  lastLetterDate: number;
+  hasUnread: boolean;
+}
 
 const LetterBoxScreen: React.FC<LetterBoxScreenProps> = ({
   onBack: _onBack,
@@ -42,6 +55,9 @@ const LetterBoxScreen: React.FC<LetterBoxScreenProps> = ({
   const [showDataManagement, setShowDataManagement] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
   const [activeTab, setActiveTab] = useState<BottomTab>('inbox');
+  const [viewMode, setViewMode] = useState<ViewMode>('filebox');
+  const [selectedBox, setSelectedBox] = useState<LetterBox | null>(null);
+  const [selectedRoundIndex, setSelectedRoundIndex] = useState<number | undefined>(undefined);
 
   useEffect(() => {
     loadLetters();
@@ -276,8 +292,39 @@ const LetterBoxScreen: React.FC<LetterBoxScreenProps> = ({
         </div>
       </div>
 
-      {/* 信件列表 */}
-      <div className="flex-1 overflow-y-auto px-4 py-4" style={{ minHeight: 0 }}>
+      {/* 视图容器 */}
+      <div className="flex-1 overflow-hidden" style={{ minHeight: 0 }}>
+        {/* 文件盒视图 */}
+        {viewMode === 'filebox' && (
+          <LetterBoxListView
+            onBack={() => {/* 已在主页 */}}
+            onOpenBox={(box) => {
+              setSelectedBox(box);
+              setViewMode('smallcards');
+            }}
+          />
+        )}
+
+        {/* 小卡片视图 */}
+        {viewMode === 'smallcards' && selectedBox && (
+          <LetterSmallCardsView
+            letters={selectedBox.letters}
+            receiverName={selectedBox.receiverName}
+            onBack={() => {
+              setViewMode('filebox');
+              setSelectedBox(null);
+            }}
+            onViewDetail={(letter, roundIndex) => {
+              setSelectedLetter(letter);
+              setSelectedRoundIndex(roundIndex);
+              setViewMode('detail');
+            }}
+          />
+        )}
+
+        {/* 原来的列表视图（保留作为备用） */}
+        {viewMode === 'list' && (
+          <div className="h-full overflow-y-auto px-4 py-4">
         <div className="max-w-2xl mx-auto space-y-4">
           {letters.map((letter) => (
             <div
@@ -374,7 +421,9 @@ const LetterBoxScreen: React.FC<LetterBoxScreenProps> = ({
               </div>
             </div>
           ))}
+          </div>
         </div>
+        )}
       </div>
 
       {/* 底部导航栏 */}
@@ -428,15 +477,18 @@ const LetterBoxScreen: React.FC<LetterBoxScreenProps> = ({
       </div>
 
       {/* 信件详情 - 使用新的卡片视图 */}
-      {selectedLetter && (
+      {viewMode === 'detail' && selectedLetter && (
         <div className="fixed inset-0 z-50 bg-white">
           <LetterDetailView
             letter={selectedLetter}
             onBack={() => {
+              setViewMode('smallcards');
               setSelectedLetter(null);
+              setSelectedRoundIndex(undefined);
               loadLetters(); // 关闭时刷新列表
             }}
             userName={userName}
+            initialRoundIndex={selectedRoundIndex}
           />
         </div>
       )}
