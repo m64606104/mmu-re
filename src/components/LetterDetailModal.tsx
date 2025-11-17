@@ -3,7 +3,7 @@
  * 显示完整的信件内容和回信
  */
 
-import React, { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Letter } from '../types/letter';
 import { urgeLetter, canContinueReply, continueReply, addAsPenPal, toggleFavoriteLetter } from '../utils/letterService';
 import { X, Zap, MailPlus, UserPlus, Send, Maximize2, Heart, FileText } from 'lucide-react';
@@ -27,8 +27,14 @@ const LetterDetailModal: React.FC<LetterDetailModalProps> = ({
   const [showReplyInput, setShowReplyInput] = useState(false);
   const [showFullScreenComposer, setShowFullScreenComposer] = useState(false);
   const [isFavorited, setIsFavorited] = useState(letter.isFavorite || false);
+  const [localLetter, setLocalLetter] = useState(letter);
   
-  const replyStatus = canContinueReply(letter.id);
+  // 监听letter变化，更新本地状态
+  useEffect(() => {
+    setLocalLetter(letter);
+  }, [letter]);
+  
+  const replyStatus = canContinueReply(localLetter.id);
   const handleUrge = () => {
     const success = urgeLetter(letter.id);
     if (success) {
@@ -62,17 +68,26 @@ const LetterDetailModal: React.FC<LetterDetailModalProps> = ({
   };
   
   const handleAddAsPenPal = () => {
-    const success = addAsPenPal(letter.id);
+    const success = addAsPenPal(localLetter.id);
     if (success) {
-      alert(`💌 已将 ${letter.receiverName} 加为笔友！\n\n现在可以无限制地交流啦～`);
-      onUrge();
+      // 更新本地letter状态
+      import('../utils/letterService').then(({ getLetterById }) => {
+        const updatedLetter = getLetterById(localLetter.id);
+        if (updatedLetter) {
+          setLocalLetter(updatedLetter);
+        }
+      });
+      
+      alert(`💌 已将 ${localLetter.receiverName} 加为笔友！\n\n现在可以无限制地交流啦～`);
+      onUrge(); // 通知父组件刷新
+      // 不立即关闭，让用户可以继续回信
     } else {
       alert('无法加为笔友');
     }
   };
 
   const handleToggleFavorite = () => {
-    const success = toggleFavoriteLetter(letter.id);
+    const success = toggleFavoriteLetter(localLetter.id);
     if (success) {
       setIsFavorited(!isFavorited);
     }

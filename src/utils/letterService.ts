@@ -1134,7 +1134,7 @@ ${aiProfile.customBackground}
       // 根据性格调整参数
       temperature: replyStyle.type === 'rational' ? 0.7 : 
                    replyStyle.type === 'casual' ? 0.95 : 0.9,
-      max_tokens: 2000,
+      max_tokens: 3000,
       presence_penalty: replyStyle.type === 'introverted' ? 0.3 : 0.6,
       frequency_penalty: 0.3
     })
@@ -1166,9 +1166,11 @@ ${aiProfile.customBackground}
     throw new Error(`AI回复字数过少（${replyContent.length}字），最少需要${minLength}字`);
   }
   
-  // 限制最大字数
-  if (replyContent.length > 2000) {
-    replyContent = replyContent.substring(0, 2000) + '...';
+  // 不再限制最大字数，让内容完整显示
+  // 如果真的太长（超过3000字），才进行截断并添加提示
+  if (replyContent.length > 3000) {
+    console.warn(`⚠️ AI回复内容过长（${replyContent.length}字），将截断至3000字`);
+    replyContent = replyContent.substring(0, 3000);
   }
   
   return replyContent.trim();
