@@ -3,10 +3,10 @@
  * 允许用户创建影视、小说、动漫等角色作为笔友
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { X, Sparkles, User, MapPin, Book } from 'lucide-react';
 import { BottleAI } from '../types/letter';
-import { generateRandomName } from '../utils/nameGenerator';
+import { generateXianyuStyleName } from '../utils/randomNameGenerator';
 
 interface CustomPenPalCreatorProps {
   onClose: () => void;
@@ -25,6 +25,11 @@ const AVATAR_OPTIONS = [
   '🌟', '⭐', '✨', '💫', '🌙', '☀️'
 ];
 
+// 随机笔名生成器（咸鱼风格）
+const generateRandomPenName = (): string => {
+  return generateXianyuStyleName();
+};
+
 const CustomPenPalCreator: React.FC<CustomPenPalCreatorProps> = ({
   onClose,
   onConfirm
@@ -35,12 +40,8 @@ const CustomPenPalCreator: React.FC<CustomPenPalCreatorProps> = ({
   const [background, setBackground] = useState('');
   const [showAvatarPicker, setShowAvatarPicker] = useState(false);
 
-  useEffect(() => {
-    setPenName(generateRandomName());
-  }, []);
-
   const handleRandomName = () => {
-    setPenName(generateRandomName());
+    setPenName(generateRandomPenName());
   };
 
   const handleConfirm = () => {
@@ -51,7 +52,7 @@ const CustomPenPalCreator: React.FC<CustomPenPalCreatorProps> = ({
 
     const customPenPal: BottleAI = {
       id: `custom_penpal_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-      name: penName.trim() || generateRandomName(),
+      name: penName.trim() || generateRandomPenName(),
       avatar: avatar,
       personality: rolePrompt.trim(), // 使用角色设定作为性格描述
       location: '虚拟世界',

@@ -4,78 +4,42 @@
  */
 
 import { BottleLetter, BottleFishingRecord, UserBottleStats } from '../types/bottle';
+import { generateXianyuStyleName } from './randomNameGenerator';
 
 const FISHING_STORAGE_KEY = 'bottle_fishing_record';
 const STATS_STORAGE_KEY = 'bottle_stats';
 const MAX_DAILY_FISHING = 2;
 
-// 预设的漂流瓶发送者
-const BOTTLE_SENDERS = [
-  {
-    id: 'bottle_sender_1',
-    name: '海边的陌生人',
-    avatar: '🌊',
-    age: 25,
-    gender: 'female' as const,
-    location: '厦门'
-  },
-  {
-    id: 'bottle_sender_2',
-    name: '远方来客',
-    avatar: '🗺️',
-    age: 28,
-    gender: 'male' as const,
-    location: '大理'
-  },
-  {
-    id: 'bottle_sender_3',
-    name: '夜空观察者',
-    avatar: '🌙',
-    age: 23,
-    gender: 'female' as const,
-    location: '青海'
-  },
-  {
-    id: 'bottle_sender_4',
-    name: '城市漫游者',
-    avatar: '🏙️',
-    age: 30,
-    gender: 'male' as const,
-    location: '上海'
-  },
-  {
-    id: 'bottle_sender_5',
-    name: '山间旅人',
-    avatar: '⛰️',
-    age: 27,
-    gender: 'other' as const,
-    location: '丽江'
-  },
-  {
-    id: 'bottle_sender_6',
-    name: '咖啡馆常客',
-    avatar: '☕',
-    age: 24,
-    gender: 'female' as const,
-    location: '成都'
-  },
-  {
-    id: 'bottle_sender_7',
-    name: '图书馆守夜人',
-    avatar: '📚',
-    age: 29,
-    gender: 'male' as const,
-    location: '北京'
-  },
-  {
-    id: 'bottle_sender_8',
-    name: '海洋拾梦者',
-    avatar: '🐚',
-    age: 22,
-    gender: 'female' as const,
-    location: '三亚'
-  }
+// 漂流瓶发送者配置（头像、年龄、性别、地点）
+const SENDER_CONFIGS = [
+  { avatar: '🌊', age: 25, gender: 'female' as const, location: '厦门' },
+  { avatar: '🗺️', age: 28, gender: 'male' as const, location: '大理' },
+  { avatar: '🌙', age: 23, gender: 'female' as const, location: '青海' },
+  { avatar: '🏙️', age: 30, gender: 'male' as const, location: '上海' },
+  { avatar: '⛰️', age: 27, gender: 'other' as const, location: '丽江' },
+  { avatar: '☕', age: 24, gender: 'female' as const, location: '成都' },
+  { avatar: '📚', age: 29, gender: 'male' as const, location: '北京' },
+  { avatar: '🐚', age: 22, gender: 'female' as const, location: '三亚' },
+  { avatar: '🎨', age: 26, gender: 'female' as const, location: '杭州' },
+  { avatar: '🎵', age: 24, gender: 'male' as const, location: '武汉' },
+  { avatar: '🌸', age: 21, gender: 'female' as const, location: '苏州' },
+  { avatar: '🎭', age: 31, gender: 'male' as const, location: '南京' },
+  { avatar: '🍃', age: 25, gender: 'other' as const, location: '昆明' },
+  { avatar: '⭐', age: 23, gender: 'female' as const, location: '重庆' },
+  { avatar: '🌈', age: 27, gender: 'male' as const, location: '西安' }
 ];
+
+// 生成漂流瓶发送者（使用咸鱼风格的随机名字）
+function generateBottleSenders() {
+  return SENDER_CONFIGS.map((config, index) => ({
+    id: `bottle_sender_${index + 1}`,
+    name: generateXianyuStyleName(), // 动态生成咸鱼风格名字
+    ...config
+  }));
+}
+
+// 每次启动时重新生成一批发送者
+const BOTTLE_SENDERS = generateBottleSenders();
 
 // 漂流瓶话题和内容模板
 const BOTTLE_TEMPLATES = [
