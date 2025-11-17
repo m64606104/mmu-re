@@ -167,68 +167,89 @@ const LetterBoxScreen: React.FC<LetterBoxScreenProps> = ({
         </div>
       </div>
 
-      {/* 快捷功能区 */}
-      <div className="p-4 space-y-3">
-        <div className="flex gap-3">
+      {/* 快捷功能图标栏 */}
+      <div className="bg-white/60 backdrop-blur-sm border-b border-orange-100 px-3 py-3">
+        <div className="flex items-center gap-1 overflow-x-auto scrollbar-hide">
+          {/* 我的笔友 */}
           <button
             onClick={onToPenPals}
-            className="flex-1 px-4 py-3 bg-gradient-to-r from-pink-500 to-rose-500 text-white rounded-xl font-medium hover:shadow-lg transition-all flex items-center justify-center gap-2"
+            className="flex flex-col items-center gap-1 px-3 py-2 rounded-xl hover:bg-pink-50 transition-colors flex-shrink-0 min-w-[64px]"
           >
-            <Users size={18} />
-            我的笔友
+            <div className="w-10 h-10 rounded-full bg-gradient-to-br from-pink-100 to-rose-100 flex items-center justify-center">
+              <Users size={20} className="text-pink-600" />
+            </div>
+            <span className="text-xs text-gray-700">笔友</span>
           </button>
+
+          {/* 漂流瓶 */}
           <button
             onClick={onToBottleFishing}
-            className="flex-1 px-4 py-3 bg-gradient-to-r from-cyan-400 to-blue-500 text-white rounded-xl font-medium hover:shadow-lg transition-all flex items-center justify-center gap-2"
+            className="flex flex-col items-center gap-1 px-3 py-2 rounded-xl hover:bg-cyan-50 transition-colors flex-shrink-0 min-w-[64px]"
           >
-            <Waves size={18} />
-            漂流瓶
+            <div className="w-10 h-10 rounded-full bg-gradient-to-br from-cyan-100 to-blue-100 flex items-center justify-center">
+              <Waves size={20} className="text-cyan-600" />
+            </div>
+            <span className="text-xs text-gray-700">漂流瓶</span>
           </button>
-        </div>
-        <div className="flex gap-3">
+
+          {/* 收藏 */}
           <button
             onClick={onToFavorites}
-            className="flex-1 px-4 py-3 bg-gradient-to-r from-red-400 to-pink-500 text-white rounded-xl font-medium hover:shadow-lg transition-all flex items-center justify-center gap-2"
+            className="flex flex-col items-center gap-1 px-3 py-2 rounded-xl hover:bg-red-50 transition-colors flex-shrink-0 min-w-[64px]"
           >
-            <Heart size={18} />
-            我的收藏
+            <div className="w-10 h-10 rounded-full bg-gradient-to-br from-red-100 to-pink-100 flex items-center justify-center">
+              <Heart size={20} className="text-red-500" />
+            </div>
+            <span className="text-xs text-gray-700">收藏</span>
           </button>
+
+          {/* 回收站 */}
           <button
             onClick={toArchived}
-            className="flex-1 px-4 py-3 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-xl font-medium transition-colors flex items-center justify-center gap-2"
+            className="flex flex-col items-center gap-1 px-3 py-2 rounded-xl hover:bg-gray-100 transition-colors flex-shrink-0 min-w-[64px]"
           >
-            <Trash2 size={18} />
-            回收站
+            <div className="w-10 h-10 rounded-full bg-gradient-to-br from-gray-100 to-gray-200 flex items-center justify-center">
+              <Trash2 size={20} className="text-gray-600" />
+            </div>
+            <span className="text-xs text-gray-700">回收站</span>
           </button>
-        </div>
-        <div className="flex gap-3">
+
+          {/* 邮票 */}
           <button
             onClick={onToStampCollection}
-            className="flex-1 px-4 py-3 bg-gradient-to-r from-amber-400 to-orange-500 text-white rounded-xl font-medium hover:shadow-lg transition-all flex items-center justify-center gap-2"
+            className="flex flex-col items-center gap-1 px-3 py-2 rounded-xl hover:bg-amber-50 transition-colors flex-shrink-0 min-w-[64px]"
           >
-            <Award size={18} />
-            邮票收集
+            <div className="w-10 h-10 rounded-full bg-gradient-to-br from-amber-100 to-orange-100 flex items-center justify-center">
+              <Award size={20} className="text-amber-600" />
+            </div>
+            <span className="text-xs text-gray-700">邮票</span>
           </button>
+
+          {/* 通知 */}
           <button
             onClick={onToNotifications}
-            className="flex-1 px-4 py-3 bg-gradient-to-r from-blue-400 to-indigo-500 text-white rounded-xl font-medium hover:shadow-lg transition-all flex items-center justify-center gap-2 relative"
+            className="flex flex-col items-center gap-1 px-3 py-2 rounded-xl hover:bg-blue-50 transition-colors flex-shrink-0 min-w-[64px] relative"
           >
-            <Bell size={18} />
-            消息通知
-            {unreadCount > 0 && (
-              <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs font-bold px-2 py-0.5 rounded-full min-w-[20px] text-center shadow-lg animate-pulse">
-                {unreadCount > 99 ? '99+' : unreadCount}
-              </span>
-            )}
+            <div className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-100 to-indigo-100 flex items-center justify-center relative">
+              <Bell size={20} className="text-blue-600" />
+              {unreadCount > 0 && (
+                <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs font-bold px-1.5 py-0.5 rounded-full min-w-[18px] h-[18px] flex items-center justify-center shadow-md">
+                  {unreadCount > 9 ? '9+' : unreadCount}
+                </span>
+              )}
+            </div>
+            <span className="text-xs text-gray-700">通知</span>
           </button>
-        </div>
-        <div className="flex gap-3">
+
+          {/* 成就 */}
           <button
             onClick={onToAchievements}
-            className="flex-1 px-4 py-3 bg-gradient-to-r from-yellow-400 to-orange-500 text-white rounded-xl font-medium hover:shadow-lg transition-all flex items-center justify-center gap-2"
+            className="flex flex-col items-center gap-1 px-3 py-2 rounded-xl hover:bg-yellow-50 transition-colors flex-shrink-0 min-w-[64px]"
           >
-            <Trophy size={18} />
-            成就中心
+            <div className="w-10 h-10 rounded-full bg-gradient-to-br from-yellow-100 to-orange-100 flex items-center justify-center">
+              <Trophy size={20} className="text-yellow-600" />
+            </div>
+            <span className="text-xs text-gray-700">成就</span>
           </button>
         </div>
       </div>
