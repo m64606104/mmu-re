@@ -25,6 +25,8 @@ import PenPalListScreen from './components/PenPalListScreen';
 import ArchivedLettersScreen from './components/ArchivedLettersScreen';
 import FavoriteLettersScreen from './components/FavoriteLettersScreen';
 import AchievementScreen from './components/AchievementScreen';
+import StampCollectionScreen from './components/StampCollectionScreen';
+import LetterNotificationCenter from './components/LetterNotificationCenter';
 import ToastContainer from './components/ToastContainer';
 import { MomentsAutoGenerator } from './components/MomentsAutoGenerator';
 import { AIMomentsInteractionManager } from './components/AIMomentsInteractionManager';
@@ -967,6 +969,24 @@ function App() {
         return (
           <AchievementScreen
             onBack={() => navigateTo('letterbox')}
+          />
+        );
+      case 'stamp-collection':
+        return (
+          <StampCollectionScreen
+            onBack={() => navigateTo('letterbox')}
+          />
+        );
+      case 'letter-notifications':
+        return (
+          <LetterNotificationCenter
+            onBack={() => navigateTo('letterbox')}
+            onNotificationClick={(notification) => {
+              // 点击通知跳转到对应的信件
+              if (notification.letterId) {
+                navigateTo('letterbox');
+              }
+            }}
           />
         );
       case 'letter-writing':
