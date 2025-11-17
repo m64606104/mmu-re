@@ -5,7 +5,7 @@
  */
 
 import { RefObject, useState, useEffect } from 'react';
-import { ArrowLeft, Check, Zap, Reply, UserPlus, Heart, FileText, Send, Maximize2 } from 'lucide-react';
+import { ArrowLeft, Check, Zap, Reply, UserPlus, Heart, FileText, Send, Maximize2, Clock } from 'lucide-react';
 import { Letter } from '../types/letter';
 import { getCurrentStamp } from '../utils/stampSystem';
 import { urgeLetter, addAsPenPal, toggleFavoriteLetter, canContinueReply, continueReply } from '../utils/letterService';
@@ -317,8 +317,8 @@ export default function LetterCardsView({ letter, onBack, onViewTimeline: _onVie
         </div>
       </div>
 
-      {/* 底部操作栏 */}
-      <div className="bg-white/80 backdrop-blur-sm border-t border-orange-200 px-4 py-4 shrink-0">
+      {/* 底部操作栏 - 固定在底部 */}
+      <div className="bg-white/80 backdrop-blur-sm border-t border-orange-200 px-4 py-4 shrink-0" style={{ paddingBottom: 'max(1rem, env(safe-area-inset-bottom))' }}>
         {/* 回信输入框 */}
         {showReplyInput && replyStatus.canContinue && (
           <div className="bg-white rounded-2xl shadow-lg p-4 mb-3 border-2 border-green-200">
@@ -359,18 +359,23 @@ export default function LetterCardsView({ letter, onBack, onViewTimeline: _onVie
           </div>
         )}
 
-        {/* 状态信息提示 */}
-        {localLetter.status === 'replied' && replyStatus.canContinue && !showReplyInput && (
+        {/* 状态信息提示 - 简化逻辑确保按钮可见 */}
+        {!showReplyInput && (
           <div className="space-y-3">
-            {/* 操作按钮 */}
+            {/* 操作按钮组 */}
             <div className="flex gap-3">
-              <button 
-                onClick={() => setShowReplyInput(true)}
-                className="flex-1 px-4 py-2.5 bg-gradient-to-r from-green-500 to-emerald-500 text-white rounded-xl font-medium hover:shadow-lg transition-all flex items-center justify-center gap-2"
-              >
-                <Reply size={18} />
-                继续回信
-              </button>
+              {/* 回信按钮 - 只要是 replied 状态且能继续就显示 */}
+              {localLetter.status === 'replied' && replyStatus.canContinue && (
+                <button 
+                  onClick={() => setShowReplyInput(true)}
+                  className="flex-1 px-4 py-2.5 bg-gradient-to-r from-green-500 to-emerald-500 text-white rounded-xl font-medium hover:shadow-lg transition-all flex items-center justify-center gap-2"
+                >
+                  <Reply size={18} />
+                  继续回信
+                </button>
+              )}
+              
+              {/* 加为笔友按钮 - 漂流瓶且未加笔友时显示 */}
               {localLetter.isBottle && !localLetter.isPenPalAdded && (
                 <button 
                   onClick={handleAddAsPenPal}
@@ -380,28 +385,28 @@ export default function LetterCardsView({ letter, onBack, onViewTimeline: _onVie
                   加为笔友
                 </button>
               )}
+              
+              {/* 如果不能回信且是笔友，显示等待提示 */}
+              {localLetter.status === 'sent' && localLetter.isPenPalAdded && (
+                <div className="flex-1 px-4 py-2.5 bg-gray-100 text-gray-600 rounded-xl font-medium flex items-center justify-center gap-2">
+                  <Clock size={18} />
+                  等待回信中
+                </div>
+              )}
             </div>
+            
             {/* 提示信息 */}
             {localLetter.isBottle && !localLetter.isPenPalAdded && replyStatus.isLastRound && (
               <div className="text-xs text-amber-600 text-center bg-amber-50 py-2 px-3 rounded-lg">
                 ⚠️ 这是最后一轮交流，加为笔友可继续无限制通信
               </div>
             )}
-          </div>
-        )}
-        {!replyStatus.canContinue && (
-          <div className="space-y-2">
-            <div className="text-xs text-center text-gray-500">
-              {replyStatus.reason}
-            </div>
-            {localLetter.isBottle && !localLetter.isPenPalAdded && (
-              <button 
-                onClick={handleAddAsPenPal}
-                className="w-full px-4 py-2.5 bg-gradient-to-r from-pink-500 to-rose-500 text-white rounded-xl font-medium hover:shadow-lg transition-all flex items-center justify-center gap-2"
-              >
-                <UserPlus size={18} />
-                加为笔友以继续交流
-              </button>
+            
+            {/* 不能继续的原因说明 */}
+            {!replyStatus.canContinue && replyStatus.reason && (
+              <div className="text-xs text-center text-gray-500 bg-gray-50 py-2 px-3 rounded-lg">
+                {replyStatus.reason}
+              </div>
             )}
           </div>
         )}
