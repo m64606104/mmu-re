@@ -120,15 +120,15 @@ const LetterDetailModal: React.FC<LetterDetailModalProps> = ({
   }
 
   return (
-    <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4 overflow-y-auto"
+    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 overflow-y-auto"
       onClick={onClose}
     >
       <div
-        className="bg-gradient-to-br from-amber-50 to-orange-50 rounded-3xl w-full max-w-2xl max-h-[90vh] overflow-hidden shadow-2xl"
+        className="bg-gradient-to-br from-amber-100 via-orange-100 to-yellow-100 rounded-3xl w-full max-w-2xl max-h-[90vh] overflow-hidden shadow-2xl border-4 border-amber-200"
         onClick={(e) => e.stopPropagation()}
       >
         {/* 顶部栏 */}
-        <div className="bg-white/80 backdrop-blur-sm border-b border-orange-200 px-6 py-4 flex items-center justify-between">
+        <div className="bg-white/90 backdrop-blur-md border-b-2 border-amber-300 px-6 py-5 flex items-center justify-between shadow-md">
           <div className="flex items-center gap-3">
             <span className="text-2xl">{letter.receiverAvatar}</span>
             <div>
@@ -178,7 +178,9 @@ const LetterDetailModal: React.FC<LetterDetailModalProps> = ({
         </div>
 
         {/* 信件内容 - 显示所有轮次 */}
-        <div className="p-6 overflow-y-auto max-h-[calc(90vh-250px)]">
+        <div className="p-6 overflow-y-auto max-h-[calc(90vh-250px)]" style={{
+          background: 'radial-gradient(circle at 20% 30%, rgba(251, 191, 36, 0.1) 0%, transparent 50%), radial-gradient(circle at 80% 70%, rgba(249, 115, 22, 0.1) 0%, transparent 50%)'
+        }}>
           {letter.conversationRounds && letter.conversationRounds.length > 0 ? (
             letter.conversationRounds.map((round, index) => (
             <div key={round.roundNumber} className="mb-6">
@@ -190,10 +192,21 @@ const LetterDetailModal: React.FC<LetterDetailModalProps> = ({
               )}
               
               {/* 用户的信 */}
-              <div className="bg-white rounded-2xl shadow-lg p-6 mb-4 relative">
+              <div className="bg-white/95 backdrop-blur-sm rounded-3xl shadow-xl p-8 mb-6 relative border-2 border-amber-200"
+                style={{
+                  backgroundImage: `
+                    repeating-linear-gradient(
+                      transparent,
+                      transparent 31px,
+                      rgba(229, 231, 235, 0.2) 31px,
+                      rgba(229, 231, 235, 0.2) 32px
+                    )
+                  `
+                }}
+              >
                 {index === 0 && (
-                  <div className="absolute top-4 right-4 w-16 h-20 border-4 border-dashed border-orange-400 rounded-md flex items-center justify-center bg-gradient-to-br from-orange-100 to-amber-100">
-                    <span className="text-3xl">{getStampEmoji(letter.stampStyle)}</span>
+                  <div className="absolute top-6 right-6 w-20 h-24 border-4 border-dashed border-orange-400 rounded-lg flex items-center justify-center bg-gradient-to-br from-amber-100 via-orange-100 to-yellow-100 shadow-xl transform rotate-3">
+                    <span className="text-4xl">{getStampEmoji(letter.stampStyle)}</span>
                   </div>
                 )}
 
@@ -201,7 +214,9 @@ const LetterDetailModal: React.FC<LetterDetailModalProps> = ({
                   <div className="text-sm text-gray-500 mb-1">To {letter.receiverName}</div>
                 </div>
 
-                <div className="text-gray-800 whitespace-pre-wrap leading-relaxed mb-6 pr-20">
+                <div className="text-gray-800 whitespace-pre-wrap leading-relaxed font-serif" style={{
+                  fontFamily: '"Noto Serif SC", "STSong", serif'
+                }}>
                   {round.userLetter.content}
                 </div>
 
@@ -212,14 +227,27 @@ const LetterDetailModal: React.FC<LetterDetailModalProps> = ({
               </div>
 
               {/* AI的回信 */}
-              {round.aiReply ? (
-                <div className="bg-gradient-to-br from-blue-50 to-indigo-50 rounded-2xl shadow-lg p-6 border-2 border-blue-200">
+              {round.aiReply && (
+                <div className="bg-gradient-to-br from-blue-50 to-indigo-50 rounded-3xl shadow-xl p-8 relative border-2 border-blue-200"
+                  style={{
+                    backgroundImage: `
+                      repeating-linear-gradient(
+                        transparent,
+                        transparent 31px,
+                        rgba(219, 234, 254, 0.3) 31px,
+                        rgba(219, 234, 254, 0.3) 32px
+                      )
+                    `
+                  }}
+                >
                   <div className="flex items-center gap-2 mb-4 text-blue-700">
                     <span className="text-2xl">💌</span>
                     <span className="font-medium">收到回信</span>
                   </div>
 
-                  <div className="text-gray-800 whitespace-pre-wrap leading-relaxed mb-6">
+                  <div className="text-blue-900 whitespace-pre-wrap leading-relaxed font-serif" style={{
+                    fontFamily: '"Noto Serif SC", "STSong", serif'
+                  }}>
                     {round.aiReply.content}
                   </div>
 
@@ -228,7 +256,8 @@ const LetterDetailModal: React.FC<LetterDetailModalProps> = ({
                     <div className="mt-1">from {letter.receiverName}</div>
                   </div>
                 </div>
-              ) : (
+              )}
+              {!round.aiReply && (
                 <div className="bg-amber-50 border-2 border-dashed border-amber-300 rounded-2xl p-6 text-center">
                   <div className="text-5xl mb-3">⏳</div>
                   <div className="text-gray-700 font-medium mb-2">等待回信中...</div>

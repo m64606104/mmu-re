@@ -151,26 +151,41 @@ const LetterWritingScreen: React.FC<LetterWritingScreenProps> = ({
       {/* 主体内容 */}
       <div className="flex-1 overflow-y-auto p-4">
         {/* 信纸 */}
-        <div className="max-w-2xl mx-auto bg-white rounded-2xl shadow-xl p-6 min-h-[500px] relative"
-          style={{
-            backgroundImage: `repeating-linear-gradient(
-              transparent,
-              transparent 31px,
-              #e5e7eb 31px,
-              #e5e7eb 32px
-            )`
-          }}
-        >
-          {/* 邮票装饰 */}
-          <div className="absolute top-4 right-4 w-16 h-20 border-4 border-dashed border-orange-400 rounded-md flex items-center justify-center bg-gradient-to-br from-orange-100 to-amber-100">
-            <span className="text-3xl">📮</span>
-          </div>
+        <div className="max-w-2xl mx-auto rounded-3xl shadow-2xl overflow-hidden relative">
+          {/* 信封背景 */}
+          <div className="absolute inset-0 bg-gradient-to-br from-amber-50 via-orange-50 to-yellow-50 opacity-60" />
+          
+          <div className="relative bg-white/90 backdrop-blur-sm p-8 min-h-[500px]"
+            style={{
+              backgroundImage: `
+                repeating-linear-gradient(
+                  transparent,
+                  transparent 31px,
+                  rgba(229, 231, 235, 0.3) 31px,
+                  rgba(229, 231, 235, 0.3) 32px
+                ),
+                radial-gradient(circle at 10% 20%, rgba(251, 191, 36, 0.05) 0%, transparent 50%),
+                radial-gradient(circle at 90% 80%, rgba(249, 115, 22, 0.05) 0%, transparent 50%)
+              `,
+              boxShadow: 'inset 0 0 60px rgba(251, 191, 36, 0.1)'
+            }}
+          >
+            {/* 邮票装饰 - 更精致 */}
+            <div className="absolute top-6 right-6 w-20 h-24 border-4 border-dashed border-orange-400 rounded-lg flex items-center justify-center bg-gradient-to-br from-amber-100 via-orange-100 to-yellow-100 shadow-lg transform rotate-3 hover:rotate-0 transition-transform">
+              <span className="text-4xl">📮</span>
+            </div>
+            
+            {/* 蜡封装饰 */}
+            <div className="absolute top-6 left-6 w-16 h-16 rounded-full bg-gradient-to-br from-red-600 to-red-800 shadow-xl flex items-center justify-center transform -rotate-12">
+              <span className="text-2xl">🔖</span>
+            </div>
 
           {/* 收信人 */}
-          <div className="mb-6">
+          <div className="mb-8 mt-4">
+            <div className="text-xs text-gray-500 mb-2 font-serif">To:</div>
             <button
               onClick={() => setShowReceiverModal(true)}
-              className="w-full text-left px-4 py-3 border-2 border-dashed border-orange-300 rounded-xl hover:border-orange-400 hover:bg-orange-50 transition-all"
+              className="w-full text-left px-5 py-4 border-2 border-dashed border-orange-300 rounded-2xl hover:border-orange-500 hover:bg-gradient-to-r hover:from-orange-50 hover:to-amber-50 transition-all shadow-sm hover:shadow-md"
             >
               {selectedReceiver ? (
                 <div className="flex items-center gap-3">
@@ -216,32 +231,49 @@ const LetterWritingScreen: React.FC<LetterWritingScreenProps> = ({
             value={content}
             onChange={(e) => setContent(e.target.value)}
             placeholder="亲爱的朋友：&#10;&#10;见字如面...&#10;&#10;写下你想说的话，让它随时间慢慢抵达对方心里。"
-            className="w-full min-h-[350px] resize-none bg-transparent border-none outline-none text-gray-800 leading-8 placeholder-gray-400"
-            style={{ lineHeight: '32px' }}
+            className="w-full min-h-[350px] resize-none bg-transparent border-none outline-none text-gray-800 leading-8 placeholder-gray-400 font-serif"
+            style={{ 
+              lineHeight: '32px',
+              fontFamily: '"Noto Serif SC", "STSong", serif'
+            }}
           />
 
           {/* 落款 */}
-          <div className="text-right mt-8 text-gray-600">
-            <div>{new Date().toLocaleDateString('zh-CN', { year: 'numeric', month: 'long', day: 'numeric' })}</div>
+          <div className="text-right mt-8 text-gray-600 font-serif italic">
+            <div className="text-sm">{new Date().toLocaleDateString('zh-CN', { year: 'numeric', month: 'long', day: 'numeric' })}</div>
             {!isAnonymous && !selectedReceiver?.isBottle && (
-              <div className="mt-1">from {userName}</div>
+              <div className="mt-2 font-medium">from {userName} ✍️</div>
             )}
             {(isAnonymous || selectedReceiver?.isBottle) && (
-              <div className="mt-1 text-gray-400">from 匿名</div>
+              <div className="mt-2 text-gray-400">from 匿名 🎭</div>
             )}
+          </div>
           </div>
         </div>
 
-        {/* 温馨提示 */}
-        <div className="max-w-2xl mx-auto mt-4 p-4 bg-blue-50 border border-blue-200 rounded-xl">
-          <div className="flex items-start gap-2">
-            <span className="text-blue-500 mt-0.5">💌</span>
-            <div className="text-sm text-blue-700 flex-1">
-              <div className="font-medium mb-1">慢邮件说明</div>
-              <div className="text-blue-600">
-                · 信件寄出后，预计1-5天收到回信<br />
-                · 漂流瓶会随机寄给一位陌生笔友<br />
-                · 可以在信箱中催促回复（缩短至15-30分钟）
+        {/* 温馨提示 - 复古邮局风格 */}
+        <div className="max-w-2xl mx-auto mt-6 p-5 bg-gradient-to-br from-blue-50 to-indigo-50 border-2 border-blue-200 rounded-2xl shadow-lg">
+          <div className="flex items-start gap-3">
+            <div className="w-10 h-10 rounded-full bg-blue-500 flex items-center justify-center shadow-md">
+              <span className="text-xl">💌</span>
+            </div>
+            <div className="text-sm text-blue-800 flex-1">
+              <div className="font-bold mb-2 text-base flex items-center gap-2">
+                📮 慢邮件说明
+              </div>
+              <div className="space-y-1.5 text-blue-700">
+                <div className="flex items-center gap-2">
+                  <span className="w-1.5 h-1.5 rounded-full bg-blue-500"></span>
+                  信件寄出后，预计1-5天收到回信
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="w-1.5 h-1.5 rounded-full bg-blue-500"></span>
+                  漂流瓶会随机寄给一位陌生笔友
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="w-1.5 h-1.5 rounded-full bg-blue-500"></span>
+                  可以在信箱中催促回复（缩短至15-30分钟）
+                </div>
               </div>
             </div>
           </div>

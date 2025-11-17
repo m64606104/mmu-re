@@ -191,65 +191,79 @@ const LetterBoxScreen: React.FC<LetterBoxScreenProps> = ({
           {letters.map((letter) => (
             <div
               key={letter.id}
-              className="w-full bg-white rounded-2xl shadow-md hover:shadow-xl transition-all p-4 relative overflow-hidden group"
+              className="w-full rounded-3xl shadow-lg hover:shadow-2xl transition-all relative overflow-hidden group"
+              style={{
+                background: 'linear-gradient(135deg, #fef3c7 0%, #fde68a 50%, #fcd34d 100%)',
+              }}
             >
-              {/* 已回复标记 */}
-              {letter.status === 'replied' && (
-                <div className="absolute top-2 left-2">
-                  <div className="w-8 h-8 bg-green-500 rounded-full flex items-center justify-center">
-                    <Check size={18} className="text-white" />
+              {/* 信封边框装饰 */}
+              <div className="absolute inset-0 border-4 border-amber-200 rounded-3xl opacity-50" />
+              
+              {/* 内容区域 */}
+              <div className="relative bg-white/95 backdrop-blur-sm m-2 rounded-2xl p-4">
+                {/* 已回复标记 */}
+                {letter.status === 'replied' && (
+                  <div className="absolute top-3 left-3 z-10">
+                    <div className="w-10 h-10 bg-gradient-to-br from-green-400 to-emerald-500 rounded-full flex items-center justify-center shadow-lg border-2 border-white">
+                      <Check size={20} className="text-white" />
+                    </div>
                   </div>
-                </div>
-              )}
+                )}
 
-              {/* 邮票 */}
-              <div className="absolute top-4 right-4 w-12 h-16 border-2 border-dashed border-gray-300 rounded-md flex items-center justify-center bg-gradient-to-br from-orange-100 to-amber-100 group-hover:scale-110 transition-transform">
-                <span className="text-2xl">{getStampEmoji(letter.stampStyle)}</span>
-              </div>
+                {/* 邮票 - 更立体 */}
+                <div className="absolute top-3 right-3 w-14 h-18 border-3 border-dashed border-orange-400 rounded-lg flex items-center justify-center bg-gradient-to-br from-amber-100 via-orange-100 to-yellow-100 shadow-xl group-hover:scale-110 group-hover:rotate-6 transition-all">
+                  <span className="text-3xl">{getStampEmoji(letter.stampStyle)}</span>
+                </div>
 
               {/* 主要内容区（可点击） */}
               <div 
                 onClick={() => setSelectedLetter(letter)}
-                className="pr-16 cursor-pointer"
+                className="pr-20 pl-2 cursor-pointer"
               >
                 {/* 收信人 */}
-                <div className="flex items-center gap-2 mb-2">
-                  <span className="text-lg">{letter.receiverAvatar}</span>
-                  <span className="font-medium text-gray-800">{letter.receiverName}</span>
-                  {letter.isPenPalAdded && (
-                    <span className="text-xs bg-pink-100 text-pink-600 px-2 py-0.5 rounded-full">
-                      笔友
-                    </span>
-                  )}
-                  {letter.isBottle && !letter.isPenPalAdded && (
-                    <span className="text-xs bg-blue-100 text-blue-600 px-2 py-0.5 rounded-full">
-                      漂流瓶
-                    </span>
-                  )}
+                <div className="flex items-center gap-3 mb-3 pt-1">
+                  <div className="w-12 h-12 rounded-full bg-gradient-to-br from-orange-400 to-amber-500 flex items-center justify-center text-2xl shadow-md">
+                    {letter.receiverAvatar}
+                  </div>
+                  <div className="flex-1">
+                    <div className="font-bold text-gray-800 text-lg">{letter.receiverName}</div>
+                    <div className="flex items-center gap-2 mt-1">
+                      {letter.isPenPalAdded && (
+                        <span className="text-xs bg-gradient-to-r from-pink-400 to-rose-400 text-white px-2.5 py-0.5 rounded-full shadow-sm">
+                          ❤️ 笔友
+                        </span>
+                      )}
+                      {letter.isBottle && !letter.isPenPalAdded && (
+                        <span className="text-xs bg-gradient-to-r from-blue-400 to-cyan-400 text-white px-2.5 py-0.5 rounded-full shadow-sm">
+                          🌊 漂流瓶
+                        </span>
+                      )}
+                    </div>
+                  </div>
                 </div>
 
                 {/* 内容预览 */}
-                <div className="text-sm text-gray-600 line-clamp-2 mb-3">
-                  {letter.content}
+                <div className="text-sm text-gray-700 line-clamp-2 mb-3 pl-1 italic">
+                  “{letter.content}”
                 </div>
 
                 {/* 底部信息 */}
-                <div className="flex items-center justify-between text-xs text-gray-500">
-                  <div className="flex items-center gap-4">
-                    <span>{formatTime(letter.sentAt)}</span>
+                <div className="flex items-center justify-between text-xs">
+                  <div className="flex items-center gap-3 flex-wrap">
+                    <span className="text-gray-600 font-medium">📅 {formatTime(letter.sentAt)}</span>
                     {letter.status === 'replied' ? (
-                      <span className="text-green-600 font-medium flex items-center gap-1">
-                        <Mail size={14} />
+                      <span className="bg-gradient-to-r from-green-400 to-emerald-500 text-white px-3 py-1 rounded-full font-medium flex items-center gap-1.5 shadow-sm">
+                        <Mail size={13} />
                         已回复
                       </span>
                     ) : (
-                      <span className="text-amber-600 flex items-center gap-1">
-                        <Clock size={14} />
+                      <span className="bg-gradient-to-r from-amber-400 to-orange-500 text-white px-3 py-1 rounded-full font-medium flex items-center gap-1.5 shadow-sm">
+                        <Clock size={13} />
                         等待回信
                       </span>
                     )}
-                    <span className="text-gray-400">
-                      {letter.currentRound} 轮
+                    <span className="text-gray-500 bg-gray-100 px-2.5 py-1 rounded-full">
+                      🔁 {letter.currentRound} 轮
                     </span>
                   </div>
                 </div>
@@ -266,6 +280,7 @@ const LetterBoxScreen: React.FC<LetterBoxScreenProps> = ({
               >
                 <Archive size={16} className="text-gray-600" />
               </button>
+              </div>
             </div>
           ))}
         </div>
