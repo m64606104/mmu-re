@@ -5,23 +5,37 @@
  */
 
 import { useState } from 'react';
-import { ArrowLeft, User, Bot } from 'lucide-react';
+import { ArrowLeft, User, Bot, Trash2 } from 'lucide-react';
 import { Letter } from '../types/letter';
+import { archiveLetter } from '../utils/letterService';
 
 interface LetterSmallCardsViewProps {
   letters: Letter[];
   receiverName: string;
   onBack: () => void;
   onViewDetail: (letter: Letter, roundIndex?: number) => void;
+  onDelete?: (letterId: string) => void;
 }
 
 export default function LetterSmallCardsView({
   letters,
   receiverName,
   onBack,
-  onViewDetail
+  onViewDetail,
+  onDelete
 }: LetterSmallCardsViewProps) {
   const [expandedCard, setExpandedCard] = useState<string | null>(null);
+
+  // 删除单个信件
+  const handleDelete = (e: React.MouseEvent, letterId: string) => {
+    e.stopPropagation();
+    if (confirm(`确定要将这封信放入回收站吗？`)) {
+      archiveLetter(letterId);
+      if (onDelete) {
+        onDelete(letterId);
+      }
+    }
+  };
 
   // 收集所有对话卡片
   const getAllCards = () => {
@@ -149,9 +163,19 @@ export default function LetterSmallCardsView({
                       {card.type === 'user' ? formatSender(card.sender) : formatSender(card.sender)}
                     </span>
                   </div>
-                  <span className="text-xs text-gray-600">
-                    {formatTime(card.date)}
-                  </span>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs text-gray-600">
+                      {formatTime(card.date)}
+                    </span>
+                    {/* 删除按钮 */}
+                    <button
+                      onClick={(e) => handleDelete(e, card.letterId)}
+                      className="p-1 hover:bg-red-100 rounded-full transition-colors"
+                      title="删除"
+                    >
+                      <Trash2 size={14} className="text-red-500" />
+                    </button>
+                  </div>
                 </div>
 
                 {/* 卡片内容 */}

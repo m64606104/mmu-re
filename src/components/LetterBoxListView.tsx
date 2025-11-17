@@ -5,7 +5,7 @@
  */
 
 import { useState, useEffect } from 'react';
-import { Mail } from 'lucide-react';
+import { Mail, MessageCircle } from 'lucide-react';
 import { Letter } from '../types/letter';
 import { getActiveLetters } from '../utils/letterService';
 
@@ -99,13 +99,6 @@ export default function LetterBoxListView({ onBack: _onBack, onOpenBox }: Letter
 
   return (
     <div className="h-full bg-gradient-to-br from-orange-50 via-amber-50 to-yellow-50 flex flex-col">
-      {/* 顶部栏 */}
-      <div className="bg-white/80 backdrop-blur-sm border-b border-orange-200 px-4 py-4 flex items-center gap-3 shrink-0">
-        <div className="flex-1">
-          <h1 className="text-lg font-bold text-gray-800">📦 文件箱</h1>
-          <div className="text-xs text-gray-500">按笔友分组的信件</div>
-        </div>
-      </div>
 
       {/* 文件箱网格 */}
       <div className="flex-1 overflow-y-auto p-4" style={{ minHeight: 0 }}>
@@ -173,10 +166,10 @@ export default function LetterBoxListView({ onBack: _onBack, onOpenBox }: Letter
                         </div>
                       </div>
                       
-                      {/* 未读标记 */}
+                      {/* 未读标记 - 回复图标 */}
                       {box.hasUnread && (
-                        <div className="absolute -top-1 -right-1 w-6 h-6 bg-red-500 rounded-full flex items-center justify-center text-white text-xs font-bold shadow-lg animate-pulse">
-                          !
+                        <div className="absolute -top-1 -right-1 w-7 h-7 bg-red-500 rounded-full flex items-center justify-center shadow-lg animate-pulse">
+                          <MessageCircle size={14} className="text-white fill-white" />
                         </div>
                       )}
                     </div>

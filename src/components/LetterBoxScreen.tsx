@@ -6,7 +6,7 @@
 import React, { useState, useEffect } from 'react';
 import { Letter } from '../types/letter';
 import { getActiveLetters, archiveLetter } from '../utils/letterService';
-import { Mail, Send, Clock, Check, Users, Trash2, Archive, Trophy, Heart, Bell, Waves, Inbox } from 'lucide-react';
+import { Mail, Send, Clock, Check, Users, Trash2, Archive, Trophy, Heart, Bell, Waves, Inbox, LayoutGrid, List } from 'lucide-react';
 import LetterDetailView from './LetterDetailView';
 import LetterDataManagement from './LetterDataManagement';
 import LetterBoxListView from './LetterBoxListView';
@@ -55,7 +55,7 @@ const LetterBoxScreen: React.FC<LetterBoxScreenProps> = ({
   const [showDataManagement, setShowDataManagement] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
   const [activeTab, setActiveTab] = useState<BottomTab>('inbox');
-  const [viewMode, setViewMode] = useState<ViewMode>('filebox');
+  const [viewMode, setViewMode] = useState<ViewMode>('list'); // 默认使用列表模式
   const [selectedBox, setSelectedBox] = useState<LetterBox | null>(null);
   const [selectedRoundIndex, setSelectedRoundIndex] = useState<number | undefined>(undefined);
 
@@ -252,6 +252,18 @@ const LetterBoxScreen: React.FC<LetterBoxScreenProps> = ({
           <h1 className="text-xl font-bold text-gray-800">慢邮件</h1>
         </div>
         <div className="flex items-center gap-2">
+          {/* 视图切换按钮 */}
+          <button
+            onClick={() => setViewMode(viewMode === 'list' ? 'filebox' : 'list')}
+            className="p-2 hover:bg-orange-100 rounded-full transition-colors"
+            title={viewMode === 'list' ? '切换到文件箱模式' : '切换到列表模式'}
+          >
+            {viewMode === 'list' ? (
+              <LayoutGrid size={20} className="text-orange-600" />
+            ) : (
+              <List size={20} className="text-orange-600" />
+            )}
+          </button>
           {/* 漂流瓶 */}
           <button
             onClick={onToBottleFishing}
@@ -318,6 +330,22 @@ const LetterBoxScreen: React.FC<LetterBoxScreenProps> = ({
               setSelectedLetter(letter);
               setSelectedRoundIndex(roundIndex);
               setViewMode('detail');
+            }}
+            onDelete={(letterId) => {
+              // 删除后重新加载信件列表
+              loadLetters();
+              // 如果该笔友所有信件都被删除，返回文件箱
+              const remainingLetters = selectedBox.letters.filter(l => l.id !== letterId);
+              if (remainingLetters.length === 0) {
+                setViewMode('filebox');
+                setSelectedBox(null);
+              } else {
+                // 更新selectedBox
+                setSelectedBox({
+                  ...selectedBox,
+                  letters: remainingLetters
+                });
+              }
             }}
           />
         )}
