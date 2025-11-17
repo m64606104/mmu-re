@@ -4,7 +4,7 @@
  */
 
 import React, { useState, useRef } from 'react';
-import { Download, Upload, FileDown, FileUp, Trash2, X, AlertCircle, CheckCircle } from 'lucide-react';
+import { Download, Upload, FileDown, FileUp, Trash2, X, AlertCircle, CheckCircle, FileText } from 'lucide-react';
 import {
   exportAndDownloadAll,
   exportAndDownloadMultiple,
@@ -13,6 +13,7 @@ import {
   clearAllLetterData,
   LetterMigrationData
 } from '../utils/letterDataMigration';
+import { exportLetterToPDF, exportMultipleLettersToPDF } from '../utils/letterPDFExporter';
 import { Letter } from '../types/letter';
 
 interface LetterDataManagementProps {
@@ -82,6 +83,41 @@ const LetterDataManagement: React.FC<LetterDataManagementProps> = ({
       setMessage({
         type: 'error',
         text: result.message
+      });
+    }
+  };
+
+  // 导出为PDF
+  const handleExportPDF = async () => {
+    if (selectedLetterIds.size === 0) {
+      setMessage({
+        type: 'error',
+        text: '请先选择要导出的信件'
+      });
+      return;
+    }
+
+    try {
+      const selectedLetters = letters.filter(l => selectedLetterIds.has(l.id));
+      
+      if (selectedLetters.length === 1) {
+        await exportLetterToPDF(selectedLetters[0]);
+        setMessage({
+          type: 'success',
+          text: 'PDF导出成功！'
+        });
+      } else {
+        await exportMultipleLettersToPDF(selectedLetters);
+        setMessage({
+          type: 'success',
+          text: `成功导出${selectedLetters.length}封信件为PDF！`
+        });
+      }
+      setSelectedLetterIds(new Set());
+    } catch (error) {
+      setMessage({
+        type: 'error',
+        text: 'PDF导出失败：' + (error instanceof Error ? error.message : String(error))
       });
     }
   };
@@ -241,7 +277,16 @@ const LetterDataManagement: React.FC<LetterDataManagementProps> = ({
                 className="w-full px-4 py-3 bg-blue-500 text-white rounded-xl font-medium hover:shadow-lg transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 <FileDown size={18} />
-                导出选中的信件 {selectedLetterIds.size > 0 && `(${selectedLetterIds.size}封)`}
+                导出为JSON {selectedLetterIds.size > 0 && `(${selectedLetterIds.size}封)`}
+              </button>
+              
+              <button
+                onClick={handleExportPDF}
+                disabled={selectedLetterIds.size === 0}
+                className="w-full px-4 py-3 bg-red-500 text-white rounded-xl font-medium hover:shadow-lg transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <FileText size={18} />
+                导出为PDF {selectedLetterIds.size > 0 && `(${selectedLetterIds.size}封)`}
               </button>
             </div>
           </div>

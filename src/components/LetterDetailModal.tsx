@@ -6,8 +6,9 @@
 import React, { useState } from 'react';
 import { Letter } from '../types/letter';
 import { urgeLetter, canContinueReply, continueReply, addAsPenPal, toggleFavoriteLetter } from '../utils/letterService';
-import { X, Zap, MailPlus, UserPlus, Send, Maximize2, Heart } from 'lucide-react';
+import { X, Zap, MailPlus, UserPlus, Send, Maximize2, Heart, FileText } from 'lucide-react';
 import FullScreenReplyComposer from './FullScreenReplyComposer';
+import { exportLetterToPDF } from '../utils/letterPDFExporter';
 
 interface LetterDetailModalProps {
   letter: Letter;
@@ -77,6 +78,15 @@ const LetterDetailModal: React.FC<LetterDetailModalProps> = ({
     }
   };
 
+  const handleExportPDF = async () => {
+    try {
+      await exportLetterToPDF(letter);
+      alert('✅ PDF导出成功！');
+    } catch (error) {
+      alert('❌ PDF导出失败：' + (error instanceof Error ? error.message : String(error)));
+    }
+  };
+
   const formatFullTime = (timestamp: number) => {
     const date = new Date(timestamp);
     return date.toLocaleString('zh-CN', {
@@ -141,6 +151,13 @@ const LetterDetailModal: React.FC<LetterDetailModalProps> = ({
             </div>
           </div>
           <div className="flex items-center gap-2">
+            <button
+              onClick={handleExportPDF}
+              className="p-2 hover:bg-gray-100 rounded-full transition-colors"
+              title="导出为PDF"
+            >
+              <FileText size={20} className="text-blue-600" />
+            </button>
             <button
               onClick={handleToggleFavorite}
               className="p-2 hover:bg-gray-100 rounded-full transition-colors"
