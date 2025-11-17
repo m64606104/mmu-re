@@ -163,7 +163,7 @@ export default function LetterCardsView({ letter, onBack, onViewTimeline, userNa
           {/* 遍历所有对话轮次 */}
           {letter.conversationRounds && letter.conversationRounds.length > 0 ? (
             localLetter.conversationRounds
-              .filter(round => !round.userLetter.isDeleted && (!round.aiReply || !round.aiReply.isDeleted))
+              .filter(round => !round.userLetter.isDeleted || (round.aiReply && !round.aiReply.isDeleted))
               .map((round) => (
               <div 
                 key={round.roundNumber}
@@ -172,8 +172,9 @@ export default function LetterCardsView({ letter, onBack, onViewTimeline, userNa
                 }}
               >
                 {/* 用户发送的信卡片 */}
-                <div className="mb-4">
-                  <div className="bg-white rounded-3xl shadow-lg overflow-hidden border-2 border-gray-100">
+                {!round.userLetter.isDeleted && (
+                  <div className="mb-4">
+                    <div className="bg-white rounded-3xl shadow-lg overflow-hidden border-2 border-gray-100">
                     {/* 卡片头部 */}
                     <div className="bg-gradient-to-r from-orange-100 to-amber-100 px-5 py-3 flex items-center justify-between">
                       <div className="flex items-center gap-2">
@@ -227,9 +228,10 @@ export default function LetterCardsView({ letter, onBack, onViewTimeline, userNa
                     </div>
                   </div>
                 </div>
+                )}
 
                 {/* AI回信卡片 */}
-                {round.aiReply && (
+                {round.aiReply && !round.aiReply.isDeleted && (
                   <div className="mb-4">
                     <div className="bg-white rounded-3xl shadow-lg overflow-hidden border-2 border-blue-100">
                       {/* 卡片头部 */}
