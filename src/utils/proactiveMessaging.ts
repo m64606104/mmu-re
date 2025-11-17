@@ -225,7 +225,7 @@ export const sendProactiveMessage = async (
           { role: 'user', content: prompt }
         ],
         temperature: 0.85, // 提高一些创造性
-        max_tokens: 200, // 增加token限制，允许更长的表达
+        max_tokens: 1000, // 增加到1000，确保消息不会被截断
       })
     });
     

@@ -3965,7 +3965,8 @@ ${doc.content}`;
         requestBody = {
           model: apiConfig.modelName,
           messages,
-          temperature: 0.7  // 添加合适的temperature以保持自然对话
+          temperature: 0.7,  // 添加合适的temperature以保持自然对话
+          max_tokens: 2000  // 设置合理的max_tokens，避免回复被截断
         };
       }
       
