@@ -5,10 +5,10 @@
  */
 
 import { RefObject, useState, useEffect } from 'react';
-import { ArrowLeft, Check, Zap, Clock, Reply, UserPlus, Heart, FileText } from 'lucide-react';
+import { ArrowLeft, Check, Zap, Reply, UserPlus, Heart, FileText, Send, Maximize2 } from 'lucide-react';
 import { Letter } from '../types/letter';
 import { getCurrentStamp } from '../utils/stampSystem';
-import { urgeLetter, addAsPenPal, toggleFavoriteLetter, canContinueReply } from '../utils/letterService';
+import { urgeLetter, addAsPenPal, toggleFavoriteLetter, canContinueReply, continueReply } from '../utils/letterService';
 import { exportLetterToPDF } from '../utils/letterPDFExporter';
 
 interface LetterCardsViewProps {
@@ -21,11 +21,13 @@ interface LetterCardsViewProps {
   onReply?: () => void;
 }
 
-export default function LetterCardsView({ letter, onBack, onViewTimeline, userName, scrollContainerRef, onRefresh, onReply }: LetterCardsViewProps) {
+export default function LetterCardsView({ letter, onBack, onViewTimeline: _onViewTimeline, userName, scrollContainerRef, onRefresh, onReply }: LetterCardsViewProps) {
   const currentStamp = getCurrentStamp();
   const [localLetter, setLocalLetter] = useState(letter);
   const [isFavorited, setIsFavorited] = useState(letter.isFavorite || false);
   const replyStatus = canContinueReply(letter.id);
+  const [showReplyInput, setShowReplyInput] = useState(false);
+  const [replyContent, setReplyContent] = useState('');
 
   // 加为笔友
   const handleAddAsPenPal = () => {
@@ -54,6 +56,26 @@ export default function LetterCardsView({ letter, onBack, onViewTimeline, userNa
       alert('✅ PDF导出成功！');
     } catch (error) {
       alert('❌ PDF导出失败');
+    }
+  };
+
+  // 继续回信
+  const handleContinueReply = () => {
+    if (!replyContent.trim()) {
+      alert('请输入回信内容');
+      return;
+    }
+    
+    const result = continueReply(localLetter.id, replyContent.trim(), userName);
+    if (result) {
+      alert(`✉️ 已寄出第 ${replyStatus.currentRound + 1} 轮回信！\n\n预计1-5天内收到回复`);
+      setReplyContent('');
+      setShowReplyInput(false);
+      if (onRefresh) {
+        onRefresh();
+      }
+    } else {
+      alert('无法继续回信：已达到最大轮数限制');
     }
   };
 
@@ -280,20 +302,58 @@ export default function LetterCardsView({ letter, onBack, onViewTimeline, userNa
 
       {/* 底部操作栏 */}
       <div className="bg-white/80 backdrop-blur-sm border-t border-orange-200 px-4 py-4 shrink-0">
+        {/* 回信输入框 */}
+        {showReplyInput && replyStatus.canContinue && (
+          <div className="bg-white rounded-2xl shadow-lg p-4 mb-3 border-2 border-green-200">
+            <div className="mb-2 font-medium text-gray-700 text-sm">继续回信</div>
+            <textarea
+              value={replyContent}
+              onChange={(e) => setReplyContent(e.target.value)}
+              placeholder="写下你想说的话..."
+              className="w-full h-32 p-3 border border-gray-300 rounded-xl resize-none focus:outline-none focus:ring-2 focus:ring-green-400 text-sm"
+            />
+            <div className="flex gap-2 mt-3">
+              {onReply && (
+                <button
+                  onClick={() => {
+                    setShowReplyInput(false);
+                    if (onReply) onReply();
+                  }}
+                  className="p-2 bg-gray-100 text-gray-700 rounded-xl hover:bg-gray-200 transition-colors"
+                  title="全屏写信"
+                >
+                  <Maximize2 size={18} />
+                </button>
+              )}
+              <button
+                onClick={handleContinueReply}
+                className="flex-1 px-4 py-2 bg-gradient-to-r from-green-500 to-emerald-500 text-white rounded-xl font-medium hover:shadow-lg transition-all flex items-center justify-center gap-2"
+              >
+                <Send size={18} />
+                寄出
+              </button>
+              <button
+                onClick={() => setShowReplyInput(false)}
+                className="px-4 py-2 bg-gray-100 text-gray-700 rounded-xl font-medium hover:bg-gray-200 transition-colors"
+              >
+                取消
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* 状态信息提示 */}
-        {localLetter.status === 'replied' && replyStatus.canContinue && (
+        {localLetter.status === 'replied' && replyStatus.canContinue && !showReplyInput && (
           <div className="space-y-3">
             {/* 操作按钮 */}
             <div className="flex gap-3">
-              {onReply && (
-                <button 
-                  onClick={onReply}
-                  className="flex-1 px-4 py-2.5 bg-gradient-to-r from-green-500 to-emerald-500 text-white rounded-xl font-medium hover:shadow-lg transition-all flex items-center justify-center gap-2"
-                >
-                  <Reply size={18} />
-                  继续回信
-                </button>
-              )}
+              <button 
+                onClick={() => setShowReplyInput(true)}
+                className="flex-1 px-4 py-2.5 bg-gradient-to-r from-green-500 to-emerald-500 text-white rounded-xl font-medium hover:shadow-lg transition-all flex items-center justify-center gap-2"
+              >
+                <Reply size={18} />
+                继续回信
+              </button>
               {localLetter.isBottle && !localLetter.isPenPalAdded && (
                 <button 
                   onClick={handleAddAsPenPal}
@@ -303,13 +363,6 @@ export default function LetterCardsView({ letter, onBack, onViewTimeline, userNa
                   加为笔友
                 </button>
               )}
-              <button 
-                onClick={onViewTimeline}
-                className="px-4 py-2.5 bg-gradient-to-r from-blue-500 to-indigo-500 text-white rounded-xl font-medium hover:shadow-lg transition-all flex items-center justify-center gap-2"
-              >
-                <Clock size={18} />
-                时间轴
-              </button>
             </div>
             {/* 提示信息 */}
             {localLetter.isBottle && !localLetter.isPenPalAdded && replyStatus.isLastRound && (
@@ -333,13 +386,6 @@ export default function LetterCardsView({ letter, onBack, onViewTimeline, userNa
                 加为笔友以继续交流
               </button>
             )}
-            <button 
-              onClick={onViewTimeline}
-              className="w-full px-4 py-2.5 bg-gradient-to-r from-blue-500 to-indigo-500 text-white rounded-xl font-medium hover:shadow-lg transition-all flex items-center justify-center gap-2"
-            >
-              <Clock size={18} />
-              时间轴
-            </button>
           </div>
         )}
       </div>
