@@ -24,20 +24,39 @@ const AVATAR_OPTIONS = [
   '🌟', '⭐', '✨', '💫', '🌙', '☀️'
 ];
 
-// 随机笔名生成器
+// 随机笔名生成器 - 形容词+的+名词
 const generateRandomPenName = (): string => {
-  const surnames = ['李', '王', '张', '刘', '陈', '杨', '赵', '黄', '周', '吴', '徐', '孙', '胡', '朱', '高', '林'];
-  const names = [
-    '云', '雪', '月', '星', '风', '雨', '霜', '露', '晴', '梦',
-    '泽', '言', '辰', '夜', '晨', '暮', '昼', '夕', '曦', '熙',
-    '白', '墨', '青', '紫', '红', '绿', '蓝', '金', '银', '玉'
+  const adjectives = [
+    '沉默', '冰冷', '温柔', '孤独', '快乐', '忧郁', '自由', '神秘',
+    '迷茫', '清醒', '慵懒', '热情', '冷漠', '敏感', '坚强', '脆弱',
+    '勇敢', '胆小', '善良', '倔强', '随性', '认真', '粗心', '细腻',
+    '乐观', '悲观', '开朗', '内向', '活泼', '安静', '浪漫', '务实',
+    '文艺', '理性', '感性', '淡定', '焦虑', '洒脱', '纠结', '简单'
   ];
   
-  const surname = surnames[Math.floor(Math.random() * surnames.length)];
-  const name1 = names[Math.floor(Math.random() * names.length)];
-  const name2 = Math.random() > 0.5 ? names[Math.floor(Math.random() * names.length)] : '';
+  const nouns = [
+    // 动物类
+    '安康鱼', '北极熊', '企鹅', '海豹', '树懒', '考拉', '浣熊', '猫头鹰',
+    '仓鼠', '刺猬', '松鼠', '兔子', '猫咪', '柴犬', '金鱼', '海豚',
+    '海星', '水母', '蝴蝶', '蜻蜓', '萤火虫', '知了', '蟋蟀', '瓢虫',
+    
+    // 植物类
+    '向日葵', '薰衣草', '蒲公英', '雏菊', '茉莉', '桂花', '梅花', '樱花',
+    '竹子', '枫叶', '银杏', '柳树', '仙人掌', '多肉', '芦荟', '绿萝',
+    
+    // 物品类
+    '咖啡杯', '书签', '钢笔', '橡皮擦', '台灯', '闹钟', '相机', '吉他',
+    '明信片', '日记本', '风铃', '沙漏', '地球仪', '望远镜', '棒棒糖', '冰淇淋',
+    
+    // 自然类
+    '月亮', '星星', '云朵', '雨滴', '雪花', '彩虹', '晚霞', '晨曦',
+    '海浪', '清风', '春天', '秋天', '溪流', '山谷', '小岛', '灯塔'
+  ];
   
-  return surname + name1 + name2;
+  const adjective = adjectives[Math.floor(Math.random() * adjectives.length)];
+  const noun = nouns[Math.floor(Math.random() * nouns.length)];
+  
+  return `${adjective}的${noun}`;
 };
 
 const CustomPenPalCreator: React.FC<CustomPenPalCreatorProps> = ({

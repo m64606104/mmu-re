@@ -4,10 +4,11 @@
  * 参考慢邮件App的卡片设计
  */
 
-import { RefObject } from 'react';
-import { ArrowLeft, Check } from 'lucide-react';
+import { RefObject, useState } from 'react';
+import { ArrowLeft, Check, Zap } from 'lucide-react';
 import { Letter } from '../types/letter';
 import { getCurrentStamp } from '../utils/stampSystem';
+import { urgeLetter } from '../utils/letterService';
 
 interface LetterCardsViewProps {
   letter: Letter;
@@ -15,10 +16,27 @@ interface LetterCardsViewProps {
   onViewTimeline: () => void;
   userName: string;
   scrollContainerRef?: RefObject<HTMLDivElement>;
+  onRefresh?: () => void;
 }
 
-export default function LetterCardsView({ letter, onBack, onViewTimeline, userName, scrollContainerRef }: LetterCardsViewProps) {
+export default function LetterCardsView({ letter, onBack, onViewTimeline, userName, scrollContainerRef, onRefresh }: LetterCardsViewProps) {
   const currentStamp = getCurrentStamp();
+  const [localLetter, setLocalLetter] = useState(letter);
+
+  // 催促回复
+  const handleUrge = () => {
+    const success = urgeLetter(localLetter.id);
+    if (success) {
+      alert('✨ 已催促回复！\n\n预计15-30分钟内收到回信');
+      // 更新本地状态
+      setLocalLetter({ ...localLetter, hasUrged: true });
+      if (onRefresh) {
+        onRefresh();
+      }
+    } else {
+      alert('无法催促：\n' + (localLetter.hasUrged ? '已经催促过了' : '信件状态不正确'));
+    }
+  };
 
   const formatDate = (timestamp: number) => {
     const date = new Date(timestamp);
@@ -165,13 +183,25 @@ export default function LetterCardsView({ letter, onBack, onViewTimeline, userNa
                 )}
 
                 {/* 等待回信状态 */}
-                {!round.aiReply && letter.status === 'sent' && (
+                {!round.aiReply && localLetter.status === 'sent' && (
                   <div className="mb-4 bg-amber-50 border-2 border-dashed border-amber-300 rounded-2xl p-6 text-center">
                     <div className="text-4xl mb-2">⏳</div>
                     <div className="text-gray-700 font-medium">等待回信中...</div>
-                    <div className="text-sm text-gray-500 mt-1">
-                      预计 1-5 天收到回信
+                    <div className="text-sm text-gray-500 mt-1 mb-3">
+                      {localLetter.hasUrged 
+                        ? '已催促，预计很快收到回信'
+                        : '预计 1-5 天收到回信'
+                      }
                     </div>
+                    {!localLetter.hasUrged && (
+                      <button
+                        onClick={handleUrge}
+                        className="px-6 py-2.5 bg-gradient-to-r from-amber-500 to-orange-500 text-white rounded-full font-medium hover:shadow-lg transition-all flex items-center gap-2 mx-auto"
+                      >
+                        <Zap size={18} />
+                        催促回复
+                      </button>
+                    )}
                   </div>
                 )}
               </div>
