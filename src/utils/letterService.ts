@@ -264,6 +264,7 @@ export function calculateReplyDelay(isUrged: boolean): number {
  * 寄出信件
  * @param isBottle - true时随机生成新AI人设，false时使用传入的receiver信息
  * @param isAnonymous - 是否匿名寄信（非漂流瓶也可选择匿名）
+ * @param bottleOriginalContent - 漂流瓶的原始内容（用户回复漂流瓶时传入）
  */
 export function sendLetter(
   content: string,
@@ -272,7 +273,8 @@ export function sendLetter(
   receiverAvatar: string,
   isBottle: boolean,
   senderName: string = '我',
-  isAnonymous: boolean = false
+  isAnonymous: boolean = false,
+  bottleOriginalContent?: string
 ): Letter {
   const now = Date.now();
   const replyDelay = calculateReplyDelay(false);
@@ -322,6 +324,9 @@ export function sendLetter(
     
     // 保存AI人设信息（用于生成回信时参考）
     bottleAIProfile: bottleAI,
+    
+    // 保存漂流瓶原始内容（用户回复漂流瓶时）
+    bottleOriginalContent,
     
     // 匿名相关
     isAnonymous,
@@ -886,14 +891,24 @@ async function generateRealAIReply(letter: Letter): Promise<string> {
     ? `这是漂流瓶模式，寄信人是陌生人（你不认识的人），你们是第一次通过漂流瓶认识。`
     : `这封信来自你认识的人"${letter.senderName}"，你们有一定的关系（朋友/熟人），不是完全陌生的。`;
 
+  // 构建漂流瓶上下文（如果是回复漂流瓶）
+  const bottleContext = letter.bottleOriginalContent ? `
+
+【重要背景 - 漂流瓶的原始内容】:
+你之前投了一个漂流瓶到海里，内容是：
+"${letter.bottleOriginalContent}"
+
+现在有人捡到了你的漂流瓶，并给你回信了。你需要记住你在漂流瓶里写了什么，并基于那个内容和对方的回信来写回信。
+` : '';
+
   const prompt = `${personality}
 
-${roundInfo}${historyContext}
+${roundInfo}${historyContext}${bottleContext}
 
 【来信信息】:
 ${senderInfo}
 
-【信件内容】:
+【对方的回信内容】:
 ${letter.content}
 
 ---

@@ -25,6 +25,7 @@ export interface Letter {
   
   replyContent?: string;  // 回信内容
   bottleAIProfile?: BottleAI;  // 漂流瓶AI的完整人设信息（用于生成回信）
+  bottleOriginalContent?: string;  // 漂流瓶的原始内容（用户回复漂流瓶时保存）
   
   // 多轮交流相关
   conversationRounds: LetterRound[];  // 完整的交流记录（包含来回的信件）

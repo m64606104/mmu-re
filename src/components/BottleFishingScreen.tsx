@@ -88,7 +88,7 @@ export default function BottleFishingScreen({ onBack, userName }: BottleFishingS
     }
 
     try {
-      // 发送信件
+      // 发送信件（包含漂流瓶原始内容）
       sendLetter(
         replyContent,
         currentBottle.senderId,
@@ -96,7 +96,8 @@ export default function BottleFishingScreen({ onBack, userName }: BottleFishingS
         currentBottle.senderAvatar,
         true, // 是漂流瓶
         userName,
-        false // 不匿名
+        false, // 不匿名
+        currentBottle.content // 漂流瓶的原始内容
       );
       
       // 记录统计
