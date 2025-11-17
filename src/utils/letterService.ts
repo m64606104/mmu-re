@@ -761,14 +761,60 @@ async function generateRealAIReply(letter: Letter): Promise<string> {
   const currentRound = letter.conversationRounds[letter.conversationRounds.length - 1];
   
   // 获取之前的对话历史（排除当前轮次）
-  const conversationHistory = letter.conversationRounds
+  const allHistory = letter.conversationRounds
     .slice(0, -1) // 排除当前轮次
-    .filter(round => round.aiReply)
-    .slice(-3) // 最近3轮对话
-    .map(round => `用户: ${round.userLetter.content}\n你: ${round.aiReply?.content}`)
-    .join('\n\n');
+    .filter(round => round.aiReply && !round.userLetter.isDeleted && !round.aiReply.isDeleted);
   
-  const historyContext = conversationHistory ? `\n\n【之前的对话】:\n${conversationHistory}\n` : '';
+  // 智能历史记忆：前期总结 + 详细最近对话
+  let historyContext = '';
+  
+  if (allHistory.length > 0) {
+    if (allHistory.length > 5) {
+      // 如果历史很长（超过5轮），提供早期总结 + 最近详细内容
+      const earlyRounds = allHistory.slice(0, -5);
+      const recentRounds = allHistory.slice(-5);
+      
+      // 早期对话总结（只提取关键话题）
+      const earlyTopics = earlyRounds
+        .map((round) => {
+          const topics = [];
+          // 提取用户提到的关键内容（简化版）
+          if (round.userLetter.content.length > 50) {
+            topics.push(`第${round.roundNumber}轮：${round.userLetter.content.substring(0, 50)}...`);
+          } else {
+            topics.push(`第${round.roundNumber}轮：${round.userLetter.content}`);
+          }
+          return topics.join(' ');
+        })
+        .join('\n');
+      
+      // 最近对话详细内容
+      const recentDetails = recentRounds
+        .map(round => `【第${round.roundNumber}轮】\n用户: ${round.userLetter.content}\n你: ${round.aiReply?.content}`)
+        .join('\n\n');
+      
+      historyContext = `\n\n【之前的对话记忆】:
+⚠️ 重要：你需要记住你们之前所有的交流内容，包括用户分享的事情、你们讨论过的话题、用户的性格和偏好等。
+
+📋 早期对话话题（共${earlyRounds.length}轮）:
+${earlyTopics}
+
+📝 最近详细对话（最近${recentRounds.length}轮）:
+${recentDetails}
+`;
+    } else {
+      // 如果历史不长（5轮以内），直接展示所有详细内容
+      const allDetails = allHistory
+        .map(round => `【第${round.roundNumber}轮】\n用户: ${round.userLetter.content}\n你: ${round.aiReply?.content}`)
+        .join('\n\n');
+      
+      historyContext = `\n\n【之前的对话记忆】:
+⚠️ 重要：你需要记住你们之前所有的交流内容。
+
+${allDetails}
+`;
+    }
+  }
   
   // 判断是否是第一次交流
   const isFirstReply = letter.currentRound === 1;
@@ -959,29 +1005,37 @@ ${motivation.type === 'confide' ? `- 你会主动、深入地分享困惑（40-5
 
 🎯 **具体要求**：
 
-1. **符合你的身份**：
+1. **记住并延续你们的历史对话**（超级重要！）：
+   - ✅ 你需要记住你们之前聊过的所有内容
+   - ✅ 如果用户提到过某件事（音乐、工作、学习、感情等），你在后续回信时可以自然地提及
+   - ✅ 例如：用户第1轮说"我喜欢听冰冷的蝴蝶"，你第3轮可以说"对了，你之前说喜欢听冰冷的蝴蝶，最近还在听吗？"
+   - ✅ 例如：用户第2轮说"我压力很大"，你第4轮可以说"看你这次来信，心情好像好多了？上次说压力大的事，现在怎么样了？"
+   - ✅ 通过提及历史内容，营造"我一直在关注你、记得你"的感觉
+   - ❌ 不要每次都只回应当前这封信，要像一个真实的朋友那样记住对方说过的事
+
+2. **符合你的身份**：
    - 学生收到工作问题 → 说不懂，但分享学业上的相似困惑
    - 打工人收到学业问题 → 说已毕业，分享当年经历或现在的工作烦恼
    - 不懂的就说不懂，然后聊你自己的事
 
-2. **主动分享生活**（重要！）：
+3. **主动分享生活**（重要！）：
    - 这几天做了什么？（上课/上班/出去玩/宅在家）
    - 遇到了什么人或事？（室友/同事/路上的小事）
    - 最近的心情如何？（开心/郁闷/焦虑/平静）
    - 有什么新的想法或感悟？
 
-3. **提出你的困惑**（重要！）：
+4. **提出你的困惑**（重要！）：
    - 你最近在纠结什么？（选择/人际关系/未来规划）
    - 有什么想不通的事？
    - 遇到了什么难题？
    - **期待对方下次回信时给你想法或陪伴**
 
-4. **营造时间感**（可选，不刻意）：
+5. **营造时间感**（可选，不刻意）：
    - 可以提及距离上次通信过了多久
    - 可以说说这几天的变化
    - 不要每次都写"收到信是在..."，自然就好
 
-5. **期待延续**：
+6. **期待延续**：
    - 向对方提问，期待回复
    - 表达想继续交流的意愿
    - 可以约定下次聊什么
