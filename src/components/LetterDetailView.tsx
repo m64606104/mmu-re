@@ -14,9 +14,10 @@ interface LetterDetailViewProps {
   onBack: () => void;
   userName: string;
   initialRoundIndex?: number;
+  onReply?: () => void;
 }
 
-export default function LetterDetailView({ letter, onBack, userName, initialRoundIndex }: LetterDetailViewProps) {
+export default function LetterDetailView({ letter, onBack, userName, initialRoundIndex, onReply }: LetterDetailViewProps) {
   const [viewMode, setViewMode] = useState<'cards' | 'timeline'>('cards');
   const [targetRoundIndex, setTargetRoundIndex] = useState<number | null>(initialRoundIndex || null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
@@ -74,6 +75,7 @@ export default function LetterDetailView({ letter, onBack, userName, initialRoun
       onViewTimeline={() => setViewMode('timeline')}
       userName={userName}
       scrollContainerRef={scrollContainerRef}
+      onReply={onReply}
     />
   );
 }

@@ -347,6 +347,11 @@ const LetterBoxScreen: React.FC<LetterBoxScreenProps> = ({
                 });
               }
             }}
+            onReply={(letter) => {
+              // 打开详情页进行回复
+              setSelectedLetter(letter);
+              setViewMode('detail');
+            }}
           />
         )}
 
@@ -383,7 +388,10 @@ const LetterBoxScreen: React.FC<LetterBoxScreenProps> = ({
 
               {/* 主要内容区（可点击） */}
               <div 
-                onClick={() => setSelectedLetter(letter)}
+                onClick={() => {
+                  setSelectedLetter(letter);
+                  setViewMode('detail');
+                }}
                 className="pr-20 pl-2 cursor-pointer"
               >
                 {/* 收信人 */}
@@ -510,13 +518,22 @@ const LetterBoxScreen: React.FC<LetterBoxScreenProps> = ({
           <LetterDetailView
             letter={selectedLetter}
             onBack={() => {
-              setViewMode('smallcards');
+              // 根据之前的模式返回
+              if (selectedBox) {
+                setViewMode('smallcards');
+              } else {
+                setViewMode('list');
+              }
               setSelectedLetter(null);
               setSelectedRoundIndex(undefined);
               loadLetters(); // 关闭时刷新列表
             }}
             userName={userName}
             initialRoundIndex={selectedRoundIndex}
+            onReply={() => {
+              // 打开写信页面并传递回复的信件信息
+              onWriteNew();
+            }}
           />
         </div>
       )}

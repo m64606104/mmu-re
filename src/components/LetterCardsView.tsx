@@ -5,7 +5,7 @@
  */
 
 import { RefObject, useState, useEffect } from 'react';
-import { ArrowLeft, Check, Zap, Clock } from 'lucide-react';
+import { ArrowLeft, Check, Zap, Clock, Reply } from 'lucide-react';
 import { Letter } from '../types/letter';
 import { getCurrentStamp } from '../utils/stampSystem';
 import { urgeLetter } from '../utils/letterService';
@@ -17,9 +17,10 @@ interface LetterCardsViewProps {
   userName: string;
   scrollContainerRef?: RefObject<HTMLDivElement>;
   onRefresh?: () => void;
+  onReply?: () => void;
 }
 
-export default function LetterCardsView({ letter, onBack, onViewTimeline, userName, scrollContainerRef, onRefresh }: LetterCardsViewProps) {
+export default function LetterCardsView({ letter, onBack, onViewTimeline, userName, scrollContainerRef, onRefresh, onReply }: LetterCardsViewProps) {
   const currentStamp = getCurrentStamp();
   const [localLetter, setLocalLetter] = useState(letter);
 
@@ -229,6 +230,15 @@ export default function LetterCardsView({ letter, onBack, onViewTimeline, userNa
 
       {/* 底部栏 */}
       <div className="bg-white/80 backdrop-blur-sm border-t border-orange-200 px-4 py-3 flex items-center gap-3 shrink-0">
+        {onReply && (
+          <button 
+            onClick={onReply}
+            className="flex-1 px-4 py-2.5 bg-gradient-to-r from-green-500 to-emerald-500 text-white rounded-xl font-medium hover:shadow-lg transition-all flex items-center justify-center gap-2"
+          >
+            <Reply size={18} />
+            回复
+          </button>
+        )}
         <button 
           onClick={onViewTimeline}
           className="flex-1 px-4 py-2.5 bg-gradient-to-r from-blue-500 to-indigo-500 text-white rounded-xl font-medium hover:shadow-lg transition-all flex items-center justify-center gap-2"

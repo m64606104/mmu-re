@@ -5,7 +5,7 @@
  */
 
 import { useState } from 'react';
-import { ArrowLeft, User, Bot, Trash2 } from 'lucide-react';
+import { ArrowLeft, User, Bot, Trash2, Reply } from 'lucide-react';
 import { Letter } from '../types/letter';
 import { archiveLetter } from '../utils/letterService';
 
@@ -15,6 +15,7 @@ interface LetterSmallCardsViewProps {
   onBack: () => void;
   onViewDetail: (letter: Letter, roundIndex?: number) => void;
   onDelete?: (letterId: string) => void;
+  onReply?: (letter: Letter) => void;
 }
 
 export default function LetterSmallCardsView({
@@ -22,7 +23,8 @@ export default function LetterSmallCardsView({
   receiverName,
   onBack,
   onViewDetail,
-  onDelete
+  onDelete,
+  onReply
 }: LetterSmallCardsViewProps) {
   const [expandedCard, setExpandedCard] = useState<string | null>(null);
 
@@ -167,6 +169,19 @@ export default function LetterSmallCardsView({
                     <span className="text-xs text-gray-600">
                       {formatTime(card.date)}
                     </span>
+                    {/* 回复按钮 - 仅在AI回复卡片上显示 */}
+                    {card.type === 'ai' && onReply && (
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onReply(card.letter);
+                        }}
+                        className="p-1 hover:bg-blue-100 rounded-full transition-colors"
+                        title="回复"
+                      >
+                        <Reply size={14} className="text-blue-500" />
+                      </button>
+                    )}
                     {/* 删除按钮 */}
                     <button
                       onClick={(e) => handleDelete(e, card.letterId)}
