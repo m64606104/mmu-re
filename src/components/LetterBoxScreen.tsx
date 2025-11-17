@@ -6,7 +6,7 @@
 import React, { useState, useEffect } from 'react';
 import { Letter } from '../types/letter';
 import { getActiveLetters, archiveLetter } from '../utils/letterService';
-import { ArrowLeft, Mail, Send, Clock, Check, Users, Trash2, Archive, Trophy, Database, Heart, Award, Bell } from 'lucide-react';
+import { ArrowLeft, Mail, Send, Clock, Check, Users, Trash2, Archive, Trophy, Database, Heart, Award, Bell, Waves } from 'lucide-react';
 import LetterDetailView from './LetterDetailView';
 import LetterDataManagement from './LetterDataManagement';
 
@@ -19,6 +19,7 @@ interface LetterBoxScreenProps {
   onToFavorites: () => void;
   onToStampCollection: () => void;
   onToNotifications: () => void;
+  onToBottleFishing: () => void;
   userName: string;
 }
 
@@ -31,6 +32,7 @@ const LetterBoxScreen: React.FC<LetterBoxScreenProps> = ({
   onToFavorites,
   onToStampCollection,
   onToNotifications,
+  onToBottleFishing,
   userName
 }) => {
   const [letters, setLetters] = useState<Letter[]>([]);
@@ -176,11 +178,27 @@ const LetterBoxScreen: React.FC<LetterBoxScreenProps> = ({
             我的笔友
           </button>
           <button
+            onClick={onToBottleFishing}
+            className="flex-1 px-4 py-3 bg-gradient-to-r from-cyan-400 to-blue-500 text-white rounded-xl font-medium hover:shadow-lg transition-all flex items-center justify-center gap-2"
+          >
+            <Waves size={18} />
+            漂流瓶
+          </button>
+        </div>
+        <div className="flex gap-3">
+          <button
             onClick={onToFavorites}
             className="flex-1 px-4 py-3 bg-gradient-to-r from-red-400 to-pink-500 text-white rounded-xl font-medium hover:shadow-lg transition-all flex items-center justify-center gap-2"
           >
             <Heart size={18} />
             我的收藏
+          </button>
+          <button
+            onClick={toArchived}
+            className="flex-1 px-4 py-3 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-xl font-medium transition-colors flex items-center justify-center gap-2"
+          >
+            <Trash2 size={18} />
+            回收站
           </button>
         </div>
         <div className="flex gap-3">
@@ -205,13 +223,6 @@ const LetterBoxScreen: React.FC<LetterBoxScreenProps> = ({
           </button>
         </div>
         <div className="flex gap-3">
-          <button
-            onClick={toArchived}
-            className="flex-1 px-4 py-3 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-xl font-medium transition-colors flex items-center justify-center gap-2"
-          >
-            <Trash2 size={18} />
-            回收站
-          </button>
           <button
             onClick={onToAchievements}
             className="flex-1 px-4 py-3 bg-gradient-to-r from-yellow-400 to-orange-500 text-white rounded-xl font-medium hover:shadow-lg transition-all flex items-center justify-center gap-2"

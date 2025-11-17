@@ -27,6 +27,7 @@ import FavoriteLettersScreen from './components/FavoriteLettersScreen';
 import AchievementScreen from './components/AchievementScreen';
 import StampCollectionScreen from './components/StampCollectionScreen';
 import LetterNotificationCenter from './components/LetterNotificationCenter';
+import BottleFishingScreen from './components/BottleFishingScreen';
 import ToastContainer from './components/ToastContainer';
 import { MomentsAutoGenerator } from './components/MomentsAutoGenerator';
 import { AIMomentsInteractionManager } from './components/AIMomentsInteractionManager';
@@ -940,6 +941,7 @@ function App() {
             onToFavorites={() => navigateTo('favorite-letters')}
             onToStampCollection={() => navigateTo('stamp-collection')}
             onToNotifications={() => navigateTo('letter-notifications')}
+            onToBottleFishing={() => navigateTo('bottle-fishing')}
             userName={userProfile.username}
           />
         );
@@ -989,6 +991,13 @@ function App() {
                 navigateTo('letterbox');
               }
             }}
+          />
+        );
+      case 'bottle-fishing':
+        return (
+          <BottleFishingScreen
+            onBack={() => navigateTo('letterbox')}
+            userName={userProfile.username}
           />
         );
       case 'letter-writing':
