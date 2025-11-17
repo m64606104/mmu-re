@@ -56,6 +56,18 @@ export default function LetterCardsView({ letter, onBack, onViewTimeline, userNa
     });
   };
 
+  // 格式化完整时间（包含小时分钟）
+  const formatFullTime = (timestamp: number) => {
+    const date = new Date(timestamp);
+    return date.toLocaleString('zh-CN', {
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
+    });
+  };
+
   // 监听letter变化，更新本地状态
   useEffect(() => {
     setLocalLetter(letter);
@@ -189,7 +201,9 @@ export default function LetterCardsView({ letter, onBack, onViewTimeline, userNa
                     <div className="text-sm text-gray-500 mt-1 mb-3">
                       {localLetter.hasUrged 
                         ? '已催促，预计很快收到回信'
-                        : '预计 1-5 天收到回信'
+                        : localLetter.willReplyAt 
+                          ? `预计 ${formatFullTime(localLetter.willReplyAt)} 左右收到回信`
+                          : '预计 1-5 天收到回信'
                       }
                     </div>
                     {!localLetter.hasUrged && (
