@@ -3,9 +3,10 @@
  * 允许用户创建影视、小说、动漫等角色作为笔友
  */
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { X, Sparkles, User, MapPin, Book } from 'lucide-react';
 import { BottleAI } from '../types/letter';
+import { generateRandomName } from '../utils/nameGenerator';
 
 interface CustomPenPalCreatorProps {
   onClose: () => void;
@@ -24,29 +25,6 @@ const AVATAR_OPTIONS = [
   '🌟', '⭐', '✨', '💫', '🌙', '☀️'
 ];
 
-// 随机笔名生成器（形容词+名词）
-const generateRandomPenName = (): string => {
-  const adjectives = [
-    '温柔的', '勇敢的', '自由的', '快乐的', '孤独的', '浪漫的',
-    '神秘的', '安静的', '活泼的', '忧郁的', '梦幻的', '坚强的',
-    '温暖的', '清澈的', '迷人的', '优雅的', '可爱的', '聪明的',
-    '善良的', '真诚的', '热情的', '冷静的', '深沉的', '灵动的'
-  ];
-  
-  const nouns = [
-    '旅人', '诗人', '画师', '歌者', '舞者', '游者',
-    '守望者', '追梦者', '拾光者', '寻路人', '观星者', '听雨人',
-    '行者', '漫步者', '冒险家', '故事人', '时光者', '云游客',
-    '探索者', '追风者', '逐浪人', '摘星人', '赏花客', '听风者',
-    '流浪者', '信使', '收信人', '寄信者', '远方客', '山海客'
-  ];
-  
-  const adjective = adjectives[Math.floor(Math.random() * adjectives.length)];
-  const noun = nouns[Math.floor(Math.random() * nouns.length)];
-  
-  return adjective + noun;
-};
-
 const CustomPenPalCreator: React.FC<CustomPenPalCreatorProps> = ({
   onClose,
   onConfirm
@@ -57,8 +35,12 @@ const CustomPenPalCreator: React.FC<CustomPenPalCreatorProps> = ({
   const [background, setBackground] = useState('');
   const [showAvatarPicker, setShowAvatarPicker] = useState(false);
 
+  useEffect(() => {
+    setPenName(generateRandomName());
+  }, []);
+
   const handleRandomName = () => {
-    setPenName(generateRandomPenName());
+    setPenName(generateRandomName());
   };
 
   const handleConfirm = () => {
@@ -69,7 +51,7 @@ const CustomPenPalCreator: React.FC<CustomPenPalCreatorProps> = ({
 
     const customPenPal: BottleAI = {
       id: `custom_penpal_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-      name: penName.trim() || generateRandomPenName(),
+      name: penName.trim() || generateRandomName(),
       avatar: avatar,
       personality: rolePrompt.trim(), // 使用角色设定作为性格描述
       location: '虚拟世界',
