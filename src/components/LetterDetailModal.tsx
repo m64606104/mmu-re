@@ -5,8 +5,8 @@
 
 import React, { useState } from 'react';
 import { Letter } from '../types/letter';
-import { urgeLetter, canContinueReply, continueReply, addAsPenPal } from '../utils/letterService';
-import { X, Zap, MailPlus, UserPlus, Send, Maximize2 } from 'lucide-react';
+import { urgeLetter, canContinueReply, continueReply, addAsPenPal, toggleFavoriteLetter } from '../utils/letterService';
+import { X, Zap, MailPlus, UserPlus, Send, Maximize2, Heart } from 'lucide-react';
 import FullScreenReplyComposer from './FullScreenReplyComposer';
 
 interface LetterDetailModalProps {
@@ -25,6 +25,7 @@ const LetterDetailModal: React.FC<LetterDetailModalProps> = ({
   const [replyContent, setReplyContent] = useState('');
   const [showReplyInput, setShowReplyInput] = useState(false);
   const [showFullScreenComposer, setShowFullScreenComposer] = useState(false);
+  const [isFavorited, setIsFavorited] = useState(letter.isFavorite || false);
   
   const replyStatus = canContinueReply(letter.id);
   const handleUrge = () => {
@@ -66,6 +67,13 @@ const LetterDetailModal: React.FC<LetterDetailModalProps> = ({
       onUrge();
     } else {
       alert('无法加为笔友');
+    }
+  };
+
+  const handleToggleFavorite = () => {
+    const success = toggleFavoriteLetter(letter.id);
+    if (success) {
+      setIsFavorited(!isFavorited);
     }
   };
 
@@ -132,12 +140,24 @@ const LetterDetailModal: React.FC<LetterDetailModalProps> = ({
               </div>
             </div>
           </div>
-          <button
-            onClick={onClose}
-            className="p-2 hover:bg-gray-100 rounded-full transition-colors"
-          >
-            <X size={24} className="text-gray-600" />
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={handleToggleFavorite}
+              className="p-2 hover:bg-gray-100 rounded-full transition-colors"
+              title={isFavorited ? "取消收藏" : "收藏信件"}
+            >
+              <Heart 
+                size={22} 
+                className={isFavorited ? "text-red-500 fill-red-500" : "text-gray-400"} 
+              />
+            </button>
+            <button
+              onClick={onClose}
+              className="p-2 hover:bg-gray-100 rounded-full transition-colors"
+            >
+              <X size={24} className="text-gray-600" />
+            </button>
+          </div>
         </div>
 
         {/* 信件内容 - 显示所有轮次 */}

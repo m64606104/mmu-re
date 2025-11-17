@@ -6,7 +6,7 @@
 import React, { useState, useEffect } from 'react';
 import { Letter } from '../types/letter';
 import { getActiveLetters, archiveLetter } from '../utils/letterService';
-import { ArrowLeft, Mail, Send, Clock, Check, Users, Trash2, Archive, Trophy, Database } from 'lucide-react';
+import { ArrowLeft, Mail, Send, Clock, Check, Users, Trash2, Archive, Trophy, Database, Heart } from 'lucide-react';
 import LetterDetailModal from './LetterDetailModal';
 import LetterDataManagement from './LetterDataManagement';
 
@@ -16,6 +16,7 @@ interface LetterBoxScreenProps {
   onToPenPals: () => void;
   toArchived: () => void;
   onToAchievements: () => void;
+  onToFavorites: () => void;
   userName: string;
 }
 
@@ -25,6 +26,7 @@ const LetterBoxScreen: React.FC<LetterBoxScreenProps> = ({
   onToPenPals,
   toArchived,
   onToAchievements,
+  onToFavorites,
   userName
 }) => {
   const [letters, setLetters] = useState<Letter[]>([]);
@@ -158,20 +160,29 @@ const LetterBoxScreen: React.FC<LetterBoxScreenProps> = ({
             我的笔友
           </button>
           <button
+            onClick={onToFavorites}
+            className="flex-1 px-4 py-3 bg-gradient-to-r from-red-400 to-pink-500 text-white rounded-xl font-medium hover:shadow-lg transition-all flex items-center justify-center gap-2"
+          >
+            <Heart size={18} />
+            我的收藏
+          </button>
+        </div>
+        <div className="flex gap-3">
+          <button
             onClick={toArchived}
             className="flex-1 px-4 py-3 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-xl font-medium transition-colors flex items-center justify-center gap-2"
           >
             <Trash2 size={18} />
             回收站
           </button>
+          <button
+            onClick={onToAchievements}
+            className="flex-1 px-4 py-3 bg-gradient-to-r from-yellow-400 to-orange-500 text-white rounded-xl font-medium hover:shadow-lg transition-all flex items-center justify-center gap-2"
+          >
+            <Trophy size={18} />
+            成就中心
+          </button>
         </div>
-        <button
-          onClick={onToAchievements}
-          className="w-full px-4 py-3 bg-gradient-to-r from-yellow-400 to-orange-500 text-white rounded-xl font-medium hover:shadow-lg transition-all flex items-center justify-center gap-2"
-        >
-          <Trophy size={18} />
-          成就中心
-        </button>
       </div>
 
       {/* 信件列表 */}

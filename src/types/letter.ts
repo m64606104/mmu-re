@@ -35,6 +35,12 @@ export interface Letter {
   // 管理相关
   isArchived: boolean;  // 是否已归档（放入回收站）
   archivedAt?: number;  // 归档时间
+  isFavorite?: boolean;  // 是否已收藏
+  favoritedAt?: number;  // 收藏时间
+  
+  // 隐私相关
+  isAnonymous?: boolean;  // 是否匿名寄信（非漂流瓶也可选择匿名）
+  anonymousName?: string;  // 匿名时使用的随机名字
   
   // 装饰元素
   stampStyle?: 'default' | 'vintage' | 'flower' | 'sea';  // 邮票样式

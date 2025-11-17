@@ -23,6 +23,7 @@ import LetterBoxScreen from './components/LetterBoxScreen';
 import LetterWritingScreen from './components/LetterWritingScreen';
 import PenPalListScreen from './components/PenPalListScreen';
 import ArchivedLettersScreen from './components/ArchivedLettersScreen';
+import FavoriteLettersScreen from './components/FavoriteLettersScreen';
 import AchievementScreen from './components/AchievementScreen';
 import ToastContainer from './components/ToastContainer';
 import { MomentsAutoGenerator } from './components/MomentsAutoGenerator';
@@ -934,6 +935,7 @@ function App() {
             onToPenPals={() => navigateTo('pen-pals')}
             toArchived={() => navigateTo('archived-letters')}
             onToAchievements={() => navigateTo('achievements')}
+            onToFavorites={() => navigateTo('favorite-letters')}
             userName={userProfile.username}
           />
         );
@@ -952,6 +954,13 @@ function App() {
         return (
           <ArchivedLettersScreen
             onBack={() => navigateTo('letterbox')}
+          />
+        );
+      case 'favorite-letters':
+        return (
+          <FavoriteLettersScreen
+            onBack={() => navigateTo('letterbox')}
+            userName={userProfile.username}
           />
         );
       case 'achievements':

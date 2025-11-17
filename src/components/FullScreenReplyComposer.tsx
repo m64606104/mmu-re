@@ -112,7 +112,12 @@ const FullScreenReplyComposer: React.FC<FullScreenReplyComposerProps> = ({
           {/* 落款 */}
           <div className="text-right mt-8 text-gray-600">
             <div>{new Date().toLocaleDateString('zh-CN', { year: 'numeric', month: 'long', day: 'numeric' })}</div>
-            <div className="mt-1">from {userName}</div>
+            {!letter.isAnonymous && (
+              <div className="mt-1">from {userName}</div>
+            )}
+            {letter.isAnonymous && letter.anonymousName && (
+              <div className="mt-1">from {letter.anonymousName}</div>
+            )}
           </div>
         </div>
 

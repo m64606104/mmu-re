@@ -263,6 +263,7 @@ export function calculateReplyDelay(isUrged: boolean): number {
 /**
  * 寄出信件
  * @param isBottle - true时随机生成新AI人设，false时使用传入的receiver信息
+ * @param isAnonymous - 是否匿名寄信（非漂流瓶也可选择匿名）
  */
 export function sendLetter(
   content: string,
@@ -270,7 +271,8 @@ export function sendLetter(
   receiverName: string,
   receiverAvatar: string,
   isBottle: boolean,
-  senderName: string = '我'
+  senderName: string = '我',
+  isAnonymous: boolean = false
 ): Letter {
   const now = Date.now();
   const replyDelay = calculateReplyDelay(false);
@@ -286,6 +288,14 @@ export function sendLetter(
     finalReceiverId = bottleAI.id;
     finalReceiverName = bottleAI.name;
     finalReceiverAvatar = bottleAI.avatar;
+    // 漂流瓶默认匿名
+    isAnonymous = true;
+  }
+  
+  // 🎭 生成匿名名字（如果选择匿名）
+  let anonymousName: string | undefined;
+  if (isAnonymous) {
+    anonymousName = generateRandomBottleAI().name;
   }
   
   const letter: Letter = {
@@ -312,6 +322,10 @@ export function sendLetter(
     
     // 保存AI人设信息（用于生成回信时参考）
     bottleAIProfile: bottleAI,
+    
+    // 匿名相关
+    isAnonymous,
+    anonymousName,
     
     // 多轮交流初始化
     conversationRounds: [{
@@ -775,11 +789,21 @@ async function generateRealAIReply(letter: Letter): Promise<string> {
 - 就是普通的交流`;
   }
 
+  // 构建寄信人信息提示
+  const senderInfo = letter.isAnonymous 
+    ? `这是一封来自陌生人的匿名信，寄信人使用化名"${letter.anonymousName}"，你不认识ta。这是一个完全陌生的笔友，你们之前没有任何关系。`
+    : letter.isBottle
+    ? `这是漂流瓶模式，寄信人是陌生人（你不认识的人），你们是第一次通过漂流瓶认识。`
+    : `这封信来自你认识的人"${letter.senderName}"，你们有一定的关系（朋友/熟人），不是完全陌生的。`;
+
   const prompt = `${personality}
 
 ${roundInfo}${historyContext}
 
-【用户的来信】:
+【来信信息】:
+${senderInfo}
+
+【信件内容】:
 ${letter.content}
 
 ---
@@ -1520,4 +1544,70 @@ export function deleteCustomPenPal(penPalId: string): boolean {
  */
 export function getCustomPenPalById(penPalId: string): BottleAI | undefined {
   return getCustomPenPals().find(p => p.id === penPalId);
+}
+
+/**
+ * 收藏信件
+ */
+export function favoriteLetter(letterId: string): boolean {
+  const letters = getLettersFromStorage();
+  const letter = letters.find(l => l.id === letterId);
+  
+  if (!letter) {
+    return false;
+  }
+  
+  letter.isFavorite = true;
+  letter.favoritedAt = Date.now();
+  
+  updateLetterInStorage(letter);
+  console.log(`💖 已收藏信件：${letter.receiverName}`);
+  
+  return true;
+}
+
+/**
+ * 取消收藏
+ */
+export function unfavoriteLetter(letterId: string): boolean {
+  const letters = getLettersFromStorage();
+  const letter = letters.find(l => l.id === letterId);
+  
+  if (!letter) {
+    return false;
+  }
+  
+  letter.isFavorite = false;
+  letter.favoritedAt = undefined;
+  
+  updateLetterInStorage(letter);
+  console.log(`💔 已取消收藏：${letter.receiverName}`);
+  
+  return true;
+}
+
+/**
+ * 切换收藏状态
+ */
+export function toggleFavoriteLetter(letterId: string): boolean {
+  const letter = getLetterById(letterId);
+  
+  if (!letter) {
+    return false;
+  }
+  
+  if (letter.isFavorite) {
+    return unfavoriteLetter(letterId);
+  } else {
+    return favoriteLetter(letterId);
+  }
+}
+
+/**
+ * 获取所有收藏的信件
+ */
+export function getFavoriteLetters(): Letter[] {
+  return getLettersFromStorage()
+    .filter(l => l.isFavorite && !l.isArchived)
+    .sort((a, b) => (b.favoritedAt || 0) - (a.favoritedAt || 0));
 }

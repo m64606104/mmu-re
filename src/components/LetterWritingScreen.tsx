@@ -36,6 +36,7 @@ const LetterWritingScreen: React.FC<LetterWritingScreenProps> = ({
   const [showSendingAnimation, setShowSendingAnimation] = useState(false);
   const [showCustomPenPalCreator, setShowCustomPenPalCreator] = useState(false);
   const [customPenPals, setCustomPenPals] = useState<BottleAI[]>([]);
+  const [isAnonymous, setIsAnonymous] = useState(false); // 匿名寄信选项
 
   // 请求通知权限
   useEffect(() => {
@@ -73,7 +74,8 @@ const LetterWritingScreen: React.FC<LetterWritingScreenProps> = ({
       selectedReceiver.name,
       selectedReceiver.avatar,
       selectedReceiver.isBottle,
-      userName
+      userName,
+      isAnonymous && !selectedReceiver.isBottle // 非漂流瓶才使用用户选择的匿名选项
     );
     
     // 如果是自定义笔友，需要手动设置bottleAIProfile
@@ -191,6 +193,22 @@ const LetterWritingScreen: React.FC<LetterWritingScreenProps> = ({
                 </div>
               )}
             </button>
+            
+            {/* 匿名选项（非漂流瓶才显示） */}
+            {selectedReceiver && !selectedReceiver.isBottle && (
+              <div className="mt-3 flex items-center gap-2 px-2">
+                <input
+                  type="checkbox"
+                  id="anonymous-option"
+                  checked={isAnonymous}
+                  onChange={(e) => setIsAnonymous(e.target.checked)}
+                  className="w-4 h-4 text-orange-500 rounded focus:ring-orange-400"
+                />
+                <label htmlFor="anonymous-option" className="text-sm text-gray-600 cursor-pointer select-none">
+                  🎭 匿名寄信（收信人不会看到你的真实姓名）
+                </label>
+              </div>
+            )}
           </div>
 
           {/* 写信区域 */}
@@ -205,7 +223,12 @@ const LetterWritingScreen: React.FC<LetterWritingScreenProps> = ({
           {/* 落款 */}
           <div className="text-right mt-8 text-gray-600">
             <div>{new Date().toLocaleDateString('zh-CN', { year: 'numeric', month: 'long', day: 'numeric' })}</div>
-            <div className="mt-1">from {userName}</div>
+            {!isAnonymous && !selectedReceiver?.isBottle && (
+              <div className="mt-1">from {userName}</div>
+            )}
+            {(isAnonymous || selectedReceiver?.isBottle) && (
+              <div className="mt-1 text-gray-400">from 匿名</div>
+            )}
           </div>
         </div>
 
