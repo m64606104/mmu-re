@@ -1058,18 +1058,18 @@ ${aiProfile.customBackground}
   let replyContent = data.choices[0]?.message?.content || '';
   
   // 根据性格类型和动机验证字数
-  let minLength = 100;
+  let minLength = 50; // 降低默认最小字数限制
   
   if (replyStyle.type === 'introverted' || replyStyle.type === 'casual') {
-    minLength = 50;
+    minLength = 30;
   }
   
   if (motivation.type === 'reserved') {
-    minLength = 30; // 保守型可以很简短
+    minLength = 20; // 保守型可以很简短
   }
   
   if (motivation.type === 'social') {
-    minLength = 60; // 社交型不会太长也不会太短
+    minLength = 40; // 社交型不会太长也不会太短
   }
   
   if (replyContent.length < minLength) {
