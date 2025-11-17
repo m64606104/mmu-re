@@ -1438,6 +1438,51 @@ export function deleteLetter(letterId: string): boolean {
 }
 
 /**
+ * 删除单个对话轮次
+ * @param letterId 信件ID
+ * @param roundNumber 轮次编号
+ * @returns 是否删除成功
+ */
+export function deleteLetterRound(letterId: string, roundNumber: number): boolean {
+  const letters = getLettersFromStorage();
+  const letter = letters.find(l => l.id === letterId);
+  
+  if (!letter) {
+    return false;
+  }
+  
+  // 找到要删除的轮次
+  const roundIndex = letter.conversationRounds.findIndex(r => r.roundNumber === roundNumber);
+  
+  if (roundIndex === -1) {
+    return false;
+  }
+  
+  // 删除该轮次
+  letter.conversationRounds.splice(roundIndex, 1);
+  
+  // 如果没有轮次了，删除整个信件
+  if (letter.conversationRounds.length === 0) {
+    return deleteLetter(letterId);
+  }
+  
+  // 重新编号剩余轮次
+  letter.conversationRounds.forEach((round, index) => {
+    round.roundNumber = index + 1;
+  });
+  
+  // 更新当前轮数
+  letter.currentRound = letter.conversationRounds.length;
+  
+  // 保存更新
+  updateLetterInStorage(letter);
+  
+  console.log(`🗑️ 已删除第 ${roundNumber} 轮对话`);
+  
+  return true;
+}
+
+/**
  * 获取所有笔友（已加为笔友的漂流瓶AI）
  */
 export function getAllPenPals(): Letter[] {

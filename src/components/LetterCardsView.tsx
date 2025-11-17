@@ -4,11 +4,11 @@
  * 参考慢邮件App的卡片设计
  */
 
-import { ArrowLeft, Check, Zap, UserPlus, FileDown, Star, Trash2, RotateCcw, Reply } from 'lucide-react';
+import { ArrowLeft, Check, Zap, UserPlus, FileDown, Star, Trash2, Reply } from 'lucide-react';
 import { Letter } from '../types/letter';
 import { getCurrentStamp } from '../utils/stampSystem';
 import { useEffect, useRef, useState } from 'react';
-import { urgeLetter, addAsPenPal, canContinueReply, toggleFavoriteLetter, archiveLetter, unarchiveLetter } from '../utils/letterService';
+import { urgeLetter, addAsPenPal, canContinueReply, toggleFavoriteLetter, deleteLetterRound, getLetterById } from '../utils/letterService';
 import PDFExportModal from './PDFExportModal';
 
 interface LetterCardsViewProps {
@@ -61,21 +61,21 @@ export default function LetterCardsView({ letter, onBack, onViewTimeline, userNa
     }
   };
   
-  const handleArchive = () => {
-    if (confirm('确定要将这封信放入回收站吗？')) {
-      const success = archiveLetter(localLetter.id);
+  const handleDeleteRound = (roundNumber: number) => {
+    if (confirm(`确定要删除第 ${roundNumber} 轮对话吗？\n\n删除后无法恢复！`)) {
+      const success = deleteLetterRound(localLetter.id, roundNumber);
       if (success) {
-        alert('✅ 已放入回收站');
-        onBack(); // 返回上一页
+        // 重新加载letter数据
+        const updatedLetter = getLetterById(localLetter.id);
+        if (updatedLetter) {
+          setLocalLetter(updatedLetter);
+          alert('✅ 已删除该轮对话');
+        } else {
+          // 如果letter被完全删除了（最后一轮被删除），返回上一页
+          alert('✅ 已删除，信件已清空');
+          onBack();
+        }
       }
-    }
-  };
-  
-  const handleUnarchive = () => {
-    const success = unarchiveLetter(localLetter.id);
-    if (success) {
-      alert('✅ 已恢复信件');
-      setLocalLetter({ ...localLetter, isArchived: false });
     }
   };
   
@@ -193,23 +193,13 @@ export default function LetterCardsView({ letter, onBack, onViewTimeline, userNa
                           />
                         </button>
                         
-                        {localLetter.isArchived ? (
-                          <button
-                            onClick={handleUnarchive}
-                            className="p-1.5 hover:bg-white/50 rounded-full transition-colors"
-                            title="恢复信件"
-                          >
-                            <RotateCcw size={16} className="text-blue-600" />
-                          </button>
-                        ) : (
-                          <button
-                            onClick={handleArchive}
-                            className="p-1.5 hover:bg-white/50 rounded-full transition-colors"
-                            title="放入回收站"
-                          >
-                            <Trash2 size={16} className="text-gray-500" />
-                          </button>
-                        )}
+                        <button
+                          onClick={() => handleDeleteRound(round.roundNumber)}
+                          className="p-1.5 hover:bg-white/50 rounded-full transition-colors"
+                          title="删除这轮对话"
+                        >
+                          <Trash2 size={16} className="text-gray-500" />
+                        </button>
                         
                         {/* 邮票 */}
                         <div className="w-10 h-12 border-2 border-dashed border-orange-400 rounded flex items-center justify-center bg-gradient-to-br from-amber-100 to-yellow-100 text-xl">
@@ -274,23 +264,13 @@ export default function LetterCardsView({ letter, onBack, onViewTimeline, userNa
                             />
                           </button>
                           
-                          {localLetter.isArchived ? (
-                            <button
-                              onClick={handleUnarchive}
-                              className="p-1.5 hover:bg-white/50 rounded-full transition-colors"
-                              title="恢复信件"
-                            >
-                              <RotateCcw size={16} className="text-blue-600" />
-                            </button>
-                          ) : (
-                            <button
-                              onClick={handleArchive}
-                              className="p-1.5 hover:bg-white/50 rounded-full transition-colors"
-                              title="放入回收站"
-                            >
-                              <Trash2 size={16} className="text-gray-400" />
-                            </button>
-                          )}
+                          <button
+                            onClick={() => handleDeleteRound(round.roundNumber)}
+                            className="p-1.5 hover:bg-white/50 rounded-full transition-colors"
+                            title="删除这轮对话"
+                          >
+                            <Trash2 size={16} className="text-gray-400" />
+                          </button>
                           
                           <div className="text-xs text-blue-600 font-medium">
                             {formatDate(round.aiReply.repliedAt)}
