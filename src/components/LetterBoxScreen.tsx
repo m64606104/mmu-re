@@ -352,7 +352,7 @@ const LetterBoxScreen: React.FC<LetterBoxScreenProps> = ({
 
         {/* 原来的列表视图（保留作为备用） */}
         {viewMode === 'list' && (
-          <div className="h-full overflow-y-auto px-4 py-4">
+          <div className="overflow-y-auto px-4 py-4" style={{ flex: 1, minHeight: 0 }}>
         <div className="max-w-2xl mx-auto space-y-4">
           {letters.map((letter) => (
             <div
