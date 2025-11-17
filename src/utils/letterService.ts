@@ -1476,10 +1476,8 @@ export function deleteLetter(letterId: string): boolean {
 }
 
 /**
- * 删除单个对话轮次
- * @param letterId 信件ID
- * @param roundNumber 轮次编号
- * @returns 是否删除成功
+ * 删除单个对话轮次（旧逻辑，已废弃）
+ * @deprecated 请使用 deleteUserLetter 或 deleteAIReply
  */
 export function deleteLetterRound(letterId: string, roundNumber: number): boolean {
   const letters = getLettersFromStorage();
@@ -1516,6 +1514,134 @@ export function deleteLetterRound(letterId: string, roundNumber: number): boolea
   updateLetterInStorage(letter);
   
   console.log(`🗑️ 已删除第 ${roundNumber} 轮对话`);
+  
+  return true;
+}
+
+/**
+ * 删除用户信件（放入回收站）
+ * @param letterId 信件ID
+ * @param roundNumber 轮次编号
+ * @returns 是否删除成功
+ */
+export function deleteUserLetter(letterId: string, roundNumber: number): boolean {
+  const letters = getLettersFromStorage();
+  const letter = letters.find(l => l.id === letterId);
+  
+  if (!letter) {
+    return false;
+  }
+  
+  const round = letter.conversationRounds.find(r => r.roundNumber === roundNumber);
+  
+  if (!round) {
+    return false;
+  }
+  
+  // 标记为已删除，放入回收站
+  round.userLetter.isDeleted = true;
+  round.userLetter.deletedAt = Date.now();
+  
+  // 保存更新
+  updateLetterInStorage(letter);
+  
+  console.log(`🗑️ 已删除第 ${roundNumber} 轮的用户信件（放入回收站）`);
+  
+  return true;
+}
+
+/**
+ * 删除AI回信（放入回收站）
+ * @param letterId 信件ID
+ * @param roundNumber 轮次编号
+ * @returns 是否删除成功
+ */
+export function deleteAIReply(letterId: string, roundNumber: number): boolean {
+  const letters = getLettersFromStorage();
+  const letter = letters.find(l => l.id === letterId);
+  
+  if (!letter) {
+    return false;
+  }
+  
+  const round = letter.conversationRounds.find(r => r.roundNumber === roundNumber);
+  
+  if (!round || !round.aiReply) {
+    return false;
+  }
+  
+  // 标记为已删除，放入回收站
+  round.aiReply.isDeleted = true;
+  round.aiReply.deletedAt = Date.now();
+  
+  // 保存更新
+  updateLetterInStorage(letter);
+  
+  console.log(`🗑️ 已删除第 ${roundNumber} 轮的AI回信（放入回收站）`);
+  
+  return true;
+}
+
+/**
+ * 恢复用户信件（从回收站恢复）
+ * @param letterId 信件ID
+ * @param roundNumber 轮次编号
+ * @returns 是否恢复成功
+ */
+export function restoreUserLetter(letterId: string, roundNumber: number): boolean {
+  const letters = getLettersFromStorage();
+  const letter = letters.find(l => l.id === letterId);
+  
+  if (!letter) {
+    return false;
+  }
+  
+  const round = letter.conversationRounds.find(r => r.roundNumber === roundNumber);
+  
+  if (!round || !round.userLetter.isDeleted) {
+    return false;
+  }
+  
+  // 恢复
+  round.userLetter.isDeleted = false;
+  round.userLetter.deletedAt = undefined;
+  
+  // 保存更新
+  updateLetterInStorage(letter);
+  
+  console.log(`♻️ 已恢复第 ${roundNumber} 轮的用户信件`);
+  
+  return true;
+}
+
+/**
+ * 恢复AI回信（从回收站恢复）
+ * @param letterId 信件ID
+ * @param roundNumber 轮次编号
+ * @returns 是否恢复成功
+ */
+export function restoreAIReply(letterId: string, roundNumber: number): boolean {
+  const letters = getLettersFromStorage();
+  const letter = letters.find(l => l.id === letterId);
+  
+  if (!letter) {
+    return false;
+  }
+  
+  const round = letter.conversationRounds.find(r => r.roundNumber === roundNumber);
+  
+  if (!round || !round.aiReply || !round.aiReply.isDeleted) {
+    return false;
+  }
+  
+  // 恢复
+  round.aiReply.isDeleted = false;
+  round.aiReply.deletedAt = undefined;
+  
+  // 保存更新
+  updateLetterInStorage(letter);
+  
+  console.log(`♻️ 已恢复第 ${roundNumber} 轮的AI回信`);
   
   return true;
 }

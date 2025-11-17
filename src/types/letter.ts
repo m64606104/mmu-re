@@ -54,10 +54,14 @@ export interface LetterRound {
   userLetter: {
     content: string;
     sentAt: number;
+    isDeleted?: boolean;  // 是否已删除（放入回收站）
+    deletedAt?: number;  // 删除时间
   };
   aiReply?: {
     content: string;
     repliedAt: number;
+    isDeleted?: boolean;  // 是否已删除（放入回收站）
+    deletedAt?: number;  // 删除时间
   };
 }
 

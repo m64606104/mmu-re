@@ -4,11 +4,11 @@
  * 参考慢邮件App的卡片设计
  */
 
-import { ArrowLeft, Check, Zap, UserPlus, FileDown, Star, Trash2, Reply } from 'lucide-react';
+import { ArrowLeft, Check, Zap, UserPlus, FileDown, Trash2, Reply } from 'lucide-react';
 import { Letter } from '../types/letter';
 import { getCurrentStamp } from '../utils/stampSystem';
 import { useEffect, useRef, useState } from 'react';
-import { urgeLetter, addAsPenPal, canContinueReply, toggleFavoriteLetter, deleteLetterRound, getLetterById } from '../utils/letterService';
+import { urgeLetter, addAsPenPal, canContinueReply, deleteUserLetter, deleteAIReply, restoreUserLetter, restoreAIReply, getLetterById } from '../utils/letterService';
 import PDFExportModal from './PDFExportModal';
 
 interface LetterCardsViewProps {
@@ -53,27 +53,53 @@ export default function LetterCardsView({ letter, onBack, onViewTimeline, userNa
     }
   };
   
-  const handleToggleFavorite = () => {
-    const success = toggleFavoriteLetter(localLetter.id);
-    if (success) {
-      const newFavoriteStatus = !localLetter.isFavorite;
-      setLocalLetter({ ...localLetter, isFavorite: newFavoriteStatus });
-    }
-  };
-  
-  const handleDeleteRound = (roundNumber: number) => {
-    if (confirm(`确定要删除第 ${roundNumber} 轮对话吗？\n\n删除后无法恢复！`)) {
-      const success = deleteLetterRound(localLetter.id, roundNumber);
+  const handleDeleteUserLetter = (roundNumber: number) => {
+    if (confirm(`确定要删除第 ${roundNumber} 轮的寄信吗？\n\n删除后将放入回收站，可以恢复。`)) {
+      const success = deleteUserLetter(localLetter.id, roundNumber);
       if (success) {
-        // 重新加载letter数据
         const updatedLetter = getLetterById(localLetter.id);
         if (updatedLetter) {
           setLocalLetter(updatedLetter);
-          alert('✅ 已删除该轮对话');
-        } else {
-          // 如果letter被完全删除了（最后一轮被删除），返回上一页
-          alert('✅ 已删除，信件已清空');
-          onBack();
+          alert('✅ 已删除该寄信（已放入回收站）');
+        }
+      }
+    }
+  };
+  
+  const handleDeleteAIReply = (roundNumber: number) => {
+    if (confirm(`确定要删除第 ${roundNumber} 轮的回信吗？\n\n删除后将放入回收站，可以恢复。`)) {
+      const success = deleteAIReply(localLetter.id, roundNumber);
+      if (success) {
+        const updatedLetter = getLetterById(localLetter.id);
+        if (updatedLetter) {
+          setLocalLetter(updatedLetter);
+          alert('✅ 已删除该回信（已放入回收站）');
+        }
+      }
+    }
+  };
+  
+  const handleRestoreUserLetter = (roundNumber: number) => {
+    if (confirm(`确定要恢复第 ${roundNumber} 轮的寄信吗？`)) {
+      const success = restoreUserLetter(localLetter.id, roundNumber);
+      if (success) {
+        const updatedLetter = getLetterById(localLetter.id);
+        if (updatedLetter) {
+          setLocalLetter(updatedLetter);
+          alert('✅ 已恢复该寄信');
+        }
+      }
+    }
+  };
+  
+  const handleRestoreAIReply = (roundNumber: number) => {
+    if (confirm(`确定要恢复第 ${roundNumber} 轮的回信吗？`)) {
+      const success = restoreAIReply(localLetter.id, roundNumber);
+      if (success) {
+        const updatedLetter = getLetterById(localLetter.id);
+        if (updatedLetter) {
+          setLocalLetter(updatedLetter);
+          alert('✅ 已恢复该回信');
         }
       }
     }
@@ -180,26 +206,25 @@ export default function LetterCardsView({ letter, onBack, onViewTimeline, userNa
                           to {letter.receiverName}
                         </span>
                       </div>
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-3">
                         {/* 操作按钮 */}
-                        <button
-                          onClick={handleToggleFavorite}
-                          className="p-1.5 hover:bg-white/50 rounded-full transition-colors"
-                          title={localLetter.isFavorite ? '取消收藏' : '收藏'}
-                        >
-                          <Star
-                            size={16}
-                            className={localLetter.isFavorite ? 'fill-yellow-500 text-yellow-500' : 'text-gray-500'}
-                          />
-                        </button>
-                        
-                        <button
-                          onClick={() => handleDeleteRound(round.roundNumber)}
-                          className="p-1.5 hover:bg-white/50 rounded-full transition-colors"
-                          title="删除这轮对话"
-                        >
-                          <Trash2 size={16} className="text-gray-500" />
-                        </button>
+                        {!round.userLetter.isDeleted ? (
+                          <button
+                            onClick={() => handleDeleteUserLetter(round.roundNumber)}
+                            className="p-1.5 hover:bg-white/50 rounded-full transition-colors"
+                            title="删除这封寄信"
+                          >
+                            <Trash2 size={16} className="text-gray-500" />
+                          </button>
+                        ) : (
+                          <button
+                            onClick={() => handleRestoreUserLetter(round.roundNumber)}
+                            className="p-1.5 hover:bg-green-100 rounded-full transition-colors bg-green-50"
+                            title="恢复这封寄信"
+                          >
+                            <Reply size={16} className="text-green-600" />
+                          </button>
+                        )}
                         
                         {/* 邮票 */}
                         <div className="w-10 h-12 border-2 border-dashed border-orange-400 rounded flex items-center justify-center bg-gradient-to-br from-amber-100 to-yellow-100 text-xl">
@@ -210,21 +235,29 @@ export default function LetterCardsView({ letter, onBack, onViewTimeline, userNa
 
                     {/* 信件内容 */}
                     <div className="p-5">
-                      <div 
-                        className="text-gray-800 leading-relaxed whitespace-pre-wrap font-serif"
-                        style={{
-                          backgroundImage: `repeating-linear-gradient(
-                            transparent,
-                            transparent 31px,
-                            rgba(229, 231, 235, 0.3) 31px,
-                            rgba(229, 231, 235, 0.3) 32px
-                          )`,
-                          lineHeight: '32px',
-                          fontFamily: '"Noto Serif SC", "STSong", serif'
-                        }}
-                      >
-                        {round.userLetter.content}
-                      </div>
+                      {round.userLetter.isDeleted ? (
+                        <div className="text-gray-400 italic text-center py-8">
+                          <Trash2 size={32} className="mx-auto mb-2 opacity-50" />
+                          <div>该寄信已被删除</div>
+                          <div className="text-sm mt-1">点击右上角恢复按钮可恢复</div>
+                        </div>
+                      ) : (
+                        <div 
+                          className="text-gray-800 leading-relaxed whitespace-pre-wrap font-serif"
+                          style={{
+                            backgroundImage: `repeating-linear-gradient(
+                              transparent,
+                              transparent 31px,
+                              rgba(229, 231, 235, 0.3) 31px,
+                              rgba(229, 231, 235, 0.3) 32px
+                            )`,
+                            lineHeight: '32px',
+                            fontFamily: '"Noto Serif SC", "STSong", serif'
+                          }}
+                        >
+                          {round.userLetter.content}
+                        </div>
+                      )}
                       
                       {/* 落款 */}
                       <div className="mt-6 pt-4 border-t border-gray-200 flex items-center justify-between text-sm text-gray-600">
@@ -253,24 +286,23 @@ export default function LetterCardsView({ letter, onBack, onViewTimeline, userNa
                         </div>
                         <div className="flex items-center gap-3">
                           {/* 操作按钮 */}
-                          <button
-                            onClick={handleToggleFavorite}
-                            className="p-1.5 hover:bg-white/50 rounded-full transition-colors"
-                            title={localLetter.isFavorite ? '取消收藏' : '收藏'}
-                          >
-                            <Star
-                              size={16}
-                              className={localLetter.isFavorite ? 'fill-yellow-500 text-yellow-500' : 'text-gray-400'}
-                            />
-                          </button>
-                          
-                          <button
-                            onClick={() => handleDeleteRound(round.roundNumber)}
-                            className="p-1.5 hover:bg-white/50 rounded-full transition-colors"
-                            title="删除这轮对话"
-                          >
-                            <Trash2 size={16} className="text-gray-400" />
-                          </button>
+                          {!round.aiReply.isDeleted ? (
+                            <button
+                              onClick={() => handleDeleteAIReply(round.roundNumber)}
+                              className="p-1.5 hover:bg-white/50 rounded-full transition-colors"
+                              title="删除这封回信"
+                            >
+                              <Trash2 size={16} className="text-gray-400" />
+                            </button>
+                          ) : (
+                            <button
+                              onClick={() => handleRestoreAIReply(round.roundNumber)}
+                              className="p-1.5 hover:bg-green-100 rounded-full transition-colors bg-green-50"
+                              title="恢复这封回信"
+                            >
+                              <Reply size={16} className="text-green-600" />
+                            </button>
+                          )}
                           
                           <div className="text-xs text-blue-600 font-medium">
                             {formatDate(round.aiReply.repliedAt)}
@@ -280,21 +312,29 @@ export default function LetterCardsView({ letter, onBack, onViewTimeline, userNa
 
                       {/* 回信内容 */}
                       <div className="p-5">
-                        <div 
-                          className="text-gray-800 leading-relaxed whitespace-pre-wrap font-serif"
-                          style={{
-                            backgroundImage: `repeating-linear-gradient(
-                              transparent,
-                              transparent 31px,
-                              rgba(219, 234, 254, 0.3) 31px,
-                              rgba(219, 234, 254, 0.3) 32px
-                            )`,
-                            lineHeight: '32px',
-                            fontFamily: '"Noto Serif SC", "STSong", serif'
-                          }}
-                        >
-                          {round.aiReply.content}
-                        </div>
+                        {round.aiReply.isDeleted ? (
+                          <div className="text-gray-400 italic text-center py-8">
+                            <Trash2 size={32} className="mx-auto mb-2 opacity-50" />
+                            <div>该回信已被删除</div>
+                            <div className="text-sm mt-1">点击右上角恢复按钮可恢复</div>
+                          </div>
+                        ) : (
+                          <div 
+                            className="text-gray-800 leading-relaxed whitespace-pre-wrap font-serif"
+                            style={{
+                              backgroundImage: `repeating-linear-gradient(
+                                transparent,
+                                transparent 31px,
+                                rgba(219, 234, 254, 0.3) 31px,
+                                rgba(219, 234, 254, 0.3) 32px
+                              )`,
+                              lineHeight: '32px',
+                              fontFamily: '"Noto Serif SC", "STSong", serif'
+                            }}
+                          >
+                            {round.aiReply.content}
+                          </div>
+                        )}
                         
                         {/* 落款 */}
                         <div className="mt-6 pt-4 border-t border-blue-200 flex items-center justify-between text-sm text-gray-600">
