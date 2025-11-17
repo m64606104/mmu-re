@@ -76,7 +76,7 @@ export const generateProactiveMessage = async (
           { role: 'user', content: '请发送一条主动消息' },
         ],
         temperature: 0.9, // 提高创造性
-        max_tokens: 150,
+        max_tokens: 500, // 增加token限制，避免消息被截断
       }),
     });
 
