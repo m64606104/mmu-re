@@ -970,10 +970,17 @@ ${motivation.type === 'confide' ? `- 你会主动、深入地分享困惑（40-5
 📝 **字数要求**（根据动机和性格）：
 - 保守型：30-500字（可以很简短，保持距离）
 - 社交型：60-800字（轻松聊天，不会太长）
-- 内向型/随性型：50-2000字（看心情）
-- 倾诉型：100-2000字（需要足够空间倾诉）
-- 文学型：100-2000字（需要空间展现文采）
-- 其他：100-2000字
+- 内向型/随性型：50-3000字（看心情）
+- 倾诉型：100-4000字（需要足够空间倾诉）
+- 文学型：100-4000字（需要空间展现文采）
+- 其他：100-3000字
+
+⚠️ **关于内容长度的智能处理**：
+如果你想说的内容确实很多（超过4000字），可以：
+1. 优先表达最重要的部分
+2. 在信末自然地说：“想说的话很多，下封信继续跟你聊xxx”
+3. 下次回信时继续之前的话题
+4. 这样更符合书信的自然性，也不会让对方觉得被信息轰炸
 
 💡 **回复示例**（根据不同动机和性格）：
 
@@ -1134,7 +1141,7 @@ ${aiProfile.customBackground}
       // 根据性格调整参数
       temperature: replyStyle.type === 'rational' ? 0.7 : 
                    replyStyle.type === 'casual' ? 0.95 : 0.9,
-      max_tokens: 3000,
+      max_tokens: 5000,  // 提高到5000以支持更长的深度交流
       presence_penalty: replyStyle.type === 'introverted' ? 0.3 : 0.6,
       frequency_penalty: 0.3
     })
@@ -1166,11 +1173,11 @@ ${aiProfile.customBackground}
     throw new Error(`AI回复字数过少（${replyContent.length}字），最少需要${minLength}字`);
   }
   
-  // 不再限制最大字数，让内容完整显示
-  // 如果真的太长（超过3000字），才进行截断并添加提示
-  if (replyContent.length > 3000) {
-    console.warn(`⚠️ AI回复内容过长（${replyContent.length}字），将截断至3000字`);
-    replyContent = replyContent.substring(0, 3000);
+  // 提高字数限制，支持更长的深度交流
+  // 只在真的太长（超过5000字）才警告，AI应该自己分段
+  if (replyContent.length > 5000) {
+    console.warn(`⚠️ AI回复内容过长（${replyContent.length}字），建议AI分成多封信`);
+    // 不强制截断，让内容完整显示
   }
   
   return replyContent.trim();

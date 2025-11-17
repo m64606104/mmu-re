@@ -91,9 +91,9 @@ export default function StampCollectionScreen({ onBack }: StampCollectionScreenP
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-amber-50 via-orange-50 to-yellow-50 flex flex-col">
+    <div className="h-screen bg-gradient-to-br from-amber-50 via-orange-50 to-yellow-50 flex flex-col">
       {/* 顶部栏 */}
-      <div className="bg-gradient-to-r from-amber-500 to-orange-500 text-white px-4 py-4 flex items-center justify-between shadow-lg">
+      <div className="bg-gradient-to-r from-amber-500 to-orange-500 text-white px-4 py-4 flex items-center justify-between shadow-lg shrink-0">
         <button onClick={onBack} className="p-2 hover:bg-white/20 rounded-full transition-colors">
           <ArrowLeft size={24} />
         </button>
@@ -108,7 +108,7 @@ export default function StampCollectionScreen({ onBack }: StampCollectionScreenP
 
       {/* 当前使用的邮票 */}
       {currentStamp && (
-        <div className="mx-4 mt-4 bg-white rounded-2xl shadow-lg p-4 border-2 border-amber-300">
+        <div className="mx-4 mt-4 bg-white rounded-2xl shadow-lg p-4 border-2 border-amber-300 shrink-0">
           <div className="flex items-center gap-3">
             <div className="w-16 h-20 bg-gradient-to-br from-amber-100 to-orange-100 rounded-lg flex items-center justify-center text-4xl border-2 border-dashed border-amber-400 shadow-md">
               {currentStamp.image}
@@ -125,7 +125,7 @@ export default function StampCollectionScreen({ onBack }: StampCollectionScreenP
       )}
 
       {/* 分类标签 */}
-      <div className="px-4 mt-4 overflow-x-auto">
+      <div className="px-4 mt-4 overflow-x-auto shrink-0">
         <div className="flex gap-2 pb-2">
           {categories.map(cat => {
             const isSelected = selectedCategory === cat.id;
@@ -150,7 +150,7 @@ export default function StampCollectionScreen({ onBack }: StampCollectionScreenP
       </div>
 
       {/* 邮票系列列表 */}
-      <div className="flex-1 overflow-y-auto px-4 pb-4 mt-4">
+      <div className="flex-1 overflow-y-auto px-4 pb-4 mt-4" style={{ minHeight: 0 }}>
         <div className="space-y-6">
           {filteredSeries.map(series => {
             const stamps = getSeriesStamps(series.id);
