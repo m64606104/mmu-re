@@ -9,11 +9,41 @@ const FISHING_STORAGE_KEY = 'bottle_fishing_record';
 const STATS_STORAGE_KEY = 'bottle_stats';
 const MAX_DAILY_FISHING = 2;
 
-// 预设的漂流瓶发送者
+// 随机名字素材库 - 形容词+的+名词
+const RANDOM_NAME_PARTS = {
+  // 形容词
+  adjectives: [
+    '沉默', '冰冷', '温柔', '孤独', '快乐', '忧郁', '自由', '神秘',
+    '迷茫', '清醒', '慵懒', '热情', '冷漠', '敏感', '坚强', '脆弱',
+    '勇敢', '胆小', '善良', '倔强', '随性', '认真', '粗心', '细腻',
+    '乐观', '悲观', '开朗', '内向', '活泼', '安静', '浪漫', '务实',
+    '文艺', '理性', '感性', '淡定', '焦虑', '洒脱', '纠结', '简单'
+  ],
+  // 名词（动物、植物、物品、自然）
+  nouns: [
+    // 动物类
+    '安康鱼', '北极熊', '企鹅', '海豹', '树懒', '考拉', '浣熊', '猫头鹰',
+    '仓鼠', '刺猬', '松鼠', '兔子', '猫咪', '柴犬', '金鱼', '海豚',
+    '海星', '水母', '蝴蝶', '蜻蜓', '萤火虫', '知了', '蟋蟀', '瓢虫',
+    
+    // 植物类
+    '向日葵', '薰衣草', '蒲公英', '雏菊', '茉莉', '桂花', '梅花', '樱花',
+    '竹子', '枫叶', '银杏', '柳树', '仙人掌', '多肉', '芦荟', '绿萝',
+    
+    // 物品类
+    '咖啡杯', '书签', '钢笔', '橡皮擦', '台灯', '闹钟', '相机', '吉他',
+    '明信片', '日记本', '风铃', '沙漏', '地球仪', '望远镜', '棒棒糖', '冰淇淋',
+    
+    // 自然类
+    '月亮', '星星', '云朵', '雨滴', '雪花', '彩虹', '晚霞', '晨曦',
+    '海浪', '清风', '春天', '秋天', '溪流', '山谷', '小岛', '灯塔'
+  ]
+};
+
+// 预设的漂流瓶发送者配置（不包含name，会随机生成）
 const BOTTLE_SENDERS = [
   {
     id: 'bottle_sender_1',
-    name: '海边的陌生人',
     avatar: '🌊',
     age: 25,
     gender: 'female' as const,
@@ -21,7 +51,6 @@ const BOTTLE_SENDERS = [
   },
   {
     id: 'bottle_sender_2',
-    name: '远方来客',
     avatar: '🗺️',
     age: 28,
     gender: 'male' as const,
@@ -29,7 +58,6 @@ const BOTTLE_SENDERS = [
   },
   {
     id: 'bottle_sender_3',
-    name: '夜空观察者',
     avatar: '🌙',
     age: 23,
     gender: 'female' as const,
@@ -37,7 +65,6 @@ const BOTTLE_SENDERS = [
   },
   {
     id: 'bottle_sender_4',
-    name: '城市漫游者',
     avatar: '🏙️',
     age: 30,
     gender: 'male' as const,
@@ -45,7 +72,6 @@ const BOTTLE_SENDERS = [
   },
   {
     id: 'bottle_sender_5',
-    name: '山间旅人',
     avatar: '⛰️',
     age: 27,
     gender: 'other' as const,
@@ -53,7 +79,6 @@ const BOTTLE_SENDERS = [
   },
   {
     id: 'bottle_sender_6',
-    name: '咖啡馆常客',
     avatar: '☕',
     age: 24,
     gender: 'female' as const,
@@ -61,7 +86,6 @@ const BOTTLE_SENDERS = [
   },
   {
     id: 'bottle_sender_7',
-    name: '图书馆守夜人',
     avatar: '📚',
     age: 29,
     gender: 'male' as const,
@@ -69,7 +93,6 @@ const BOTTLE_SENDERS = [
   },
   {
     id: 'bottle_sender_8',
-    name: '海洋拾梦者',
     avatar: '🐚',
     age: 22,
     gender: 'female' as const,
@@ -235,11 +258,23 @@ export function canFishToday(): { can: boolean; remaining: number; reason?: stri
 }
 
 /**
+ * 生成随机名字：形容词 + 的 + 名词
+ */
+function generateRandomName(): string {
+  const adjective = RANDOM_NAME_PARTS.adjectives[Math.floor(Math.random() * RANDOM_NAME_PARTS.adjectives.length)];
+  const noun = RANDOM_NAME_PARTS.nouns[Math.floor(Math.random() * RANDOM_NAME_PARTS.nouns.length)];
+  return `${adjective}的${noun}`;
+}
+
+/**
  * 生成随机漂流瓶
  */
 export function generateRandomBottle(): BottleLetter {
   // 随机选择发送者
   const sender = BOTTLE_SENDERS[Math.floor(Math.random() * BOTTLE_SENDERS.length)];
+  
+  // 随机生成名字
+  const senderName = generateRandomName();
   
   // 随机选择话题模板
   const template = BOTTLE_TEMPLATES[Math.floor(Math.random() * BOTTLE_TEMPLATES.length)];
@@ -250,7 +285,7 @@ export function generateRandomBottle(): BottleLetter {
   const bottle: BottleLetter = {
     id: `bottle_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
     senderId: sender.id,
-    senderName: sender.name,
+    senderName,
     senderAvatar: sender.avatar,
     senderAge: sender.age,
     senderGender: sender.gender,
