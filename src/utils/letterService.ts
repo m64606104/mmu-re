@@ -757,8 +757,12 @@ async function generateRealAIReply(letter: Letter): Promise<string> {
 写信动机：${motivation.description}` 
     : `你是${letter.receiverName}。`;
   
-  // 获取之前的对话历史
+  // 获取当前轮次
+  const currentRound = letter.conversationRounds[letter.conversationRounds.length - 1];
+  
+  // 获取之前的对话历史（排除当前轮次）
   const conversationHistory = letter.conversationRounds
+    .slice(0, -1) // 排除当前轮次
     .filter(round => round.aiReply)
     .slice(-3) // 最近3轮对话
     .map(round => `用户: ${round.userLetter.content}\n你: ${round.aiReply?.content}`)
@@ -908,8 +912,8 @@ ${roundInfo}${historyContext}${bottleContext}
 【来信信息】:
 ${senderInfo}
 
-【对方的回信内容】:
-${letter.content}
+【对方本轮的来信内容】:
+${currentRound.userLetter.content}
 
 ---
 
@@ -1778,6 +1782,82 @@ export function permanentlyDeleteItem(letterId: string, roundNumber: number, typ
   console.log(`☠️ 已永久删除 ${type === 'userLetter' ? '用户信件' : 'AI回信'}`);
   
   return true;
+}
+
+/**
+ * 收藏AI回复
+ * @param letterId 信件ID
+ * @param roundNumber 轮次编号
+ * @returns 是否成功
+ */
+export function favoriteAIReply(letterId: string, roundNumber: number): boolean {
+  const letters = getLettersFromStorage();
+  const letter = letters.find(l => l.id === letterId);
+  
+  if (!letter) {
+    return false;
+  }
+  
+  const round = letter.conversationRounds.find(r => r.roundNumber === roundNumber);
+  
+  if (!round || !round.aiReply) {
+    return false;
+  }
+  
+  // 切换收藏状态
+  round.aiReply.isFavorite = !round.aiReply.isFavorite;
+  round.aiReply.favoritedAt = round.aiReply.isFavorite ? Date.now() : undefined;
+  
+  // 保存更新
+  updateLetterInStorage(letter);
+  
+  console.log(`${round.aiReply.isFavorite ? '⭐' : '☆'} ${round.aiReply.isFavorite ? '已收藏' : '已取消收藏'}第 ${roundNumber} 轮的AI回信`);
+  
+  return true;
+}
+
+/**
+ * 获取所有收藏的AI回复
+ * @returns 收藏的回复列表
+ */
+export interface FavoriteReply {
+  letterId: string;
+  letterInfo: {
+    receiverName: string;
+    receiverAvatar: string;
+    isBottle: boolean;
+  };
+  roundNumber: number;
+  content: string;
+  repliedAt: number;
+  favoritedAt: number;
+}
+
+export function getAllFavoriteReplies(): FavoriteReply[] {
+  const letters = getLettersFromStorage();
+  const favoriteReplies: FavoriteReply[] = [];
+  
+  letters.forEach(letter => {
+    letter.conversationRounds.forEach(round => {
+      if (round.aiReply && round.aiReply.isFavorite && !round.aiReply.isDeleted) {
+        favoriteReplies.push({
+          letterId: letter.id,
+          letterInfo: {
+            receiverName: letter.receiverName,
+            receiverAvatar: letter.receiverAvatar || '👤',
+            isBottle: letter.isBottle
+          },
+          roundNumber: round.roundNumber,
+          content: round.aiReply.content,
+          repliedAt: round.aiReply.repliedAt,
+          favoritedAt: round.aiReply.favoritedAt || Date.now()
+        });
+      }
+    });
+  });
+  
+  // 按收藏时间降序排列
+  return favoriteReplies.sort((a, b) => b.favoritedAt - a.favoritedAt);
 }
 
 /**

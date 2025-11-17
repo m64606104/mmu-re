@@ -62,6 +62,8 @@ export interface LetterRound {
     repliedAt: number;
     isDeleted?: boolean;  // 是否已删除（放入回收站）
     deletedAt?: number;  // 删除时间
+    isFavorite?: boolean;  // 是否收藏
+    favoritedAt?: number;  // 收藏时间
   };
 }
 

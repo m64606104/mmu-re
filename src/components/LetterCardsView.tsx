@@ -4,11 +4,11 @@
  * 参考慢邮件App的卡片设计
  */
 
-import { ArrowLeft, Check, Zap, UserPlus, FileDown, Trash2, Reply } from 'lucide-react';
+import { ArrowLeft, Check, Zap, UserPlus, FileDown, Trash2, Reply, Star } from 'lucide-react';
 import { Letter } from '../types/letter';
 import { getCurrentStamp } from '../utils/stampSystem';
 import { useEffect, useRef, useState } from 'react';
-import { urgeLetter, addAsPenPal, canContinueReply, deleteUserLetter, deleteAIReply, getLetterById } from '../utils/letterService';
+import { urgeLetter, addAsPenPal, canContinueReply, deleteUserLetter, deleteAIReply, getLetterById, favoriteAIReply } from '../utils/letterService';
 import PDFExportModal from './PDFExportModal';
 
 interface LetterCardsViewProps {
@@ -74,6 +74,22 @@ export default function LetterCardsView({ letter, onBack, onViewTimeline, userNa
         if (updatedLetter) {
           setLocalLetter(updatedLetter);
           alert('✅ 已删除该回信（已放入回收站）');
+        }
+      }
+    }
+  };
+  
+  const handleFavoriteAIReply = (roundNumber: number) => {
+    const success = favoriteAIReply(localLetter.id, roundNumber);
+    if (success) {
+      const updatedLetter = getLetterById(localLetter.id);
+      if (updatedLetter) {
+        setLocalLetter(updatedLetter);
+        const round = updatedLetter.conversationRounds.find(r => r.roundNumber === roundNumber);
+        if (round?.aiReply?.isFavorite) {
+          alert('⭐ 已收藏该回信');
+        } else {
+          alert('☆ 已取消收藏');
         }
       }
     }
@@ -246,6 +262,18 @@ export default function LetterCardsView({ letter, onBack, onViewTimeline, userNa
                         </div>
                         <div className="flex items-center gap-3">
                           {/* 操作按钮 */}
+                          <button
+                            onClick={() => handleFavoriteAIReply(round.roundNumber)}
+                            className={`p-1.5 hover:bg-white/50 rounded-full transition-colors ${
+                              round.aiReply.isFavorite ? 'bg-yellow-50' : ''
+                            }`}
+                            title={round.aiReply.isFavorite ? "取消收藏" : "收藏这封回信"}
+                          >
+                            <Star 
+                              size={16} 
+                              className={round.aiReply.isFavorite ? "text-yellow-500 fill-yellow-500" : "text-gray-400"} 
+                            />
+                          </button>
                           <button
                             onClick={() => handleDeleteAIReply(round.roundNumber)}
                             className="p-1.5 hover:bg-white/50 rounded-full transition-colors"
