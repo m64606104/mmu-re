@@ -13,9 +13,10 @@ interface LetterDetailViewProps {
   onBack: () => void;
   userName: string;
   initialRoundNumber?: number;
+  onContinueReply?: () => void;
 }
 
-export default function LetterDetailView({ letter, onBack, userName, initialRoundNumber }: LetterDetailViewProps) {
+export default function LetterDetailView({ letter, onBack, userName, initialRoundNumber, onContinueReply }: LetterDetailViewProps) {
   const [viewMode, setViewMode] = useState<'cards' | 'timeline'>('cards');
   const [selectedRound, setSelectedRound] = useState<number | undefined>(initialRoundNumber);
 
@@ -40,6 +41,7 @@ export default function LetterDetailView({ letter, onBack, userName, initialRoun
       userName={userName}
       scrollToRound={selectedRound}
       onRoundViewed={() => setSelectedRound(undefined)}
+      onContinueReply={onContinueReply}
     />
   );
 }

@@ -4,7 +4,7 @@
  * 参考慢邮件App的卡片设计
  */
 
-import { ArrowLeft, Check, Zap, UserPlus, FileDown, Star, Trash2, RotateCcw } from 'lucide-react';
+import { ArrowLeft, Check, Zap, UserPlus, FileDown, Star, Trash2, RotateCcw, Reply } from 'lucide-react';
 import { Letter } from '../types/letter';
 import { getCurrentStamp } from '../utils/stampSystem';
 import { useEffect, useRef, useState } from 'react';
@@ -18,9 +18,10 @@ interface LetterCardsViewProps {
   userName: string;
   scrollToRound?: number;
   onRoundViewed?: () => void;
+  onContinueReply?: () => void;
 }
 
-export default function LetterCardsView({ letter, onBack, onViewTimeline, userName, scrollToRound, onRoundViewed }: LetterCardsViewProps) {
+export default function LetterCardsView({ letter, onBack, onViewTimeline, userName, scrollToRound, onRoundViewed, onContinueReply }: LetterCardsViewProps) {
   const currentStamp = getCurrentStamp();
   const roundRefs = useRef<{ [key: number]: HTMLDivElement | null }>({});
   const [localLetter, setLocalLetter] = useState(letter);
@@ -110,6 +111,23 @@ export default function LetterCardsView({ letter, onBack, onViewTimeline, userNa
     });
   };
 
+  // 计算预计送达日期（基于willReplyAt）
+  const getExpectedDeliveryDate = () => {
+    if (localLetter.willReplyAt) {
+      const date = new Date(localLetter.willReplyAt);
+      const month = date.getMonth() + 1;
+      const day = date.getDate();
+      return `${month}月${day}日`;
+    }
+    // 如果没有设置willReplyAt，使用sentAt + 3天
+    const lastRound = localLetter.conversationRounds[localLetter.conversationRounds.length - 1];
+    const baseTime = lastRound?.userLetter?.sentAt || localLetter.sentAt;
+    const deliveryDate = new Date(baseTime + 3 * 24 * 60 * 60 * 1000);
+    const month = deliveryDate.getMonth() + 1;
+    const day = deliveryDate.getDate();
+    return `${month}月${day}日`;
+  };
+
   return (
     <div className="h-screen bg-gradient-to-br from-orange-50 via-amber-50 to-yellow-50 flex flex-col">
       {/* 顶部栏 */}
@@ -121,7 +139,7 @@ export default function LetterCardsView({ letter, onBack, onViewTimeline, userNa
           <h1 className="text-lg font-bold text-gray-800">{letter.receiverName}</h1>
           <div className="text-xs text-gray-500 flex items-center gap-2">
             {letter.isBottle && <span>📍 {letter.bottleAIProfile?.location || '远方'}</span>}
-            {!letter.isBottle && <span>✈️ 12月10日</span>}
+            {!letter.isBottle && <span>✈️ {getExpectedDeliveryDate()}</span>}
           </div>
         </div>
         <button 
@@ -140,7 +158,7 @@ export default function LetterCardsView({ letter, onBack, onViewTimeline, userNa
       </div>
 
       {/* 信件卡片列表 */}
-      <div className="flex-1 overflow-y-auto px-4 py-4">
+      <div className="flex-1 overflow-y-auto px-4 py-6 pb-24">
         <div className="max-w-2xl mx-auto space-y-4">
           {/* 遍历所有对话轮次 */}
           {letter.conversationRounds && letter.conversationRounds.length > 0 ? (
@@ -318,7 +336,7 @@ export default function LetterCardsView({ letter, onBack, onViewTimeline, userNa
                     <div className="text-sm text-gray-500 mt-1 mb-3">
                       {localLetter.hasUrged 
                         ? '已催促，预计很快收到回信'
-                        : '预计 1-5 天收到回信'
+                        : `预计 ${getExpectedDeliveryDate()} 送达`
                       }
                     </div>
                     {!localLetter.hasUrged && (
@@ -385,10 +403,22 @@ export default function LetterCardsView({ letter, onBack, onViewTimeline, userNa
               )}
             </div>
           )}
+
+          {/* 继续回复按钮 */}
+          {replyStatus.canContinue && onContinueReply && (
+            <div className="mt-6 flex justify-center pb-4">
+              <button
+                onClick={onContinueReply}
+                className="px-8 py-3 bg-gradient-to-r from-orange-500 to-amber-500 text-white rounded-2xl font-medium hover:shadow-lg transition-all flex items-center gap-2 text-base"
+              >
+                <Reply size={20} />
+                继续回复
+              </button>
+            </div>
+          )}
         </div>
       </div>
 
-      {/* PDF导出模态框 */}
       {showPDFExport && (
         <PDFExportModal
           letter={localLetter}

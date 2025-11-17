@@ -4,8 +4,8 @@
 
 import React, { useState, useEffect } from 'react';
 import { Conversation } from '../types';
-import { sendLetter, getAllPresetAIs, getCustomPenPals, saveCustomPenPal } from '../utils/letterService';
-import { BottleAI } from '../types/letter';
+import { sendLetter, getAllPresetAIs, getCustomPenPals, saveCustomPenPal, continueReply } from '../utils/letterService';
+import { BottleAI, Letter } from '../types/letter';
 import { getSafeAvatar } from '../utils/avatarHelper';
 import { ArrowLeft, Send, Sparkles, Users, UserPlus } from 'lucide-react';
 import LetterSendingAnimation from './LetterSendingAnimation';
@@ -16,13 +16,15 @@ interface LetterWritingScreenProps {
   onSent: () => void;
   conversations: Conversation[];
   userName: string;
+  replyToLetter?: Letter | null;
 }
 
 const LetterWritingScreen: React.FC<LetterWritingScreenProps> = ({
   onBack,
   onSent,
   conversations,
-  userName
+  userName,
+  replyToLetter
 }) => {
   const [content, setContent] = useState('');
   const [selectedReceiver, setSelectedReceiver] = useState<{
@@ -53,6 +55,19 @@ const LetterWritingScreen: React.FC<LetterWritingScreenProps> = ({
     setCustomPenPals(getCustomPenPals());
   }, [showReceiverModal]);
 
+  // 如果有replyToLetter，自动选中收件人
+  useEffect(() => {
+    if (replyToLetter) {
+      setSelectedReceiver({
+        id: replyToLetter.receiverId,
+        name: replyToLetter.receiverName,
+        avatar: replyToLetter.receiverAvatar || '👤',
+        isBottle: replyToLetter.isBottle,
+        bottleAIProfile: replyToLetter.bottleAIProfile
+      });
+    }
+  }, [replyToLetter]);
+
   const handleSendLetter = () => {
     if (!content.trim()) {
       alert('请输入信件内容');
@@ -67,26 +82,31 @@ const LetterWritingScreen: React.FC<LetterWritingScreenProps> = ({
     // 显示发送动画
     setShowSendingAnimation(true);
 
-    // 寄出信件（如果是自定义笔友，传入完整的bottleAIProfile）
-    const letter = sendLetter(
-      content,
-      selectedReceiver.id,
-      selectedReceiver.name,
-      selectedReceiver.avatar,
-      selectedReceiver.isBottle,
-      userName,
-      isAnonymous && !selectedReceiver.isBottle // 非漂流瓶才使用用户选择的匿名选项
-    );
-    
-    // 如果是自定义笔友，需要手动设置bottleAIProfile
-    if (selectedReceiver.bottleAIProfile) {
-      const letters = JSON.parse(localStorage.getItem('slow_letters') || '[]');
-      const letterIndex = letters.findIndex((l: any) => l.id === letter.id);
-      if (letterIndex !== -1) {
-        letters[letterIndex].bottleAIProfile = selectedReceiver.bottleAIProfile;
-        letters[letterIndex].isPenPalAdded = true; // 自定义笔友直接标记为笔友
-        letters[letterIndex].maxRounds = 999; // 无限制
-        localStorage.setItem('slow_letters', JSON.stringify(letters));
+    // 如果是继续回复现有信件
+    if (replyToLetter) {
+      continueReply(replyToLetter.id, content, userName);
+    } else {
+      // 寄出新信件（如果是自定义笔友，传入完整的bottleAIProfile）
+      const letter = sendLetter(
+        content,
+        selectedReceiver.id,
+        selectedReceiver.name,
+        selectedReceiver.avatar,
+        selectedReceiver.isBottle,
+        userName,
+        isAnonymous && !selectedReceiver.isBottle // 非漂流瓶才使用用户选择的匿名选项
+      );
+      
+      // 如果是自定义笔友，需要手动设置bottleAIProfile
+      if (selectedReceiver.bottleAIProfile) {
+        const letters = JSON.parse(localStorage.getItem('slow_letters') || '[]');
+        const letterIndex = letters.findIndex((l: any) => l.id === letter.id);
+        if (letterIndex !== -1) {
+          letters[letterIndex].bottleAIProfile = selectedReceiver.bottleAIProfile;
+          letters[letterIndex].isPenPalAdded = true; // 自定义笔友直接标记为笔友
+          letters[letterIndex].maxRounds = 999; // 无限制
+          localStorage.setItem('slow_letters', JSON.stringify(letters));
+        }
       }
     }
   };
@@ -182,10 +202,22 @@ const LetterWritingScreen: React.FC<LetterWritingScreenProps> = ({
 
           {/* 收信人 */}
           <div className="mb-8 mt-4">
-            <div className="text-xs text-gray-500 mb-2 font-serif">To:</div>
+            <div className="text-xs text-gray-500 mb-2 font-serif flex items-center gap-2">
+              To:
+              {replyToLetter && (
+                <span className="text-xs bg-blue-100 text-blue-600 px-2 py-0.5 rounded-full">
+                  继续回复 · 第{replyToLetter.currentRound + 1}轮
+                </span>
+              )}
+            </div>
             <button
-              onClick={() => setShowReceiverModal(true)}
-              className="w-full text-left px-5 py-4 border-2 border-dashed border-orange-300 rounded-2xl hover:border-orange-500 hover:bg-gradient-to-r hover:from-orange-50 hover:to-amber-50 transition-all shadow-sm hover:shadow-md"
+              onClick={() => !replyToLetter && setShowReceiverModal(true)}
+              disabled={!!replyToLetter}
+              className={`w-full text-left px-5 py-4 border-2 border-dashed rounded-2xl transition-all shadow-sm ${
+                replyToLetter 
+                  ? 'border-blue-300 bg-blue-50 cursor-not-allowed'
+                  : 'border-orange-300 hover:border-orange-500 hover:bg-gradient-to-r hover:from-orange-50 hover:to-amber-50 hover:shadow-md'
+              }`}
             >
               {selectedReceiver ? (
                 <div className="flex items-center gap-3">

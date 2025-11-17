@@ -40,6 +40,7 @@ import { smartLoad, smartSave, migrateToIndexedDB, checkMigrationNeeded, getStor
 import { generateAIMoment } from './utils/aiMomentsGenerator';
 import { backgroundGenerationService } from './utils/backgroundGenerationService';
 import { initializeLetterTimers } from './utils/letterService';
+import { Letter } from './types/letter';
 
 function App() {
   const [currentScreen, setCurrentScreen] = useState<Screen>('home');
@@ -64,6 +65,7 @@ function App() {
   });
   const [currentShopType, setCurrentShopType] = useState<ShopType>('food');
   const [showMigrationPrompt, setShowMigrationPrompt] = useState(false);
+  const [replyToLetter, setReplyToLetter] = useState<Letter | null>(null);
 
   // 桌面布局重置函数
   const resetDesktopLayout = useCallback(() => {
@@ -934,7 +936,10 @@ function App() {
         return (
           <LetterBoxScreen
             onBack={() => navigateTo('home')}
-            onWriteNew={() => navigateTo('letter-writing')}
+            onWriteNew={() => {
+              setReplyToLetter(null);
+              navigateTo('letter-writing');
+            }}
             onToPenPals={() => navigateTo('pen-pals')}
             toArchived={() => navigateTo('archived-letters')}
             onToAchievements={() => navigateTo('achievements')}
@@ -942,6 +947,10 @@ function App() {
             onToStampCollection={() => navigateTo('stamp-collection')}
             onToNotifications={() => navigateTo('letter-notifications')}
             onToBottleFishing={() => navigateTo('bottle-fishing')}
+            onContinueReply={(letter) => {
+              setReplyToLetter(letter);
+              navigateTo('letter-writing');
+            }}
             userName={userProfile.username}
           />
         );
@@ -1003,10 +1012,17 @@ function App() {
       case 'letter-writing':
         return (
           <LetterWritingScreen
-            onBack={() => navigateTo('letterbox')}
-            onSent={() => navigateTo('letterbox')}
+            onBack={() => {
+              setReplyToLetter(null);
+              navigateTo('letterbox');
+            }}
+            onSent={() => {
+              setReplyToLetter(null);
+              navigateTo('letterbox');
+            }}
             conversations={conversations}
             userName={userProfile.username}
+            replyToLetter={replyToLetter}
           />
         );
       default:

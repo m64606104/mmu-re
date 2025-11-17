@@ -20,6 +20,7 @@ interface LetterBoxScreenProps {
   onToStampCollection: () => void;
   onToNotifications: () => void;
   onToBottleFishing: () => void;
+  onContinueReply?: (letter: Letter) => void;
   userName: string;
 }
 
@@ -33,6 +34,7 @@ const LetterBoxScreen: React.FC<LetterBoxScreenProps> = ({
   onToStampCollection,
   onToNotifications,
   onToBottleFishing,
+  onContinueReply,
   userName
 }) => {
   const [letters, setLetters] = useState<Letter[]>([]);
@@ -365,6 +367,9 @@ const LetterBoxScreen: React.FC<LetterBoxScreenProps> = ({
               loadLetters(); // 关闭时刷新列表
             }}
             userName={userName}
+            onContinueReply={onContinueReply ? () => {
+              onContinueReply(selectedLetter);
+            } : undefined}
           />
         </div>
       )}
