@@ -8,7 +8,7 @@ import { ArrowLeft, Check, Zap, UserPlus, FileDown, Trash2, Reply } from 'lucide
 import { Letter } from '../types/letter';
 import { getCurrentStamp } from '../utils/stampSystem';
 import { useEffect, useRef, useState } from 'react';
-import { urgeLetter, addAsPenPal, canContinueReply, deleteUserLetter, deleteAIReply, restoreUserLetter, restoreAIReply, getLetterById } from '../utils/letterService';
+import { urgeLetter, addAsPenPal, canContinueReply, deleteUserLetter, deleteAIReply, getLetterById } from '../utils/letterService';
 import PDFExportModal from './PDFExportModal';
 
 interface LetterCardsViewProps {
@@ -74,32 +74,6 @@ export default function LetterCardsView({ letter, onBack, onViewTimeline, userNa
         if (updatedLetter) {
           setLocalLetter(updatedLetter);
           alert('✅ 已删除该回信（已放入回收站）');
-        }
-      }
-    }
-  };
-  
-  const handleRestoreUserLetter = (roundNumber: number) => {
-    if (confirm(`确定要恢复第 ${roundNumber} 轮的寄信吗？`)) {
-      const success = restoreUserLetter(localLetter.id, roundNumber);
-      if (success) {
-        const updatedLetter = getLetterById(localLetter.id);
-        if (updatedLetter) {
-          setLocalLetter(updatedLetter);
-          alert('✅ 已恢复该寄信');
-        }
-      }
-    }
-  };
-  
-  const handleRestoreAIReply = (roundNumber: number) => {
-    if (confirm(`确定要恢复第 ${roundNumber} 轮的回信吗？`)) {
-      const success = restoreAIReply(localLetter.id, roundNumber);
-      if (success) {
-        const updatedLetter = getLetterById(localLetter.id);
-        if (updatedLetter) {
-          setLocalLetter(updatedLetter);
-          alert('✅ 已恢复该回信');
         }
       }
     }
@@ -188,7 +162,9 @@ export default function LetterCardsView({ letter, onBack, onViewTimeline, userNa
         <div className="max-w-2xl mx-auto space-y-4">
           {/* 遍历所有对话轮次 */}
           {letter.conversationRounds && letter.conversationRounds.length > 0 ? (
-            letter.conversationRounds.map((round) => (
+            localLetter.conversationRounds
+              .filter(round => !round.userLetter.isDeleted && (!round.aiReply || !round.aiReply.isDeleted))
+              .map((round) => (
               <div 
                 key={round.roundNumber}
                 ref={(el) => {
@@ -208,23 +184,13 @@ export default function LetterCardsView({ letter, onBack, onViewTimeline, userNa
                       </div>
                       <div className="flex items-center gap-3">
                         {/* 操作按钮 */}
-                        {!round.userLetter.isDeleted ? (
-                          <button
-                            onClick={() => handleDeleteUserLetter(round.roundNumber)}
-                            className="p-1.5 hover:bg-white/50 rounded-full transition-colors"
-                            title="删除这封寄信"
-                          >
-                            <Trash2 size={16} className="text-gray-500" />
-                          </button>
-                        ) : (
-                          <button
-                            onClick={() => handleRestoreUserLetter(round.roundNumber)}
-                            className="p-1.5 hover:bg-green-100 rounded-full transition-colors bg-green-50"
-                            title="恢复这封寄信"
-                          >
-                            <Reply size={16} className="text-green-600" />
-                          </button>
-                        )}
+                        <button
+                          onClick={() => handleDeleteUserLetter(round.roundNumber)}
+                          className="p-1.5 hover:bg-white/50 rounded-full transition-colors"
+                          title="删除这封寄信"
+                        >
+                          <Trash2 size={16} className="text-gray-500" />
+                        </button>
                         
                         {/* 邮票 */}
                         <div className="w-10 h-12 border-2 border-dashed border-orange-400 rounded flex items-center justify-center bg-gradient-to-br from-amber-100 to-yellow-100 text-xl">
@@ -235,29 +201,21 @@ export default function LetterCardsView({ letter, onBack, onViewTimeline, userNa
 
                     {/* 信件内容 */}
                     <div className="p-5">
-                      {round.userLetter.isDeleted ? (
-                        <div className="text-gray-400 italic text-center py-8">
-                          <Trash2 size={32} className="mx-auto mb-2 opacity-50" />
-                          <div>该寄信已被删除</div>
-                          <div className="text-sm mt-1">点击右上角恢复按钮可恢复</div>
-                        </div>
-                      ) : (
-                        <div 
-                          className="text-gray-800 leading-relaxed whitespace-pre-wrap font-serif"
-                          style={{
-                            backgroundImage: `repeating-linear-gradient(
-                              transparent,
-                              transparent 31px,
-                              rgba(229, 231, 235, 0.3) 31px,
-                              rgba(229, 231, 235, 0.3) 32px
-                            )`,
-                            lineHeight: '32px',
-                            fontFamily: '"Noto Serif SC", "STSong", serif'
-                          }}
-                        >
-                          {round.userLetter.content}
-                        </div>
-                      )}
+                      <div 
+                        className="text-gray-800 leading-relaxed whitespace-pre-wrap font-serif"
+                        style={{
+                          backgroundImage: `repeating-linear-gradient(
+                            transparent,
+                            transparent 31px,
+                            rgba(229, 231, 235, 0.3) 31px,
+                            rgba(229, 231, 235, 0.3) 32px
+                          )`,
+                          lineHeight: '32px',
+                          fontFamily: '"Noto Serif SC", "STSong", serif'
+                        }}
+                      >
+                        {round.userLetter.content}
+                      </div>
                       
                       {/* 落款 */}
                       <div className="mt-6 pt-4 border-t border-gray-200 flex items-center justify-between text-sm text-gray-600">
@@ -286,23 +244,13 @@ export default function LetterCardsView({ letter, onBack, onViewTimeline, userNa
                         </div>
                         <div className="flex items-center gap-3">
                           {/* 操作按钮 */}
-                          {!round.aiReply.isDeleted ? (
-                            <button
-                              onClick={() => handleDeleteAIReply(round.roundNumber)}
-                              className="p-1.5 hover:bg-white/50 rounded-full transition-colors"
-                              title="删除这封回信"
-                            >
-                              <Trash2 size={16} className="text-gray-400" />
-                            </button>
-                          ) : (
-                            <button
-                              onClick={() => handleRestoreAIReply(round.roundNumber)}
-                              className="p-1.5 hover:bg-green-100 rounded-full transition-colors bg-green-50"
-                              title="恢复这封回信"
-                            >
-                              <Reply size={16} className="text-green-600" />
-                            </button>
-                          )}
+                          <button
+                            onClick={() => handleDeleteAIReply(round.roundNumber)}
+                            className="p-1.5 hover:bg-white/50 rounded-full transition-colors"
+                            title="删除这封回信"
+                          >
+                            <Trash2 size={16} className="text-gray-400" />
+                          </button>
                           
                           <div className="text-xs text-blue-600 font-medium">
                             {formatDate(round.aiReply.repliedAt)}
@@ -312,29 +260,21 @@ export default function LetterCardsView({ letter, onBack, onViewTimeline, userNa
 
                       {/* 回信内容 */}
                       <div className="p-5">
-                        {round.aiReply.isDeleted ? (
-                          <div className="text-gray-400 italic text-center py-8">
-                            <Trash2 size={32} className="mx-auto mb-2 opacity-50" />
-                            <div>该回信已被删除</div>
-                            <div className="text-sm mt-1">点击右上角恢复按钮可恢复</div>
-                          </div>
-                        ) : (
-                          <div 
-                            className="text-gray-800 leading-relaxed whitespace-pre-wrap font-serif"
-                            style={{
-                              backgroundImage: `repeating-linear-gradient(
-                                transparent,
-                                transparent 31px,
-                                rgba(219, 234, 254, 0.3) 31px,
-                                rgba(219, 234, 254, 0.3) 32px
-                              )`,
-                              lineHeight: '32px',
-                              fontFamily: '"Noto Serif SC", "STSong", serif'
-                            }}
-                          >
-                            {round.aiReply.content}
-                          </div>
-                        )}
+                        <div 
+                          className="text-gray-800 leading-relaxed whitespace-pre-wrap font-serif"
+                          style={{
+                            backgroundImage: `repeating-linear-gradient(
+                              transparent,
+                              transparent 31px,
+                              rgba(219, 234, 254, 0.3) 31px,
+                              rgba(219, 234, 254, 0.3) 32px
+                            )`,
+                            lineHeight: '32px',
+                            fontFamily: '"Noto Serif SC", "STSong", serif'
+                          }}
+                        >
+                          {round.aiReply.content}
+                        </div>
                         
                         {/* 落款 */}
                         <div className="mt-6 pt-4 border-t border-blue-200 flex items-center justify-between text-sm text-gray-600">

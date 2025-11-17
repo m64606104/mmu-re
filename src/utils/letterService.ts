@@ -1647,6 +1647,140 @@ export function restoreAIReply(letterId: string, roundNumber: number): boolean {
 }
 
 /**
+ * 获取所有已删除的内容（回收站）
+ * @returns 已删除内容列表
+ */
+export interface DeletedItem {
+  letterId: string;
+  letterInfo: {
+    receiverName: string;
+    receiverAvatar: string;
+    isBottle: boolean;
+  };
+  roundNumber: number;
+  type: 'userLetter' | 'aiReply';
+  content: string;
+  deletedAt: number;
+  originalSentAt: number;
+}
+
+export function getAllDeletedItems(): DeletedItem[] {
+  const letters = getLettersFromStorage();
+  const deletedItems: DeletedItem[] = [];
+  
+  letters.forEach(letter => {
+    letter.conversationRounds.forEach(round => {
+      // 检查用户信件
+      if (round.userLetter.isDeleted) {
+        deletedItems.push({
+          letterId: letter.id,
+          letterInfo: {
+            receiverName: letter.receiverName,
+            receiverAvatar: letter.receiverAvatar || '👤',
+            isBottle: letter.isBottle
+          },
+          roundNumber: round.roundNumber,
+          type: 'userLetter',
+          content: round.userLetter.content,
+          deletedAt: round.userLetter.deletedAt || Date.now(),
+          originalSentAt: round.userLetter.sentAt
+        });
+      }
+      
+      // 检查AI回信
+      if (round.aiReply && round.aiReply.isDeleted) {
+        deletedItems.push({
+          letterId: letter.id,
+          letterInfo: {
+            receiverName: letter.receiverName,
+            receiverAvatar: letter.receiverAvatar || '👤',
+            isBottle: letter.isBottle
+          },
+          roundNumber: round.roundNumber,
+          type: 'aiReply',
+          content: round.aiReply.content,
+          deletedAt: round.aiReply.deletedAt || Date.now(),
+          originalSentAt: round.aiReply.repliedAt
+        });
+      }
+    });
+  });
+  
+  // 按删除时间降序排列
+  return deletedItems.sort((a, b) => b.deletedAt - a.deletedAt);
+}
+
+/**
+ * 永久删除单个项目（从回收站彻底删除）
+ * @param letterId 信件ID
+ * @param roundNumber 轮次编号
+ * @param type 类型
+ * @returns 是否成功
+ */
+export function permanentlyDeleteItem(letterId: string, roundNumber: number, type: 'userLetter' | 'aiReply'): boolean {
+  const letters = getLettersFromStorage();
+  const letter = letters.find(l => l.id === letterId);
+  
+  if (!letter) {
+    return false;
+  }
+  
+  const round = letter.conversationRounds.find(r => r.roundNumber === roundNumber);
+  
+  if (!round) {
+    return false;
+  }
+  
+  if (type === 'userLetter') {
+    // 如果用户信件被删除，检查是否还有AI回信
+    if (round.aiReply && !round.aiReply.isDeleted) {
+      // 只有用户信件，保留AI回信，但清空用户信件内容
+      round.userLetter.content = '[已永久删除]';
+    } else {
+      // 两个都删了或只有用户信件，删除整个轮次
+      const index = letter.conversationRounds.findIndex(r => r.roundNumber === roundNumber);
+      if (index !== -1) {
+        letter.conversationRounds.splice(index, 1);
+        // 重新编号
+        letter.conversationRounds.forEach((r, i) => {
+          r.roundNumber = i + 1;
+        });
+        letter.currentRound = letter.conversationRounds.length;
+      }
+    }
+  } else if (type === 'aiReply') {
+    // 如果AI回信被删除，检查用户信件
+    if (!round.userLetter.isDeleted) {
+      // 只删除AI回信
+      round.aiReply = undefined;
+    } else {
+      // 两个都删了，删除整个轮次
+      const index = letter.conversationRounds.findIndex(r => r.roundNumber === roundNumber);
+      if (index !== -1) {
+        letter.conversationRounds.splice(index, 1);
+        // 重新编号
+        letter.conversationRounds.forEach((r, i) => {
+          r.roundNumber = i + 1;
+        });
+        letter.currentRound = letter.conversationRounds.length;
+      }
+    }
+  }
+  
+  // 如果没有轮次了，删除整个信件
+  if (letter.conversationRounds.length === 0) {
+    return deleteLetter(letterId);
+  }
+  
+  // 保存更新
+  updateLetterInStorage(letter);
+  
+  console.log(`☠️ 已永久删除 ${type === 'userLetter' ? '用户信件' : 'AI回信'}`);
+  
+  return true;
+}
+
+/**
  * 获取所有笔友（已加为笔友的漂流瓶AI）
  */
 export function getAllPenPals(): Letter[] {

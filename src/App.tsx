@@ -27,6 +27,7 @@ import FavoriteLettersScreen from './components/FavoriteLettersScreen';
 import AchievementScreen from './components/AchievementScreen';
 import StampCollectionScreen from './components/StampCollectionScreen';
 import LetterNotificationCenter from './components/LetterNotificationCenter';
+import RecycleBinScreen from './components/RecycleBinScreen';
 import BottleFishingScreen from './components/BottleFishingScreen';
 import ToastContainer from './components/ToastContainer';
 import { MomentsAutoGenerator } from './components/MomentsAutoGenerator';
@@ -942,6 +943,7 @@ function App() {
             }}
             onToPenPals={() => navigateTo('pen-pals')}
             toArchived={() => navigateTo('archived-letters')}
+            onToRecycleBin={() => navigateTo('recycle-bin')}
             onToAchievements={() => navigateTo('achievements')}
             onToFavorites={() => navigateTo('favorite-letters')}
             onToStampCollection={() => navigateTo('stamp-collection')}
@@ -1023,6 +1025,12 @@ function App() {
             conversations={conversations}
             userName={userProfile.username}
             replyToLetter={replyToLetter}
+          />
+        );
+      case 'recycle-bin':
+        return (
+          <RecycleBinScreen
+            onBack={() => navigateTo('letterbox')}
           />
         );
       default:

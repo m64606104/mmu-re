@@ -15,6 +15,7 @@ interface LetterBoxScreenProps {
   onWriteNew: () => void;
   onToPenPals: () => void;
   toArchived: () => void;
+  onToRecycleBin: () => void;
   onToAchievements: () => void;
   onToFavorites: () => void;
   onToStampCollection: () => void;
@@ -28,7 +29,7 @@ const LetterBoxScreen: React.FC<LetterBoxScreenProps> = ({
   onBack,
   onWriteNew,
   onToPenPals,
-  toArchived,
+  onToRecycleBin,
   onToAchievements,
   onToFavorites,
   onToStampCollection,
@@ -207,7 +208,7 @@ const LetterBoxScreen: React.FC<LetterBoxScreenProps> = ({
 
           {/* 回收站 */}
           <button
-            onClick={toArchived}
+            onClick={onToRecycleBin}
             className="flex flex-col items-center gap-1 px-3 py-2 rounded-xl hover:bg-gray-100 transition-colors flex-shrink-0 min-w-[64px]"
           >
             <div className="w-10 h-10 rounded-full bg-gradient-to-br from-gray-100 to-gray-200 flex items-center justify-center">
