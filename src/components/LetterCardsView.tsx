@@ -4,11 +4,11 @@
  * 参考慢邮件App的卡片设计
  */
 
-import { ArrowLeft, Check, Zap, UserPlus, FileDown } from 'lucide-react';
+import { ArrowLeft, Check, Zap, UserPlus, FileDown, Star, Trash2, RotateCcw } from 'lucide-react';
 import { Letter } from '../types/letter';
 import { getCurrentStamp } from '../utils/stampSystem';
 import { useEffect, useRef, useState } from 'react';
-import { urgeLetter, addAsPenPal, canContinueReply } from '../utils/letterService';
+import { urgeLetter, addAsPenPal, canContinueReply, toggleFavoriteLetter, archiveLetter, unarchiveLetter } from '../utils/letterService';
 import PDFExportModal from './PDFExportModal';
 
 interface LetterCardsViewProps {
@@ -49,6 +49,32 @@ export default function LetterCardsView({ letter, onBack, onViewTimeline, userNa
       window.location.reload();
     } else {
       alert('无法加为笔友');
+    }
+  };
+  
+  const handleToggleFavorite = () => {
+    const success = toggleFavoriteLetter(localLetter.id);
+    if (success) {
+      const newFavoriteStatus = !localLetter.isFavorite;
+      setLocalLetter({ ...localLetter, isFavorite: newFavoriteStatus });
+    }
+  };
+  
+  const handleArchive = () => {
+    if (confirm('确定要将这封信放入回收站吗？')) {
+      const success = archiveLetter(localLetter.id);
+      if (success) {
+        alert('✅ 已放入回收站');
+        onBack(); // 返回上一页
+      }
+    }
+  };
+  
+  const handleUnarchive = () => {
+    const success = unarchiveLetter(localLetter.id);
+    if (success) {
+      alert('✅ 已恢复信件');
+      setLocalLetter({ ...localLetter, isArchived: false });
     }
   };
   
@@ -137,6 +163,36 @@ export default function LetterCardsView({ letter, onBack, onViewTimeline, userNa
                         </span>
                       </div>
                       <div className="flex items-center gap-2">
+                        {/* 操作按钮 */}
+                        <button
+                          onClick={handleToggleFavorite}
+                          className="p-1.5 hover:bg-white/50 rounded-full transition-colors"
+                          title={localLetter.isFavorite ? '取消收藏' : '收藏'}
+                        >
+                          <Star
+                            size={16}
+                            className={localLetter.isFavorite ? 'fill-yellow-500 text-yellow-500' : 'text-gray-500'}
+                          />
+                        </button>
+                        
+                        {localLetter.isArchived ? (
+                          <button
+                            onClick={handleUnarchive}
+                            className="p-1.5 hover:bg-white/50 rounded-full transition-colors"
+                            title="恢复信件"
+                          >
+                            <RotateCcw size={16} className="text-blue-600" />
+                          </button>
+                        ) : (
+                          <button
+                            onClick={handleArchive}
+                            className="p-1.5 hover:bg-white/50 rounded-full transition-colors"
+                            title="放入回收站"
+                          >
+                            <Trash2 size={16} className="text-gray-500" />
+                          </button>
+                        )}
+                        
                         {/* 邮票 */}
                         <div className="w-10 h-12 border-2 border-dashed border-orange-400 rounded flex items-center justify-center bg-gradient-to-br from-amber-100 to-yellow-100 text-xl">
                           {currentStamp?.image || '📮'}
@@ -187,8 +243,40 @@ export default function LetterCardsView({ letter, onBack, onViewTimeline, userNa
                             {letter.receiverName}
                           </span>
                         </div>
-                        <div className="text-xs text-blue-600 font-medium">
-                          {formatDate(round.aiReply.repliedAt)}
+                        <div className="flex items-center gap-3">
+                          {/* 操作按钮 */}
+                          <button
+                            onClick={handleToggleFavorite}
+                            className="p-1.5 hover:bg-white/50 rounded-full transition-colors"
+                            title={localLetter.isFavorite ? '取消收藏' : '收藏'}
+                          >
+                            <Star
+                              size={16}
+                              className={localLetter.isFavorite ? 'fill-yellow-500 text-yellow-500' : 'text-gray-400'}
+                            />
+                          </button>
+                          
+                          {localLetter.isArchived ? (
+                            <button
+                              onClick={handleUnarchive}
+                              className="p-1.5 hover:bg-white/50 rounded-full transition-colors"
+                              title="恢复信件"
+                            >
+                              <RotateCcw size={16} className="text-blue-600" />
+                            </button>
+                          ) : (
+                            <button
+                              onClick={handleArchive}
+                              className="p-1.5 hover:bg-white/50 rounded-full transition-colors"
+                              title="放入回收站"
+                            >
+                              <Trash2 size={16} className="text-gray-400" />
+                            </button>
+                          )}
+                          
+                          <div className="text-xs text-blue-600 font-medium">
+                            {formatDate(round.aiReply.repliedAt)}
+                          </div>
                         </div>
                       </div>
 
