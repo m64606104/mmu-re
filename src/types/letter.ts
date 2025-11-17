@@ -37,6 +37,7 @@ export interface Letter {
   archivedAt?: number;  // 归档时间
   isFavorite?: boolean;  // 是否已收藏
   favoritedAt?: number;  // 收藏时间
+  isRead?: boolean;  // 是否已读（用于未读标记）
   
   // 隐私相关
   isAnonymous?: boolean;  // 是否匿名寄信（非漂流瓶也可选择匿名）

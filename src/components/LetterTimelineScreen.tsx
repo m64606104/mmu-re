@@ -15,12 +15,13 @@ interface TimelineEvent {
   receiverAvatar: string;
   status: 'sent' | 'replied';
   letterId: string;
+  roundIndex: number;
 }
 
 interface LetterTimelineScreenProps {
   letter: Letter;
   onBack: () => void;
-  onViewDetail: (letterId: string) => void;
+  onViewDetail: (roundIndex: number) => void;
 }
 
 export default function LetterTimelineScreen({ letter, onBack, onViewDetail }: LetterTimelineScreenProps) {
@@ -38,7 +39,8 @@ export default function LetterTimelineScreen({ letter, onBack, onViewDetail }: L
         receiverName: letter.receiverName,
         receiverAvatar: letter.receiverAvatar || '📮',
         status: round.aiReply ? 'replied' : 'sent',
-        letterId: letter.id
+        letterId: letter.id,
+        roundIndex: round.roundNumber - 1
       });
       
       // AI的回信
@@ -50,7 +52,8 @@ export default function LetterTimelineScreen({ letter, onBack, onViewDetail }: L
           receiverName: letter.receiverName,
           receiverAvatar: letter.receiverAvatar || '📮',
           status: 'replied',
-          letterId: letter.id
+          letterId: letter.id,
+          roundIndex: round.roundNumber - 1
         });
       }
     });
@@ -101,8 +104,8 @@ export default function LetterTimelineScreen({ letter, onBack, onViewDetail }: L
               return (
                 <div 
                   key={event.id}
-                  className={`relative flex items-center ${isSent ? 'justify-end' : 'justify-start'}`}
-                  onClick={() => onViewDetail(event.letterId)}
+                  className={`relative flex items-center ${isSent ? 'justify-end' : 'justify-start'} cursor-pointer`}
+                  onClick={() => onViewDetail(event.roundIndex)}
                 >
                   {/* 左侧（收信） */}
                   {!isSent && (

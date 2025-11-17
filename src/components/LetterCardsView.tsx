@@ -4,6 +4,7 @@
  * 参考慢邮件App的卡片设计
  */
 
+import { RefObject } from 'react';
 import { ArrowLeft, Check } from 'lucide-react';
 import { Letter } from '../types/letter';
 import { getCurrentStamp } from '../utils/stampSystem';
@@ -13,9 +14,10 @@ interface LetterCardsViewProps {
   onBack: () => void;
   onViewTimeline: () => void;
   userName: string;
+  scrollContainerRef?: RefObject<HTMLDivElement>;
 }
 
-export default function LetterCardsView({ letter, onBack, onViewTimeline, userName }: LetterCardsViewProps) {
+export default function LetterCardsView({ letter, onBack, onViewTimeline, userName, scrollContainerRef }: LetterCardsViewProps) {
   const currentStamp = getCurrentStamp();
 
   const formatDate = (timestamp: number) => {
@@ -59,12 +61,12 @@ export default function LetterCardsView({ letter, onBack, onViewTimeline, userNa
       </div>
 
       {/* 信件卡片列表 */}
-      <div className="flex-1 overflow-y-auto px-4 py-4">
+      <div className="flex-1 overflow-y-auto px-4 py-4" ref={scrollContainerRef}>
         <div className="max-w-2xl mx-auto space-y-4">
           {/* 遍历所有对话轮次 */}
           {letter.conversationRounds && letter.conversationRounds.length > 0 ? (
-            letter.conversationRounds.map((round) => (
-              <div key={round.roundNumber}>
+            letter.conversationRounds.map((round, index) => (
+              <div key={round.roundNumber} id={`round-${index}`}>
                 {/* 用户发送的信卡片 */}
                 <div className="mb-4">
                   <div className="bg-white rounded-3xl shadow-lg overflow-hidden border-2 border-gray-100">
