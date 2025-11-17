@@ -5,10 +5,11 @@
  */
 
 import { RefObject, useState, useEffect } from 'react';
-import { ArrowLeft, Check, Zap, Clock, Reply } from 'lucide-react';
+import { ArrowLeft, Check, Zap, Clock, Reply, UserPlus, Heart, FileText } from 'lucide-react';
 import { Letter } from '../types/letter';
 import { getCurrentStamp } from '../utils/stampSystem';
-import { urgeLetter } from '../utils/letterService';
+import { urgeLetter, addAsPenPal, toggleFavoriteLetter, canContinueReply } from '../utils/letterService';
+import { exportLetterToPDF } from '../utils/letterPDFExporter';
 
 interface LetterCardsViewProps {
   letter: Letter;
@@ -23,6 +24,38 @@ interface LetterCardsViewProps {
 export default function LetterCardsView({ letter, onBack, onViewTimeline, userName, scrollContainerRef, onRefresh, onReply }: LetterCardsViewProps) {
   const currentStamp = getCurrentStamp();
   const [localLetter, setLocalLetter] = useState(letter);
+  const [isFavorited, setIsFavorited] = useState(letter.isFavorite || false);
+  const replyStatus = canContinueReply(letter.id);
+
+  // 加为笔友
+  const handleAddAsPenPal = () => {
+    const success = addAsPenPal(localLetter.id);
+    if (success) {
+      alert(`💌 已将 ${localLetter.receiverName} 加为笔友！\n\n现在可以无限制地交流啦～`);
+      // 刷新数据
+      if (onRefresh) {
+        onRefresh();
+      }
+    }
+  };
+
+  // 收藏/取消收藏
+  const handleToggleFavorite = () => {
+    const success = toggleFavoriteLetter(localLetter.id);
+    if (success) {
+      setIsFavorited(!isFavorited);
+    }
+  };
+
+  // 导出PDF
+  const handleExportPDF = async () => {
+    try {
+      await exportLetterToPDF(localLetter);
+      alert('✅ PDF导出成功！');
+    } catch (error) {
+      alert('❌ PDF导出失败');
+    }
+  };
 
   // 催促回复
   const handleUrge = () => {
@@ -82,11 +115,28 @@ export default function LetterCardsView({ letter, onBack, onViewTimeline, userNa
           <ArrowLeft size={24} className="text-gray-600" />
         </button>
         <div className="flex-1">
-          <h1 className="text-lg font-bold text-gray-800">{letter.receiverName}</h1>
+          <div className="flex items-center gap-2">
+            <h1 className="text-lg font-bold text-gray-800">{letter.receiverName}</h1>
+            {localLetter.isPenPalAdded && (
+              <span className="text-xs bg-pink-100 text-pink-600 px-2 py-0.5 rounded-full">笔友</span>
+            )}
+          </div>
           <div className="text-xs text-gray-500 flex items-center gap-2">
+            {letter.isBottle && !letter.isPenPalAdded && (
+              <span>第 {letter.currentRound}/{letter.maxRounds} 轮</span>
+            )}
             {letter.isBottle && <span>📍 {letter.bottleAIProfile?.location || '远方'}</span>}
             {!letter.isBottle && <span>✈️ 已寄出</span>}
           </div>
+        </div>
+        {/* 功能按钮组 */}
+        <div className="flex items-center gap-2">
+          <button onClick={handleExportPDF} className="p-2 hover:bg-blue-100 rounded-full transition-colors" title="导出PDF">
+            <FileText size={20} className="text-blue-600" />
+          </button>
+          <button onClick={handleToggleFavorite} className="p-2 hover:bg-gray-100 rounded-full transition-colors" title={isFavorited ? "取消收藏" : "收藏"}>
+            <Heart size={20} className={isFavorited ? "text-red-500 fill-red-500" : "text-gray-400"} />
+          </button>
         </div>
       </div>
 
@@ -228,24 +278,70 @@ export default function LetterCardsView({ letter, onBack, onViewTimeline, userNa
         </div>
       </div>
 
-      {/* 底部栏 */}
-      <div className="bg-white/80 backdrop-blur-sm border-t border-orange-200 px-4 py-3 flex items-center gap-3 shrink-0">
-        {onReply && (
-          <button 
-            onClick={onReply}
-            className="flex-1 px-4 py-2.5 bg-gradient-to-r from-green-500 to-emerald-500 text-white rounded-xl font-medium hover:shadow-lg transition-all flex items-center justify-center gap-2"
-          >
-            <Reply size={18} />
-            回复
-          </button>
+      {/* 底部操作栏 */}
+      <div className="bg-white/80 backdrop-blur-sm border-t border-orange-200 px-4 py-4 shrink-0">
+        {/* 状态信息提示 */}
+        {localLetter.status === 'replied' && replyStatus.canContinue && (
+          <div className="space-y-3">
+            {/* 操作按钮 */}
+            <div className="flex gap-3">
+              {onReply && (
+                <button 
+                  onClick={onReply}
+                  className="flex-1 px-4 py-2.5 bg-gradient-to-r from-green-500 to-emerald-500 text-white rounded-xl font-medium hover:shadow-lg transition-all flex items-center justify-center gap-2"
+                >
+                  <Reply size={18} />
+                  继续回信
+                </button>
+              )}
+              {localLetter.isBottle && !localLetter.isPenPalAdded && (
+                <button 
+                  onClick={handleAddAsPenPal}
+                  className="flex-1 px-4 py-2.5 bg-gradient-to-r from-pink-500 to-rose-500 text-white rounded-xl font-medium hover:shadow-lg transition-all flex items-center justify-center gap-2"
+                >
+                  <UserPlus size={18} />
+                  加为笔友
+                </button>
+              )}
+              <button 
+                onClick={onViewTimeline}
+                className="px-4 py-2.5 bg-gradient-to-r from-blue-500 to-indigo-500 text-white rounded-xl font-medium hover:shadow-lg transition-all flex items-center justify-center gap-2"
+              >
+                <Clock size={18} />
+                时间轴
+              </button>
+            </div>
+            {/* 提示信息 */}
+            {localLetter.isBottle && !localLetter.isPenPalAdded && replyStatus.isLastRound && (
+              <div className="text-xs text-amber-600 text-center bg-amber-50 py-2 px-3 rounded-lg">
+                ⚠️ 这是最后一轮交流，加为笔友可继续无限制通信
+              </div>
+            )}
+          </div>
         )}
-        <button 
-          onClick={onViewTimeline}
-          className="flex-1 px-4 py-2.5 bg-gradient-to-r from-blue-500 to-indigo-500 text-white rounded-xl font-medium hover:shadow-lg transition-all flex items-center justify-center gap-2"
-        >
-          <Clock size={18} />
-          时间轴
-        </button>
+        {!replyStatus.canContinue && (
+          <div className="space-y-2">
+            <div className="text-xs text-center text-gray-500">
+              {replyStatus.reason}
+            </div>
+            {localLetter.isBottle && !localLetter.isPenPalAdded && (
+              <button 
+                onClick={handleAddAsPenPal}
+                className="w-full px-4 py-2.5 bg-gradient-to-r from-pink-500 to-rose-500 text-white rounded-xl font-medium hover:shadow-lg transition-all flex items-center justify-center gap-2"
+              >
+                <UserPlus size={18} />
+                加为笔友以继续交流
+              </button>
+            )}
+            <button 
+              onClick={onViewTimeline}
+              className="w-full px-4 py-2.5 bg-gradient-to-r from-blue-500 to-indigo-500 text-white rounded-xl font-medium hover:shadow-lg transition-all flex items-center justify-center gap-2"
+            >
+              <Clock size={18} />
+              时间轴
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );

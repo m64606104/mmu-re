@@ -244,7 +244,7 @@ const LetterBoxScreen: React.FC<LetterBoxScreenProps> = ({
   }
 
   return (
-    <div className="h-screen bg-gradient-to-br from-amber-50 via-orange-50 to-yellow-50 flex flex-col">
+    <div className="h-screen bg-gradient-to-br from-amber-50 via-orange-50 to-yellow-50 flex flex-col overflow-hidden">
       {/* 顶部导航栏 - 简洁设计 */}
       <div className="bg-white/80 backdrop-blur-sm border-b border-orange-200 px-4 py-3 flex items-center justify-between shrink-0">
         <div className="flex items-center gap-3">
