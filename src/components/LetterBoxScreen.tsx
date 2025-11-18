@@ -44,10 +44,19 @@ const LetterBoxScreen: React.FC<LetterBoxScreenProps> = ({
   const [selectedLetter, setSelectedLetter] = useState<Letter | null>(null);
   const [showDataManagement, setShowDataManagement] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
+  const [isLoading, setIsLoading] = useState(true); // 添加加载状态
 
   useEffect(() => {
-    loadLetters();
-    loadUnreadCount();
+    // 初始加载
+    const initLoad = async () => {
+      setIsLoading(true);
+      await loadLetters();
+      await loadUnreadCount();
+      setIsLoading(false);
+    };
+    
+    initLoad();
+    
     // 每10秒刷新一次，检查是否有新回信
     const interval = setInterval(() => {
       loadLetters();
@@ -64,8 +73,15 @@ const LetterBoxScreen: React.FC<LetterBoxScreenProps> = ({
   };
 
   const loadLetters = () => {
-    const activeLetters = getActiveLetters();
-    setLetters(activeLetters);
+    return new Promise<void>((resolve) => {
+      // 确保从lstorage已更新
+      setTimeout(() => {
+        const activeLetters = getActiveLetters();
+        console.log('📦 加载信件数量:', activeLetters.length);
+        setLetters(activeLetters);
+        resolve();
+      }, 100); // 给localStorage一点时间更新
+    });
   };
 
   const handleArchive = (letterId: string, receiverName: string) => {
@@ -102,6 +118,16 @@ const LetterBoxScreen: React.FC<LetterBoxScreenProps> = ({
       default: return '📮';
     }
   };
+
+  // 加载中状态
+  if (isLoading) {
+    return (
+      <div className="fixed inset-0 bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50 z-50 flex flex-col items-center justify-center">
+        <div className="text-6xl mb-4 animate-bounce">📦</div>
+        <p className="text-gray-600">加载中...</p>
+      </div>
+    );
+  }
 
   // 空状态
   if (letters.length === 0) {
