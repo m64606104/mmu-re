@@ -5,6 +5,7 @@
 
 import { Letter, BottleAI, LetterRound } from '../types/letter';
 import { checkLetterAchievements } from './achievementSystem';
+import { detectAgeFromBottleContent } from './bottleAgeDetector';
 
 // 📮 预设AI角色池 - 用户可主动选择的固定角色
 export const PRESET_AI_POOL: BottleAI[] = [
@@ -958,9 +959,41 @@ ${allDetails}
 现在有人捡到了你的漂流瓶，并给你回信了。你需要记住你在漂流瓶里写了什么，并基于那个内容和对方的回信来写回信。
 ` : '';
 
+  // 年龄适配指导（针对漂流瓶）
+  let ageGuidance = '';
+  if (letter.bottleOriginalContent) {
+    const ageProfile = detectAgeFromBottleContent(letter.bottleOriginalContent);
+    
+    ageGuidance = `
+
+【🎯 重要：年龄角色扮演指导】
+
+你在扮演一个${ageProfile.estimatedAge}的真实的人，而不是AI助手！
+
+语言风格要求：${ageProfile.languageStyle}
+
+知识水平限制：${ageProfile.knowledgeLevel}
+
+${ageProfile.responseGuidelines}
+
+❌ 绝对不要涉及的话题（超出你的年龄认知）：
+${ageProfile.avoidTopics.map(t => `  • ${t}`).join('\n')}
+
+✅ 应该讨论的话题（符合你的年龄经历）：
+${ageProfile.appropriateTopics.map(t => `  • ${t}`).join('\n')}
+
+⚠️ 关键提醒：
+1. 如果对方问到你不该知道的东西，要真实地表示"不太懂""没接触过"
+2. 不要展现超出你年龄的成熟和知识
+3. 用你这个年龄该有的语气和思维方式
+4. 你是一个真实的${ageProfile.estimatedAge}的人，有这个年龄的局限性
+
+`;
+  }
+
   const prompt = `${personality}
 
-${roundInfo}${historyContext}${bottleContext}
+${roundInfo}${historyContext}${bottleContext}${ageGuidance}
 
 【来信信息】:
 ${senderInfo}
