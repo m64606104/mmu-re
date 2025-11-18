@@ -121,7 +121,8 @@ export function getTodayFishingRecord(): BottleFishingRecord {
   const saved = localStorage.getItem(FISHING_STORAGE_KEY);
   
   if (saved) {
-    const record: BottleFishingRecord = JSON.parse(saved);
+    const record: any = JSON.parse(saved);
+    
     // 如果是新的一天，重置记录
     if (record.date !== today) {
       const newRecord: BottleFishingRecord = {
@@ -134,7 +135,18 @@ export function getTodayFishingRecord(): BottleFishingRecord {
       localStorage.setItem(FISHING_STORAGE_KEY, JSON.stringify(newRecord));
       return newRecord;
     }
-    return record;
+    
+    // 数据兼容性处理：确保旧记录有新字段
+    if (!record.fishedBottles) {
+      record.fishedBottles = [];
+    }
+    if (!record.thrownBackBottles) {
+      record.thrownBackBottles = [];
+    }
+    
+    // 保存更新后的记录
+    localStorage.setItem(FISHING_STORAGE_KEY, JSON.stringify(record));
+    return record as BottleFishingRecord;
   }
   
   // 首次使用，创建新记录
