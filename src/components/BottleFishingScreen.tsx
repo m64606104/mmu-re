@@ -181,9 +181,10 @@ export default function BottleFishingScreen({ onBack, userName }: BottleFishingS
 
       {/* 主内容区 */}
       <div className="flex-1 overflow-y-auto p-4 pb-8">
-        <div className="max-w-2xl mx-auto pb-8">
-          {/* 海洋背景区域 */}
-          <div className={`relative bg-gradient-to-b from-blue-400 to-blue-600 rounded-3xl p-8 mb-4 overflow-hidden flex items-center justify-center ${showReplyBox ? 'min-h-[300px]' : 'min-h-[400px]'}`}>
+        <div className="max-w-2xl mx-auto pb-24">
+          {/* 海洋背景区域 - 只在未回信时显示 */}
+          {!showReplyBox && (
+          <div className="relative bg-gradient-to-b from-blue-400 to-blue-600 rounded-3xl p-8 mb-4 overflow-hidden flex items-center justify-center min-h-[400px]">
             {/* 波浪装饰 */}
             <div className="absolute bottom-0 left-0 right-0">
               <svg viewBox="0 0 1440 320" className="w-full">
@@ -296,6 +297,7 @@ export default function BottleFishingScreen({ onBack, userName }: BottleFishingS
               </div>
             )}
           </div>
+          )}
 
           {/* 回信时在海水区域显示原文（玻璃瓶样式） */}
           {showReplyBox && currentBottle && (
