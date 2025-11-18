@@ -29,6 +29,7 @@ import StampCollectionScreen from './components/StampCollectionScreen';
 import LetterNotificationCenter from './components/LetterNotificationCenter';
 import RecycleBinScreen from './components/RecycleBinScreen';
 import BottleFishingScreen from './components/BottleFishingScreen';
+import FavoriteRepliesScreen from './components/FavoriteRepliesScreen';
 import ToastContainer from './components/ToastContainer';
 import { MomentsAutoGenerator } from './components/MomentsAutoGenerator';
 import { AIMomentsInteractionManager } from './components/AIMomentsInteractionManager';
@@ -946,9 +947,10 @@ function App() {
             onToRecycleBin={() => navigateTo('recycle-bin')}
             onToAchievements={() => navigateTo('achievements')}
             onToFavorites={() => navigateTo('favorite-letters')}
+            onToFavoriteReplies={() => navigateTo('favorite-replies')}
             onToStampCollection={() => navigateTo('stamp-collection')}
             onToNotifications={() => navigateTo('letter-notifications')}
-            onToBottleFishing={() => navigateTo('bottle-fishing')}
+            onToBottleFishing={() => navigateTo('bottle-fishing')} // Fix: Added missing closing parenthesis
             onContinueReply={(letter) => {
               setReplyToLetter(letter);
               navigateTo('letter-writing');
@@ -1030,6 +1032,12 @@ function App() {
       case 'recycle-bin':
         return (
           <RecycleBinScreen
+            onBack={() => navigateTo('letterbox')}
+          />
+        );
+      case 'favorite-replies':
+        return (
+          <FavoriteRepliesScreen
             onBack={() => navigateTo('letterbox')}
           />
         );

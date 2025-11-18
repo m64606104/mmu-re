@@ -18,6 +18,7 @@ interface LetterBoxScreenProps {
   onToRecycleBin: () => void;
   onToAchievements: () => void;
   onToFavorites: () => void;
+  onToFavoriteReplies: () => void;
   onToStampCollection: () => void;
   onToNotifications: () => void;
   onToBottleFishing: () => void;
@@ -32,6 +33,7 @@ const LetterBoxScreen: React.FC<LetterBoxScreenProps> = ({
   onToRecycleBin,
   onToAchievements,
   onToFavorites,
+  onToFavoriteReplies,
   onToStampCollection,
   onToNotifications,
   onToBottleFishing,
@@ -195,7 +197,7 @@ const LetterBoxScreen: React.FC<LetterBoxScreenProps> = ({
             <span className="text-xs text-gray-700">漂流瓶</span>
           </button>
 
-          {/* 收藏 */}
+          {/* 收藏信件 */}
           <button
             onClick={onToFavorites}
             className="flex flex-col items-center gap-1 px-3 py-2 rounded-xl hover:bg-red-50 transition-colors flex-shrink-0 min-w-[64px]"
@@ -204,6 +206,17 @@ const LetterBoxScreen: React.FC<LetterBoxScreenProps> = ({
               <Heart size={20} className="text-red-500" />
             </div>
             <span className="text-xs text-gray-700">收藏</span>
+          </button>
+
+          {/* 收藏回复 */}
+          <button
+            onClick={onToFavoriteReplies}
+            className="flex flex-col items-center gap-1 px-3 py-2 rounded-xl hover:bg-yellow-50 transition-colors flex-shrink-0 min-w-[64px]"
+          >
+            <div className="w-10 h-10 rounded-full bg-gradient-to-br from-yellow-100 to-amber-100 flex items-center justify-center">
+              ⭐
+            </div>
+            <span className="text-xs text-gray-700">回复</span>
           </button>
 
           {/* 回收站 */}
