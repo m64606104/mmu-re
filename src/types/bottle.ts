@@ -22,7 +22,7 @@ export interface BottleFishingRecord {
   fishedCount: number; // 今天已打捞次数
   maxCount: number; // 最大打捞次数
   lastFishingTime?: number;
-  thrownBackBottles: string[]; // 今天投回的瓶子ID
+  thrownBackBottles: (BottleLetter & { thrownBackTime: number })[]; // 今天投回的瓶子（含投回时间）
 }
 
 export interface UserBottleStats {

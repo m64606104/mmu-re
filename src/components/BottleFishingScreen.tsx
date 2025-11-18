@@ -11,7 +11,9 @@ import {
   fishBottle,
   throwBackBottle,
   getBottleStats,
-  replyToBottle
+  replyToBottle,
+  getRetrievableBottles,
+  retrieveBottle
 } from '../utils/bottleFishingSystem';
 import { sendLetter } from '../utils/letterService';
 
@@ -26,6 +28,7 @@ export default function BottleFishingScreen({ onBack, userName }: BottleFishingS
   const [showReplyBox, setShowReplyBox] = useState(false);
   const [replyContent, setReplyContent] = useState('');
   const [stats, setStats] = useState(getBottleStats());
+  const [showHistoryModal, setShowHistoryModal] = useState(false);
   
   useEffect(() => {
     refreshData();
@@ -63,8 +66,8 @@ export default function BottleFishingScreen({ onBack, userName }: BottleFishingS
   const handleThrowBack = () => {
     if (!currentBottle) return;
     
-    if (confirm('确定要把这个瓶子投回海里吗？\n\n投回后将无法再次看到这封信。')) {
-      throwBackBottle();
+    if (confirm('确定要把这个瓶子投回海里吗？\n\n投回后1天内可以打捞回来。')) {
+      throwBackBottle(currentBottle); // 传递瓶子对象
       setCurrentBottle(null);
       setShowReplyBox(false);
       refreshData();
@@ -72,10 +75,22 @@ export default function BottleFishingScreen({ onBack, userName }: BottleFishingS
       // 提示还能打捞几次
       const check = canFishToday();
       if (check.remaining > 0) {
-        alert(`已投回海里\n\n今天还可以打捞 ${check.remaining} 次`);
+        alert(`已投回海里\n\n今天还可以打捞 ${check.remaining} 次\n投回的瓶子1天内可以捕回`);
       } else {
-        alert('已投回海里\n\n今天的打捞次数已用完，明天再来吧！');
+        alert('已投回海里\n\n今天的打捞次数已用完，明天再来吧！\n投回的瓶子1天内可以捕回');
       }
+    }
+  };
+
+  // 捕回瓶子
+  const handleRetrieve = (bottleId: string) => {
+    const result = retrieveBottle(bottleId);
+    if (result.success && result.bottle) {
+      setCurrentBottle(result.bottle);
+      setShowHistoryModal(false);
+      alert('✅ 已捕回该瓶子！');
+    } else {
+      alert(result.error || '捕回失败');
     }
   };
 
@@ -155,10 +170,13 @@ export default function BottleFishingScreen({ onBack, userName }: BottleFishingS
             {check.remaining > 0 ? `今天还可以打捞 ${check.remaining} 次` : '明天再来吧'}
           </div>
         </div>
-        <div className="text-right text-xs text-gray-600">
+        <button 
+          onClick={() => setShowHistoryModal(true)}
+          className="text-right text-xs text-gray-600 hover:bg-gray-100 rounded-lg p-2 transition-colors"
+        >
           <div>已打捞 {stats.totalFished}</div>
           <div>已回复 {stats.totalReplied}</div>
-        </div>
+        </button>
       </div>
 
       {/* 主内容区 */}
@@ -279,17 +297,26 @@ export default function BottleFishingScreen({ onBack, userName }: BottleFishingS
             )}
           </div>
 
-          {/* 回信时显示原文 */}
+          {/* 回信时在海水区域显示原文（玻璃瓶样式） */}
           {showReplyBox && currentBottle && (
-            <div className="mb-4 bg-white rounded-3xl shadow-lg overflow-hidden">
-              {/* 原文区域 */}
-              <div className="bg-gradient-to-r from-amber-50 to-orange-50 px-5 py-3 border-b border-gray-200">
-                <div className="flex items-center gap-2">
-                  <span className="text-sm font-medium text-gray-700">📖 原文内容</span>
-                  <span className="text-xs text-gray-500">({currentBottle.senderName})</span>
-                </div>
+            <div className="relative bg-gradient-to-b from-blue-400 to-blue-600 rounded-3xl p-6 mb-4 overflow-hidden min-h-[240px]">
+              {/* 波浪装饰 */}
+              <div className="absolute bottom-0 left-0 right-0">
+                <svg viewBox="0 0 1440 320" className="w-full">
+                  <path 
+                    fill="rgba(255,255,255,0.1)" 
+                    d="M0,96L48,112C96,128,192,160,288,160C384,160,480,128,576,112C672,96,768,96,864,112C960,128,1056,160,1152,160C1248,160,1344,128,1392,112L1440,96L1440,320L1392,320C1344,320,1248,320,1152,320C1056,320,960,320,864,320C768,320,672,320,576,320C480,320,384,320,288,320C192,320,96,320,48,320L0,320Z"
+                  />
+                </svg>
               </div>
-              <div className="p-5 max-h-48 overflow-y-auto">
+
+              {/* 玻璃瓶原文展示 */}
+              <div className="relative z-10 bg-white/95 backdrop-blur-sm rounded-2xl p-5 max-h-[180px] overflow-y-auto shadow-xl border-4 border-white/30">
+                <div className="flex items-center gap-2 mb-3 pb-2 border-b border-gray-200">
+                  <span className="text-xl">📖</span>
+                  <span className="text-sm font-medium text-gray-700">原文内容</span>
+                  <span className="text-xs text-gray-500">({currentBottle.senderName} 迷糊的小玫瑰)</span>
+                </div>
                 <div 
                   className="text-gray-800 leading-relaxed whitespace-pre-wrap font-serif text-sm"
                   style={{
@@ -381,6 +408,106 @@ export default function BottleFishingScreen({ onBack, userName }: BottleFishingS
           </div>
         </div>
       </div>
+
+      {/* 打捞历史模态框 */}
+      {showHistoryModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-3xl max-w-md w-full max-h-[80vh] overflow-hidden flex flex-col">
+            {/* 头部 */}
+            <div className="bg-gradient-to-r from-blue-500 to-cyan-500 px-6 py-4 text-white">
+              <div className="flex items-center justify-between">
+                <h2 className="text-xl font-bold">🌊 打捞记录</h2>
+                <button
+                  onClick={() => setShowHistoryModal(false)}
+                  className="p-2 hover:bg-white/20 rounded-full transition-colors"
+                >
+                  ✕
+                </button>
+              </div>
+              <div className="text-sm mt-1 opacity-90">
+                投回的瓶子1天内可以捕回
+              </div>
+            </div>
+
+            {/* 统计信息 */}
+            <div className="px-6 py-4 bg-gradient-to-r from-blue-50 to-cyan-50 border-b border-gray-200">
+              <div className="grid grid-cols-3 gap-4 text-center">
+                <div>
+                  <div className="text-2xl font-bold text-blue-600">{stats.totalFished}</div>
+                  <div className="text-xs text-gray-600 mt-1">总打捞</div>
+                </div>
+                <div>
+                  <div className="text-2xl font-bold text-green-600">{stats.totalReplied}</div>
+                  <div className="text-xs text-gray-600 mt-1">已回复</div>
+                </div>
+                <div>
+                  <div className="text-2xl font-bold text-gray-600">{stats.totalThrownBack}</div>
+                  <div className="text-xs text-gray-600 mt-1">已投回</div>
+                </div>
+              </div>
+            </div>
+
+            {/* 可捞回的瓶子列表 */}
+            <div className="flex-1 overflow-y-auto p-6">
+              <div className="text-sm font-medium text-gray-700 mb-3">
+                📦 可捞回的瓶子
+              </div>
+              
+              {(() => {
+                const retrievableBottles = getRetrievableBottles();
+                if (retrievableBottles.length === 0) {
+                  return (
+                    <div className="text-center py-8 text-gray-400">
+                      <div className="text-4xl mb-3">🌊</div>
+                      <div>暂无可捞回的瓶子</div>
+                      <div className="text-xs mt-2">投回的瓶子会保存1天</div>
+                    </div>
+                  );
+                }
+
+                return retrievableBottles.map((bottle) => {
+                  const timeLeft = 24 * 60 * 60 * 1000 - (Date.now() - bottle.thrownBackTime);
+                  const hoursLeft = Math.floor(timeLeft / (60 * 60 * 1000));
+                  
+                  return (
+                    <div 
+                      key={bottle.id}
+                      className="bg-gradient-to-r from-blue-50 to-cyan-50 rounded-2xl p-4 mb-3 border-2 border-blue-100"
+                    >
+                      <div className="flex items-start gap-3">
+                        <div className="w-10 h-10 rounded-full bg-gradient-to-br from-orange-400 to-amber-500 flex items-center justify-center text-xl flex-shrink-0">
+                          {bottle.senderAvatar}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="font-medium text-gray-800">{bottle.senderName}</div>
+                          <div className="text-xs text-gray-600 mb-2">
+                            {bottle.senderAge && <span>{bottle.senderAge}岁 · </span>}
+                            {bottle.senderLocation}
+                          </div>
+                          <div className="text-sm text-gray-700 line-clamp-2 mb-2">
+                            {bottle.content}
+                          </div>
+                          <div className="flex items-center justify-between">
+                            <span className="text-xs bg-white px-2 py-1 rounded-full text-gray-600">
+                              #{bottle.topic}
+                            </span>
+                            <button
+                              onClick={() => handleRetrieve(bottle.id)}
+                              className="text-xs bg-gradient-to-r from-blue-500 to-cyan-500 text-white px-3 py-1.5 rounded-full hover:from-blue-600 hover:to-cyan-600 transition-colors font-medium"
+                            >
+                              🎣 捞回 ({hoursLeft}小时内)
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                });
+              })()}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

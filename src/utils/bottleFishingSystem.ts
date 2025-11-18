@@ -259,13 +259,65 @@ export function fishBottle(): { success: boolean; bottle?: BottleLetter; error?:
 /**
  * 投回海里
  */
-export function throwBackBottle(): boolean {
+export function throwBackBottle(bottle?: BottleLetter): boolean {
+  if (bottle) {
+    // 记录投回的瓶子（保存1天）
+    const record = getTodayFishingRecord();
+    if (!record.thrownBackBottles) {
+      record.thrownBackBottles = [];
+    }
+    record.thrownBackBottles.push({
+      ...bottle,
+      thrownBackTime: Date.now()
+    });
+    saveFishingRecord(record);
+  }
+  
   // 更新统计
   const stats = getBottleStats();
   stats.totalThrownBack++;
   saveBottleStats(stats);
   
   return true;
+}
+
+/**
+ * 获取可以捞回的瓶子（1天内投回的）
+ */
+export function getRetrievableBottles(): (BottleLetter & { thrownBackTime: number })[] {
+  const record = getTodayFishingRecord();
+  const now = Date.now();
+  const oneDayMs = 24 * 60 * 60 * 1000;
+  
+  if (!record.thrownBackBottles) {
+    return [];
+  }
+  
+  // 过滤出1天内投回的瓶子
+  return record.thrownBackBottles.filter(bottle => 
+    (now - bottle.thrownBackTime) < oneDayMs
+  );
+}
+
+/**
+ * 捞回瓶子
+ */
+export function retrieveBottle(bottleId: string): { success: boolean; bottle?: BottleLetter; error?: string } {
+  const retrievable = getRetrievableBottles();
+  const bottle = retrievable.find(b => b.id === bottleId);
+  
+  if (!bottle) {
+    return { success: false, error: '找不到这个瓶子或已漂远' };
+  }
+  
+  // 从投回记录中移除
+  const record = getTodayFishingRecord();
+  if (record.thrownBackBottles) {
+    record.thrownBackBottles = record.thrownBackBottles.filter(b => b.id !== bottleId);
+    saveFishingRecord(record);
+  }
+  
+  return { success: true, bottle };
 }
 
 /**
