@@ -495,6 +495,14 @@ export function sendLetter(
   // 保存到localStorage
   saveLetterToStorage(letter);
   
+  // 🔔 触发自定义事件，通知信箱页面刷新
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('letter-sent', { 
+      detail: { letterId: letter.id, receiverName: letter.receiverName } 
+    }));
+    console.log('📬 已触发信件发送事件，通知UI刷新');
+  }
+  
   // 设置自动回信定时器
   scheduleAutoReply(letter);
   
@@ -2075,6 +2083,14 @@ export function continueReply(
   letter.hasUrged = false;
   
   updateLetterInStorage(letter);
+  
+  // 🔔 触发自定义事件，通知信箱页面刷新
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('letter-sent', { 
+      detail: { letterId: letter.id, receiverName: letter.receiverName } 
+    }));
+    console.log('📬 已触发信件继续回复事件，通知UI刷新');
+  }
   
   // 设置新的回信定时器
   scheduleAutoReply(letter);

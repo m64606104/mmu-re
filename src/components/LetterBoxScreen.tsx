@@ -44,25 +44,48 @@ const LetterBoxScreen: React.FC<LetterBoxScreenProps> = ({
   const [selectedLetter, setSelectedLetter] = useState<Letter | null>(null);
   const [showDataManagement, setShowDataManagement] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
-  const [isLoading, setIsLoading] = useState(true); // 添加加载状态
 
   useEffect(() => {
-    // 初始加载
-    const initLoad = async () => {
-      setIsLoading(true);
-      await loadLetters();
-      await loadUnreadCount();
-      setIsLoading(false);
-    };
-    
-    initLoad();
+    loadLetters();
+    loadUnreadCount();
     
     // 每10秒刷新一次，检查是否有新回信
     const interval = setInterval(() => {
       loadLetters();
       loadUnreadCount();
     }, 10000);
-    return () => clearInterval(interval);
+    
+    // 监听窗口焦点变化（从写信页面返回时）
+    const handleFocus = () => {
+      loadLetters();
+      loadUnreadCount();
+    };
+    window.addEventListener('focus', handleFocus);
+    
+    // 监听自定义信件发送事件
+    const handleLetterSent = () => {
+      console.log('📬 检测到新信件发送，刷新列表');
+      loadLetters();
+      loadUnreadCount();
+    };
+    window.addEventListener('letter-sent', handleLetterSent);
+    
+    // 监听localStorage变化
+    const handleStorageChange = (e: StorageEvent) => {
+      if (e.key === 'slow_letters') {
+        console.log('📬 检测到信件数据变化，刷新列表');
+        loadLetters();
+        loadUnreadCount();
+      }
+    };
+    window.addEventListener('storage', handleStorageChange);
+    
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener('focus', handleFocus);
+      window.removeEventListener('letter-sent', handleLetterSent);
+      window.removeEventListener('storage', handleStorageChange);
+    };
   }, []);
 
   const loadUnreadCount = () => {
@@ -73,15 +96,8 @@ const LetterBoxScreen: React.FC<LetterBoxScreenProps> = ({
   };
 
   const loadLetters = () => {
-    return new Promise<void>((resolve) => {
-      // 确保从lstorage已更新
-      setTimeout(() => {
-        const activeLetters = getActiveLetters();
-        console.log('📦 加载信件数量:', activeLetters.length);
-        setLetters(activeLetters);
-        resolve();
-      }, 100); // 给localStorage一点时间更新
-    });
+    const activeLetters = getActiveLetters();
+    setLetters(activeLetters);
   };
 
   const handleArchive = (letterId: string, receiverName: string) => {
@@ -118,16 +134,6 @@ const LetterBoxScreen: React.FC<LetterBoxScreenProps> = ({
       default: return '📮';
     }
   };
-
-  // 加载中状态
-  if (isLoading) {
-    return (
-      <div className="fixed inset-0 bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50 z-50 flex flex-col items-center justify-center">
-        <div className="text-6xl mb-4 animate-bounce">📦</div>
-        <p className="text-gray-600">加载中...</p>
-      </div>
-    );
-  }
 
   // 空状态
   if (letters.length === 0) {
