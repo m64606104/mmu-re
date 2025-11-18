@@ -265,6 +265,7 @@ export function calculateReplyDelay(isUrged: boolean): number {
  * @param isBottle - true时随机生成新AI人设，false时使用传入的receiver信息
  * @param isAnonymous - 是否匿名寄信（非漂流瓶也可选择匿名）
  * @param bottleOriginalContent - 漂流瓶的原始内容（用户回复漂流瓶时传入）
+ * @param customBottleAI - 自定义的漂流瓶AI角色（用于恢复的瓶子）
  */
 export function sendLetter(
   content: string,
@@ -274,19 +275,25 @@ export function sendLetter(
   isBottle: boolean,
   senderName: string = '我',
   isAnonymous: boolean = false,
-  bottleOriginalContent?: string
+  bottleOriginalContent?: string,
+  customBottleAI?: BottleAI
 ): Letter {
   const now = Date.now();
   const replyDelay = calculateReplyDelay(false);
   
-  // 🌊 漂流瓶模式：随机生成全新的AI人设
+  // 🌊 漂流瓶模式：使用自定义AI或随机生成新AI人设
   let finalReceiverId = receiverId;
   let finalReceiverName = receiverName;
   let finalReceiverAvatar = receiverAvatar;
   let bottleAI: BottleAI | undefined;
   
   if (isBottle) {
-    bottleAI = generateRandomBottleAI();
+    // 如果提供了自定义AI（恢复的瓶子），使用它；否则随机生成
+    if (customBottleAI) {
+      bottleAI = customBottleAI;
+    } else {
+      bottleAI = generateRandomBottleAI();
+    }
     finalReceiverId = bottleAI.id;
     finalReceiverName = bottleAI.name;
     finalReceiverAvatar = bottleAI.avatar;

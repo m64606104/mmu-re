@@ -402,6 +402,7 @@ export function getFishingHint(): string {
 
 /**
  * 手动恢复瓶子（用于找回因界面问题丢失的瓶子）
+ * 返回瓶子和对应的AI角色信息
  */
 export function restoreBottle(
   senderName: string,
@@ -410,7 +411,7 @@ export function restoreBottle(
   senderLocation?: string,
   topic?: string,
   mood?: 'happy' | 'sad' | 'thoughtful' | 'excited' | 'lonely' | 'grateful'
-): BottleLetter {
+): { bottle: BottleLetter; aiProfile: any } {
   // 根据名字风格匹配头像（尽可能匹配原角色）
   const avatarMap: Record<string, string> = {
     '玫瑰': '🌸',
@@ -453,9 +454,39 @@ export function restoreBottle(
     'thoughtful'
   );
   
+  // 根据内容推断性格
+  const inferredPersonality = 
+    content.includes('焦虑') || content.includes('迷茫') ? '敏感细腻，善于思考人生' :
+    content.includes('孤独') || content.includes('想念') ? '细腻温柔，渴望陪伴' :
+    content.includes('开心') || content.includes('快乐') ? '乐观开朗，积极向上' :
+    content.includes('梦想') || content.includes('追寻') ? '勇敢坚定，追求理想' :
+    '真诚友善，喜欢交流';
+  
+  // 根据内容推断爱好
+  const inferredHobby =
+    content.includes('读书') || content.includes('阅读') ? '读书、写作' :
+    content.includes('旅行') || content.includes('远方') ? '旅行、摄影' :
+    content.includes('音乐') || content.includes('歌') ? '音乐、艺术' :
+    '思考人生、写日记';
+  
+  // 创建唯一的AI ID
+  const aiId = `bottle_restored_ai_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+  
+  // 创建完整的AI角色信息（用于回信）
+  const aiProfile = {
+    id: aiId,
+    name: senderName,
+    avatar: avatar,
+    age: senderAge,
+    personality: inferredPersonality,
+    location: senderLocation || '远方',
+    hobby: inferredHobby,
+    isCustom: false
+  };
+  
   const bottle: BottleLetter = {
     id: `bottle_restored_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-    senderId: `restored_sender_${senderName}`,
+    senderId: aiId,  // 使用真实的AI ID
     senderName,
     senderAvatar: avatar,
     senderAge,
@@ -468,5 +499,5 @@ export function restoreBottle(
     language: 'zh'
   };
   
-  return bottle;
+  return { bottle, aiProfile };
 }

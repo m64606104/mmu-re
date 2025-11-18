@@ -109,14 +109,21 @@ export default function BottleFishingScreen({ onBack, userName }: BottleFishingS
       return;
     }
 
-    const bottle = restoreBottle(
+    const result = restoreBottle(
       restoreForm.name,
       restoreForm.content,
       restoreForm.age ? parseInt(restoreForm.age) : undefined,
       restoreForm.location || undefined
     );
 
-    setCurrentBottle(bottle);
+    // 保存AI角色信息到瓶子对象（用于后续回信）
+    const bottleWithAI = {
+      ...result.bottle,
+      // 将AI信息临时附加到瓶子上，方便回信时使用
+      _aiProfile: result.aiProfile
+    };
+
+    setCurrentBottle(bottleWithAI as any);
     setShowRestoreModal(false);
     setRestoreForm({ name: '', age: '', location: '', content: '' });
     alert('✅ 瓶子已恢复！现在可以回信了');
@@ -131,7 +138,10 @@ export default function BottleFishingScreen({ onBack, userName }: BottleFishingS
     }
 
     try {
-      // 发送信件（包含漂流瓶原始内容）
+      // 获取AI角色信息（如果是恢复的瓶子）
+      const customAI = (currentBottle as any)._aiProfile;
+      
+      // 发送信件（包含漂流瓶原始内容和AI角色信息）
       sendLetter(
         replyContent,
         currentBottle.senderId,
@@ -140,7 +150,8 @@ export default function BottleFishingScreen({ onBack, userName }: BottleFishingS
         true, // 是漂流瓶
         userName,
         false, // 不匿名
-        currentBottle.content // 漂流瓶的原始内容
+        currentBottle.content, // 漂流瓶的原始内容
+        customAI // 自定义AI角色（恢复的瓶子）
       );
       
       // 记录统计并从未处理列表中移除
@@ -642,14 +653,6 @@ export default function BottleFishingScreen({ onBack, userName }: BottleFishingS
                   />
                 </div>
 
-                <div className="bg-blue-50 border border-blue-200 rounded-xl p-4">
-                  <div className="text-sm text-blue-800">
-                    <div className="font-medium mb-1">💡 提示</div>
-                    <div className="text-xs leading-relaxed">
-                      系统会根据角色名智能匹配头像，并根据内容推断话题和心情。尽可能填写完整信息以获得最佳效果。
-                    </div>
-                  </div>
-                </div>
               </div>
             </div>
 
