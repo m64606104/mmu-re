@@ -306,6 +306,26 @@ export function generateRandomBottleAI(): BottleAI {
 }
 
 /**
+ * 从系统提示词中提取兴趣爱好
+ */
+function extractHobbyFromPrompt(prompt: string): string | null {
+  if (!prompt) return null;
+  
+  // 简单的关键词提取
+  const hobbyKeywords = ['喜欢', '爱好', '兴趣', '擅长', '热爱'];
+  for (const keyword of hobbyKeywords) {
+    const index = prompt.indexOf(keyword);
+    if (index !== -1) {
+      // 提取关键词后面的内容，最多50字
+      const after = prompt.substring(index + keyword.length, index + keyword.length + 50);
+      const sentence = after.split(/[。；，\n]/)[0].trim();
+      if (sentence) return sentence;
+    }
+  }
+  return null;
+}
+
+/**
  * 获取预设AI角色（用户主动选择）
  */
 export function getPresetAI(id: string): BottleAI | undefined {
@@ -354,17 +374,18 @@ export function sendLetter(
   bottleOriginalContent?: string,
   customBottleAI?: BottleAI
 ): Letter {
+  console.log('📬 寄信对象信息:', { receiverId, receiverName, isBottle });
   const now = Date.now();
   const replyDelay = calculateReplyDelay(false);
   
-  // 🌊 漂流瓶模式：使用自定义AI或随机生成新AI人设
+  // 🎭 确定AI人设（按优先级）
   let finalReceiverId = receiverId;
   let finalReceiverName = receiverName;
   let finalReceiverAvatar = receiverAvatar;
   let bottleAI: BottleAI | undefined;
   
   if (isBottle) {
-    // 如果提供了自定义AI（恢复的瓶子），使用它；否则随机生成
+    // 🌊 漂流瓶模式：使用自定义AI或随机生成新AI人设
     if (customBottleAI) {
       bottleAI = customBottleAI;
     } else {
@@ -373,8 +394,48 @@ export function sendLetter(
     finalReceiverId = bottleAI.id;
     finalReceiverName = bottleAI.name;
     finalReceiverAvatar = bottleAI.avatar;
-    // 漂流瓶默认匿名
-    isAnonymous = true;
+    isAnonymous = true; // 漂流瓶默认匿名
+  } else {
+    // 📮 非漂流瓶：检查是否需要生成人设
+    // 优先级：1. 预设角色 > 2. 列表联系人（从聊天读取） > 3. 随机生成
+    
+    // 1️⃣ 检查是否是预设角色
+    const presetAI = getPresetAI(receiverId);
+    if (presetAI) {
+      console.log('✅ 使用预设角色人设:', presetAI.name);
+      bottleAI = presetAI;
+    } 
+    // 2️⃣ 检查是否是聊天软件的联系人（从conversations读取）
+    else {
+      const conversations = JSON.parse(localStorage.getItem('conversations') || '[]');
+      const conversation = conversations.find((c: any) => c.id === receiverId);
+      
+      if (conversation?.characterSettings) {
+        console.log('✅ 从聊天角色设置读取人设:', receiverName);
+        const settings = conversation.characterSettings;
+        
+        // 转换characterSettings为bottleAIProfile格式
+        bottleAI = {
+          id: receiverId,
+          name: receiverName,
+          avatar: receiverAvatar,
+          personality: settings.personality || '友善随和',
+          location: '某个城市', // 聊天设置中没有location，使用默认值
+          hobby: extractHobbyFromPrompt(settings.systemPrompt) || '聊天、分享生活',
+          // 保存完整设置供后续使用
+          customRolePrompt: settings.systemPrompt,
+          customBackground: `${settings.personality}\n${settings.languageStyle}`,
+          isCustom: true
+        };
+      }
+      // 3️⃣ 都不是，随机生成基础人设（保持名字不变）
+      else {
+        console.log('⚠️ 未找到角色设定，随机生成基础人设:', receiverName);
+        bottleAI = generateRandomBottleAI();
+        bottleAI.name = receiverName; // 保持原名字
+        bottleAI.id = receiverId; // 保持原ID
+      }
+    }
   }
   
   // 🎭 生成匿名名字（如果选择匿名）
