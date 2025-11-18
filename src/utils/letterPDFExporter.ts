@@ -20,192 +20,258 @@ export async function exportLetterToPDF(letter: Letter, options: PDFExportOption
     includeUserLetters = true,
     includeAIReplies = true
   } = options;
+  
   const pdf = new jsPDF({
     orientation: 'portrait',
     unit: 'mm',
     format: 'a4'
   });
 
-  const pageWidth = 210; // A4宽度
-  const pageHeight = 297; // A4高度
+  const pageWidth = 210;
+  const pageHeight = 297;
   const margin = 20;
   const contentWidth = pageWidth - 2 * margin;
-
-  // 背景色
-  pdf.setFillColor(255, 250, 240); // 米黄色信纸背景
-  pdf.rect(0, 0, pageWidth, pageHeight, 'F');
-
-  // 绘制信纸装饰边框
-  pdf.setDrawColor(255, 140, 0); // 橙色
-  pdf.setLineWidth(0.5);
-  pdf.rect(15, 15, pageWidth - 30, pageHeight - 30);
-  
-  pdf.setDrawColor(255, 200, 100);
-  pdf.setLineWidth(0.3);
-  pdf.rect(16, 16, pageWidth - 32, pageHeight - 32);
-
-  let yPosition = 30;
-
-  // 标题
-  await drawText(pdf, letter.isBottle ? '漂流瓶信件' : '慢邮件', pageWidth / 2, yPosition, {
-    size: 20,
-    align: 'center',
-    bold: true
-  });
-  yPosition += 15;
-
-  // 收信人信息
-  await drawText(pdf, `致：${letter.receiverName}`, margin, yPosition, { size: 14 });
-  yPosition += 10;
-
-  // 日期
-  const dateStr = new Date(letter.sentAt).toLocaleDateString('zh-CN', {
-    year: 'numeric',
-    month: 'long',
-    day: 'numeric'
-  });
-  await drawText(pdf, dateStr, pageWidth - margin, yPosition, { size: 10, align: 'right' });
-  yPosition += 15;
-
-  // 分隔线
-  pdf.setDrawColor(200, 200, 200);
-  pdf.setLineWidth(0.3);
-  pdf.line(margin, yPosition, pageWidth - margin, yPosition);
-  yPosition += 10;
 
   // 过滤轮次
   const roundsToExport = selectedRounds
     ? letter.conversationRounds.filter(r => selectedRounds.includes(r.roundNumber))
     : letter.conversationRounds;
 
-  // 绘制各轮对话（美观格式）
+  // 计算总页数：每轮用户信1页 + AI回复1页
+  let totalPages = 0;
   for (const round of roundsToExport) {
-    // 轮次标题
-    if (yPosition > pageHeight - 80) {
-      pdf.addPage();
-      pdf.setFillColor(255, 250, 240);
-      pdf.rect(0, 0, pageWidth, pageHeight, 'F');
-      pdf.setDrawColor(255, 140, 0);
-      pdf.setLineWidth(0.5);
-      pdf.rect(15, 15, pageWidth - 30, pageHeight - 30);
-      yPosition = margin;
+    if (includeUserLetters) totalPages++;
+    if (round.aiReply && includeAIReplies) totalPages++;
+  }
+
+  let currentPage = 0;
+  let isFirstPage = true;
+
+  // 辅助函数：绘制页面装饰
+  const drawPageDecoration = () => {
+    // 背景色
+    pdf.setFillColor(255, 250, 240);
+    pdf.rect(0, 0, pageWidth, pageHeight, 'F');
+
+    // 左侧金色边框
+    pdf.setDrawColor(218, 165, 32); // 金色
+    pdf.setLineWidth(3);
+    pdf.line(10, 10, 10, pageHeight - 10);
+    
+    // 顶部金色边框
+    pdf.setLineWidth(3);
+    pdf.line(10, 10, pageWidth - 10, 10);
+    
+    // 内层边框
+    pdf.setDrawColor(255, 200, 100);
+    pdf.setLineWidth(0.5);
+    pdf.rect(12, 12, pageWidth - 24, pageHeight - 24);
+  };
+
+  // 辅助函数：绘制页头（标题+页码+日期）
+  const drawPageHeader = async (pageNum: number, subtitle?: string) => {
+    let y = 25;
+    
+    // 页码（左上角）
+    await drawText(pdf, `${pageNum}/${totalPages}`, 18, y, {
+      size: 16,
+      bold: true,
+      color: [100, 100, 100]
+    });
+    
+    // 标题（居中）
+    await drawText(pdf, letter.isBottle ? '漂流瓶信件' : '慢邮件', pageWidth / 2, y, {
+      size: 18,
+      align: 'center',
+      bold: true
+    });
+    y += 12;
+    
+    // 子标题（如果有）
+    if (subtitle && isFirstPage) {
+      await drawText(pdf, subtitle, pageWidth / 2, y, {
+        size: 12,
+        align: 'center',
+        color: [100, 100, 100]
+      });
+      y += 10;
     }
     
-    // 轮次标题背景
-    pdf.setFillColor(255, 240, 220);
-    pdf.roundedRect(margin, yPosition, contentWidth, 10, 2, 2, 'F');
-    await drawText(pdf, `第 ${round.roundNumber} 轮`, margin + 5, yPosition + 2, { size: 11, bold: true });
-    yPosition += 12;
+    // 日期（右上角）
+    const dateStr = new Date(letter.sentAt).toLocaleDateString('zh-CN', {
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric'
+    });
+    await drawText(pdf, dateStr, pageWidth - margin, 28, { 
+      size: 10, 
+      align: 'right',
+      color: [120, 120, 120]
+    });
+    
+    // 分隔线
+    y += 8;
+    pdf.setDrawColor(200, 200, 200);
+    pdf.setLineWidth(0.3);
+    pdf.line(margin, y, pageWidth - margin, y);
+    
+    return y + 8;
+  };
 
-    // 用户信件
+  // 生成子标题
+  const subtitle = `${letter.receiverName}的通信`;
+
+  // 绘制各轮对话（每轮分页）
+  for (const round of roundsToExport) {
+    // === 用户信件（单独一页）===
     if (includeUserLetters) {
-      // 用户信件卡片背景
-      const userCardHeight = 60; // 预估高度
-      pdf.setFillColor(255, 255, 255);
-      pdf.roundedRect(margin + 5, yPosition, contentWidth - 10, userCardHeight, 3, 3, 'F');
-      
-      // 用户信件头部
-      pdf.setFillColor(255, 220, 180);
-      pdf.roundedRect(margin + 5, yPosition, contentWidth - 10, 8, 3, 3, 'F');
-      await drawText(pdf, `✉️ 我的信 → ${letter.receiverName}`, margin + 10, yPosition + 1.5, { size: 10, bold: true });
-      yPosition += 10;
-
-      // 用户信件内容
-      const contentStartY = yPosition;
-      yPosition = await drawMultilineText(pdf, round.userLetter.content, margin + 10, yPosition, contentWidth - 20);
-      
-      // 实际内容高度
-      const actualContentHeight = yPosition - contentStartY;
-      
-      // 重新绘制正确高度的卡片背景
-      pdf.setFillColor(255, 255, 255);
-      pdf.roundedRect(margin + 5, contentStartY - 10, contentWidth - 10, actualContentHeight + 15, 3, 3, 'F');
-      pdf.setFillColor(255, 220, 180);
-      pdf.roundedRect(margin + 5, contentStartY - 10, contentWidth - 10, 8, 3, 3, 'F');
-      await drawText(pdf, `✉️ 我的信 → ${letter.receiverName}`, margin + 10, contentStartY - 8.5, { size: 10, bold: true });
-      
-      // 重新绘制内容（覆盖）
-      await drawMultilineText(pdf, round.userLetter.content, margin + 10, contentStartY, contentWidth - 20);
-      
-      yPosition += 3;
-      
-      // 日期和邮票
-      const userDateStr = new Date(round.userLetter.sentAt).toLocaleDateString('zh-CN');
-      await drawText(pdf, userDateStr, margin + 10, yPosition, { size: 8, color: [120, 120, 120] });
-      
-      // 邮票图标
-      await drawText(pdf, '📮', pageWidth - margin - 15, yPosition - 1, { size: 12 });
-      
-      yPosition += 10;
-    }
-
-    // AI回信
-    if (round.aiReply && includeAIReplies) {
-      if (yPosition > pageHeight - 70) {
+      currentPage++;
+      if (currentPage > 1) {
         pdf.addPage();
-        pdf.setFillColor(255, 250, 240);
-        pdf.rect(0, 0, pageWidth, pageHeight, 'F');
-        pdf.setDrawColor(255, 140, 0);
-        pdf.setLineWidth(0.5);
-        pdf.rect(15, 15, pageWidth - 30, pageHeight - 30);
-        yPosition = margin;
       }
-
-      // AI回信卡片背景
-      const replyCardHeight = 60; // 预估高度
-      pdf.setFillColor(250, 250, 255);
-      pdf.roundedRect(margin + 5, yPosition, contentWidth - 10, replyCardHeight, 3, 3, 'F');
       
-      // AI回信头部
-      pdf.setFillColor(200, 220, 255);
-      pdf.roundedRect(margin + 5, yPosition, contentWidth - 10, 8, 3, 3, 'F');
-      await drawText(pdf, `💌 ${letter.receiverName}的回信`, margin + 10, yPosition + 1.5, { size: 10, bold: true });
+      // 绘制页面装饰
+      drawPageDecoration();
+      
+      // 绘制页头
+      let yPosition = await drawPageHeader(currentPage, isFirstPage ? subtitle : undefined);
+      isFirstPage = false;
+      
+      // 轮次标题
+      await drawText(pdf, `第 ${round.roundNumber} 轮`, margin, yPosition, { 
+        size: 14, 
+        bold: true 
+      });
+      yPosition += 12;
+      
+      // 【我的信】标签
+      await drawText(pdf, '【我的信】', margin, yPosition, { 
+        size: 11, 
+        bold: true,
+        color: [100, 100, 100]
+      });
+      yPosition += 8;
+      
+      // 我的信时间
+      const userDateStr = new Date(round.userLetter.sentAt).toLocaleDateString('zh-CN');
+      await drawText(pdf, `寄出时间：${userDateStr}`, margin, yPosition, { 
+        size: 9,
+        color: [120, 120, 120]
+      });
       yPosition += 10;
-
-      // AI回信内容
-      const replyStartY = yPosition;
-      yPosition = await drawMultilineText(pdf, round.aiReply.content, margin + 10, yPosition, contentWidth - 20);
       
-      // 实际内容高度
-      const actualReplyHeight = yPosition - replyStartY;
-      
-      // 重新绘制正确高度的卡片背景
-      pdf.setFillColor(250, 250, 255);
-      pdf.roundedRect(margin + 5, replyStartY - 10, contentWidth - 10, actualReplyHeight + 15, 3, 3, 'F');
-      pdf.setFillColor(200, 220, 255);
-      pdf.roundedRect(margin + 5, replyStartY - 10, contentWidth - 10, 8, 3, 3, 'F');
-      await drawText(pdf, `💌 ${letter.receiverName}的回信`, margin + 10, replyStartY - 8.5, { size: 10, bold: true });
-      
-      // 重新绘制内容（覆盖）
-      await drawMultilineText(pdf, round.aiReply.content, margin + 10, replyStartY, contentWidth - 20);
-      
-      yPosition += 3;
-      
-      const replyDateStr = new Date(round.aiReply.repliedAt).toLocaleDateString('zh-CN');
-      await drawText(pdf, replyDateStr, margin + 10, yPosition, { size: 8, color: [120, 120, 120] });
-      yPosition += 10;
-    }
-
-    // 轮次间分隔线
-    if (yPosition < pageHeight - 50) {
+      // 分隔线
       pdf.setDrawColor(230, 230, 230);
       pdf.setLineWidth(0.3);
-      pdf.line(margin + 10, yPosition, pageWidth - margin - 10, yPosition);
-      yPosition += 12;
+      pdf.line(margin, yPosition, pageWidth - margin, yPosition);
+      yPosition += 8;
+      
+      // 【回信】标签
+      await drawText(pdf, '【回信】', margin, yPosition, { 
+        size: 11, 
+        bold: true,
+        color: [100, 100, 100]
+      });
+      yPosition += 8;
+      
+      // 用户信件内容
+      yPosition = await drawMultilineText(
+        pdf, 
+        round.userLetter.content, 
+        margin, 
+        yPosition, 
+        contentWidth
+      );
+      
+      // 落款
+      yPosition += 10;
+      if (!letter.isAnonymous) {
+        await drawText(pdf, letter.senderName || '我', pageWidth - margin - 10, yPosition, {
+          size: 10,
+          align: 'right',
+          color: [100, 100, 100]
+        });
+      }
     }
-  }
 
-  // 落款
-  if (yPosition > pageHeight - 40) {
-    pdf.addPage();
-    yPosition = margin;
-  }
-
-  if (!letter.isAnonymous) {
-    await drawText(pdf, `from ${letter.senderName || '我'}`, pageWidth - margin - 10, pageHeight - 30, {
-      size: 12,
-      align: 'right'
-    });
+    // === AI回信（单独一页）===
+    if (round.aiReply && includeAIReplies) {
+      currentPage++;
+      pdf.addPage();
+      
+      // 绘制页面装饰
+      drawPageDecoration();
+      
+      // 绘制页头
+      let yPosition = await drawPageHeader(currentPage);
+      
+      // 轮次标题
+      await drawText(pdf, `第 ${round.roundNumber} 轮`, margin, yPosition, { 
+        size: 14, 
+        bold: true 
+      });
+      yPosition += 12;
+      
+      // 【我的信】标签（占位，表示这是回信页）
+      await drawText(pdf, '【我的信】', margin, yPosition, { 
+        size: 11, 
+        bold: true,
+        color: [200, 200, 200]
+      });
+      yPosition += 8;
+      
+      // 提示文字
+      await drawText(pdf, '（见上一页）', margin, yPosition, { 
+        size: 9,
+        color: [180, 180, 180]
+      });
+      yPosition += 10;
+      
+      // 分隔线
+      pdf.setDrawColor(230, 230, 230);
+      pdf.setLineWidth(0.3);
+      pdf.line(margin, yPosition, pageWidth - margin, yPosition);
+      yPosition += 8;
+      
+      // 【回信】标签
+      await drawText(pdf, '【回信】', margin, yPosition, { 
+        size: 11, 
+        bold: true,
+        color: [100, 100, 100]
+      });
+      yPosition += 8;
+      
+      // 回信时间
+      const replyDateStr = new Date(round.aiReply.repliedAt).toLocaleDateString('zh-CN');
+      await drawText(pdf, `回复时间：${replyDateStr}`, margin, yPosition, { 
+        size: 9,
+        color: [120, 120, 120]
+      });
+      yPosition += 10;
+      
+      // 分隔线
+      pdf.setDrawColor(230, 230, 230);
+      pdf.setLineWidth(0.3);
+      pdf.line(margin, yPosition, pageWidth - margin, yPosition);
+      yPosition += 8;
+      
+      // AI回信内容
+      yPosition = await drawMultilineText(
+        pdf, 
+        round.aiReply.content, 
+        margin, 
+        yPosition, 
+        contentWidth
+      );
+      
+      // 落款
+      yPosition += 10;
+      await drawText(pdf, letter.receiverName, pageWidth - margin - 10, yPosition, {
+        size: 10,
+        align: 'right',
+        color: [100, 100, 100]
+      });
+    }
   }
 
   // 生成文件名
