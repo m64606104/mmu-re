@@ -399,3 +399,74 @@ export function getFishingHint(): string {
     return '今天的打捞次数已用完';
   }
 }
+
+/**
+ * 手动恢复瓶子（用于找回因界面问题丢失的瓶子）
+ */
+export function restoreBottle(
+  senderName: string,
+  content: string,
+  senderAge?: number,
+  senderLocation?: string,
+  topic?: string,
+  mood?: 'happy' | 'sad' | 'thoughtful' | 'excited' | 'lonely' | 'grateful'
+): BottleLetter {
+  // 根据名字风格匹配头像（尽可能匹配原角色）
+  const avatarMap: Record<string, string> = {
+    '玫瑰': '🌸',
+    '金鱼': '🌊',
+    '鲸鱼': '📚',
+    '猫': '🐚',
+    '鸟': '🎵',
+    '熊': '☕',
+    '兔': '🌙',
+    '鹿': '🍃',
+    '狐': '🎨',
+    '狼': '⛰️',
+    '花': '🌸',
+    '鱼': '🌊'
+  };
+  
+  // 尝试从名字中提取动物/花名来匹配头像
+  let avatar = '💭';
+  for (const [key, emoji] of Object.entries(avatarMap)) {
+    if (senderName.includes(key)) {
+      avatar = emoji;
+      break;
+    }
+  }
+  
+  // 根据内容推断话题和心情
+  const inferredTopic = topic || (
+    content.includes('焦虑') || content.includes('迷茫') ? '生活感悟' :
+    content.includes('孤独') || content.includes('想念') ? '孤独心情' :
+    content.includes('开心') || content.includes('快乐') ? '开心分享' :
+    content.includes('梦想') || content.includes('追寻') ? '梦想追寻' :
+    '生活感悟'
+  );
+  
+  const inferredMood = mood || (
+    content.includes('焦虑') || content.includes('迷茫') ? 'thoughtful' :
+    content.includes('孤独') || content.includes('想念') ? 'lonely' :
+    content.includes('开心') || content.includes('快乐') ? 'happy' :
+    content.includes('梦想') || content.includes('追寻') ? 'excited' :
+    'thoughtful'
+  );
+  
+  const bottle: BottleLetter = {
+    id: `bottle_restored_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+    senderId: `restored_sender_${senderName}`,
+    senderName,
+    senderAvatar: avatar,
+    senderAge,
+    senderGender: 'other',
+    senderLocation: senderLocation || '未知',
+    content,
+    topic: inferredTopic,
+    mood: inferredMood,
+    timestamp: Date.now() - Math.random() * 7 * 24 * 60 * 60 * 1000,
+    language: 'zh'
+  };
+  
+  return bottle;
+}

@@ -13,7 +13,8 @@ import {
   getBottleStats,
   replyToBottle,
   getRetrievableBottles,
-  retrieveBottle
+  retrieveBottle,
+  restoreBottle
 } from '../utils/bottleFishingSystem';
 import { sendLetter } from '../utils/letterService';
 
@@ -29,6 +30,13 @@ export default function BottleFishingScreen({ onBack, userName }: BottleFishingS
   const [replyContent, setReplyContent] = useState('');
   const [stats, setStats] = useState(getBottleStats());
   const [showHistoryModal, setShowHistoryModal] = useState(false);
+  const [showRestoreModal, setShowRestoreModal] = useState(false);
+  const [restoreForm, setRestoreForm] = useState({
+    name: '',
+    age: '',
+    location: '',
+    content: ''
+  });
   
   useEffect(() => {
     refreshData();
@@ -92,6 +100,26 @@ export default function BottleFishingScreen({ onBack, userName }: BottleFishingS
     } else {
       alert(result.error || '捕回失败');
     }
+  };
+
+  // 恢复丢失的瓶子
+  const handleRestoreBottle = () => {
+    if (!restoreForm.name.trim() || !restoreForm.content.trim()) {
+      alert('请填写角色名和内容');
+      return;
+    }
+
+    const bottle = restoreBottle(
+      restoreForm.name,
+      restoreForm.content,
+      restoreForm.age ? parseInt(restoreForm.age) : undefined,
+      restoreForm.location || undefined
+    );
+
+    setCurrentBottle(bottle);
+    setShowRestoreModal(false);
+    setRestoreForm({ name: '', age: '', location: '', content: '' });
+    alert('✅ 瓶子已恢复！现在可以回信了');
   };
 
   // 回复漂流瓶
@@ -517,6 +545,128 @@ export default function BottleFishingScreen({ onBack, userName }: BottleFishingS
                   );
                 });
               })()}
+            </div>
+
+            {/* 恢复丢失的瓶子按钮 */}
+            <div className="px-6 py-4 border-t border-gray-200">
+              <button
+                onClick={() => {
+                  setShowHistoryModal(false);
+                  setShowRestoreModal(true);
+                }}
+                className="w-full py-3 bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 text-white rounded-xl font-medium transition-colors"
+              >
+                🔧 恢复丢失的瓶子
+              </button>
+              <div className="text-xs text-gray-500 text-center mt-2">
+                找回因界面问题无法操作的瓶子
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 恢复瓶子模态框 */}
+      {showRestoreModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-3xl max-w-md w-full max-h-[80vh] overflow-hidden flex flex-col">
+            {/* 头部 */}
+            <div className="bg-gradient-to-r from-purple-500 to-pink-500 px-6 py-4 text-white">
+              <div className="flex items-center justify-between">
+                <h2 className="text-xl font-bold">🔧 恢复丢失的瓶子</h2>
+                <button
+                  onClick={() => setShowRestoreModal(false)}
+                  className="p-2 hover:bg-white/20 rounded-full transition-colors"
+                >
+                  ✕
+                </button>
+              </div>
+              <div className="text-sm mt-1 opacity-90">
+                根据你记得的信息重新生成瓶子
+              </div>
+            </div>
+
+            {/* 表单 */}
+            <div className="flex-1 overflow-y-auto p-6">
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    角色名 <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={restoreForm.name}
+                    onChange={(e) => setRestoreForm({...restoreForm, name: e.target.value})}
+                    placeholder="例如：迷糊的小玫瑰"
+                    className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-purple-500 focus:border-transparent outline-none"
+                  />
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      年龄
+                    </label>
+                    <input
+                      type="number"
+                      value={restoreForm.age}
+                      onChange={(e) => setRestoreForm({...restoreForm, age: e.target.value})}
+                      placeholder="23"
+                      className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-purple-500 focus:border-transparent outline-none"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      地点
+                    </label>
+                    <input
+                      type="text"
+                      value={restoreForm.location}
+                      onChange={(e) => setRestoreForm({...restoreForm, location: e.target.value})}
+                      placeholder="厦门"
+                      className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-purple-500 focus:border-transparent outline-none"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    瓶子内容 <span className="text-red-500">*</span>
+                  </label>
+                  <textarea
+                    value={restoreForm.content}
+                    onChange={(e) => setRestoreForm({...restoreForm, content: e.target.value})}
+                    placeholder="三十岁的焦虑像潮水一样涌来，没车没房没存款，未来一片迷茫，有时候真的很想知道生活会变好吗？"
+                    rows={6}
+                    className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-purple-500 focus:border-transparent outline-none resize-none"
+                  />
+                </div>
+
+                <div className="bg-blue-50 border border-blue-200 rounded-xl p-4">
+                  <div className="text-sm text-blue-800">
+                    <div className="font-medium mb-1">💡 提示</div>
+                    <div className="text-xs leading-relaxed">
+                      系统会根据角色名智能匹配头像，并根据内容推断话题和心情。尽可能填写完整信息以获得最佳效果。
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* 底部按钮 */}
+            <div className="px-6 py-4 border-t border-gray-200 flex gap-3">
+              <button
+                onClick={() => setShowRestoreModal(false)}
+                className="flex-1 py-3 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-xl font-medium transition-colors"
+              >
+                取消
+              </button>
+              <button
+                onClick={handleRestoreBottle}
+                className="flex-1 py-3 bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 text-white rounded-xl font-medium transition-colors"
+              >
+                恢复瓶子
+              </button>
             </div>
           </div>
         </div>
