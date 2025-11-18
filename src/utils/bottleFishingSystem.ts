@@ -128,7 +128,8 @@ export function getTodayFishingRecord(): BottleFishingRecord {
         date: today,
         fishedCount: 0,
         maxCount: MAX_DAILY_FISHING,
-        thrownBackBottles: []
+        thrownBackBottles: [],
+        fishedBottles: []
       };
       localStorage.setItem(FISHING_STORAGE_KEY, JSON.stringify(newRecord));
       return newRecord;
@@ -141,7 +142,8 @@ export function getTodayFishingRecord(): BottleFishingRecord {
     date: today,
     fishedCount: 0,
     maxCount: MAX_DAILY_FISHING,
-    thrownBackBottles: []
+    thrownBackBottles: [],
+    fishedBottles: []
   };
   localStorage.setItem(FISHING_STORAGE_KEY, JSON.stringify(newRecord));
   return newRecord;
@@ -246,6 +248,16 @@ export function fishBottle(): { success: boolean; bottle?: BottleLetter; error?:
   const record = getTodayFishingRecord();
   record.fishedCount++;
   record.lastFishingTime = Date.now();
+  
+  // 记录打捞的瓶子（用于追踪未处理的瓶子）
+  if (!record.fishedBottles) {
+    record.fishedBottles = [];
+  }
+  record.fishedBottles.push({
+    ...bottle,
+    fishedTime: Date.now()
+  });
+  
   saveFishingRecord(record);
   
   // 更新统计
@@ -261,8 +273,14 @@ export function fishBottle(): { success: boolean; bottle?: BottleLetter; error?:
  */
 export function throwBackBottle(bottle?: BottleLetter): boolean {
   if (bottle) {
-    // 记录投回的瓶子（保存1天）
     const record = getTodayFishingRecord();
+    
+    // 从打捞记录中移除（因为已经明确投回了）
+    if (record.fishedBottles) {
+      record.fishedBottles = record.fishedBottles.filter(b => b.id !== bottle.id);
+    }
+    
+    // 记录投回的瓶子（保存1天）
     if (!record.thrownBackBottles) {
       record.thrownBackBottles = [];
     }
@@ -282,21 +300,32 @@ export function throwBackBottle(bottle?: BottleLetter): boolean {
 }
 
 /**
- * 获取可以捞回的瓶子（1天内投回的）
+ * 获取可以捞回的瓶子（包括投回的和未处理的）
  */
-export function getRetrievableBottles(): (BottleLetter & { thrownBackTime: number })[] {
+export function getRetrievableBottles(): Array<BottleLetter & { thrownBackTime?: number; fishedTime?: number; type: 'thrown' | 'unfished' }> {
   const record = getTodayFishingRecord();
   const now = Date.now();
   const oneDayMs = 24 * 60 * 60 * 1000;
   
-  if (!record.thrownBackBottles) {
-    return [];
+  const result: Array<BottleLetter & { thrownBackTime?: number; fishedTime?: number; type: 'thrown' | 'unfished' }> = [];
+  
+  // 1. 添加1天内投回的瓶子
+  if (record.thrownBackBottles) {
+    const thrownBottles = record.thrownBackBottles
+      .filter(bottle => (now - bottle.thrownBackTime) < oneDayMs)
+      .map(bottle => ({ ...bottle, type: 'thrown' as const }));
+    result.push(...thrownBottles);
   }
   
-  // 过滤出1天内投回的瓶子
-  return record.thrownBackBottles.filter(bottle => 
-    (now - bottle.thrownBackTime) < oneDayMs
-  );
+  // 2. 添加打捞但未处理的瓶子（1天内）
+  if (record.fishedBottles) {
+    const unfishedBottles = record.fishedBottles
+      .filter(bottle => (now - bottle.fishedTime) < oneDayMs)
+      .map(bottle => ({ ...bottle, type: 'unfished' as const }));
+    result.push(...unfishedBottles);
+  }
+  
+  return result;
 }
 
 /**
@@ -310,20 +339,35 @@ export function retrieveBottle(bottleId: string): { success: boolean; bottle?: B
     return { success: false, error: '找不到这个瓶子或已漂远' };
   }
   
-  // 从投回记录中移除
+  // 从对应的记录中移除
   const record = getTodayFishingRecord();
-  if (record.thrownBackBottles) {
+  
+  if (bottle.type === 'thrown' && record.thrownBackBottles) {
+    // 从投回记录中移除
     record.thrownBackBottles = record.thrownBackBottles.filter(b => b.id !== bottleId);
-    saveFishingRecord(record);
+  } else if (bottle.type === 'unfished' && record.fishedBottles) {
+    // 从打捞记录中移除
+    record.fishedBottles = record.fishedBottles.filter(b => b.id !== bottleId);
   }
+  
+  saveFishingRecord(record);
   
   return { success: true, bottle };
 }
 
 /**
- * 回复漂流瓶（记录统计）
+ * 回复漂流瓶（记录统计并从打捞记录中移除）
  */
-export function replyToBottle(): void {
+export function replyToBottle(bottleId?: string): void {
+  if (bottleId) {
+    // 从打捞记录中移除（因为已经回复了）
+    const record = getTodayFishingRecord();
+    if (record.fishedBottles) {
+      record.fishedBottles = record.fishedBottles.filter(b => b.id !== bottleId);
+      saveFishingRecord(record);
+    }
+  }
+  
   const stats = getBottleStats();
   stats.totalReplied++;
   saveBottleStats(stats);

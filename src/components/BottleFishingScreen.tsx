@@ -115,8 +115,8 @@ export default function BottleFishingScreen({ onBack, userName }: BottleFishingS
         currentBottle.content // 漂流瓶的原始内容
       );
       
-      // 记录统计
-      replyToBottle();
+      // 记录统计并从未处理列表中移除
+      replyToBottle(currentBottle.id);
       
       alert(`✅ 回信已寄出！\n\n你的信已经装进瓶子里，飘向了 ${currentBottle.senderName}`);
       
@@ -427,7 +427,7 @@ export default function BottleFishingScreen({ onBack, userName }: BottleFishingS
                 </button>
               </div>
               <div className="text-sm mt-1 opacity-90">
-                投回的瓶子1天内可以捕回
+                打捞的瓶子1天内都可以捕回继续处理
               </div>
             </div>
 
@@ -462,14 +462,20 @@ export default function BottleFishingScreen({ onBack, userName }: BottleFishingS
                     <div className="text-center py-8 text-gray-400">
                       <div className="text-4xl mb-3">🌊</div>
                       <div>暂无可捞回的瓶子</div>
-                      <div className="text-xs mt-2">投回的瓶子会保存1天</div>
+                      <div className="text-xs mt-2">打捞后的瓶子会保存1天</div>
                     </div>
                   );
                 }
 
                 return retrievableBottles.map((bottle) => {
-                  const timeLeft = 24 * 60 * 60 * 1000 - (Date.now() - bottle.thrownBackTime);
+                  // 根据类型获取时间
+                  const time = bottle.type === 'thrown' ? bottle.thrownBackTime! : bottle.fishedTime!;
+                  const timeLeft = 24 * 60 * 60 * 1000 - (Date.now() - time);
                   const hoursLeft = Math.floor(timeLeft / (60 * 60 * 1000));
+                  
+                  // 根据类型显示不同的标签
+                  const typeLabel = bottle.type === 'thrown' ? '已投回' : '未处理';
+                  const typeColor = bottle.type === 'thrown' ? 'bg-orange-100 text-orange-600' : 'bg-purple-100 text-purple-600';
                   
                   return (
                     <div 
@@ -481,7 +487,12 @@ export default function BottleFishingScreen({ onBack, userName }: BottleFishingS
                           {bottle.senderAvatar}
                         </div>
                         <div className="flex-1 min-w-0">
-                          <div className="font-medium text-gray-800">{bottle.senderName}</div>
+                          <div className="flex items-center gap-2 mb-1">
+                            <span className="font-medium text-gray-800">{bottle.senderName}</span>
+                            <span className={`text-xs px-2 py-0.5 rounded-full ${typeColor}`}>
+                              {typeLabel}
+                            </span>
+                          </div>
                           <div className="text-xs text-gray-600 mb-2">
                             {bottle.senderAge && <span>{bottle.senderAge}岁 · </span>}
                             {bottle.senderLocation}
