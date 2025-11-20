@@ -9,6 +9,7 @@ import { BottleLetter } from '../types/bottle';
 import {
   canFishToday,
   fishBottle,
+  fishBottleIntelligent,
   throwBackBottle,
   getBottleStats,
   replyToBottle,
@@ -16,6 +17,7 @@ import {
   retrieveBottle,
   restoreBottle
 } from '../utils/bottleFishingSystem';
+import { checkAPIAvailability } from '../utils/intelligentBottleGenerator';
 import { sendLetter } from '../utils/letterService';
 
 interface BottleFishingScreenProps {
@@ -46,8 +48,8 @@ export default function BottleFishingScreen({ onBack, userName }: BottleFishingS
     setStats(getBottleStats());
   };
 
-  // 打捞漂流瓶动画
-  const handleFish = () => {
+  // 打捞漂流瓶动画（智能版本）
+  const handleFish = async () => {
     const check = canFishToday();
     if (!check.can) {
       alert(check.reason);
@@ -56,18 +58,52 @@ export default function BottleFishingScreen({ onBack, userName }: BottleFishingS
 
     setIsFishing(true);
     
-    // 模拟打捞动画（2秒）
-    setTimeout(() => {
-      const result = fishBottle();
-      if (result.success && result.bottle) {
-        setCurrentBottle(result.bottle);
-        setIsFishing(false);
-        refreshData();
-      } else {
-        alert(result.error || '打捞失败');
-        setIsFishing(false);
-      }
-    }, 2000);
+    try {
+      // 显示打捞动画和智能生成提示
+      const apiAvailable = checkAPIAvailability();
+      
+      // 模拟打捞动画（2秒）
+      setTimeout(async () => {
+        try {
+          let result;
+          if (apiAvailable) {
+            // 使用AI智能生成
+            result = await fishBottleIntelligent();
+          } else {
+            // 降级到传统生成
+            result = fishBottle();
+          }
+          
+          if (result.success && result.bottle) {
+            setCurrentBottle(result.bottle);
+            setIsFishing(false);
+            refreshData();
+            
+            // 如果使用了AI生成，给用户提示
+            if (apiAvailable) {
+              console.log('🤖 使用AI智能生成漂流瓶内容');
+            }
+          } else {
+            alert(result.error || '打捞失败');
+            setIsFishing(false);
+          }
+        } catch (error) {
+          console.error('智能打捞失败:', error);
+          // 降级到同步版本
+          const result = fishBottle();
+          if (result.success && result.bottle) {
+            setCurrentBottle(result.bottle);
+          } else {
+            alert(result.error || '打捞失败');
+          }
+          setIsFishing(false);
+        }
+      }, 2000);
+    } catch (error) {
+      console.error('打捞过程出错:', error);
+      setIsFishing(false);
+      alert('打捞出现问题，请重试');
+    }
   };
 
   // 投回海里

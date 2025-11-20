@@ -6,7 +6,8 @@
 import { BottleLetter, BottleFishingRecord, UserBottleStats } from '../types/bottle';
 import { generateXianyuStyleName } from './randomNameGenerator';
 import { generateAgeAppropriateBottle } from './ageAppropriateBottleGenerator';
-import { recordBottleContent, evaluateContentDiversity, getRecommendedContentTypes } from './bottleContentDiversityManager';
+import { recordBottleContent, evaluateContentDiversity } from './bottleContentDiversityManager';
+import { generateIntelligentBottle, checkAPIAvailability } from './intelligentBottleGenerator';
 
 const FISHING_STORAGE_KEY = 'bottle_fishing_record';
 const STATS_STORAGE_KEY = 'bottle_stats';
@@ -521,7 +522,48 @@ export function generateRandomBottleOld(): BottleLetter {
 }
 
 /**
- * 生成年龄匹配的随机漂流瓶 (新版本)
+ * 智能生成漂流瓶内容 (异步版本)
+ */
+export async function generateRandomBottleAsync(): Promise<BottleLetter> {
+  let bottle: BottleLetter;
+  let attempts = 0;
+  const maxAttempts = 3;
+  
+  // 检查API是否可用
+  const apiAvailable = checkAPIAvailability();
+  
+  // 尝试生成高质量内容
+  do {
+    try {
+      if (apiAvailable && Math.random() < 0.9) {
+        // 90% 概率使用AI智能生成
+        bottle = await generateIntelligentBottle();
+      } else {
+        // 降级到年龄匹配生成器
+        bottle = generateAgeAppropriateBottle();
+      }
+      
+      // 评估多样性
+      const diversity = evaluateContentDiversity(bottle);
+      if (diversity.score >= 70 || attempts >= maxAttempts - 1) {
+        break;
+      }
+    } catch (error) {
+      console.warn('智能生成失败，使用降级方案:', error);
+      bottle = generateAgeAppropriateBottle();
+      break;
+    }
+    attempts++;
+  } while (attempts < maxAttempts);
+  
+  // 记录生成的内容
+  recordBottleContent(bottle);
+  
+  return bottle;
+}
+
+/**
+ * 生成年龄匹配的随机漂流瓶 (同步版本，兼容性)
  */
 export function generateRandomBottle(): BottleLetter {
   let bottle: BottleLetter;
@@ -551,7 +593,50 @@ export function generateRandomBottle(): BottleLetter {
 }
 
 /**
- * 打捞漂流瓶
+ * 智能打捞漂流瓶 (异步版本，推荐使用)
+ */
+export async function fishBottleIntelligent(): Promise<{ success: boolean; bottle?: BottleLetter; error?: string }> {
+  const check = canFishToday();
+  
+  if (!check.can) {
+    return { success: false, error: check.reason };
+  }
+  
+  try {
+    // 智能生成漂流瓶
+    const bottle = await generateRandomBottleAsync();
+    
+    // 更新打捞记录
+    const record = getTodayFishingRecord();
+    record.fishedCount++;
+    record.lastFishingTime = Date.now();
+    
+    // 记录打捞的瓶子
+    if (!record.fishedBottles) {
+      record.fishedBottles = [];
+    }
+    record.fishedBottles.push({
+      ...bottle,
+      fishedTime: Date.now()
+    });
+    
+    saveFishingRecord(record);
+    
+    // 更新统计
+    const stats = getBottleStats();
+    stats.totalFished++;
+    saveBottleStats(stats);
+    
+    return { success: true, bottle };
+  } catch (error) {
+    console.error('智能打捞失败:', error);
+    // 降级到同步版本
+    return fishBottle();
+  }
+}
+
+/**
+ * 打捞漂流瓶 (同步版本，兼容性保持)
  */
 export function fishBottle(): { success: boolean; bottle?: BottleLetter; error?: string } {
   const check = canFishToday();
