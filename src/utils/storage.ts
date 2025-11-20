@@ -1,31 +1,52 @@
 /**
- * 智能存储系统：
- * - 小数据（配置）→ localStorage（快速同步）
- * - 大数据（contacts、消息）→ IndexedDB（无限容量）
+ * 🔥 全新存储系统架构 v2.0
  * 
- * 优点：
- * - localStorage 限制只有 5-10MB，不适合存储聊天记录
- * - IndexedDB 可以存储 GB 级别数据，浏览器自动管理
+ * 设计原则：
+ * 1. localStorage: 只存储少量配置数据（< 1MB）
+ * 2. IndexedDB: 存储所有大数据（无限容量）
+ * 3. 内存缓存: 提供高速读取性能
+ * 4. 智能迁移: 自动处理老用户数据
+ * 
+ * 避免问题：
+ * - 防止localStorage过载导致应用崩溃
+ * - 避免数据激增影响性能
+ * - 确保数据持久化安全
  */
 
-// 定义哪些数据应该用 IndexedDB（大数据）
-const LARGE_DATA_KEYS = [
-  'conversations',           // 对话列表（最大）
-  'messages',
-  'chat_history',
-  'moments_data',           // 朋友圈数据
-  'chat_memory_banks',      // 聊天记忆库
-  'group_chat_memories',    // 群聊记忆
-  'ai_finance_data',        // AI财务数据
-  'relationships',          // 关系网络
-  'documents_library',      // 文档库
-  'moments_interactions',   // 朋友圈互动
-  'music_library'           // 音乐库
+// 🟢 localStorage 专用键（仅小量配置数据）
+const LOCAL_STORAGE_KEYS = [
+  'apiConfig',          // API配置
+  'userProfile',        // 用户资料  
+  'theme',              // 主题设置
+  'landscapeImage',     // 风景壁纸
+  'bannerImage',        // 头像壁纸
+  'appSettings',        // 应用设置
+  'uiPreferences'       // UI偏好
 ];
 
-// 判断是否应该使用 IndexedDB
+// 🔵 IndexedDB 专用键（所有大数据）
+const INDEXED_DB_KEYS = [
+  'conversations',      // 对话列表
+  'moments',            // 朋友圈数据
+  'chat_memory_banks',  // 记忆库
+  'ai_finance_data',    // AI财务
+  'relationships',      // 关系网络  
+  'documents_library',  // 文档库
+  'music_library',      // 音乐库
+  'user_data',          // 用户扩展数据
+  'app_cache'           // 应用缓存
+];
+
+/**
+ * 判断数据应该存储在哪里
+ */
+const shouldUseLocalStorage = (key: string): boolean => {
+  return LOCAL_STORAGE_KEYS.includes(key);
+};
+
 const shouldUseIndexedDB = (key: string): boolean => {
-  return LARGE_DATA_KEYS.some(k => key.startsWith(k));
+  return INDEXED_DB_KEYS.includes(key) || 
+         INDEXED_DB_KEYS.some(k => key.startsWith(k + '_'));
 };
 
 // IndexedDB 配置
@@ -33,8 +54,12 @@ const DB_NAME = 'MobileAIChatDB';
 const DB_VERSION = 1;
 const STORE_NAME = 'appData';
 
+// 🧠 内存缓存系统
+let memoryCache = new Map<string, any>();
+let cacheInitialized = false;
+
 /**
- * 打开 IndexedDB
+ * 打开 IndexedDB（优化版）
  */
 const openDB = (): Promise<IDBDatabase> => {
   return new Promise((resolve, reject) => {
@@ -46,8 +71,6 @@ const openDB = (): Promise<IDBDatabase> => {
     };
     
     request.onsuccess = () => {
-      // 🔥 性能优化：移除频繁的成功日志
-      // console.log('✅ IndexedDB 打开成功');
       resolve(request.result);
     };
     
@@ -55,113 +78,66 @@ const openDB = (): Promise<IDBDatabase> => {
       const db = (event.target as IDBOpenDBRequest).result;
       if (!db.objectStoreNames.contains(STORE_NAME)) {
         db.createObjectStore(STORE_NAME);
-        // console.log('✅ IndexedDB 对象存储创建成功');
+        console.log('✅ IndexedDB 对象存储创建成功');
       }
     };
   });
 };
 
 /**
- * 保存到 localStorage
+ * 🟢 localStorage 操作（仅配置数据）
  */
-const saveToLocalStorage = (key: string, value: any): boolean => {
+const saveToLocal = (key: string, data: any): void => {
   try {
-    const jsonData = JSON.stringify(value);
-    const sizeKB = (jsonData.length / 1024).toFixed(2);
-    
-    localStorage.setItem(key, jsonData);
-    
-    // 🔥 性能优化：只在重要数据时打印
-    if (key === 'conversations' || key === 'apiConfig') {
-      console.log(`✅ localStorage 保存成功: ${key} (${sizeKB} KB)`);
-    }
-    return true;
-  } catch (e) {
-    if (e instanceof Error && e.name === 'QuotaExceededError') {
-      console.error(`❌ localStorage 空间不足 (${key})`, e);
-      
-      // 获取当前使用情况
-      let totalSize = 0;
-      for (let i = 0; i < localStorage.length; i++) {
-        const key = localStorage.key(i);
-        if (key) {
-          const item = localStorage.getItem(key);
-          if (item) totalSize += item.length;
-        }
-      }
-      
-      console.error(`📊 localStorage 当前总大小: ${(totalSize / 1024 / 1024).toFixed(2)} MB`);
-    } else {
-      console.error(`❌ localStorage 保存失败 (${key}):`, e);
-    }
-    return false;
+    localStorage.setItem(key, JSON.stringify(data));
+    console.log(`💾 配置保存: ${key}`);
+  } catch (error) {
+    console.error(`❌ 配置保存失败 ${key}:`, error);
+    throw error;
   }
 };
 
-/**
- * 从 localStorage 读取
- */
-const loadFromLocalStorage = (key: string): any => {
+const loadFromLocal = (key: string): any => {
   try {
-    const jsonData = localStorage.getItem(key);
-    if (jsonData === null) {
-      // console.log(`ℹ️ localStorage 无数据: ${key}`);
-      return null;
-    }
-    const data = JSON.parse(jsonData);
-    // 🔥 性能优化：移除频繁的读取日志
-    // console.log(`✅ localStorage 读取成功: ${key}`);
-    return data;
-  } catch (e) {
-    console.error(`❌ localStorage 读取失败 (${key}):`, e);
+    const data = localStorage.getItem(key);
+    return data ? JSON.parse(data) : null;
+  } catch (error) {
+    console.error(`❌ 配置读取失败 ${key}:`, error);
     return null;
   }
 };
 
 /**
- * 从 localStorage 删除
+ * 🔵 IndexedDB 操作（大数据专用）
  */
-const removeFromLocalStorage = (key: string): void => {
-  try {
-    localStorage.removeItem(key);
-    console.log(`✅ localStorage 删除成功: ${key}`);
-  } catch (e) {
-    console.error(`❌ localStorage 删除失败 (${key}):`, e);
-  }
-};
-
-/**
- * 保存到 IndexedDB
- */
-const saveToIndexedDB = async (key: string, value: any): Promise<boolean> => {
+const saveToIndexedDB = async (key: string, data: any): Promise<void> => {
   try {
     const db = await openDB();
     const transaction = db.transaction([STORE_NAME], 'readwrite');
     const store = transaction.objectStore(STORE_NAME);
-    store.put(value, key);
+    
+    store.put(data, key);
     
     return new Promise((resolve, reject) => {
       transaction.oncomplete = () => {
         db.close();
-        // 🔥 性能优化：移除频繁的保存日志
-        // console.log(`✅ IndexedDB 保存成功: ${key}`);
-        resolve(true);
+        // 更新内存缓存
+        memoryCache.set(key, data);
+        console.log(`💾 数据保存: ${key}`);
+        resolve();
       };
       transaction.onerror = () => {
         db.close();
-        console.error(`❌ IndexedDB 保存失败 (${key}):`, transaction.error);
+        console.error(`❌ IndexedDB保存失败 ${key}:`, transaction.error);
         reject(transaction.error);
       };
     });
   } catch (error) {
-    console.error(`❌ IndexedDB 保存失败 (${key}):`, error);
-    return false;
+    console.error(`❌ IndexedDB保存失败 ${key}:`, error);
+    throw error;
   }
 };
 
-/**
- * 从 IndexedDB 读取
- */
 const loadFromIndexedDB = async (key: string): Promise<any> => {
   try {
     const db = await openDB();
@@ -172,208 +148,115 @@ const loadFromIndexedDB = async (key: string): Promise<any> => {
     return new Promise((resolve, reject) => {
       request.onsuccess = () => {
         db.close();
-        // 🔥 性能优化：移除频繁的读取日志
-        // if (request.result) {
-        //   console.log(`✅ IndexedDB 读取成功: ${key}`);
-        // } else {
-        //   console.log(`ℹ️ IndexedDB 无数据: ${key}`);
-        // }
-        resolve(request.result);
+        const data = request.result;
+        // 更新内存缓存
+        if (data !== undefined) {
+          memoryCache.set(key, data);
+        }
+        resolve(data);
       };
       request.onerror = () => {
         db.close();
-        console.error(`❌ IndexedDB 读取失败 (${key}):`, request.error);
+        console.error(`❌ IndexedDB读取失败 ${key}:`, request.error);
         reject(request.error);
       };
     });
   } catch (error) {
-    console.error(`❌ IndexedDB 读取失败 (${key}):`, error);
+    console.error(`❌ IndexedDB读取失败 ${key}:`, error);
     return null;
   }
 };
 
 /**
- * 从 IndexedDB 删除
+ * 🚀 统一存储API - 智能路由
  */
-const removeFromIndexedDB = async (key: string): Promise<void> => {
+
+// 初始化内存缓存
+export const initializeCache = async (): Promise<void> => {
+  if (cacheInitialized) return;
+  
   try {
-    const db = await openDB();
-    const transaction = db.transaction([STORE_NAME], 'readwrite');
-    const store = transaction.objectStore(STORE_NAME);
-    store.delete(key);
+    console.log('🧠 初始化内存缓存...');
     
-    return new Promise((resolve, reject) => {
-      transaction.oncomplete = () => {
-        db.close();
-        // console.log(`✅ IndexedDB 删除成功: ${key}`);
-        resolve();
-      };
-      transaction.onerror = () => {
-        db.close();
-        console.error(`❌ IndexedDB 删除失败 (${key}):`, transaction.error);
-        reject(transaction.error);
-      };
-    });
-  } catch (error) {
-    console.error(`❌ IndexedDB 删除失败 (${key}):`, error);
-  }
-};
-
-/**
- * 保存数据（智能选择存储方式）
- */
-export const smartSave = async (key: string, value: any): Promise<void> => {
-  // 🔥 性能优化：只在关键操作时打印
-  // console.log(`💾 开始保存数据: ${key}`);
-  
-  if (shouldUseIndexedDB(key)) {
-    const success = await saveToIndexedDB(key, value);
-    if (!success) {
-      throw new Error(`IndexedDB 保存失败: ${key}`);
-    }
-  } else {
-    const success = saveToLocalStorage(key, value);
-    if (!success) {
-      throw new Error(`localStorage 保存失败: ${key}`);
-    }
-  }
-};
-
-/**
- * 读取数据（智能选择存储方式）
- */
-export const smartLoad = async (key: string): Promise<any> => {
-  console.log(`📂 开始读取数据: ${key}`);
-  
-  if (shouldUseIndexedDB(key)) {
-    return await loadFromIndexedDB(key);
-  } else {
-    return loadFromLocalStorage(key);
-  }
-};
-
-/**
- * 删除数据（智能选择存储方式）
- */
-export const smartRemove = async (key: string): Promise<void> => {
-  console.log(`🗑️ 开始删除数据: ${key}`);
-  
-  if (shouldUseIndexedDB(key)) {
-    await removeFromIndexedDB(key);
-  } else {
-    removeFromLocalStorage(key);
-  }
-};
-
-/**
- * 迁移 localStorage 数据到 IndexedDB
- */
-export const migrateToIndexedDB = async (key: string): Promise<boolean> => {
-  try {
-    const localData = localStorage.getItem(key);
-    if (localData) {
-      console.log(`🔄 迁移数据到 IndexedDB: ${key}`);
-      const parsedData = JSON.parse(localData);
-      await saveToIndexedDB(key, parsedData);
-      localStorage.removeItem(key);
-      console.log(`✅ 数据迁移成功: ${key}`);
-      return true;
-    }
-    return false;
-  } catch (error) {
-    console.error(`❌ 数据迁移失败: ${key}`, error);
-    return false;
-  }
-};
-
-/**
- * 清除所有存储数据
- */
-export const clearAllStorage = async (): Promise<void> => {
-  console.log('🧹 开始清除所有存储');
-  
-  // 清除 localStorage
-  try {
-    localStorage.clear();
-    console.log('✅ localStorage 已清空');
-  } catch (e) {
-    console.error('❌ localStorage 清空失败:', e);
-  }
-  
-  // 清除 IndexedDB
-  try {
-    const db = await openDB();
-    const transaction = db.transaction([STORE_NAME], 'readwrite');
-    const store = transaction.objectStore(STORE_NAME);
-    store.clear();
-    
-    await new Promise<void>((resolve, reject) => {
-      transaction.oncomplete = () => {
-        db.close();
-        console.log('✅ IndexedDB 已清空');
-        resolve();
-      };
-      transaction.onerror = () => {
-        db.close();
-        console.error('❌ IndexedDB 清空失败:', transaction.error);
-        reject(transaction.error);
-      };
-    });
-  } catch (error) {
-    console.error('❌ IndexedDB 清空失败:', error);
-  }
-};
-
-/**
- * 批量迁移所有大数据到IndexedDB
- */
-export const migrateAllToIndexedDB = async (): Promise<{
-  success: boolean;
-  migratedKeys: string[];
-  errors: { key: string; error: string }[];
-}> => {
-  console.log('🚀 开始批量迁移数据：localStorage → IndexedDB');
-  
-  const migratedKeys: string[] = [];
-  const errors: { key: string; error: string }[] = [];
-  
-  // 找出所有应该使用 IndexedDB 的键
-  const keysToMigrate: string[] = [];
-  for (let i = 0; i < localStorage.length; i++) {
-    const key = localStorage.key(i);
-    if (key && shouldUseIndexedDB(key)) {
-      keysToMigrate.push(key);
-    }
-  }
-  
-  console.log(`📋 发现 ${keysToMigrate.length} 个需要迁移的键:`, keysToMigrate);
-  
-  // 逐个迁移
-  for (const key of keysToMigrate) {
-    try {
-      const success = await migrateToIndexedDB(key);
-      if (success) {
-        migratedKeys.push(key);
+    // 从IndexedDB预载热点数据
+    const hotKeys = ['conversations', 'moments', 'chat_memory_banks'];
+    await Promise.all(hotKeys.map(async (key) => {
+      try {
+        const data = await loadFromIndexedDB(key);
+        if (data !== undefined) {
+          memoryCache.set(key, data);
+        }
+      } catch (error) {
+        console.warn(`⚠️ 预载 ${key} 失败:`, error);
       }
-    } catch (error) {
-      const errorMsg = error instanceof Error ? error.message : '未知错误';
-      errors.push({ key, error: errorMsg });
-      console.error(`❌ 迁移失败 (${key}):`, error);
-    }
+    }));
+    
+    cacheInitialized = true;
+    console.log(`✅ 缓存初始化完成 (${memoryCache.size} 项)`);
+  } catch (error) {
+    console.error('❌ 缓存初始化失败:', error);
+    cacheInitialized = true; // 防止重复尝试
+  }
+};
+
+// 智能保存
+export const save = async (key: string, data: any): Promise<void> => {
+  if (shouldUseLocalStorage(key)) {
+    saveToLocal(key, data);
+  } else {
+    await saveToIndexedDB(key, data);
+  }
+};
+
+// 智能读取（支持缓存）
+export const load = async (key: string): Promise<any> => {
+  // 优先从缓存读取
+  if (memoryCache.has(key)) {
+    return memoryCache.get(key);
   }
   
-  console.log(`✅ 迁移完成：成功 ${migratedKeys.length}，失败 ${errors.length}`);
+  if (shouldUseLocalStorage(key)) {
+    return loadFromLocal(key);
+  } else {
+    return await loadFromIndexedDB(key);
+  }
+};
+
+// 删除数据
+export const remove = async (key: string): Promise<void> => {
+  // 从缓存中删除
+  memoryCache.delete(key);
   
-  return {
-    success: errors.length === 0,
-    migratedKeys,
-    errors
-  };
+  if (shouldUseLocalStorage(key)) {
+    localStorage.removeItem(key);
+  } else {
+    try {
+      const db = await openDB();
+      const transaction = db.transaction([STORE_NAME], 'readwrite');
+      const store = transaction.objectStore(STORE_NAME);
+      store.delete(key);
+      
+      return new Promise((resolve, reject) => {
+        transaction.oncomplete = () => {
+          db.close();
+          resolve();
+        };
+        transaction.onerror = () => {
+          db.close();
+          reject(transaction.error);
+        };
+      });
+    } catch (error) {
+      console.error(`❌ 删除失败 ${key}:`, error);
+    }
+  }
 };
 
 /**
- * 检查是否需要迁移
+ * 🔄 数据迁移系统
  */
+
+// 检查是否需要迁移
 export const checkMigrationNeeded = (): boolean => {
   for (let i = 0; i < localStorage.length; i++) {
     const key = localStorage.key(i);
@@ -384,76 +267,155 @@ export const checkMigrationNeeded = (): boolean => {
   return false;
 };
 
-/**
- * 获取存储使用情况
- */
-export const getStorageInfo = async (): Promise<{
-  localStorage: {
-    used: number;
-    usedMB: number;
-    quota: number;
-    quotaMB: number;
-    percentage: number;
-    itemCount: number;
-    largeDataInLocalStorage: string[]; // 应该迁移的大数据
-  };
-  indexedDB: {
-    used: number;
-    usedMB: number;
-    quota: number;
-    quotaMB: number;
-    percentage: number;
-  };
+// 执行数据迁移
+export const migrateData = async (): Promise<{
+  success: boolean;
+  migratedKeys: string[];
+  errors: string[];
 }> => {
-  // localStorage 信息
-  let localStorageUsed = 0;
-  let localStorageItemCount = 0;
-  const largeDataInLocalStorage: string[] = [];
+  const migratedKeys: string[] = [];
+  const errors: string[] = [];
+  
+  console.log('🔄 开始数据迁移: localStorage → IndexedDB');
+  
+  // 找到需要迁移的数据
+  const keysToMigrate: string[] = [];
+  for (let i = 0; i < localStorage.length; i++) {
+    const key = localStorage.key(i);
+    if (key && shouldUseIndexedDB(key)) {
+      keysToMigrate.push(key);
+    }
+  }
+  
+  console.log(`📋 发现 ${keysToMigrate.length} 项需要迁移:`, keysToMigrate);
+  
+  // 迁移每一项
+  for (const key of keysToMigrate) {
+    try {
+      const data = localStorage.getItem(key);
+      if (data) {
+        const parsed = JSON.parse(data);
+        await saveToIndexedDB(key, parsed);
+        localStorage.removeItem(key);
+        migratedKeys.push(key);
+        console.log(`✅ 已迁移: ${key}`);
+      }
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : '未知错误';
+      errors.push(`${key}: ${msg}`);
+      console.error(`❌ 迁移失败 ${key}:`, error);
+    }
+  }
+  
+  const success = errors.length === 0;
+  console.log(`${success ? '✅' : '⚠️'} 迁移完成: ${migratedKeys.length} 成功, ${errors.length} 失败`);
+  
+  return { success, migratedKeys, errors };
+};
+
+// 获取存储状态
+export const getStorageStatus = async (): Promise<{
+  localStorage: { items: number; sizeMB: number; needsMigration: string[] };
+  indexedDB: { items: number; sizeMB: number };
+  cache: { items: number };
+}> => {
+  // localStorage 分析
+  let localItems = 0;
+  let localSize = 0;
+  const needsMigration: string[] = [];
   
   for (let i = 0; i < localStorage.length; i++) {
     const key = localStorage.key(i);
     if (key) {
       const item = localStorage.getItem(key);
       if (item) {
-        localStorageUsed += item.length * 2; // UTF-16, 每字符2字节
-        localStorageItemCount++;
+        localItems++;
+        localSize += item.length * 2; // UTF-16
         
-        // 检查是否为大数据
         if (shouldUseIndexedDB(key)) {
-          largeDataInLocalStorage.push(key);
+          needsMigration.push(key);
         }
       }
     }
   }
   
-  const localStorageQuota = 10 * 1024 * 1024; // 估计 10MB
+  // IndexedDB 估算
+  let indexedDBSize = 0;
+  let indexedDBItems = 0;
   
-  // IndexedDB 信息（通过 Storage API）
-  let indexedDBUsed = 0;
-  let indexedDBQuota = 0;
-  
-  if ('storage' in navigator && 'estimate' in navigator.storage) {
-    const estimate = await navigator.storage.estimate();
-    indexedDBUsed = estimate.usage || 0;
-    indexedDBQuota = estimate.quota || 0;
+  try {
+    if ('storage' in navigator && 'estimate' in navigator.storage) {
+      const estimate = await navigator.storage.estimate();
+      indexedDBSize = estimate.usage || 0;
+    }
+    
+    // 尝试估算项目数
+    const db = await openDB();
+    const transaction = db.transaction([STORE_NAME], 'readonly');
+    const store = transaction.objectStore(STORE_NAME);
+    
+    const countRequest = store.count();
+    indexedDBItems = await new Promise((resolve) => {
+      countRequest.onsuccess = () => resolve(countRequest.result);
+      countRequest.onerror = () => resolve(0);
+    });
+    
+    db.close();
+  } catch (error) {
+    console.warn('⚠️ 获取IndexedDB信息失败:', error);
   }
   
   return {
     localStorage: {
-      used: localStorageUsed,
-      usedMB: localStorageUsed / 1024 / 1024,
-      quota: localStorageQuota,
-      quotaMB: localStorageQuota / 1024 / 1024,
-      percentage: (localStorageUsed / localStorageQuota) * 100,
-      itemCount: localStorageItemCount,
-      largeDataInLocalStorage
+      items: localItems,
+      sizeMB: localSize / 1024 / 1024,
+      needsMigration
     },
     indexedDB: {
-      used: indexedDBUsed,
-      usedMB: indexedDBUsed / 1024 / 1024,
-      quota: indexedDBQuota,
-      quotaMB: indexedDBQuota / 1024 / 1024,
-      percentage: indexedDBQuota ? (indexedDBUsed / indexedDBQuota) * 100 : 0
+      items: indexedDBItems,
+      sizeMB: indexedDBSize / 1024 / 1024
+    },
+    cache: {
+      items: memoryCache.size
     }
   };
 };
+
+// 清空所有数据
+export const clearAllData = async (): Promise<void> => {
+  console.log('🧹 清空所有数据...');
+  
+  // 清空缓存
+  memoryCache.clear();
+  
+  // 清空localStorage
+  localStorage.clear();
+  
+  // 清空IndexedDB
+  try {
+    const db = await openDB();
+    const transaction = db.transaction([STORE_NAME], 'readwrite');
+    const store = transaction.objectStore(STORE_NAME);
+    store.clear();
+    
+    await new Promise<void>((resolve, reject) => {
+      transaction.oncomplete = () => {
+        db.close();
+        resolve();
+      };
+      transaction.onerror = () => {
+        db.close();
+        reject(transaction.error);
+      };
+    });
+  } catch (error) {
+    console.error('❌ 清空IndexedDB失败:', error);
+  }
+  
+  console.log('✅ 所有数据已清空');
+};
+
+// 兼容性导出（暂时保留旧API名称）
+export const smartLoad = load;
+export const smartSave = save;
+export const smartRemove = remove;

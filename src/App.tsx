@@ -38,7 +38,7 @@ import MessageNotification from './components/MessageNotification';
 import LetterNotification from './components/LetterNotification';
 import AchievementNotification from './components/AchievementNotification';
 import StorageMigrationPrompt from './components/StorageMigrationPrompt';
-import { smartLoad, smartSave, migrateToIndexedDB, checkMigrationNeeded, getStorageInfo } from './utils/storage';
+import { load, save, initializeCache, checkMigrationNeeded, migrateData, getStorageStatus } from './utils/storage';
 import { generateAIMoment } from './utils/aiMomentsGenerator';
 import { backgroundGenerationService } from './utils/backgroundGenerationService';
 import { initializeLetterTimers } from './utils/letterService';
@@ -90,12 +90,12 @@ function App() {
       const needsMigration = checkMigrationNeeded();
       
       if (needsMigration) {
-        // 检查localStorage使用率
-        const info = await getStorageInfo();
+        // 检查localStorage使用状况
+        const status = await getStorageStatus();
         
-        // 如果使用率超过60%，显示迁移提示
-        if (info.localStorage.percentage > 60) {
-          console.log(`📊 localStorage使用率: ${info.localStorage.percentage.toFixed(1)}%，建议迁移`);
+        // 如果有需要迁移的数据，显示迁移提示
+        if (status.localStorage.needsMigration.length > 0) {
+          console.log(`📊 发现 ${status.localStorage.needsMigration.length} 项数据需要迁移`);
           setShowMigrationPrompt(true);
         }
       }
@@ -104,14 +104,21 @@ function App() {
     checkStorage();
   }, []);
 
-  // 初始化对话数据
+  // 初始化存储系统和对话数据
   useEffect(() => {
     const loadData = async () => {
-      // 尝试从localStorage迁移到IndexedDB
-      await migrateToIndexedDB('conversations');
+      // 🧠 先初始化缓存系统
+      await initializeCache();
       
-      // 从智能存储加载数据
-      const saved = await smartLoad('conversations');
+      // 🔄 检查并执行数据迁移
+      if (checkMigrationNeeded()) {
+        console.log('⚡ 检测到需要迁移的数据，开始自动迁移...');
+        const result = await migrateData();
+        console.log(`📊 迁移结果: ${result.migratedKeys.length} 成功, ${result.errors.length} 失败`);
+      }
+      
+      // 从新存储系统加载数据
+      const saved = await load('conversations');
       
       let loadedConversations: Conversation[] = [];
       
@@ -126,7 +133,7 @@ function App() {
           loadedConversations = parsed;
           setConversations(parsed);
           // 保存到新存储
-          await smartSave('conversations', parsed);
+          await save('conversations', parsed);
         } else {
           // 添加预设联系人
           const presetContacts: Conversation[] = [
@@ -237,7 +244,7 @@ function App() {
     // 🚀 性能优化：使用防抖延迟保存，避免频繁写入localStorage阻塞主线程
     const timeoutId = setTimeout(async () => {
       if (conversations.length > 0) {
-        await smartSave('conversations', conversations);
+        await save('conversations', conversations);
       }
     }, 300); // 300ms防抖，合并连续的更新
     

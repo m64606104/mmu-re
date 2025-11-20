@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Database, HardDrive, CheckCircle, XCircle, Loader } from 'lucide-react';
-import { migrateAllToIndexedDB, getStorageInfo } from '../utils/storage';
+import { migrateData, getStorageStatus } from '../utils/storage';
 
 interface StorageMigrationPromptProps {
   onClose: () => void;
@@ -12,14 +12,28 @@ export default function StorageMigrationPrompt({ onClose, onMigrationComplete }:
   const [migrationResult, setMigrationResult] = useState<{
     success: boolean;
     migratedKeys: string[];
-    errors: { key: string; error: string }[];
+    errors: string[];
   } | null>(null);
   const [storageInfo, setStorageInfo] = useState<any>(null);
 
   // 加载存储信息
   const loadStorageInfo = async () => {
-    const info = await getStorageInfo();
-    setStorageInfo(info);
+    const status = await getStorageStatus();
+    // 转换为兼容格式
+    setStorageInfo({
+      localStorage: {
+        usedMB: status.localStorage.sizeMB,
+        quotaMB: 10,
+        percentage: (status.localStorage.sizeMB / 10) * 100,
+        itemCount: status.localStorage.items,
+        largeDataInLocalStorage: status.localStorage.needsMigration
+      },
+      indexedDB: {
+        usedMB: status.indexedDB.sizeMB,
+        quotaMB: 1024,
+        percentage: (status.indexedDB.sizeMB / 1024) * 100
+      }
+    });
   };
 
   useEffect(() => {
@@ -29,7 +43,7 @@ export default function StorageMigrationPrompt({ onClose, onMigrationComplete }:
   const handleMigrate = async () => {
     setIsMigrating(true);
     try {
-      const result = await migrateAllToIndexedDB();
+      const result = await migrateData();
       setMigrationResult(result);
       
       if (result.success) {
@@ -45,7 +59,7 @@ export default function StorageMigrationPrompt({ onClose, onMigrationComplete }:
       setMigrationResult({
         success: false,
         migratedKeys: [],
-        errors: [{ key: 'all', error: error instanceof Error ? error.message : '未知错误' }]
+        errors: [error instanceof Error ? error.message : '未知错误']
       });
     } finally {
       setIsMigrating(false);
@@ -216,10 +230,7 @@ export default function StorageMigrationPrompt({ onClose, onMigrationComplete }:
                         <div key={index} className="text-sm text-red-800 py-1">
                           <div className="flex items-start gap-2">
                             <XCircle className="w-3 h-3 mt-0.5 flex-shrink-0" />
-                            <div>
-                              <div className="font-medium">{error.key}</div>
-                              <div className="text-xs text-red-600">{error.error}</div>
-                            </div>
+                            <div className="text-xs text-red-600">{error}</div>
                           </div>
                         </div>
                       ))}
