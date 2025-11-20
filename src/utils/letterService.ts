@@ -378,6 +378,23 @@ export function sendLetter(
   const now = Date.now();
   const replyDelay = calculateReplyDelay(false);
   
+  // 🔍 检查是否存在与同一收件人的现有信件（非漂流瓶情况）
+  if (!isBottle) {
+    const existingLetters = getLettersFromStorage();
+    const existingLetter = existingLetters.find(letter => 
+      letter.receiverId === receiverId && 
+      !letter.isBottle && 
+      !letter.isArchived &&
+      letter.senderName === senderName // 确保是同一发件人
+    );
+    
+    if (existingLetter) {
+      console.log('📬 找到现有信件，继续多轮交流:', existingLetter.id);
+      // 使用现有的信件继续交流，而不是创建新信件
+      return continueExistingLetter(existingLetter.id, content, senderName);
+    }
+  }
+  
   // 🎭 确定AI人设（按优先级）
   let finalReceiverId = receiverId;
   let finalReceiverName = receiverName;
@@ -1026,12 +1043,38 @@ ${allDetails}
       motivationGuide = `你就是正常的交流心态，该分享就分享，该保留就保留。`;
   }
 
+  // 分析信件内容是否包含身份透露信息
+  const identityRevealPatterns = [
+    /我就是之前的?那个.*人/,
+    /我之前用.*名字/,
+    /其实我就是/,
+    /我实际上是/,
+    /解除.*匿名/,
+    /不再匿名/,
+    /告诉你我的真实/,
+    /现在可以告诉你/,
+    /我的真名是/,
+    /实名.*我是/
+  ];
+  
+  const isRevealingIdentity = identityRevealPatterns.some(pattern => 
+    pattern.test(currentRound.userLetter.content)
+  );
+  
   // 构建寄信人信息提示
-  const senderInfo = letter.isAnonymous 
-    ? `这是一封来自陌生人的匿名信，寄信人使用化名"${letter.anonymousName}"，你不认识ta。这是一个完全陌生的笔友，你们之前没有任何关系。`
-    : letter.isBottle
-    ? `这是漂流瓶模式，寄信人是陌生人（你不认识的人），你们是第一次通过漂流瓶认识。`
-    : `这封信来自你认识的人"${letter.senderName}"，你们有一定的关系（朋友/熟人），不是完全陌生的。`;
+  let senderInfo = '';
+  
+  if (letter.isAnonymous) {
+    if (isRevealingIdentity) {
+      senderInfo = `⚠️ 重要：这封信来自之前的匿名寄信人"${letter.anonymousName}"，但在这封信中，ta主动透露了自己的身份或表示不再匿名。请仔细阅读信件内容中的身份信息，并适当地回应这种身份转换。你应该意识到这可能是你们之前通过匿名方式认识的那个人。`;
+    } else {
+      senderInfo = `这是一封来自陌生人的匿名信，寄信人使用化名"${letter.anonymousName}"，你不认识ta。这是一个完全陌生的笔友，你们之前没有任何关系。`;
+    }
+  } else if (letter.isBottle) {
+    senderInfo = `这是漂流瓶模式，寄信人是陌生人（你不认识的人），你们是第一次通过漂流瓶认识。`;
+  } else {
+    senderInfo = `这封信来自你认识的人"${letter.senderName}"，你们有一定的关系（朋友/熟人），不是完全陌生的。`;
+  }
 
   // 构建漂流瓶上下文（如果是回复漂流瓶）
   const bottleContext = letter.bottleOriginalContent ? `
@@ -1089,7 +1132,23 @@ ${currentRound.userLetter.content}
 
 现在以${letter.receiverName}的身份回信。
 
-🚫 **【严禁同质化！避免AI套路】**
+${isRevealingIdentity ? `
+🎭 **【重要：身份转换处理】**
+
+用户在这封信中可能透露了真实身份或表示不再匿名，请注意：
+
+1. **识别身份变化**：仔细阅读用户是否在信中说明了自己的真实身份
+2. **适当回应**：对用户的身份透露表示理解和接受，可以说"原来如此"、"谢谢你的信任"等
+3. **调整称呼**：如果用户透露了真实姓名，可以适当地使用真实姓名
+4. **记忆连贯**：记住这是同一个人，之前的匿名交流内容仍然有效
+5. **自然过渡**：不要过分强调身份转换，保持交流的自然流畅
+
+示例回应方式：
+- "谢谢你愿意告诉我真实的身份，这让我们的交流更加真诚了"
+- "原来你就是之前的那位朋友啊，很高兴认识真正的你"
+- "我理解你从匿名到实名的转变，这份信任很珍贵"
+
+` : ''}🚫 **【严禁同质化！避免AI套路】**
 
 你必须避免这些AI常用的套路化表达：
 
@@ -2036,6 +2095,48 @@ export function getPenPalStats() {
     locations: [...new Set(penPals.map(l => l.bottleAIProfile?.location).filter(Boolean))],
     recentActive: penPals.slice(0, 5)
   };
+}
+
+/**
+ * 继续现有信件交流（用于检测到同一收件人的情况）
+ */
+function continueExistingLetter(letterId: string, content: string, _senderName: string): Letter {
+  const letters = getLettersFromStorage();
+  const letter = letters.find(l => l.id === letterId);
+  
+  if (!letter) {
+    // 如果找不到信件，创建新的信件
+    throw new Error('未找到现有信件');
+  }
+  
+  const now = Date.now();
+  const replyDelay = calculateReplyDelay(false);
+  
+  // 增加轮数
+  letter.currentRound += 1;
+  
+  // 添加新一轮对话
+  letter.conversationRounds.push({
+    roundNumber: letter.currentRound,
+    userLetter: {
+      content,
+      sentAt: now
+    }
+  });
+  
+  // 更新信件状态
+  letter.status = 'sent';
+  letter.willReplyAt = now + replyDelay;
+  letter.hasUrged = false;
+  
+  updateLetterInStorage(letter);
+  
+  // 设置新的回信定时器
+  scheduleAutoReply(letter);
+  
+  console.log(`📮 继续现有信件第 ${letter.currentRound} 轮交流`);
+  
+  return letter;
 }
 
 /**

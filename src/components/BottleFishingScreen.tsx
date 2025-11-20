@@ -356,7 +356,7 @@ export default function BottleFishingScreen({ onBack, userName }: BottleFishingS
                 <div className="flex items-center gap-2 mb-3 pb-2 border-b border-gray-200">
                   <span className="text-xl">📖</span>
                   <span className="text-sm font-medium text-gray-700">原文内容</span>
-                  <span className="text-xs text-gray-500">({currentBottle.senderName} 迷糊的小玫瑰)</span>
+                  <span className="text-xs text-gray-500">({currentBottle.senderName})</span>
                 </div>
                 <div 
                   className="text-gray-800 leading-relaxed whitespace-pre-wrap font-serif text-sm"

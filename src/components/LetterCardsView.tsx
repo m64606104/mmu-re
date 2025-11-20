@@ -35,7 +35,11 @@ export default function LetterCardsView({ letter, onBack, onViewTimeline, userNa
     const success = urgeLetter(localLetter.id);
     if (success) {
       alert('✨ 已催促回复！\n\n预计15-30分钟内收到回信');
-      setLocalLetter({ ...localLetter, hasUrged: true });
+      // 重新获取最新状态
+      const updatedLetter = getLetterById(localLetter.id);
+      if (updatedLetter) {
+        setLocalLetter(updatedLetter);
+      }
     } else {
       alert('无法催促：\n' + (localLetter.hasUrged ? '已经催促过了' : '信件状态不正确'));
     }
@@ -318,11 +322,11 @@ export default function LetterCardsView({ letter, onBack, onViewTimeline, userNa
                   </div>
                 )}
 
-                {/* 等待回信状态 */}
-                {!round.aiReply && localLetter.status === 'sent' && (
+                {/* 等待回信状态 - 针对当前轮次 */}
+                {!round.aiReply && round.roundNumber === localLetter.currentRound && localLetter.status === 'sent' && (
                   <div className="mb-4 bg-amber-50 border-2 border-dashed border-amber-300 rounded-2xl p-6 text-center">
                     <div className="text-4xl mb-2">⌛</div>
-                    <div className="text-gray-700 font-medium">等待回信中...</div>
+                    <div className="text-gray-700 font-medium">等待第 {round.roundNumber} 轮回信中...</div>
                     <div className="text-sm text-gray-500 mt-1 mb-3">
                       {localLetter.hasUrged 
                         ? '已催促，预计很快收到回信'
@@ -335,9 +339,23 @@ export default function LetterCardsView({ letter, onBack, onViewTimeline, userNa
                         className="px-6 py-2 bg-gradient-to-r from-amber-500 to-orange-500 text-white rounded-full font-medium hover:shadow-lg transition-all flex items-center gap-2 mx-auto"
                       >
                         <Zap size={16} />
-                        催促回复
+                        催促第 {round.roundNumber} 轮回复
                       </button>
                     )}
+                  </div>
+                )}
+                
+                {/* 历史轮次的状态显示 - 显示每轮的预计送达时间 */}
+                {!round.aiReply && round.roundNumber < localLetter.currentRound && (
+                  <div className="mb-4 bg-gray-50 border border-gray-200 rounded-2xl p-4 text-center">
+                    <div className="text-2xl mb-1">📭</div>
+                    <div className="text-sm text-gray-600">第 {round.roundNumber} 轮等待回信</div>
+                    <div className="text-xs text-gray-500 mt-1">
+                      预计送达时间: {(() => {
+                        const deliveryTime = new Date(round.userLetter.sentAt + 3 * 24 * 60 * 60 * 1000);
+                        return `${deliveryTime.getMonth() + 1}月${deliveryTime.getDate()}日`;
+                      })()}
+                    </div>
                   </div>
                 )}
               </div>
