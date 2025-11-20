@@ -110,6 +110,14 @@ function App() {
       // 🧠 先初始化缓存系统
       await initializeCache();
       
+      // 🔧 自动修复数据问题
+      try {
+        const { autoRepairData } = await import('./utils/dataRepairService');
+        await autoRepairData();
+      } catch (error) {
+        console.error('❌ 数据修复失败:', error);
+      }
+      
       // 🧠 初始化记忆系统
       try {
         const { initializeMemorySystem } = await import('./utils/memorySystem');
