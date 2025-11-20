@@ -419,3 +419,23 @@ export const clearAllData = async (): Promise<void> => {
 export const smartLoad = load;
 export const smartSave = save;
 export const smartRemove = remove;
+
+// 🔧 开发模式：暴露存储API到全局（用于调试和测试）
+if (typeof window !== 'undefined') {
+  // @ts-ignore
+  window.save = save;
+  // @ts-ignore
+  window.load = load;
+  // @ts-ignore
+  window.initializeCache = initializeCache;
+  // @ts-ignore
+  window.migrateData = migrateData;
+  // @ts-ignore
+  window.getStorageStatus = getStorageStatus;
+  // @ts-ignore
+  window.checkMigrationNeeded = checkMigrationNeeded;
+  // @ts-ignore
+  window.clearAllData = clearAllData;
+  
+  console.log('🔧 存储API已暴露到全局（开发模式）');
+}

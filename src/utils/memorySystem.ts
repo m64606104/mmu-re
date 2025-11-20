@@ -4,6 +4,7 @@
  */
 
 import { MemoryBank, MemoryEntry, Message } from '../types';
+import { save, load } from './storage';
 
 // 重新导出类型以便其他组件使用
 export type { MemoryEntry };
@@ -11,10 +12,24 @@ export type { MemoryEntry };
 const MEMORY_STORAGE_KEY = 'chat_memory_banks';
 
 /**
+ * 初始化记忆系统缓存
+ */
+export const initializeMemorySystem = async (): Promise<void> => {
+  try {
+    const banks = await load(MEMORY_STORAGE_KEY);
+    memoryBanksCache = (banks && Array.isArray(banks)) ? banks : [];
+    console.log(`🧠 记忆系统已初始化，加载了${memoryBanksCache.length}个记忆库`);
+  } catch (error) {
+    console.error('❌ 记忆系统初始化失败:', error);
+    memoryBanksCache = [];
+  }
+};
+
+/**
  * 获取对话的记忆库
  */
 export const getMemoryBank = (conversationId: string): MemoryBank => {
-  const banks = getAllMemoryBanks();
+  const banks = getAllMemoryBanksSync();
   const existing = banks.find(b => b.conversationId === conversationId);
   
   if (existing) {
@@ -38,13 +53,20 @@ export const getMemoryBank = (conversationId: string): MemoryBank => {
   return newBank;
 };
 
+// 内存缓存，同步访问
+let memoryBanksCache: MemoryBank[] | null = null;
+
 /**
- * 获取所有记忆库
+ * 异步获取所有记忆库（推荐）
  */
-const getAllMemoryBanks = (): MemoryBank[] => {
+export const getAllMemoryBanks = async (): Promise<MemoryBank[]> => {
   try {
-    const stored = localStorage.getItem(MEMORY_STORAGE_KEY);
-    return stored ? JSON.parse(stored) : [];
+    const banks = await load(MEMORY_STORAGE_KEY);
+    if (banks && Array.isArray(banks)) {
+      memoryBanksCache = banks; // 更新缓存
+      return banks;
+    }
+    return [];
   } catch (error) {
     console.error('Failed to load memory banks:', error);
     return [];
@@ -52,12 +74,29 @@ const getAllMemoryBanks = (): MemoryBank[] => {
 };
 
 /**
- * 保存记忆库
+ * 同步获取所有记忆库（使用缓存）
+ */
+const getAllMemoryBanksSync = (): MemoryBank[] => {
+  if (memoryBanksCache === null) {
+    // 如果缓存为空，尝试从localStorage读取作为后备
+    try {
+      const stored = localStorage.getItem(MEMORY_STORAGE_KEY);
+      memoryBanksCache = stored ? JSON.parse(stored) : [];
+    } catch (error) {
+      console.error('Failed to load memory banks from fallback:', error);
+      memoryBanksCache = [];
+    }
+  }
+  return memoryBanksCache || [];
+};
+
+/**
+ * 保存记忆库（同步版本，立即更新缓存 + 异步保存）
  */
 export const saveMemoryBank = (bank: MemoryBank): void => {
   try {
-    const banks = getAllMemoryBanks();
-    const index = banks.findIndex(b => b.conversationId === bank.conversationId);
+    const banks = getAllMemoryBanksSync();
+    const index = banks.findIndex((b: MemoryBank) => b.conversationId === bank.conversationId);
     
     if (index >= 0) {
       banks[index] = bank;
@@ -65,9 +104,39 @@ export const saveMemoryBank = (bank: MemoryBank): void => {
       banks.push(bank);
     }
     
-    localStorage.setItem(MEMORY_STORAGE_KEY, JSON.stringify(banks));
+    // 立即更新缓存
+    memoryBanksCache = banks;
+    
+    // 异步保存到IndexedDB（不阻塞）
+    save(MEMORY_STORAGE_KEY, banks).catch(error => {
+      console.error('Failed to save memory bank to IndexedDB:', error);
+    });
   } catch (error) {
     console.error('Failed to save memory bank:', error);
+  }
+};
+
+/**
+ * 异步保存记忆库（推荐用于性能敏感场景）
+ */
+export const saveMemoryBankAsync = async (bank: MemoryBank): Promise<void> => {
+  try {
+    const banks = await getAllMemoryBanks();
+    const index = banks.findIndex((b: MemoryBank) => b.conversationId === bank.conversationId);
+    
+    if (index >= 0) {
+      banks[index] = bank;
+    } else {
+      banks.push(bank);
+    }
+    
+    // 更新缓存
+    memoryBanksCache = banks;
+    
+    // 保存到IndexedDB
+    await save(MEMORY_STORAGE_KEY, banks);
+  } catch (error) {
+    console.error('Failed to save memory bank async:', error);
   }
 };
 

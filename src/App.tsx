@@ -110,6 +110,14 @@ function App() {
       // 🧠 先初始化缓存系统
       await initializeCache();
       
+      // 🧠 初始化记忆系统
+      try {
+        const { initializeMemorySystem } = await import('./utils/memorySystem');
+        await initializeMemorySystem();
+      } catch (error) {
+        console.error('❌ 记忆系统初始化失败:', error);
+      }
+      
       // 🔄 检查并执行数据迁移
       if (checkMigrationNeeded()) {
         console.log('⚡ 检测到需要迁移的数据，开始自动迁移...');
