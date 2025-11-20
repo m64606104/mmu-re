@@ -79,9 +79,6 @@ export default function SettingsScreen({ apiConfig, onUpdateConfig, onBack }: Se
         }
       }
       
-      // 估算内存缓存使用量
-      const cacheUsage = 50 * 1024; // 假设50KB缓存
-      
       setStorageInfo({
         ...storageStatus,
         quota: quotaInfo,
@@ -90,9 +87,6 @@ export default function SettingsScreen({ apiConfig, onUpdateConfig, onBack }: Se
         },
         indexedDB: {
           usage: indexedDBUsage
-        },
-        cache: {
-          usage: cacheUsage
         }
       });
     } catch (error) {
@@ -850,73 +844,61 @@ export default function SettingsScreen({ apiConfig, onUpdateConfig, onBack }: Se
                 <span className="text-sm font-medium text-gray-700">存储使用情况</span>
               </div>
               
-              <div className="space-y-3">
-                {/* 设备信息 */}
-                <div className="flex justify-between text-xs">
-                  <span className="text-gray-600">设备类型:</span>
+              <div className="space-y-4">
+                {/* 总用量 */}
+                <div className="flex justify-between text-sm">
+                  <span className="text-gray-600">已用空间:</span>
                   <span className="font-mono text-gray-800">
-                    {storageInfo.quota?.isMobile ? '📱移动设备' : '🖥️桌面设备'}
+                    {storageInfo.localStorage && storageInfo.indexedDB 
+                      ? `${((storageInfo.localStorage.usage + storageInfo.indexedDB.usage) / 1024 / 1024).toFixed(1)} MB`
+                      : '计算中...'
+                    }
                   </span>
                 </div>
                 
-                {/* 配额信息 */}
-                {storageInfo.quota && storageInfo.quota.quota > 0 && (
-                  <>
-                    <div className="flex justify-between text-xs">
-                      <span className="text-gray-600">存储配额:</span>
-                      <span className="font-mono text-gray-800">
-                        {(storageInfo.quota.quota / 1024 / 1024).toFixed(1)} MB
-                      </span>
-                    </div>
-                    <div className="flex justify-between text-xs">
-                      <span className="text-gray-600">已用空间:</span>
-                      <span className="font-mono text-gray-800">
-                        {(storageInfo.quota.usage / 1024 / 1024).toFixed(1)} MB
-                        ({storageInfo.quota.percentUsed.toFixed(1)}%)
-                      </span>
-                    </div>
-                    <div className="w-full bg-gray-200 rounded-full h-2">
-                      <div 
-                        className="bg-blue-500 h-2 rounded-full transition-all" 
-                        style={{ width: `${Math.min(100, storageInfo.quota.percentUsed)}%` }}
-                      />
-                    </div>
-                  </>
-                )}
-                
-                {/* 存储分布 */}
-                <div className="mt-3 space-y-2">
+                {/* localStorage */}
+                <div className="space-y-2">
                   <div className="flex justify-between text-xs">
-                    <span className="text-gray-600">localStorage:</span>
+                    <span className="text-gray-600">localStorage</span>
                     <span className="font-mono text-gray-800">
-                      {storageInfo.localStorage ? `${(storageInfo.localStorage.usage / 1024).toFixed(1)} KB` : '计算中...'}
+                      {storageInfo.localStorage 
+                        ? `${(storageInfo.localStorage.usage / 1024).toFixed(1)} KB (${((storageInfo.localStorage.usage / (storageInfo.localStorage.usage + (storageInfo.indexedDB?.usage || 0))) * 100).toFixed(1)}%)`
+                        : '计算中...'
+                      }
                     </span>
                   </div>
-                  
+                  <div className="w-full bg-gray-200 rounded-full h-1.5">
+                    <div 
+                      className="bg-green-500 h-1.5 rounded-full transition-all" 
+                      style={{ 
+                        width: storageInfo.localStorage && storageInfo.indexedDB 
+                          ? `${((storageInfo.localStorage.usage / (storageInfo.localStorage.usage + storageInfo.indexedDB.usage)) * 100).toFixed(1)}%`
+                          : '0%'
+                      }}
+                    />
+                  </div>
+                </div>
+
+                {/* IndexedDB */}
+                <div className="space-y-2">
                   <div className="flex justify-between text-xs">
-                    <span className="text-gray-600">IndexedDB:</span>
+                    <span className="text-gray-600">IndexedDB</span>
                     <span className="font-mono text-gray-800">
-                      {storageInfo.indexedDB ? `${(storageInfo.indexedDB.usage / 1024 / 1024).toFixed(1)} MB` : '计算中...'}
+                      {storageInfo.indexedDB 
+                        ? `${(storageInfo.indexedDB.usage / 1024 / 1024).toFixed(1)} MB (${((storageInfo.indexedDB.usage / ((storageInfo.localStorage?.usage || 0) + storageInfo.indexedDB.usage)) * 100).toFixed(1)}%)`
+                        : '计算中...'
+                      }
                     </span>
                   </div>
-                  
-                  <div className="flex justify-between text-xs">
-                    <span className="text-gray-600">内存缓存:</span>
-                    <span className="font-mono text-gray-800">
-                      {storageInfo.cache ? `${(storageInfo.cache.usage / 1024).toFixed(1)} KB` : '计算中...'}
-                    </span>
-                  </div>
-                  
-                  {/* 分布图 */}
-                  <div className="mt-2 text-xs text-gray-500">
-                    <div className="flex justify-between">
-                      <span>localStorage占比:</span>
-                      <span>{storageInfo.localStorage ? `${((storageInfo.localStorage.usage / (storageInfo.localStorage.usage + (storageInfo.indexedDB?.usage || 0))) * 100).toFixed(1)}%` : '...'}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span>IndexedDB占比:</span>
-                      <span>{storageInfo.indexedDB ? `${((storageInfo.indexedDB.usage / ((storageInfo.localStorage?.usage || 0) + storageInfo.indexedDB.usage)) * 100).toFixed(1)}%` : '...'}</span>
-                    </div>
+                  <div className="w-full bg-gray-200 rounded-full h-1.5">
+                    <div 
+                      className="bg-blue-500 h-1.5 rounded-full transition-all" 
+                      style={{ 
+                        width: storageInfo.localStorage && storageInfo.indexedDB 
+                          ? `${((storageInfo.indexedDB.usage / (storageInfo.localStorage.usage + storageInfo.indexedDB.usage)) * 100).toFixed(1)}%`
+                          : '0%'
+                      }}
+                    />
                   </div>
                 </div>
               </div>
