@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { ChevronLeft, Check, Loader2, Download, Upload, Database } from 'lucide-react';
 import { ApiConfig } from '../types';
-import { smartLoad, smartSave, checkStorageQuota, saveBatch, getStorageStatus, migrateData, clearAllData } from '../utils/storage';
+import { smartLoad, smartSave, checkStorageQuota, saveBatch, getStorageStatus, migrateData, clearAllData, loadBatch } from '../utils/storage';
 
 interface SettingsScreenProps {
   apiConfig: ApiConfig;
@@ -165,18 +165,57 @@ export default function SettingsScreen({ apiConfig, onUpdateConfig, onBack }: Se
         relationships: 0      // 关系数
       };
       
-      // 🎯 **优先从智能存储获取重要数据**
-      console.log('📂 从智能存储获取conversations...');
-      const conversationsData = await smartLoad('conversations');
-      if (conversationsData) {
-        allData['conversations'] = conversationsData;
-        if (Array.isArray(conversationsData)) {
-          stats.conversations = conversationsData.length;
-          stats.messages = conversationsData.reduce((sum: number, conv: any) => 
-            sum + (conv.messages?.length || 0), 0);
-          stats.profiles = conversationsData.filter((c: any) => c.characterSettings).length;
+      // 🧠 **从新存储系统获取所有大数据**
+      console.log('🧠 从新存储系统获取数据...');
+      
+      // 定义可能存储在IndexedDB中的大数据key
+      const indexedDBKeys = [
+        'conversations',
+        'moments', 
+        'chat_memory_banks',
+        'ai_finance_data',
+        'documents',
+        'relationships',
+        'user_documents'
+      ];
+      
+      // 逐一获取IndexedDB数据
+      for (const key of indexedDBKeys) {
+        try {
+          console.log(`🔍 检查 ${key}...`);
+          
+          // 先尝试智能加载
+          let data = await smartLoad(key);
+          
+          // 如果智能加载没有数据，尝试分批加载
+          if (!data) {
+            data = await loadBatch(key);
+          }
+          
+          if (data) {
+            allData[key] = data;
+            console.log(`✅ ${key}数据获取成功`);
+            
+            // 📊 统计数据
+            if (key === 'conversations' && Array.isArray(data)) {
+              stats.conversations = data.length;
+              stats.messages = data.reduce((sum: number, conv: any) => 
+                sum + (conv.messages?.length || 0), 0);
+              stats.profiles = data.filter((c: any) => c.characterSettings).length;
+            } else if (key === 'moments' && Array.isArray(data)) {
+              stats.moments = data.length;
+            } else if (key === 'chat_memory_banks' && Array.isArray(data)) {
+              stats.memories = data.reduce((sum: number, bank: any) => 
+                sum + (bank.memories?.length || 0), 0);
+            } else if (key === 'relationships' && Array.isArray(data)) {
+              stats.relationships = data.length;
+            } else if (key === 'documents' && Array.isArray(data)) {
+              stats.documents = data.length;
+            }
+          }
+        } catch (error) {
+          console.warn(`⚠️ 获取 ${key} 数据失败:`, error);
         }
-        console.log('✅ conversations数据获取成功:', stats.conversations, '个对话');
       }
       
       // 🗂️ **遍历localStorage获取其他数据**
@@ -184,8 +223,8 @@ export default function SettingsScreen({ apiConfig, onUpdateConfig, onBack }: Se
       for (let i = 0; i < localStorage.length; i++) {
         const key = localStorage.key(i);
         if (key) {
-          // 跳过已经从智能存储获取的数据
-          if (key === 'conversations' && conversationsData) {
+          // 跳过已经从IndexedDB获取的数据
+          if (indexedDBKeys.includes(key) && allData[key]) {
             continue;
           }
           
@@ -373,12 +412,24 @@ export default function SettingsScreen({ apiConfig, onUpdateConfig, onBack }: Se
         // 🗂️ 清空所有存储
         localStorage.clear();
         
-        // 🔧 如果支持智能存储，也清空IndexedDB
+        // 🔧 如果支持智能存储，清空所有IndexedDB数据
         if (importedData.storageType === 'smart-storage-compatible') {
           try {
-            // 删除IndexedDB中的conversations数据
-            await smartSave('conversations', null);
-            console.log('✅ 已清空IndexedDB数据');
+            // 清空所有可能的IndexedDB数据
+            const indexedDBKeys = [
+              'conversations', 'moments', 'chat_memory_banks', 
+              'ai_finance_data', 'documents', 'relationships', 'user_documents'
+            ];
+            
+            for (const key of indexedDBKeys) {
+              try {
+                await smartSave(key, null);
+                console.log(`✅ 已清空 ${key}`);
+              } catch (error) {
+                console.warn(`⚠️ 清空 ${key} 失败:`, error);
+              }
+            }
+            console.log('✅ IndexedDB数据清空完成');
           } catch (error) {
             console.warn('清空IndexedDB失败:', error);
           }
@@ -432,7 +483,7 @@ export default function SettingsScreen({ apiConfig, onUpdateConfig, onBack }: Se
                 localStorage.setItem(key, JSON.stringify(value));
               }
             }
-          } else if (['moments', 'chat_memory_banks', 'ai_finance_data'].includes(key) && importedData.storageType === 'smart-storage-compatible') {
+          } else if (['moments', 'chat_memory_banks', 'ai_finance_data', 'documents', 'relationships', 'user_documents'].includes(key) && importedData.storageType === 'smart-storage-compatible') {
             try {
               // 其他大数据也使用移动设备优化
               if (quota.isMobile && Array.isArray(value) && value.length > 50) {
