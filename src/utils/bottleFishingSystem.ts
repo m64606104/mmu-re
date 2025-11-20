@@ -5,6 +5,8 @@
 
 import { BottleLetter, BottleFishingRecord, UserBottleStats } from '../types/bottle';
 import { generateXianyuStyleName } from './randomNameGenerator';
+import { generateAgeAppropriateBottle } from './ageAppropriateBottleGenerator';
+import { recordBottleContent, evaluateContentDiversity, getRecommendedContentTypes } from './bottleContentDiversityManager';
 
 const FISHING_STORAGE_KEY = 'bottle_fishing_record';
 const STATS_STORAGE_KEY = 'bottle_stats';
@@ -488,9 +490,9 @@ export function canFishToday(): { can: boolean; remaining: number; reason?: stri
 }
 
 /**
- * 生成随机漂流瓶
+ * 生成随机漂流瓶 (旧版本，保留兼容性)
  */
-export function generateRandomBottle(): BottleLetter {
+export function generateRandomBottleOld(): BottleLetter {
   // 随机选择发送者
   const sender = BOTTLE_SENDERS[Math.floor(Math.random() * BOTTLE_SENDERS.length)];
   
@@ -514,6 +516,36 @@ export function generateRandomBottle(): BottleLetter {
     timestamp: Date.now() - Math.random() * 7 * 24 * 60 * 60 * 1000, // 1-7天前
     language: 'zh'
   };
+  
+  return bottle;
+}
+
+/**
+ * 生成年龄匹配的随机漂流瓶 (新版本)
+ */
+export function generateRandomBottle(): BottleLetter {
+  let bottle: BottleLetter;
+  let attempts = 0;
+  const maxAttempts = 5;
+  
+  // 尝试生成高多样性的内容
+  do {
+    if (Math.random() < 0.8) {
+      bottle = generateAgeAppropriateBottle();
+    } else {
+      bottle = generateRandomBottleOld();
+    }
+    
+    // 评估多样性
+    const diversity = evaluateContentDiversity(bottle);
+    if (diversity.score >= 70 || attempts >= maxAttempts - 1) {
+      break;
+    }
+    attempts++;
+  } while (attempts < maxAttempts);
+  
+  // 记录生成的内容
+  recordBottleContent(bottle);
   
   return bottle;
 }
