@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { ChevronLeft, Check, Loader2, Download, Upload, Database } from 'lucide-react';
 import { ApiConfig } from '../types';
-import { smartLoad, smartSave } from '../utils/storage';
+import { smartLoad, smartSave, checkStorageQuota, saveBatch } from '../utils/storage';
 
 interface SettingsScreenProps {
   apiConfig: ApiConfig;
@@ -257,9 +257,14 @@ export default function SettingsScreen({ apiConfig, onUpdateConfig, onBack }: Se
           return;
         }
 
+        // 预检查存储配额
+        const preQuota = await checkStorageQuota();
+        const estimateDataSize = JSON.stringify(importedData.data).length * 2; // UTF-16估算
+        const estimateMB = estimateDataSize / 1024 / 1024;
+        
         // 构建详细的确认消息
         const stats = importedData.stats || {};
-        const confirmMsg = `📥 即将导入数据备份\n\n` +
+        let confirmMsg = `📥 即将导入数据备份\n\n` +
           `📅 备份时间: ${new Date(importedData.exportDate).toLocaleString()}\n` +
           `📊 数据内容:\n` +
           `  • 对话记录: ${stats.conversations || '?'} 个\n` +
@@ -271,7 +276,24 @@ export default function SettingsScreen({ apiConfig, onUpdateConfig, onBack }: Se
           `  • 关系网络: ${stats.relationships || '?'} 条\n` +
           `  • 背景图片: ${stats.images || '?'} 张\n` +
           `  • 总数据项: ${Object.keys(importedData.data).length}\n\n` +
-          `⚠️ 警告：这将覆盖当前所有数据！\n` +
+          `💾 存储信息:\n` +
+          `  • 设备类型: ${preQuota.isMobile ? '📱移动设备' : '🖥️桌面设备'}\n` +
+          `  • 数据大小: 约${estimateMB.toFixed(1)}MB\n` +
+          `  • 存储配额: ${(preQuota.quota / 1024 / 1024).toFixed(1)}MB\n` +
+          `  • 可用空间: ${(preQuota.available / 1024 / 1024).toFixed(1)}MB\n`;
+        
+        // 添加存储空间警告
+        if (estimateMB > preQuota.available / 1024 / 1024) {
+          confirmMsg += `\n🚨 **存储空间警告**\n` +
+            `数据大小(${estimateMB.toFixed(1)}MB) > 可用空间(${(preQuota.available / 1024 / 1024).toFixed(1)}MB)\n` +
+            `建议：清理应用数据或使用桌面浏览器\n\n`;
+        } else if (preQuota.isMobile && estimateMB > 10) {
+          confirmMsg += `\n📱 **移动设备提示**\n` +
+            `检测到大数据集(${estimateMB.toFixed(1)}MB)，将使用分批导入模式\n` +
+            `这可能需要更长时间，请保持网络连接\n\n`;
+        }
+          
+        confirmMsg += `⚠️ 警告：这将覆盖当前所有数据！\n` +
           `建议先导出当前数据作为备份。\n\n` +
           `✅ 包含内容：\n` +
           `  • 所有对话和消息\n` +
@@ -301,6 +323,14 @@ export default function SettingsScreen({ apiConfig, onUpdateConfig, onBack }: Se
           }
         }
 
+        // 📊 检查存储配额
+        const quota = await checkStorageQuota();
+        const finalDataSize = JSON.stringify(importedData.data).length * 2; // UTF-16估算
+        const finalDataMB = finalDataSize / 1024 / 1024;
+        console.log(`📱 设备类型: ${quota.isMobile ? '移动设备' : '桌面设备'}`);
+        console.log(`💾 存储配额: ${(quota.quota / 1024 / 1024).toFixed(1)}MB / 可用: ${(quota.available / 1024 / 1024).toFixed(1)}MB`);
+        console.log(`📦 数据大小: ${finalDataMB.toFixed(1)}MB`);
+        
         // 🔄 恢复所有数据
         const data = importedData.data;
         let importedCount = 0;
@@ -309,14 +339,54 @@ export default function SettingsScreen({ apiConfig, onUpdateConfig, onBack }: Se
         for (const key in data) {
           const value = data[key];
           
-          // 🎯 conversations数据使用智能存储
+          // 🎯 conversations等大数据使用移动设备优化存储
           if (key === 'conversations' && importedData.storageType === 'smart-storage-compatible') {
             try {
-              await smartSave('conversations', value);
+              // 移动设备使用分批保存，避免配额超限
+              if (quota.isMobile || (Array.isArray(value) && value.length > 100)) {
+                console.log(`📱 检测到${quota.isMobile ? '移动设备' : '大数据集'}，使用分批保存模式...`);
+                await saveBatch('conversations', value, {
+                  batchSize: quota.isMobile ? 20 : 50,
+                  onProgress: (progress) => {
+                    console.log(`📊 导入进度: ${progress.toFixed(1)}%`);
+                  }
+                });
+              } else {
+                // 桌面设备或小数据集使用常规保存
+                await smartSave('conversations', value);
+              }
+              
               conversationsRestored = true;
               console.log('✅ conversations数据已恢复到智能存储');
             } catch (error) {
-              console.error('智能存储恢复失败，回退到localStorage:', error);
+              console.error('智能存储恢复失败:', error);
+              
+              // 检查是否为配额错误
+              if (error instanceof Error && error.message.includes('存储空间不足')) {
+                alert(`❌ 导入失败：${error.message}\n\n建议：\n1. 清理应用数据释放空间\n2. 尝试导入较小的数据集\n3. 使用桌面版浏览器进行导入`);
+                return;
+              } else {
+                // 其他错误，回退到localStorage
+                console.log('⚠️ 回退到localStorage保存');
+                localStorage.setItem(key, JSON.stringify(value));
+              }
+            }
+          } else if (['moments', 'chat_memory_banks', 'ai_finance_data'].includes(key) && importedData.storageType === 'smart-storage-compatible') {
+            try {
+              // 其他大数据也使用移动设备优化
+              if (quota.isMobile && Array.isArray(value) && value.length > 50) {
+                await saveBatch(key, value, { 
+                  batchSize: 20,
+                  onProgress: (progress) => {
+                    console.log(`📊 ${key} 导入进度: ${progress.toFixed(1)}%`);
+                  }
+                });
+              } else {
+                await smartSave(key, value);
+              }
+              console.log(`✅ ${key}数据已恢复到智能存储`);
+            } catch (error) {
+              console.error(`${key}智能存储恢复失败，回退到localStorage:`, error);
               localStorage.setItem(key, JSON.stringify(value));
             }
           } else {
@@ -331,9 +401,15 @@ export default function SettingsScreen({ apiConfig, onUpdateConfig, onBack }: Se
         }
 
         const successMsg = `✅ 数据导入成功！\n\n` +
-          `已恢复 ${importedCount} 项数据\n` +
+          `📊 导入统计:\n` +
+          `• 已恢复 ${importedCount} 项数据\n` +
           `${conversationsRestored ? '• 对话数据已恢复到智能存储\n' : ''}` +
+          `• 设备类型: ${quota.isMobile ? '📱移动设备' : '🖥️桌面设备'}\n` +
+          `${quota.isMobile ? '• 已使用移动设备优化模式\n' : ''}` +
           `• 所有其他数据已恢复\n\n` +
+          `💾 当前存储状态:\n` +
+          `• 已用: ${((quota.quota - quota.available + finalDataMB * 1024 * 1024) / 1024 / 1024).toFixed(1)}MB\n` +
+          `• 总计: ${(quota.quota / 1024 / 1024).toFixed(1)}MB\n\n` +
           `页面将刷新以应用更改。`;
         
         alert(successMsg);

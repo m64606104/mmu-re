@@ -381,6 +381,166 @@ export const getStorageStatus = async (): Promise<{
   };
 };
 
+// 检查存储配额和可用空间
+export const checkStorageQuota = async (): Promise<{
+  quota: number;
+  usage: number;
+  available: number;
+  percentUsed: number;
+  isMobile: boolean;
+}> => {
+  try {
+    if ('storage' in navigator && 'estimate' in navigator.storage) {
+      const estimate = await navigator.storage.estimate();
+      const quota = estimate.quota || 0;
+      const usage = estimate.usage || 0;
+      const available = quota - usage;
+      const percentUsed = quota > 0 ? (usage / quota) * 100 : 0;
+      
+      // 检测移动设备
+      const isMobile = /Android|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+      
+      return {
+        quota: Math.round(quota),
+        usage: Math.round(usage),
+        available: Math.round(available),
+        percentUsed: Math.round(percentUsed * 100) / 100,
+        isMobile
+      };
+    }
+    
+    // 降级方案：估算默认值
+    const isMobile = /Android|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+    const estimatedQuota = isMobile ? 50 * 1024 * 1024 : 1024 * 1024 * 1024; // 移动50MB，桌面1GB
+    
+    return {
+      quota: estimatedQuota,
+      usage: 0,
+      available: estimatedQuota,
+      percentUsed: 0,
+      isMobile
+    };
+  } catch (error) {
+    console.error('❌ 检查存储配额失败:', error);
+    const isMobile = /Android|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+    const estimatedQuota = isMobile ? 50 * 1024 * 1024 : 1024 * 1024 * 1024;
+    
+    return {
+      quota: estimatedQuota,
+      usage: 0,
+      available: estimatedQuota,
+      percentUsed: 0,
+      isMobile
+    };
+  }
+};
+
+// 分批保存大数据（移动设备优化）
+export const saveBatch = async (key: string, data: any, options: {
+  batchSize?: number;
+  maxRetries?: number;
+  onProgress?: (progress: number) => void;
+} = {}): Promise<void> => {
+  const { batchSize = 50, maxRetries = 3, onProgress } = options;
+  
+  // 检查存储配额
+  const quota = await checkStorageQuota();
+  console.log(`📊 存储配额检查: 已用${(quota.usage / 1024 / 1024).toFixed(1)}MB / 总计${(quota.quota / 1024 / 1024).toFixed(1)}MB (${quota.percentUsed}%)`);
+  
+  // 如果是小数据或非数组，直接保存
+  if (!Array.isArray(data) || data.length <= batchSize) {
+    try {
+      await save(key, data);
+      onProgress?.(100);
+      console.log(`✅ 数据保存成功: ${key} (${data.length || 1} 项)`);
+      return;
+    } catch (error) {
+      if (error instanceof DOMException && error.name === 'QuotaExceededError') {
+        throw new Error(`存储空间不足。当前可用: ${(quota.available / 1024 / 1024).toFixed(1)}MB，建议清理数据或使用较小数据集。`);
+      }
+      throw error;
+    }
+  }
+  
+  // 分批处理大数据
+  console.log(`🔄 开始分批保存: ${key}, 总计${data.length}项, 每批${batchSize}项`);
+  
+  for (let i = 0; i < data.length; i += batchSize) {
+    const batch = data.slice(i, i + batchSize);
+    const batchKey = `${key}_batch_${Math.floor(i / batchSize)}`;
+    
+    let retries = 0;
+    while (retries < maxRetries) {
+      try {
+        await save(batchKey, batch);
+        console.log(`✅ 批次 ${Math.floor(i / batchSize) + 1} 保存成功 (${batch.length} 项)`);
+        
+        // 更新进度
+        const progress = Math.min(((i + batchSize) / data.length) * 100, 100);
+        onProgress?.(progress);
+        break;
+      } catch (error) {
+        retries++;
+        if (error instanceof DOMException && error.name === 'QuotaExceededError') {
+          if (retries >= maxRetries) {
+            throw new Error(`存储空间不足，无法保存批次 ${Math.floor(i / batchSize) + 1}。请清理数据或减少导入量。`);
+          }
+          
+          // 等待一下再重试，可能有其他操作在释放空间
+          await new Promise(resolve => setTimeout(resolve, 1000));
+        } else {
+          throw error;
+        }
+      }
+    }
+  }
+  
+  // 保存批次元数据
+  await save(`${key}_meta`, {
+    totalBatches: Math.ceil(data.length / batchSize),
+    totalItems: data.length,
+    batchSize,
+    isBatched: true,
+    createdAt: Date.now()
+  });
+  
+  console.log(`🎉 分批保存完成: ${key}`);
+};
+
+// 分批读取大数据
+export const loadBatch = async (key: string): Promise<any> => {
+  try {
+    // 先尝试直接读取
+    const directData = await load(key);
+    if (directData !== null && directData !== undefined) {
+      return directData;
+    }
+    
+    // 检查是否有批次元数据
+    const meta = await load(`${key}_meta`);
+    if (!meta || !meta.isBatched) {
+      return null;
+    }
+    
+    console.log(`🔄 开始分批读取: ${key}, 总计${meta.totalBatches}批次`);
+    
+    const result = [];
+    for (let i = 0; i < meta.totalBatches; i++) {
+      const batchKey = `${key}_batch_${i}`;
+      const batch = await load(batchKey);
+      if (batch && Array.isArray(batch)) {
+        result.push(...batch);
+      }
+    }
+    
+    console.log(`✅ 分批读取完成: ${key}, 读取${result.length}项`);
+    return result;
+  } catch (error) {
+    console.error(`❌ 分批读取失败 ${key}:`, error);
+    return null;
+  }
+};
+
 // 清空所有数据
 export const clearAllData = async (): Promise<void> => {
   console.log('🧹 清空所有数据...');
@@ -436,6 +596,12 @@ if (typeof window !== 'undefined') {
   window.checkMigrationNeeded = checkMigrationNeeded;
   // @ts-ignore
   window.clearAllData = clearAllData;
+  // @ts-ignore 移动设备优化API
+  window.checkStorageQuota = checkStorageQuota;
+  // @ts-ignore
+  window.saveBatch = saveBatch;
+  // @ts-ignore
+  window.loadBatch = loadBatch;
   
   console.log('🔧 存储API已暴露到全局（开发模式）');
 }
