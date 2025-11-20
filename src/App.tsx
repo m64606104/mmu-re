@@ -89,11 +89,10 @@ function App() {
       const needsMigration = checkMigrationNeeded();
       
       if (needsMigration) {
-        // 检查是否已经显示过升级提示
+        // 检查是否已经显示过升级提示（永远只显示一次）
         const hasShownUpgrade = localStorage.getItem('hasShownStorageUpgrade');
-        const currentVersion = 'v2.0-storage-rewrite';
         
-        if (hasShownUpgrade !== currentVersion) {
+        if (!hasShownUpgrade) {
           // 检查localStorage使用状况
           const status = await getStorageStatus();
           
@@ -102,8 +101,8 @@ function App() {
             console.log(`📊 发现 ${status.localStorage.needsMigration.length} 项数据需要迁移`);
             setShowMigrationPrompt(true);
             
-            // 标记已显示过此版本的升级提示
-            localStorage.setItem('hasShownStorageUpgrade', currentVersion);
+            // 标记已显示过升级提示（永久标记）
+            localStorage.setItem('hasShownStorageUpgrade', 'true');
           }
         }
       }
