@@ -862,7 +862,7 @@ export default function SettingsScreen({ apiConfig, onUpdateConfig, onBack }: Se
                     <span className="text-gray-600">localStorage</span>
                     <span className="font-mono text-gray-800">
                       {storageInfo.localStorage 
-                        ? `${(storageInfo.localStorage.usage / 1024).toFixed(1)} KB (${((storageInfo.localStorage.usage / (storageInfo.localStorage.usage + (storageInfo.indexedDB?.usage || 0))) * 100).toFixed(1)}%)`
+                        ? `${(storageInfo.localStorage.usage / 1024).toFixed(1)} KB (${((storageInfo.localStorage.usage / (10 * 1024 * 1024)) * 100).toFixed(1)}%)`
                         : '计算中...'
                       }
                     </span>
@@ -871,8 +871,8 @@ export default function SettingsScreen({ apiConfig, onUpdateConfig, onBack }: Se
                     <div 
                       className="bg-green-500 h-1.5 rounded-full transition-all" 
                       style={{ 
-                        width: storageInfo.localStorage && storageInfo.indexedDB 
-                          ? `${((storageInfo.localStorage.usage / (storageInfo.localStorage.usage + storageInfo.indexedDB.usage)) * 100).toFixed(1)}%`
+                        width: storageInfo.localStorage 
+                          ? `${Math.min(100, (storageInfo.localStorage.usage / (10 * 1024 * 1024)) * 100).toFixed(1)}%`
                           : '0%'
                       }}
                     />
@@ -884,8 +884,8 @@ export default function SettingsScreen({ apiConfig, onUpdateConfig, onBack }: Se
                   <div className="flex justify-between text-xs">
                     <span className="text-gray-600">IndexedDB</span>
                     <span className="font-mono text-gray-800">
-                      {storageInfo.indexedDB 
-                        ? `${(storageInfo.indexedDB.usage / 1024 / 1024).toFixed(1)} MB (${((storageInfo.indexedDB.usage / ((storageInfo.localStorage?.usage || 0) + storageInfo.indexedDB.usage)) * 100).toFixed(1)}%)`
+                      {storageInfo.indexedDB && storageInfo.quota
+                        ? `${(storageInfo.indexedDB.usage / 1024 / 1024).toFixed(1)} MB (${((storageInfo.indexedDB.usage / storageInfo.quota.quota) * 100).toFixed(1)}%)`
                         : '计算中...'
                       }
                     </span>
@@ -894,8 +894,8 @@ export default function SettingsScreen({ apiConfig, onUpdateConfig, onBack }: Se
                     <div 
                       className="bg-blue-500 h-1.5 rounded-full transition-all" 
                       style={{ 
-                        width: storageInfo.localStorage && storageInfo.indexedDB 
-                          ? `${((storageInfo.indexedDB.usage / (storageInfo.localStorage.usage + storageInfo.indexedDB.usage)) * 100).toFixed(1)}%`
+                        width: storageInfo.indexedDB && storageInfo.quota
+                          ? `${Math.min(100, (storageInfo.indexedDB.usage / storageInfo.quota.quota) * 100).toFixed(1)}%`
                           : '0%'
                       }}
                     />
