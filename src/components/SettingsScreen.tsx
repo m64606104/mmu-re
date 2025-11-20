@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { ChevronLeft, Check, Loader2, Download, Upload, Database } from 'lucide-react';
 import { ApiConfig } from '../types';
-import { smartLoad, smartSave, checkStorageQuota, saveBatch } from '../utils/storage';
+import { smartLoad, smartSave, checkStorageQuota, saveBatch, getStorageStatus, migrateData, clearAllData } from '../utils/storage';
 
 interface SettingsScreenProps {
   apiConfig: ApiConfig;
@@ -21,6 +21,10 @@ export default function SettingsScreen({ apiConfig, onUpdateConfig, onBack }: Se
   const [selectedBadge, setSelectedBadge] = useState('🎵');
   const importInputRef = useRef<HTMLInputElement>(null);
   
+  // 存储状态
+  const [storageInfo, setStorageInfo] = useState<any>(null);
+  const [isLoadingStorage, setIsLoadingStorage] = useState(false);
+  
   // 语音转文字配置
   const [sttEnabled, setSttEnabled] = useState(apiConfig.speechToText?.enabled || false);
   const [sttApiUrl, setSttApiUrl] = useState(apiConfig.speechToText?.apiUrl || '');
@@ -38,7 +42,29 @@ export default function SettingsScreen({ apiConfig, onUpdateConfig, onBack }: Se
     } catch (e) {
       console.error('Failed to load user profile:', e);
     }
+    
+    // 加载存储状态信息
+    loadStorageInfo();
   }, []);
+  
+  const loadStorageInfo = async () => {
+    try {
+      setIsLoadingStorage(true);
+      const [storageStatus, quotaInfo] = await Promise.all([
+        getStorageStatus(),
+        checkStorageQuota()
+      ]);
+      
+      setStorageInfo({
+        ...storageStatus,
+        quota: quotaInfo
+      });
+    } catch (error) {
+      console.error('加载存储信息失败:', error);
+    } finally {
+      setIsLoadingStorage(false);
+    }
+  };
 
   const handleBadgeChange = (badge: string) => {
     setSelectedBadge(badge);
@@ -238,6 +264,41 @@ export default function SettingsScreen({ apiConfig, onUpdateConfig, onBack }: Se
     } catch (error) {
       console.error('❌ 导出失败:', error);
       alert('❌ 导出失败，请重试\n\n错误: ' + error);
+    }
+  };
+
+  // 手动迁移数据
+  const handleManualMigration = async () => {
+    try {
+      const result = await migrateData();
+      alert(`✅ 数据迁移完成！\n\n迁移成功: ${result.migratedKeys.length} 项\n迁移失败: ${result.errors.length} 项`);
+      await loadStorageInfo(); // 刷新存储信息
+    } catch (error) {
+      console.error('手动迁移失败:', error);
+      alert('❌ 迁移失败，请查看控制台了解详情');
+    }
+  };
+
+  // 清除所有数据
+  const handleClearAllData = async () => {
+    const confirmMsg = '⚠️ 危险操作：清除所有数据\n\n' +
+      '这将删除：\n' +
+      '• 所有对话记录\n' +
+      '• 所有AI角色数据\n' +
+      '• 所有朋友圈内容\n' +
+      '• 所有配置设置\n' +
+      '• 所有文档和记忆库\n\n' +
+      '此操作无法撤销！确定继续吗？';
+    
+    if (window.confirm(confirmMsg)) {
+      try {
+        await clearAllData();
+        alert('✅ 所有数据已清除！页面将刷新。');
+        setTimeout(() => window.location.reload(), 1000);
+      } catch (error) {
+        console.error('清除数据失败:', error);
+        alert('❌ 清除失败，请查看控制台了解详情');
+      }
     }
   };
 
@@ -680,12 +741,107 @@ export default function SettingsScreen({ apiConfig, onUpdateConfig, onBack }: Se
           </div>
         </div>
 
-        {/* 数据管理 */}
+        {/* 存储管理卡片 */}
         <div className="bg-white rounded-xl shadow-sm p-5 mt-4">
-          <h2 className="text-base font-semibold text-gray-900 mb-2 flex items-center gap-2">
+          <h2 className="text-base font-semibold text-gray-900 mb-3 flex items-center gap-2">
             <Database className="w-5 h-5 text-purple-500" />
-            数据管理
+            存储管理
           </h2>
+          
+          {/* 存储状态显示 */}
+          {isLoadingStorage ? (
+            <div className="bg-gray-50 border border-gray-200 rounded-xl p-4 mb-4">
+              <div className="flex items-center gap-2">
+                <Loader2 className="w-4 h-4 animate-spin text-gray-500" />
+                <span className="text-sm text-gray-600">加载存储信息中...</span>
+              </div>
+            </div>
+          ) : storageInfo ? (
+            <div className="bg-gray-50 border border-gray-200 rounded-xl p-4 mb-4">
+              <div className="flex items-center gap-2 mb-3">
+                <Database className="w-4 h-4 text-gray-500" />
+                <span className="text-sm font-medium text-gray-700">存储使用情况</span>
+              </div>
+              
+              <div className="space-y-3">
+                {/* 设备信息 */}
+                <div className="flex justify-between text-xs">
+                  <span className="text-gray-600">设备类型:</span>
+                  <span className="font-mono text-gray-800">
+                    {storageInfo.quota?.isMobile ? '📱移动设备' : '🖥️桌面设备'}
+                  </span>
+                </div>
+                
+                {/* 配额信息 */}
+                {storageInfo.quota && storageInfo.quota.quota > 0 && (
+                  <>
+                    <div className="flex justify-between text-xs">
+                      <span className="text-gray-600">存储配额:</span>
+                      <span className="font-mono text-gray-800">
+                        {(storageInfo.quota.quota / 1024 / 1024).toFixed(1)} MB
+                      </span>
+                    </div>
+                    <div className="flex justify-between text-xs">
+                      <span className="text-gray-600">已用空间:</span>
+                      <span className="font-mono text-gray-800">
+                        {(storageInfo.quota.usage / 1024 / 1024).toFixed(1)} MB
+                        ({storageInfo.quota.percentUsed.toFixed(1)}%)
+                      </span>
+                    </div>
+                    <div className="w-full bg-gray-200 rounded-full h-2">
+                      <div 
+                        className="bg-blue-500 h-2 rounded-full transition-all" 
+                        style={{ width: `${Math.min(100, storageInfo.quota.percentUsed)}%` }}
+                      />
+                    </div>
+                  </>
+                )}
+                
+                {/* 存储分布 */}
+                <div className="mt-3 space-y-1 text-xs text-gray-500">
+                  <div>💾 对话记录 → IndexedDB (无限容量)</div>
+                  <div>⚙️ 配置文件 → localStorage (快速同步)</div>
+                  <div>🧠 记忆库 → IndexedDB (持久化)</div>
+                  <div>📱 朋友圈 → IndexedDB (大容量)</div>
+                  <div className="text-blue-600 mt-2">
+                    ℹ️ IndexedDB 可存储 GB 级数据，由浏览器自动管理
+                  </div>
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div className="bg-red-50 border border-red-200 rounded-xl p-4 mb-4">
+              <span className="text-sm text-red-600">存储信息加载失败</span>
+            </div>
+          )}
+          
+          {/* 存储管理操作 */}
+          <div className="space-y-3 mb-4">
+            <button
+              onClick={handleManualMigration}
+              className="w-full py-2.5 px-4 border-2 border-blue-200 hover:border-blue-400 hover:bg-blue-50 rounded-lg transition-colors flex items-center justify-center gap-2 text-blue-700"
+            >
+              <Database className="w-4 h-4" />
+              <span className="font-medium text-sm">手动数据迁移</span>
+            </button>
+            
+            <button
+              onClick={handleClearAllData}
+              className="w-full py-2.5 px-4 border-2 border-red-200 hover:border-red-400 hover:bg-red-50 rounded-lg transition-colors flex items-center justify-center gap-2 text-red-700"
+            >
+              <Database className="w-4 h-4" />
+              <span className="font-medium text-sm">清除所有数据</span>
+            </button>
+          </div>
+        </div>
+
+        {/* 数据管理卡片 */}
+        <div className="bg-white rounded-xl shadow-sm p-5 mt-4">
+          <h2 className="text-base font-semibold text-gray-900 mb-3 flex items-center gap-2">
+            <Database className="w-5 h-5 text-green-500" />
+            数据备份
+          </h2>
+          
           <p className="text-sm text-gray-500 mb-4">导出或导入所有应用数据</p>
           
           <div className="grid grid-cols-2 gap-3">

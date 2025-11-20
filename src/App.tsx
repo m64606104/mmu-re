@@ -83,20 +83,28 @@ function App() {
     window.location.reload();
   }, []);
 
-  // 检查存储迁移需求
+  // 检查存储迁移状态
   useEffect(() => {
     const checkStorage = async () => {
-      // 检查是否需要迁移
       const needsMigration = checkMigrationNeeded();
       
       if (needsMigration) {
-        // 检查localStorage使用状况
-        const status = await getStorageStatus();
+        // 检查是否已经显示过升级提示
+        const hasShownUpgrade = localStorage.getItem('hasShownStorageUpgrade');
+        const currentVersion = 'v2.0-storage-rewrite';
         
-        // 如果有需要迁移的数据，显示迁移提示
-        if (status.localStorage.needsMigration.length > 0) {
-          console.log(`📊 发现 ${status.localStorage.needsMigration.length} 项数据需要迁移`);
-          setShowMigrationPrompt(true);
+        if (hasShownUpgrade !== currentVersion) {
+          // 检查localStorage使用状况
+          const status = await getStorageStatus();
+          
+          // 如果有需要迁移的数据，显示迁移提示
+          if (status.localStorage.needsMigration.length > 0) {
+            console.log(`📊 发现 ${status.localStorage.needsMigration.length} 项数据需要迁移`);
+            setShowMigrationPrompt(true);
+            
+            // 标记已显示过此版本的升级提示
+            localStorage.setItem('hasShownStorageUpgrade', currentVersion);
+          }
         }
       }
     };
