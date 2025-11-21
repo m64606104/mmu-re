@@ -766,6 +766,57 @@ async function generateRealAIReply(letter: Letter): Promise<string> {
   // 构建AI人设提示
   const aiProfile = letter.bottleAIProfile;
   
+  // 🧠 获取聊天记忆库信息（如果是聊天软件联系人）
+  let chatMemoryContext = '';
+  let userRecognitionInfo = '';
+  
+  if (!letter.isBottle && !letter.isAnonymous) {
+    // 非漂流瓶且非匿名时，尝试获取聊天记忆
+    try {
+      const { getMemoryBank } = await import('./memorySystem');
+      const memoryBank = getMemoryBank(letter.receiverId);
+      
+      if (memoryBank.memories.length > 0) {
+        // 按重要性和时间排序，获取最相关的记忆
+        const relevantMemories = memoryBank.memories
+          .filter(memory => !memory.source || memory.source === 'private') // 只要私聊记忆
+          .sort((a, b) => {
+            // 先按重要性排序，再按时间排序
+            const importanceWeight = { high: 3, medium: 2, low: 1 };
+            const scoreDiff = importanceWeight[b.importance] - importanceWeight[a.importance];
+            return scoreDiff !== 0 ? scoreDiff : b.timestamp - a.timestamp;
+          })
+          .slice(0, 10); // 最多取10条最重要的记忆
+        
+        if (relevantMemories.length > 0) {
+          console.log(`🧠 成功读取${relevantMemories.length}条聊天记忆，用于信件AI回复`);
+          chatMemoryContext = `\n\n【🧠 聊天软件中的记忆库】:
+⚠️ 重要：你们在聊天软件中已经有过交流，以下是你对用户的记忆：
+
+${relevantMemories.map((memory, index) => 
+  `${index + 1}. [${memory.importance}] ${memory.content}${memory.category ? ` (${memory.category})` : ''}`
+).join('\n')}
+
+你需要根据这些记忆判断你们的熟悉程度，如果你们很熟悉，就不要表现得像陌生人一样。`;
+        } else {
+          console.log('📭 该联系人的记忆库为空，使用基础用户识别信息');
+        }
+      }
+      
+      // 用户身份识别信息（非匿名时）
+      userRecognitionInfo = `\n\n【👤 用户身份信息】:
+这封信来自你认识的用户"${letter.senderName}"，你们在聊天软件中有过交流。
+${chatMemoryContext ? '基于你的记忆库，' : ''}请以合适的熟悉程度回复，不要表现得完全不认识对方。`;
+      
+    } catch (error) {
+      console.log('获取聊天记忆失败:', error);
+      console.log('🔍 信件发送给联系人，但无法读取记忆库，使用基础识别信息');
+      // 如果获取记忆失败，至少保证用户身份识别
+      userRecognitionInfo = `\n\n【👤 用户身份信息】:
+这封信来自你认识的用户"${letter.senderName}"，你们之前有过交流。请以适当的熟悉程度回复。`;
+    }
+  }
+  
   // 根据性格判断回复风格和倾向
   const getReplyStyle = (personality: string) => {
     const p = personality.toLowerCase();
@@ -1073,7 +1124,8 @@ ${allDetails}
   } else if (letter.isBottle) {
     senderInfo = `这是漂流瓶模式，寄信人是陌生人（你不认识的人），你们是第一次通过漂流瓶认识。`;
   } else {
-    senderInfo = `这封信来自你认识的人"${letter.senderName}"，你们有一定的关系（朋友/熟人），不是完全陌生的。`;
+    // 使用新的用户识别信息
+    senderInfo = userRecognitionInfo || `这封信来自你认识的人"${letter.senderName}"，你们有一定的关系（朋友/熟人），不是完全陌生的。`;
   }
 
   // 构建漂流瓶上下文（如果是回复漂流瓶）
