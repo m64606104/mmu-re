@@ -14,7 +14,7 @@ import {
 } from '../utils/letterListManager';
 import { setAINickname, getAINickname } from '../utils/letterNicknameManager';
 import { Letter } from '../types/letter';
-import LetterDetailView from './LetterDetailView';
+import RoundBasedLetterView from './RoundBasedLetterView';
 
 interface GroupedLetterBoxScreenProps {
   onBack: () => void;
@@ -106,7 +106,7 @@ export default function GroupedLetterBoxScreen({
   // 如果选择了具体信件，显示信件详情
   if (selectedLetter) {
     return (
-      <LetterDetailView
+      <RoundBasedLetterView
         letter={selectedLetter}
         onBack={() => setSelectedLetter(null)}
         userName={userName}
