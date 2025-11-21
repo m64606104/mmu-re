@@ -1620,33 +1620,20 @@ export function getLetterById(id: string): Letter | undefined {
 }
 
 /**
- * 初始化信件数据（App启动时调用，类似conversations的加载方式）
- * 🔧 从IndexedDB/localStorage加载数据到内存缓存
+ * 初始化信件数据（App启动时调用）
+ * 🔧 从IndexedDB加载数据到内存缓存（migrateData已处理localStorage迁移）
  */
 export async function initializeLetters(): Promise<void> {
   try {
-    // 从统一存储系统加载（会自动从IndexedDB或localStorage读取）
+    // load()会自动从IndexedDB读取并更新内存缓存
     const { load } = await import('./storage');
     const saved = await load(STORAGE_KEY);
     
     if (saved && Array.isArray(saved)) {
-      // 加载到内存缓存
-      setCachedData(STORAGE_KEY, saved);
       console.log(`📮 已加载 ${saved.length} 封信件到内存`);
     } else {
-      // 检查旧的localStorage数据（兼容迁移前）
-      const oldSaved = localStorage.getItem(STORAGE_KEY);
-      if (oldSaved) {
-        const parsed: Letter[] = JSON.parse(oldSaved);
-        // 保存到内存缓存
-        setCachedData(STORAGE_KEY, parsed);
-        // 保存到新存储系统
-        await save(STORAGE_KEY, parsed);
-        console.log(`📮 已从localStorage迁移 ${parsed.length} 封信件`);
-      } else {
-        // 初始化为空数组
-        setCachedData(STORAGE_KEY, []);
-      }
+      // 没有数据，初始化空数组
+      setCachedData(STORAGE_KEY, []);
     }
   } catch (error) {
     console.error('📮 信件初始化失败:', error);
