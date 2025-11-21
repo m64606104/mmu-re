@@ -172,69 +172,105 @@ export default function GroupedLetterBoxScreen({
         {/* 信件列表 */}
         <div className="flex-1 overflow-y-auto px-4 py-4">
           <div className="max-w-2xl mx-auto space-y-3">
-            {/* 显示所有信件，倒序排列 */}
+            {/* 显示所有轮次，每轮单独显示为卡片 */}
             {selectedGroup && receiverLetters.length > 0 ? 
-              [...receiverLetters].reverse().map((letter) => {
-                // 对每封信，显示其最新轮次的状态
-                const latestRound = letter.conversationRounds[letter.conversationRounds.length - 1];
+              // 收集所有轮次并按轮次倒序显示
+              (() => {
+                const allRounds: Array<{letter: any, roundIndex: number, round: any, isLatest: boolean}> = [];
                 
-                // 判断信件状态
-                let status = '';
-                let statusColor = '';
-                if (latestRound?.aiReply) {
-                  // AI已回复
-                  status = '已回复';
-                  statusColor = 'bg-green-100 text-green-700';
-                } else if (letter.status === 'sent') {
-                  // 用户已发送，等待AI回复
-                  status = '等待回信';
-                  statusColor = 'bg-orange-100 text-orange-700';
-                } else {
-                  status = '未回信';
-                  statusColor = 'bg-blue-100 text-blue-700';
-                }
+                receiverLetters.forEach(letter => {
+                  // 对于匿名信件，只显示一张卡片
+                  if (letter.isAnonymous) {
+                    allRounds.push({
+                      letter,
+                      roundIndex: 0,
+                      round: letter.conversationRounds[0] || { userMessage: letter.content },
+                      isLatest: true
+                    });
+                  } else {
+                    // 对于普通信件，每轮都是一张卡片
+                    letter.conversationRounds.forEach((round: any, index: number) => {
+                      allRounds.push({
+                        letter,
+                        roundIndex: index,
+                        round,
+                        isLatest: index === letter.conversationRounds.length - 1
+                      });
+                    });
+                  }
+                });
 
-                return (
-                  <div
-                    key={letter.id}
-                    onClick={() => handleLetterClick(letter)}
-                    className="bg-white rounded-2xl shadow-md hover:shadow-lg transform hover:scale-[1.02] transition-all duration-200 cursor-pointer p-4 border border-gray-100 hover:border-orange-200"
-                  >
-                    <div className="flex items-start justify-between mb-3">
-                      <div className="flex items-center gap-2">
-                        <div className="w-2 h-2 bg-green-400 rounded-full"></div>
-                        <div className="text-sm font-medium text-gray-800">
-                          {letter.isAnonymous ? '匿名信件' : `第 ${letter.currentRound} 轮对话`}
+                // 按轮次倒序排列（最新的在上面）
+                allRounds.sort((a, b) => {
+                  // 首先按信件的发送时间排序
+                  const letterTimeA = a.letter.sentAt;
+                  const letterTimeB = b.letter.sentAt;
+                  if (letterTimeA !== letterTimeB) {
+                    return letterTimeB - letterTimeA;
+                  }
+                  // 如果是同一封信，按轮次倒序
+                  return b.roundIndex - a.roundIndex;
+                });
+
+                return allRounds.map((item) => {
+                  const { letter, roundIndex, round, isLatest } = item;
+                  
+                  // 判断这轮的状态
+                  let status = '';
+                  let statusColor = '';
+                  if (round.aiReply) {
+                    status = '已回复';
+                    statusColor = 'bg-green-100 text-green-700';
+                  } else if (isLatest && letter.status === 'sent') {
+                    status = '等待回信';
+                    statusColor = 'bg-orange-100 text-orange-700';
+                  } else {
+                    status = '未回信';
+                    statusColor = 'bg-blue-100 text-blue-700';
+                  }
+
+                  const displayContent = round.userMessage || letter.content;
+                  const roundNumber = roundIndex + 1;
+
+                  return (
+                    <div
+                      key={`${letter.id}-${roundIndex}`}
+                      onClick={() => handleLetterClick({...letter, selectedRound: roundNumber})}
+                      className="bg-white rounded-2xl shadow-md hover:shadow-lg transform hover:scale-[1.02] transition-all duration-200 cursor-pointer p-4 border border-gray-100 hover:border-orange-200"
+                    >
+                      <div className="flex items-start justify-between mb-3">
+                        <div className="flex items-center gap-2">
+                          <div className="w-2 h-2 bg-green-400 rounded-full"></div>
+                          <div className="text-sm font-medium text-gray-800">
+                            {letter.isAnonymous ? '匿名信件' : `第 ${roundNumber} 轮对话`}
+                          </div>
+                        </div>
+                        <div className="text-xs text-gray-500">
+                          {formatLastActivity(round.aiReply?.repliedAt || letter.sentAt)}
                         </div>
                       </div>
-                      <div className="text-xs text-gray-500">
-                        {formatLastActivity(letter.sentAt)}
-                      </div>
-                    </div>
-                    
-                    <div className="text-sm text-gray-700 line-clamp-2 mb-3">
-                      "{letter.content}"
-                    </div>
-                    
-                    <div className="flex items-center justify-between text-xs">
-                      <div className="flex items-center gap-2">
-                        <span className={`px-2 py-1 rounded-full flex items-center gap-1 ${statusColor}`}>
-                          {status === '已回复' && <Check size={12} />}
-                          {status === '等待回信' && <Clock size={12} />}
-                          {status}
-                        </span>
-                        <span className="text-gray-500">
-                          {letter.conversationRounds.length} 轮
-                        </span>
+                      
+                      <div className="text-sm text-gray-700 line-clamp-2 mb-3">
+                        "{displayContent}"
                       </div>
                       
-                      <div className="text-xs text-gray-400">
-                        点击查看详情 →
+                      <div className="flex items-center justify-between text-xs">
+                        <div className="flex items-center gap-2">
+                          <span className={`px-2 py-1 rounded-full flex items-center gap-1 ${statusColor}`}>
+                            {status === '已回复' && <Check size={12} />}
+                            {status === '等待回信' && <Clock size={12} />}
+                            {status}
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-2 text-gray-500">
+                          <MessageCircle size={12} />
+                          <span>点击查看详情</span>
+                        </div>
                       </div>
                     </div>
-                  </div>
-                );
-              })
+                  );
+                });
+              })()
             : (
               <div className="text-center py-8 text-gray-500">
                 暂无对话记录
