@@ -4,7 +4,7 @@
  * 参考慢邮件App的卡片设计
  */
 
-import { ArrowLeft, Check, Zap, UserPlus, FileDown, Trash2, Reply, Star, Filter } from 'lucide-react';
+import { ArrowLeft, Check, Zap, UserPlus, FileDown, Trash2, Reply, Star } from 'lucide-react';
 import { Letter } from '../types/letter';
 import { getCurrentStamp } from '../utils/stampSystem';
 import { useEffect, useRef, useState } from 'react';
@@ -22,14 +22,12 @@ interface LetterCardsViewProps {
   onContinueReply?: () => void;
 }
 
-type ViewMode = 'all' | 'sent' | 'received';
-
 export default function LetterCardsView({ letter, onBack, onViewTimeline, userName, scrollToRound, onRoundViewed, onContinueReply }: LetterCardsViewProps) {
   const currentStamp = getCurrentStamp();
   const roundRefs = useRef<{ [key: number]: HTMLDivElement | null }>({});
   const [localLetter, setLocalLetter] = useState(letter);
   const [showPDFExport, setShowPDFExport] = useState(false);
-  const [viewMode, setViewMode] = useState<ViewMode>('all');
+  const [viewMode, setViewMode] = useState<'all' | 'sent' | 'reply'>('all');
   
   useEffect(() => {
     setLocalLetter(letter);
@@ -171,13 +169,15 @@ export default function LetterCardsView({ letter, onBack, onViewTimeline, userNa
             {!letter.isBottle && <span>✈️ {getExpectedDeliveryDate()}</span>}
           </div>
         </div>
-        <button 
-          onClick={() => setShowPDFExport(true)}
-          className="p-2 hover:bg-orange-100 rounded-full transition-colors"
-          title="导出PDF"
-        >
-          <FileDown size={20} className="text-orange-600" />
-        </button>
+        <div className="flex gap-2">
+          <button 
+            onClick={() => setShowPDFExport(true)}
+            className="p-2 hover:bg-orange-100 rounded-full transition-colors"
+            title="导出PDF"
+          >
+            <FileDown size={20} className="text-orange-600" />
+          </button>
+        </div>
         <button 
           onClick={onViewTimeline}
           className="px-3 py-1.5 bg-blue-100 text-blue-600 rounded-full text-xs font-medium hover:bg-blue-200 transition-colors"
@@ -186,74 +186,53 @@ export default function LetterCardsView({ letter, onBack, onViewTimeline, userNa
         </button>
       </div>
 
-      {/* 筛选标签栏 */}
-      <div className="bg-white/60 backdrop-blur-sm border-b border-orange-100 px-4 py-3 flex-shrink-0">
-        <div className="flex items-center gap-2">
-          <Filter size={16} className="text-gray-500" />
-          <div className="flex gap-1">
-            <button
-              onClick={() => setViewMode('all')}
-              className={`px-4 py-2 rounded-full text-sm font-medium transition-colors ${
-                viewMode === 'all'
-                  ? 'bg-orange-500 text-white'
-                  : 'bg-white/80 text-gray-600 hover:bg-white'
-              }`}
-            >
-              全部
-            </button>
-            <button
-              onClick={() => setViewMode('sent')}
-              className={`px-4 py-2 rounded-full text-sm font-medium transition-colors ${
-                viewMode === 'sent'
-                  ? 'bg-blue-500 text-white'
-                  : 'bg-white/80 text-gray-600 hover:bg-white'
-              }`}
-            >
-              寄信
-            </button>
-            <button
-              onClick={() => setViewMode('received')}
-              className={`px-4 py-2 rounded-full text-sm font-medium transition-colors ${
-                viewMode === 'received'
-                  ? 'bg-green-500 text-white'
-                  : 'bg-white/80 text-gray-600 hover:bg-white'
-              }`}
-            >
-              回信
-            </button>
-          </div>
+      {/* 显示模式切换 */}
+      <div className="px-4 py-3 bg-white/80 border-b border-orange-200">
+        <div className="flex gap-1 max-w-2xl mx-auto">
+          <button
+            onClick={() => setViewMode('all')}
+            className={`px-3 py-1.5 rounded-full text-xs font-medium transition-colors ${
+              viewMode === 'all' 
+                ? 'bg-orange-500 text-white' 
+                : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+            }`}
+          >
+            全部
+          </button>
+          <button
+            onClick={() => setViewMode('sent')}
+            className={`px-3 py-1.5 rounded-full text-xs font-medium transition-colors ${
+              viewMode === 'sent' 
+                ? 'bg-orange-500 text-white' 
+                : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+            }`}
+          >
+            寄信
+          </button>
+          <button
+            onClick={() => setViewMode('reply')}
+            className={`px-3 py-1.5 rounded-full text-xs font-medium transition-colors ${
+              viewMode === 'reply' 
+                ? 'bg-orange-500 text-white' 
+                : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+            }`}
+          >
+            回信
+          </button>
         </div>
       </div>
 
       {/* 信件卡片列表 */}
       <div className="flex-1 overflow-y-auto px-4 py-6 pb-24">
         <div className="max-w-2xl mx-auto space-y-4">
-          {/* 遍历所有对话轮次 */}
+          {/* 遍历所有对话轮次 - 倒序排列，最新在上面 */}
           {letter.conversationRounds && letter.conversationRounds.length > 0 ? (
-            localLetter.conversationRounds
-              .filter(round => {
-                // 基础过滤：未删除的内容
-                const hasValidUserLetter = !round.userLetter.isDeleted;
-                const hasValidAIReply = round.aiReply && !round.aiReply.isDeleted;
-                
-                // 根据viewMode进一步过滤
-                switch (viewMode) {
-                  case 'sent':
-                    return hasValidUserLetter;
-                  case 'received':
-                    return hasValidAIReply;
-                  default: // 'all'
-                    return hasValidUserLetter || hasValidAIReply;
-                }
-              })
+            [...localLetter.conversationRounds]
+              .reverse()
+              .filter(round => !round.userLetter.isDeleted || (round.aiReply && !round.aiReply.isDeleted))
               .map((round) => (
-              <div 
-                key={round.roundNumber}
-                ref={(el) => {
-                  roundRefs.current[round.roundNumber] = el;
-                }}
-              >
-                {/* 用户发送的信卡片 */}
+              <div key={round.roundNumber}>
+                {/* 用户发送的信卡片 - 单独的卡片 */}
                 {!round.userLetter.isDeleted && (viewMode === 'all' || viewMode === 'sent') && (
                   <div className="mb-4">
                     <div className="bg-white rounded-3xl shadow-lg overflow-hidden border-2 border-gray-100">
@@ -262,7 +241,7 @@ export default function LetterCardsView({ letter, onBack, onViewTimeline, userNa
                       <div className="flex items-center gap-2">
                         <Check size={16} className="text-green-600" />
                         <span className="text-sm font-medium text-gray-700">
-                          to {letter.receiverName}
+                          第 {round.roundNumber} 轮 - to {letter.receiverName}
                         </span>
                       </div>
                       <div className="flex items-center gap-3">
@@ -312,8 +291,8 @@ export default function LetterCardsView({ letter, onBack, onViewTimeline, userNa
                 </div>
                 )}
 
-                {/* AI回信卡片 */}
-                {round.aiReply && !round.aiReply.isDeleted && (viewMode === 'all' || viewMode === 'received') && (
+                {/* AI回信卡片 - 单独的卡片 */}
+                {round.aiReply && !round.aiReply.isDeleted && (viewMode === 'all' || viewMode === 'reply') && (
                   <div className="mb-4">
                     <div className="bg-white rounded-3xl shadow-lg overflow-hidden border-2 border-blue-100">
                       {/* 卡片头部 */}
@@ -323,7 +302,7 @@ export default function LetterCardsView({ letter, onBack, onViewTimeline, userNa
                             {letter.receiverAvatar}
                           </div>
                           <span className="text-sm font-medium text-gray-700">
-                            {letter.receiverName}
+                            第 {round.roundNumber} 轮 - {letter.receiverName}
                           </span>
                         </div>
                         <div className="flex items-center gap-3">

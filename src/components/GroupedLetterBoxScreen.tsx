@@ -14,7 +14,7 @@ import {
 } from '../utils/letterListManager';
 import { setAINickname, getAINickname } from '../utils/letterNicknameManager';
 import { Letter } from '../types/letter';
-import LetterCardsView from './LetterCardsView';
+import LetterDetailView from './LetterDetailView';
 
 interface GroupedLetterBoxScreenProps {
   onBack: () => void;
@@ -103,13 +103,12 @@ export default function GroupedLetterBoxScreen({
     }
   };
 
-  // 如果选择了具体信件，直接显示原来的信件详情页（不要轮次列表）
+  // 如果选择了具体信件，显示信件详情
   if (selectedLetter) {
     return (
-      <LetterCardsView
+      <LetterDetailView
         letter={selectedLetter}
         onBack={() => setSelectedLetter(null)}
-        onViewTimeline={() => {}} 
         userName={userName}
         onContinueReply={onContinueReply ? () => onContinueReply(selectedLetter) : undefined}
       />
@@ -344,13 +343,6 @@ export default function GroupedLetterBoxScreen({
                     <div className="w-12 h-12 rounded-full bg-gradient-to-br from-orange-400 to-amber-500 flex items-center justify-center text-2xl">
                       {group.receiverAvatar}
                     </div>
-                    {group.hasNewReply && (
-                      <div className="absolute -top-1 -right-1 w-6 h-6 bg-red-500 rounded-full flex items-center justify-center">
-                        <span className="text-white text-xs font-bold">
-                          {group.unreadCount > 9 ? '9+' : group.unreadCount}
-                        </span>
-                      </div>
-                    )}
                   </div>
 
                   {/* 信息区域 */}
@@ -378,6 +370,17 @@ export default function GroupedLetterBoxScreen({
                         <span className="text-xs text-gray-500">
                           {group.letterCount}封信
                         </span>
+                        {/* 新的状态胶囊 */}
+                        {group.latestLetter.status === 'replied' && (
+                          <span className="text-xs bg-green-100 text-green-700 px-2 py-1 rounded-full">
+                            新回信
+                          </span>
+                        )}
+                        {group.latestLetter.status === 'sent' && (
+                          <span className="text-xs bg-orange-100 text-orange-700 px-2 py-1 rounded-full">
+                            待回复
+                          </span>
+                        )}
                       </div>
                       
                       <div className="text-xs text-gray-500">
