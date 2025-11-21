@@ -4,18 +4,15 @@
  */
 
 import { useState, useEffect } from 'react';
-import { ArrowLeft, Send, Edit2, MessageCircle, Waves, Clock, Check, Bell, UserCheck } from 'lucide-react';
-import { getUnreadCount } from '../utils/letterNotificationSystem';
+import { ArrowLeft, Send, Edit2, MessageCircle, Waves, Clock, Check, Bell } from 'lucide-react';
 import { 
   getGroupedLetterList, 
   getLettersByReceiver,
   formatLastActivity,
   getContactTypeLabel,
-  type LetterGroup,
-  type LetterListData 
+  type LetterGroup 
 } from '../utils/letterListManager';
 import { setAINickname, getAINickname } from '../utils/letterNicknameManager';
-import { setCharacterName, getCharacterName } from '../utils/characterNameManager';
 import { Letter } from '../types/letter';
 import LetterDetailView from './LetterDetailView';
 
@@ -38,17 +35,13 @@ export default function GroupedLetterBoxScreen({
   onToNotifications,
   userName
 }: GroupedLetterBoxScreenProps) {
-  const [letterData, setLetterData] = useState<LetterListData>({ 
-    penPals: [], bottles: [], contacts: [], total: 0, unreadTotal: 0 
-  });
+  const [letterData, setLetterData] = useState(getGroupedLetterList());
   const [selectedGroup, setSelectedGroup] = useState<LetterGroup | null>(null);
   const [receiverLetters, setReceiverLetters] = useState<Letter[]>([]);
   const [selectedLetter, setSelectedLetter] = useState<Letter | null>(null);
   const [editingNickname, setEditingNickname] = useState<string | null>(null);
   const [nicknameInput, setNicknameInput] = useState('');
   const [activeTab, setActiveTab] = useState<'all' | 'penpal' | 'bottle'>('all');
-  const [unreadNotificationCount, setUnreadNotificationCount] = useState(0);
-  const [characterNameInput, setCharacterNameInput] = useState('');
 
   useEffect(() => {
     refreshData();
@@ -69,7 +62,6 @@ export default function GroupedLetterBoxScreen({
 
   const refreshData = () => {
     setLetterData(getGroupedLetterList());
-    setUnreadNotificationCount(getUnreadCount());
   };
 
   const handleGroupClick = (group: LetterGroup) => {
@@ -84,33 +76,22 @@ export default function GroupedLetterBoxScreen({
 
   const handleNicknameEdit = (receiverId: string) => {
     const currentNickname = getAINickname(receiverId);
-    const currentCharacterName = getCharacterName(receiverId);
     setNicknameInput(currentNickname || '');
-    setCharacterNameInput(currentCharacterName || '');
     setEditingNickname(receiverId);
   };
 
   const handleNicknameSave = (receiverId: string, originalName: string, avatar: string) => {
-    // 保存备注名
     if (nicknameInput.trim()) {
       setAINickname(receiverId, nicknameInput.trim(), originalName, avatar);
+      refreshData();
     }
-    
-    // 保存角色名字
-    if (characterNameInput.trim()) {
-      setCharacterName(receiverId, characterNameInput.trim(), originalName);
-    }
-    
-    refreshData();
     setEditingNickname(null);
     setNicknameInput('');
-    setCharacterNameInput('');
   };
 
   const handleNicknameCancel = () => {
     setEditingNickname(null);
     setNicknameInput('');
-    setCharacterNameInput('');
   };
 
   const getFilteredGroups = () => {
@@ -160,68 +141,43 @@ export default function GroupedLetterBoxScreen({
               </div>
             </div>
           </div>
-          <button
-            onClick={() => handleNicknameEdit(selectedGroup.receiverId)}
-            className="p-2 hover:bg-indigo-100 rounded-full transition-colors"
-            title="编辑备注名"
-          >
-            <UserCheck size={20} className="text-pink-600" />
-          </button>
+          <div className="flex gap-2">
+            <button
+              onClick={() => {
+                // 写新信给这个联系人
+                onWriteNew();
+              }}
+              className="p-2 hover:bg-indigo-100 rounded-full transition-colors"
+              title="写新信"
+            >
+              <Edit2 size={20} className="text-indigo-600" />
+            </button>
+            <button
+              onClick={() => handleNicknameEdit(selectedGroup.receiverId)}
+              className="p-2 hover:bg-indigo-100 rounded-full transition-colors"
+              title="编辑备注名"
+            >
+              <div className="text-pink-600 text-xl">👥</div>
+            </button>
+          </div>
         </div>
 
         {/* 信件列表 */}
         <div className="flex-1 overflow-y-auto px-4 py-4">
           <div className="max-w-2xl mx-auto space-y-3">
-            {/* 显示所有轮次，每轮单独显示为卡片 */}
+            {/* 显示所有信件和轮次，倒序排列 */}
             {selectedGroup && receiverLetters.length > 0 ? 
-              // 收集所有轮次并按轮次倒序显示
-              (() => {
-                const allRounds: Array<{letter: any, roundIndex: number, round: any, isLatest: boolean}> = [];
-                
-                receiverLetters.forEach(letter => {
-                  // 对于匿名信件，只显示一张卡片
-                  if (letter.isAnonymous) {
-                    allRounds.push({
-                      letter,
-                      roundIndex: 0,
-                      round: letter.conversationRounds[0] || { userMessage: letter.content },
-                      isLatest: true
-                    });
-                  } else {
-                    // 对于普通信件，每轮都是一张卡片
-                    letter.conversationRounds.forEach((round: any, index: number) => {
-                      allRounds.push({
-                        letter,
-                        roundIndex: index,
-                        round,
-                        isLatest: index === letter.conversationRounds.length - 1
-                      });
-                    });
-                  }
-                });
-
-                // 按轮次倒序排列（最新的在上面）
-                allRounds.sort((a, b) => {
-                  // 首先按信件的发送时间排序
-                  const letterTimeA = a.letter.sentAt;
-                  const letterTimeB = b.letter.sentAt;
-                  if (letterTimeA !== letterTimeB) {
-                    return letterTimeB - letterTimeA;
-                  }
-                  // 如果是同一封信，按轮次倒序
-                  return b.roundIndex - a.roundIndex;
-                });
-
-                return allRounds.map((item) => {
-                  const { letter, roundIndex, round, isLatest } = item;
-                  
-                  // 判断这轮的状态
+              [...receiverLetters].reverse().flatMap((letter) => 
+                [...letter.conversationRounds].reverse().map((round) => {
+                  // 判断轮次状态
                   let status = '';
                   let statusColor = '';
                   if (round.aiReply) {
+                    // AI已回复，检查用户是否已查看并回复
                     status = '已回复';
                     statusColor = 'bg-green-100 text-green-700';
-                  } else if (isLatest && letter.status === 'sent') {
+                  } else if (round.roundNumber === letter.currentRound && letter.status === 'sent') {
+                    // 用户已发送，AI还没回复
                     status = '等待回信';
                     statusColor = 'bg-orange-100 text-orange-700';
                   } else {
@@ -229,48 +185,48 @@ export default function GroupedLetterBoxScreen({
                     statusColor = 'bg-blue-100 text-blue-700';
                   }
 
-                  const displayContent = round.userMessage || letter.content;
-                  const roundNumber = roundIndex + 1;
-
                   return (
                     <div
-                      key={`${letter.id}-${roundIndex}`}
-                      onClick={() => handleLetterClick({...letter, selectedRound: roundNumber})}
-                      className="bg-white rounded-2xl shadow-md hover:shadow-lg transform hover:scale-[1.02] transition-all duration-200 cursor-pointer p-4 border border-gray-100 hover:border-orange-200"
-                    >
-                      <div className="flex items-start justify-between mb-3">
-                        <div className="flex items-center gap-2">
-                          <div className="w-2 h-2 bg-green-400 rounded-full"></div>
-                          <div className="text-sm font-medium text-gray-800">
-                            {letter.isAnonymous ? '匿名信件' : `第 ${roundNumber} 轮对话`}
-                          </div>
-                        </div>
-                        <div className="text-xs text-gray-500">
-                          {formatLastActivity(round.aiReply?.repliedAt || letter.sentAt)}
+                      key={`${letter.id}-${round.roundNumber}`}
+                    onClick={() => handleLetterClick({...letter, selectedRound: round.roundNumber})}
+                    className="bg-white rounded-2xl shadow-md hover:shadow-lg transform hover:scale-[1.02] transition-all duration-200 cursor-pointer p-4 border border-gray-100 hover:border-orange-200"
+                  >
+                    <div className="flex items-start justify-between mb-3">
+                      <div className="flex items-center gap-2">
+                        <div className="w-2 h-2 bg-green-400 rounded-full"></div>
+                        <div className="text-sm font-medium text-gray-800">
+                          第 {round.roundNumber} 轮对话
                         </div>
                       </div>
-                      
-                      <div className="text-sm text-gray-700 line-clamp-2 mb-3">
-                        "{displayContent}"
-                      </div>
-                      
-                      <div className="flex items-center justify-between text-xs">
-                        <div className="flex items-center gap-2">
-                          <span className={`px-2 py-1 rounded-full flex items-center gap-1 ${statusColor}`}>
-                            {status === '已回复' && <Check size={12} />}
-                            {status === '等待回信' && <Clock size={12} />}
-                            {status}
-                          </span>
-                        </div>
-                        <div className="flex items-center gap-2 text-gray-500">
-                          <MessageCircle size={12} />
-                          <span>点击查看详情</span>
-                        </div>
+                      <div className="text-xs text-gray-500">
+                        {formatLastActivity(round.userLetter.sentAt)}
                       </div>
                     </div>
-                  );
-                });
-              })()
+                    
+                    <div className="text-sm text-gray-700 line-clamp-2 mb-3">
+                      "{round.userLetter.content}"
+                    </div>
+                    
+                    <div className="flex items-center justify-between text-xs">
+                      <div className="flex items-center gap-2">
+                        <span className={`px-2 py-1 rounded-full flex items-center gap-1 ${statusColor}`}>
+                          {status === '已回复' && <Check size={12} />}
+                          {status === '等待回信' && <Clock size={12} />}
+                          {status}
+                        </span>
+                        <span className="text-gray-500">
+                          {round.roundNumber} 轮
+                        </span>
+                      </div>
+                      
+                      <div className="text-xs text-gray-400">
+                        点击查看详情 →
+                      </div>
+                    </div>
+                  </div>
+                );
+              })
+            )
             : (
               <div className="text-center py-8 text-gray-500">
                 暂无对话记录
@@ -283,50 +239,20 @@ export default function GroupedLetterBoxScreen({
         {editingNickname === selectedGroup.receiverId && (
           <div className="absolute inset-0 bg-black/50 flex items-center justify-center z-10">
             <div className="bg-white rounded-2xl p-6 mx-4 w-full max-w-sm">
-              <h3 className="text-lg font-semibold mb-4">编辑角色信息</h3>
-              
+              <h3 className="text-lg font-semibold mb-4">设置备注名</h3>
               <div className="mb-4">
                 <div className="text-sm text-gray-600 mb-2">
                   原名: {selectedGroup.receiverName}
                 </div>
-                
-                {/* 角色名字编辑 */}
-                <div className="mb-4">
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    角色名字
-                  </label>
-                  <input
-                    type="text"
-                    value={characterNameInput}
-                    onChange={(e) => setCharacterNameInput(e.target.value)}
-                    placeholder={selectedGroup.receiverName}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-pink-500 focus:border-transparent"
-                    maxLength={20}
-                  />
-                  <div className="text-xs text-gray-500 mt-1">
-                    修改角色的显示名字
-                  </div>
-                </div>
-                
-                {/* 备注名编辑 */}
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    我的备注
-                  </label>
-                  <input
-                    type="text"
-                    value={nicknameInput}
-                    onChange={(e) => setNicknameInput(e.target.value)}
-                    placeholder="输入个人备注..."
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    maxLength={20}
-                  />
-                  <div className="text-xs text-gray-500 mt-1">
-                    只有你能看到的备注名
-                  </div>
-                </div>
+                <input
+                  type="text"
+                  value={nicknameInput}
+                  onChange={(e) => setNicknameInput(e.target.value)}
+                  placeholder="输入备注名..."
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  maxLength={20}
+                />
               </div>
-              
               <div className="flex gap-3">
                 <button
                   onClick={handleNicknameCancel}
@@ -336,7 +262,7 @@ export default function GroupedLetterBoxScreen({
                 </button>
                 <button
                   onClick={() => handleNicknameSave(selectedGroup.receiverId, selectedGroup.receiverName, selectedGroup.receiverAvatar)}
-                  className="flex-1 px-4 py-2 text-white bg-gradient-to-r from-pink-500 to-blue-500 rounded-lg hover:shadow-lg transition-all"
+                  className="flex-1 px-4 py-2 text-white bg-blue-500 rounded-lg hover:bg-blue-600 transition-colors"
                 >
                   保存
                 </button>
@@ -373,11 +299,9 @@ export default function GroupedLetterBoxScreen({
           >
             <Bell size={20} className="text-indigo-600" />
             {/* 红色角标 */}
-            {unreadNotificationCount > 0 && (
-              <div className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 rounded-full text-xs text-white flex items-center justify-center">
-                {unreadNotificationCount > 9 ? '9+' : unreadNotificationCount}
-              </div>
-            )}
+            <div className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 rounded-full text-xs text-white flex items-center justify-center">
+              3
+            </div>
           </button>
           <button
             onClick={onWriteNew}
