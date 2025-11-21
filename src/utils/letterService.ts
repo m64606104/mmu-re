@@ -498,9 +498,7 @@ export function sendLetter(
       roundNumber: 1,
       userLetter: {
         content,
-        sentAt: now,
-        willReplyAt: now + replyDelay,  // 独立的送达时间
-        hasUrged: false  // 独立的催促状态
+        sentAt: now
       }
     }],
     currentRound: 1,
@@ -579,54 +577,21 @@ export function sendLetter(
 }
 
 /**
- * 催促回复（支持催促特定轮次）
- * @param letterId 信件ID
- * @param roundNumber 轮次编号（可选，不传则催促整封信）
+ * 催促回复
  */
-export function urgeLetter(letterId: string, roundNumber?: number): boolean {
+export function urgeLetter(letterId: string): boolean {
   const letters = getLettersFromStorage();
   const letter = letters.find(l => l.id === letterId);
   
-  if (!letter || letter.status === 'replied') {
+  if (!letter || letter.hasUrged || letter.status === 'replied') {
     return false;
   }
   
+  // 更新回复时间为15-30分钟后
   const now = Date.now();
   const urgentDelay = calculateReplyDelay(true);
-  
-  // 如果指定了轮次，催促特定轮次
-  if (roundNumber !== undefined) {
-    const round = letter.conversationRounds.find(r => r.roundNumber === roundNumber);
-    if (!round || round.userLetter.hasUrged || round.aiReply) {
-      return false;
-    }
-    
-    // 更新该轮次的回复时间和催促状态
-    round.userLetter.willReplyAt = now + urgentDelay;
-    round.userLetter.hasUrged = true;
-    
-    // 如果是当前轮，也更新整封信的状态
-    if (roundNumber === letter.currentRound) {
-      letter.willReplyAt = now + urgentDelay;
-      letter.hasUrged = true;
-    }
-  } else {
-    // 催促整封信（所有未回复的轮次）
-    if (letter.hasUrged) {
-      return false;
-    }
-    
-    letter.willReplyAt = now + urgentDelay;
-    letter.hasUrged = true;
-    
-    // 更新所有未回复轮次的催促状态
-    letter.conversationRounds.forEach(round => {
-      if (!round.aiReply && !round.userLetter.hasUrged) {
-        round.userLetter.willReplyAt = now + urgentDelay;
-        round.userLetter.hasUrged = true;
-      }
-    });
-  }
+  letter.willReplyAt = now + urgentDelay;
+  letter.hasUrged = true;
   
   // 保存
   updateLetterInStorage(letter);
@@ -2150,18 +2115,16 @@ function continueExistingLetter(letterId: string, content: string, _senderName: 
   // 增加轮数
   letter.currentRound += 1;
   
-  // 添加新一轮对话，每轮有独立的送达时间和催促状态
+  // 添加新一轮对话
   letter.conversationRounds.push({
     roundNumber: letter.currentRound,
     userLetter: {
       content,
-      sentAt: now,
-      willReplyAt: now + replyDelay,  // 独立的送达时间
-      hasUrged: false  // 独立的催促状态
+      sentAt: now
     }
   });
   
-  // 更新信件整体状态
+  // 更新信件状态
   letter.status = 'sent';
   letter.willReplyAt = now + replyDelay;
   letter.hasUrged = false;
@@ -2206,18 +2169,16 @@ export function continueReply(
   // 增加轮数
   letter.currentRound += 1;
   
-  // 添加新一轮对话，每轮有独立的送达时间和催促状态
+  // 添加新一轮对话
   letter.conversationRounds.push({
     roundNumber: letter.currentRound,
     userLetter: {
       content,
-      sentAt: now,
-      willReplyAt: now + replyDelay,  // 独立的送达时间
-      hasUrged: false  // 独立的催促状态
+      sentAt: now
     }
   });
   
-  // 更新信件整体状态
+  // 更新信件状态
   letter.status = 'sent';
   letter.willReplyAt = now + replyDelay;
   letter.hasUrged = false;

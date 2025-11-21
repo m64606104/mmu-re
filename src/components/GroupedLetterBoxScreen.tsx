@@ -4,7 +4,7 @@
  */
 
 import { useState, useEffect } from 'react';
-import { ArrowLeft, Send, Edit2, MessageCircle, Waves, Clock, Check, Bell } from 'lucide-react';
+import { ArrowLeft, Send, Users, Waves, Clock, Edit2, Check, MessageCircle } from 'lucide-react';
 import { 
   getGroupedLetterList, 
   getLettersByReceiver,
@@ -22,7 +22,6 @@ interface GroupedLetterBoxScreenProps {
   onToPenPals: () => void;
   onToBottleFishing: () => void;
   onContinueReply?: (letter: Letter) => void;
-  onToNotifications?: () => void;
   userName: string;
 }
 
@@ -32,7 +31,6 @@ export default function GroupedLetterBoxScreen({
   onToPenPals,
   onToBottleFishing,
   onContinueReply,
-  onToNotifications,
   userName
 }: GroupedLetterBoxScreenProps) {
   const [letterData, setLetterData] = useState(getGroupedLetterList());
@@ -141,53 +139,42 @@ export default function GroupedLetterBoxScreen({
               </div>
             </div>
           </div>
-          <div className="flex gap-2">
-            <button
-              onClick={() => {
-                // 写新信给这个联系人
-                onWriteNew();
-              }}
-              className="p-2 hover:bg-indigo-100 rounded-full transition-colors"
-              title="写新信"
-            >
-              <Edit2 size={20} className="text-indigo-600" />
-            </button>
-            <button
-              onClick={() => handleNicknameEdit(selectedGroup.receiverId)}
-              className="p-2 hover:bg-indigo-100 rounded-full transition-colors"
-              title="编辑备注名"
-            >
-              <div className="text-pink-600 text-xl">👥</div>
-            </button>
-          </div>
+          <button
+            onClick={() => handleNicknameEdit(selectedGroup.receiverId)}
+            className="p-2 hover:bg-indigo-100 rounded-full transition-colors"
+            title="编辑备注名"
+          >
+            <Edit2 size={20} className="text-gray-600" />
+          </button>
         </div>
 
-        {/* 信件列表 */}
+        {/* 轮次列表 */}
         <div className="flex-1 overflow-y-auto px-4 py-4">
           <div className="max-w-2xl mx-auto space-y-3">
-            {/* 显示所有信件和轮次，倒序排列 */}
-            {selectedGroup && receiverLetters.length > 0 ? 
-              [...receiverLetters].reverse().flatMap((letter) => 
-                [...letter.conversationRounds].reverse().map((round) => {
-                  // 判断轮次状态
-                  let status = '';
-                  let statusColor = '';
-                  if (round.aiReply) {
-                    // AI已回复，检查用户是否已查看并回复
-                    status = '已回复';
-                    statusColor = 'bg-green-100 text-green-700';
-                  } else if (round.roundNumber === letter.currentRound && letter.status === 'sent') {
-                    // 用户已发送，AI还没回复
-                    status = '等待回信';
-                    statusColor = 'bg-orange-100 text-orange-700';
-                  } else {
-                    status = '未回信';
-                    statusColor = 'bg-blue-100 text-blue-700';
-                  }
+            {/* 显示所有轮次，倒序排列 */}
+            {selectedGroup && receiverLetters[0] && receiverLetters[0].conversationRounds ? 
+              [...receiverLetters[0].conversationRounds].reverse().map((round) => {
+                const letter = receiverLetters[0];
+                
+                // 判断轮次状态
+                let status = '';
+                let statusColor = '';
+                if (round.aiReply) {
+                  // AI已回复，检查用户是否已查看并回复
+                  status = '已回复';
+                  statusColor = 'bg-green-100 text-green-700';
+                } else if (round.roundNumber === letter.currentRound && letter.status === 'sent') {
+                  // 用户已发送，AI还没回复
+                  status = '等待回信';
+                  statusColor = 'bg-orange-100 text-orange-700';
+                } else {
+                  status = '未回信';
+                  statusColor = 'bg-blue-100 text-blue-700';
+                }
 
-                  return (
-                    <div
-                      key={`${letter.id}-${round.roundNumber}`}
+                return (
+                  <div
+                    key={round.roundNumber}
                     onClick={() => handleLetterClick({...letter, selectedRound: round.roundNumber})}
                     className="bg-white rounded-2xl shadow-md hover:shadow-lg transform hover:scale-[1.02] transition-all duration-200 cursor-pointer p-4 border border-gray-100 hover:border-orange-200"
                   >
@@ -226,7 +213,6 @@ export default function GroupedLetterBoxScreen({
                   </div>
                 );
               })
-            )
             : (
               <div className="text-center py-8 text-gray-500">
                 暂无对话记录
@@ -291,25 +277,12 @@ export default function GroupedLetterBoxScreen({
             {letterData.total}个联系人 · {letterData.unreadTotal > 0 && `${letterData.unreadTotal}条未读`}
           </div>
         </div>
-        <div className="flex gap-2">
-          <button
-            onClick={onToNotifications}
-            className="p-2 hover:bg-indigo-100 rounded-full transition-colors relative"
-            title="消息通知"
-          >
-            <Bell size={20} className="text-indigo-600" />
-            {/* 红色角标 */}
-            <div className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 rounded-full text-xs text-white flex items-center justify-center">
-              3
-            </div>
-          </button>
-          <button
-            onClick={onWriteNew}
-            className="p-2 hover:bg-indigo-100 rounded-full transition-colors"
-          >
-            <Send size={20} className="text-indigo-600" />
-          </button>
-        </div>
+        <button
+          onClick={onWriteNew}
+          className="p-2 hover:bg-indigo-100 rounded-full transition-colors"
+        >
+          <Send size={20} className="text-indigo-600" />
+        </button>
       </div>
 
       {/* 分类标签栏 */}
@@ -356,7 +329,7 @@ export default function GroupedLetterBoxScreen({
             onClick={onToPenPals}
             className="flex items-center gap-2 px-3 py-2 bg-white/80 rounded-full text-sm text-gray-700 hover:bg-white transition-colors"
           >
-            <div className="text-pink-600">👥</div>
+            <Users size={16} />
             我的笔友
           </button>
           <button
