@@ -9,6 +9,7 @@ import { Letter } from '../types/letter';
 import { getCurrentStamp } from '../utils/stampSystem';
 import { useEffect, useRef, useState } from 'react';
 import { urgeLetter, addAsPenPal, canContinueReply, deleteUserLetter, deleteAIReply, getLetterById, favoriteAIReply } from '../utils/letterService';
+import { getAIDisplayName } from '../utils/letterNicknameManager';
 import PDFExportModal from './PDFExportModal';
 
 interface LetterCardsViewProps {
@@ -156,7 +157,12 @@ export default function LetterCardsView({ letter, onBack, onViewTimeline, userNa
           <ArrowLeft size={24} className="text-gray-600" />
         </button>
         <div className="flex-1">
-          <h1 className="text-lg font-bold text-gray-800">{letter.receiverName}</h1>
+          <h1 className="text-lg font-bold text-gray-800">
+            {getAIDisplayName(letter.receiverId, letter.receiverName)}
+          </h1>
+          {getAIDisplayName(letter.receiverId, letter.receiverName) !== letter.receiverName && (
+            <div className="text-xs text-gray-400">原名: {letter.receiverName}</div>
+          )}
           <div className="text-xs text-gray-500 flex items-center gap-2">
             {letter.isBottle && <span>📍 {letter.bottleAIProfile?.location || '远方'}</span>}
             {!letter.isBottle && <span>✈️ {getExpectedDeliveryDate()}</span>}

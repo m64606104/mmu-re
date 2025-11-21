@@ -11,6 +11,7 @@ export interface Letter {
   receiverId: string;  // 'user' 或 AI的ID，漂流瓶可能是动态生成的AI
   receiverName: string;
   receiverAvatar?: string;
+  receiverNickname?: string;  // 用户给AI设置的备注名
   
   content: string;
   
@@ -75,6 +76,7 @@ export interface BottleAI {
   personality: string;  // 性格描述
   location: string;  // 虚拟位置
   hobby: string;  // 爱好
+  nickname?: string;  // 用户设置的备注名
   isCustom?: boolean;  // 是否为用户自定义角色
   customRolePrompt?: string;  // 用户自定义的角色设定（必填）
   customBackground?: string;  // 用户自定义的背景设定（可选）

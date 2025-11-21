@@ -19,7 +19,7 @@ import ShoppingScreen from './components/ShoppingScreen';
 import UserSystemScreen from './components/UserSystemScreen';
 import OrderHistoryScreen from './components/OrderHistoryScreen';
 import DatabaseScreen from './components/DatabaseScreen';
-import LetterBoxScreen from './components/LetterBoxScreen';
+import GroupedLetterBoxScreen from './components/GroupedLetterBoxScreen';
 import LetterWritingScreen from './components/LetterWritingScreen';
 import PenPalListScreen from './components/PenPalListScreen';
 import ArchivedLettersScreen from './components/ArchivedLettersScreen';
@@ -958,21 +958,14 @@ function App() {
         );
       case 'letterbox':
         return (
-          <LetterBoxScreen
+          <GroupedLetterBoxScreen
             onBack={() => navigateTo('home')}
             onWriteNew={() => {
               setReplyToLetter(null);
               navigateTo('letter-writing');
             }}
             onToPenPals={() => navigateTo('pen-pals')}
-            toArchived={() => navigateTo('archived-letters')}
-            onToRecycleBin={() => navigateTo('recycle-bin')}
-            onToAchievements={() => navigateTo('achievements')}
-            onToFavorites={() => navigateTo('favorite-letters')}
-            onToFavoriteReplies={() => navigateTo('favorite-replies')}
-            onToStampCollection={() => navigateTo('stamp-collection')}
-            onToNotifications={() => navigateTo('letter-notifications')}
-            onToBottleFishing={() => navigateTo('bottle-fishing')} // Fix: Added missing closing parenthesis
+            onToBottleFishing={() => navigateTo('bottle-fishing')}
             onContinueReply={(letter) => {
               setReplyToLetter(letter);
               navigateTo('letter-writing');
