@@ -809,6 +809,7 @@ function App() {
             currentUserProfile={userProfile}
             conversations={conversations}
             onUpdateConversation={updateConversation}
+            onDeleteConversation={deleteConversation}
             onBack={() => navigateTo(previousScreen === 'contacts' ? 'contacts' : 'social')}
             onOpenCharacterSettings={() => navigateTo('character-settings')}
             onRequestAIMoment={handleRequestAIMoment}

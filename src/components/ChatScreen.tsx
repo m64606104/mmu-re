@@ -578,6 +578,7 @@ interface ChatScreenProps {
   currentUserProfile?: UserProfile; // 当前用户资料（用于AI参考）
   conversations: Conversation[]; // 所有对话列表（用于转发）
   onUpdateConversation: (id: string, updates: Partial<Conversation>) => void;
+  onDeleteConversation?: (id: string) => void; // 删除对话（用于群聊删除）
   onBack: () => void;
   onOpenCharacterSettings: () => void;
   onRequestAIMoment?: () => Promise<void>;
@@ -589,6 +590,7 @@ export default function ChatScreen({
   currentUserProfile,
   conversations,
   onUpdateConversation,
+  onDeleteConversation,
   onBack,
   onOpenCharacterSettings,
   onRequestAIMoment,
@@ -6999,8 +7001,14 @@ ${doc.content}`;
         conversations={conversations}
         onClose={() => setShowGroupSettings(false)}
         onUpdateConversation={onUpdateConversation}
-        onDeleteConversation={() => {
-          // 调用删除对话的函数，通过onBack返回
+        onDeleteConversation={(conversationId) => {
+          // 先关闭设置弹窗
+          setShowGroupSettings(false);
+          // 删除群聊（通过向上传递，由App.tsx的deleteConversation处理）
+          if (onDeleteConversation) {
+            onDeleteConversation(conversationId);
+          }
+          // 返回社交页面
           onBack();
         }}
       />
