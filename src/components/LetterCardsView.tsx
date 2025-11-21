@@ -229,7 +229,13 @@ export default function LetterCardsView({ letter, onBack, onViewTimeline, userNa
           {letter.conversationRounds && letter.conversationRounds.length > 0 ? (
             [...localLetter.conversationRounds]
               .reverse()
-              .filter(round => !round.userLetter.isDeleted || (round.aiReply && !round.aiReply.isDeleted))
+              .filter(round => {
+                // 如果有指定scrollToRound，只显示该轮次
+                if (scrollToRound) {
+                  return round.roundNumber === scrollToRound;
+                }
+                return !round.userLetter.isDeleted || (round.aiReply && !round.aiReply.isDeleted);
+              })
               .map((round) => (
               <div key={round.roundNumber}>
                 {/* 用户发送的信卡片 - 单独的卡片 */}

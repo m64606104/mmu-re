@@ -68,7 +68,7 @@ export default function GroupedLetterBoxScreen({
     setSelectedGroup(group);
   };
 
-  const handleLetterClick = (letter: Letter) => {
+  const handleLetterClick = (letter: Letter & {selectedRound?: number}) => {
     setSelectedLetter(letter);
   };
 
@@ -110,6 +110,7 @@ export default function GroupedLetterBoxScreen({
         letter={selectedLetter}
         onBack={() => setSelectedLetter(null)}
         userName={userName}
+        initialRoundNumber={(selectedLetter as any).selectedRound}
         onContinueReply={onContinueReply ? () => onContinueReply(selectedLetter) : undefined}
       />
     );
@@ -147,62 +148,76 @@ export default function GroupedLetterBoxScreen({
           </button>
         </div>
 
-        {/* 信件列表 */}
+        {/* 轮次列表 */}
         <div className="flex-1 overflow-y-auto px-4 py-4">
-          <div className="max-w-2xl mx-auto space-y-4">
-            {receiverLetters.map((letter) => (
-              <div
-                key={letter.id}
-                onClick={() => handleLetterClick(letter)}
-                className="bg-white rounded-2xl shadow-md hover:shadow-lg transition-all cursor-pointer p-4 border border-gray-100"
-              >
-                <div className="flex items-start justify-between mb-3">
-                  <div className="flex items-center gap-2">
-                    <div className="text-sm font-medium text-gray-800">
-                      第 {letter.currentRound} 轮对话
+          <div className="max-w-2xl mx-auto space-y-3">
+            {/* 显示所有轮次，倒序排列 */}
+            {selectedGroup && receiverLetters[0] && receiverLetters[0].conversationRounds ? 
+              [...receiverLetters[0].conversationRounds].reverse().map((round) => {
+                const letter = receiverLetters[0];
+                
+                // 判断轮次状态
+                let status = '';
+                let statusColor = '';
+                if (round.aiReply) {
+                  // AI已回复，检查用户是否已查看并回复
+                  status = '已回复';
+                  statusColor = 'bg-green-100 text-green-700';
+                } else if (round.roundNumber === letter.currentRound && letter.status === 'sent') {
+                  // 用户已发送，AI还没回复
+                  status = '等待回信';
+                  statusColor = 'bg-orange-100 text-orange-700';
+                } else {
+                  status = '待回复';
+                  statusColor = 'bg-blue-100 text-blue-700';
+                }
+
+                return (
+                  <div
+                    key={round.roundNumber}
+                    onClick={() => handleLetterClick({...letter, selectedRound: round.roundNumber})}
+                    className="bg-white rounded-2xl shadow-md hover:shadow-lg transition-all cursor-pointer p-4 border border-gray-100"
+                  >
+                    <div className="flex items-start justify-between mb-3">
+                      <div className="flex items-center gap-2">
+                        <div className="w-2 h-2 bg-green-400 rounded-full"></div>
+                        <div className="text-sm font-medium text-gray-800">
+                          第 {round.roundNumber} 轮对话
+                        </div>
+                      </div>
+                      <div className="text-xs text-gray-500">
+                        {formatLastActivity(round.userLetter.sentAt)}
+                      </div>
                     </div>
-                    {letter.status === 'replied' && (
-                      <div className="w-2 h-2 bg-green-400 rounded-full"></div>
-                    )}
+                    
+                    <div className="text-sm text-gray-700 line-clamp-2 mb-3">
+                      "{round.userLetter.content}"
+                    </div>
+                    
+                    <div className="flex items-center justify-between text-xs">
+                      <div className="flex items-center gap-2">
+                        <span className={`px-2 py-1 rounded-full flex items-center gap-1 ${statusColor}`}>
+                          {status === '已回复' && <Check size={12} />}
+                          {status === '等待回信' && <Clock size={12} />}
+                          {status}
+                        </span>
+                        <span className="text-gray-500">
+                          {round.roundNumber} 轮
+                        </span>
+                      </div>
+                      
+                      <div className="text-xs text-gray-400">
+                        点击查看详情 →
+                      </div>
+                    </div>
                   </div>
-                  <div className="text-xs text-gray-500">
-                    {formatLastActivity(letter.sentAt)}
-                  </div>
-                </div>
-                
-                <div className="text-sm text-gray-700 line-clamp-2 mb-3">
-                  "{letter.content}"
-                </div>
-                
-                <div className="flex items-center justify-between text-xs">
-                  <div className="flex items-center gap-2">
-                    {letter.status === 'replied' ? (
-                      <span className="bg-green-100 text-green-700 px-2 py-1 rounded-full flex items-center gap-1">
-                        <Check size={12} />
-                        已回复
-                      </span>
-                    ) : (
-                      <span className="bg-orange-100 text-orange-700 px-2 py-1 rounded-full flex items-center gap-1">
-                        <Clock size={12} />
-                        等待中
-                      </span>
-                    )}
-                    <span className="text-gray-500">
-                      {letter.conversationRounds.length} 轮
-                    </span>
-                  </div>
-                  
-                  <div className="flex items-center gap-1">
-                    {letter.isPenPalAdded && (
-                      <span className="text-pink-500">❤️</span>
-                    )}
-                    {letter.isBottle && (
-                      <span className="text-blue-500">🌊</span>
-                    )}
-                  </div>
-                </div>
+                );
+              })
+            : (
+              <div className="text-center py-8 text-gray-500">
+                暂无对话记录
               </div>
-            ))}
+            )}
           </div>
         </div>
 
@@ -370,17 +385,30 @@ export default function GroupedLetterBoxScreen({
                         <span className="text-xs text-gray-500">
                           {group.letterCount}封信
                         </span>
-                        {/* 新的状态胶囊 */}
-                        {group.latestLetter.status === 'replied' && (
-                          <span className="text-xs bg-green-100 text-green-700 px-2 py-1 rounded-full">
-                            新回信
-                          </span>
-                        )}
-                        {group.latestLetter.status === 'sent' && (
-                          <span className="text-xs bg-orange-100 text-orange-700 px-2 py-1 rounded-full">
-                            待回复
-                          </span>
-                        )}
+                        {/* 状态胶囊 */}
+                        {(() => {
+                          const latestRound = group.latestLetter.conversationRounds[group.latestLetter.conversationRounds.length - 1];
+                          
+                          if (latestRound?.aiReply && !latestRound.aiReply.isDeleted) {
+                            // AI已回复，用户需要回信
+                            return (
+                              <span className="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded-full">
+                                待回复
+                              </span>
+                            );
+                          }
+                          
+                          if (latestRound && !latestRound.aiReply && group.latestLetter.status === 'sent') {
+                            // 用户已发送，等待AI回信
+                            return (
+                              <span className="text-xs bg-orange-100 text-orange-700 px-2 py-1 rounded-full">
+                                等待回信
+                              </span>
+                            );
+                          }
+                          
+                          return null;
+                        })()}
                       </div>
                       
                       <div className="text-xs text-gray-500">

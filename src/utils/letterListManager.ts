@@ -208,16 +208,16 @@ export function formatLastActivity(timestamp: number): string {
  * 获取联系人状态描述
  */
 export function getContactStatusText(group: LetterGroup): string {
-  if (group.hasNewReply && group.unreadCount > 0) {
-    return `${group.unreadCount}条新回复`;
+  const latestRound = group.latestLetter.conversationRounds[group.latestLetter.conversationRounds.length - 1];
+  
+  if (latestRound?.aiReply && !latestRound.aiReply.isDeleted) {
+    // AI已回复，用户还需要回信
+    return '待回复';
   }
   
-  if (group.latestLetter.status === 'sent') {
-    return '等待回信中...';
-  }
-  
-  if (group.latestLetter.status === 'replied') {
-    return '已回复';
+  if (latestRound && !latestRound.aiReply && group.latestLetter.status === 'sent') {
+    // 用户已发送，等待AI回信
+    return '等待回信';
   }
   
   return `${group.letterCount}封信件`;
