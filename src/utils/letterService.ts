@@ -1515,29 +1515,19 @@ function getRandomStampStyle(): Letter['stampStyle'] {
   return styles[Math.floor(Math.random() * styles.length)];
 }
 
-// 📦 信件存储 - 使用内存缓存+IndexedDB
-// 数据流：内存缓存(同步读) ← IndexedDB(异步写) ← localStorage(旧数据迁移)
+// 📦 信件存储 - 使用统一存储系统（和conversations相同的方式）
+// 数据流：getCachedData(内存) → 如果没有则返回空数组，让外部调用initLetters加载
 
 const STORAGE_KEY = 'slow_letters';
 
 function getLettersFromStorage(): Letter[] {
   try {
-    // 优先从内存缓存读取（快速同步）
-    let letters = getCachedData<Letter[]>(STORAGE_KEY);
+    // 从内存缓存读取（initLetters会在App启动时加载）
+    const letters = getCachedData<Letter[]>(STORAGE_KEY);
     
-    // 如果内存没有，尝试从localStorage读取（兼容旧数据/迁移前）
     if (!letters || !Array.isArray(letters)) {
-      const localData = localStorage.getItem(STORAGE_KEY);
-      if (localData) {
-        letters = JSON.parse(localData);
-        // 发现localStorage有数据，说明还没迁移，触发迁移提示在App.tsx处理
-        console.log('📮 检测到localStorage中的信件数据，等待迁移到IndexedDB');
-      } else {
-        return [];
-      }
+      return [];
     }
-    
-    if (!letters || !Array.isArray(letters)) return [];
     
     // 🔧 数据迁移：为旧数据补充 conversationRounds 字段
     const migratedLetters = letters.map(letter => {
@@ -1627,6 +1617,41 @@ export function getAllLetters(): Letter[] {
  */
 export function getLetterById(id: string): Letter | undefined {
   return getLettersFromStorage().find(l => l.id === id);
+}
+
+/**
+ * 初始化信件数据（App启动时调用，类似conversations的加载方式）
+ * 🔧 从IndexedDB/localStorage加载数据到内存缓存
+ */
+export async function initializeLetters(): Promise<void> {
+  try {
+    // 从统一存储系统加载（会自动从IndexedDB或localStorage读取）
+    const { load } = await import('./storage');
+    const saved = await load(STORAGE_KEY);
+    
+    if (saved && Array.isArray(saved)) {
+      // 加载到内存缓存
+      setCachedData(STORAGE_KEY, saved);
+      console.log(`📮 已加载 ${saved.length} 封信件到内存`);
+    } else {
+      // 检查旧的localStorage数据（兼容迁移前）
+      const oldSaved = localStorage.getItem(STORAGE_KEY);
+      if (oldSaved) {
+        const parsed: Letter[] = JSON.parse(oldSaved);
+        // 保存到内存缓存
+        setCachedData(STORAGE_KEY, parsed);
+        // 保存到新存储系统
+        await save(STORAGE_KEY, parsed);
+        console.log(`📮 已从localStorage迁移 ${parsed.length} 封信件`);
+      } else {
+        // 初始化为空数组
+        setCachedData(STORAGE_KEY, []);
+      }
+    }
+  } catch (error) {
+    console.error('📮 信件初始化失败:', error);
+    setCachedData(STORAGE_KEY, []);
+  }
 }
 
 /**

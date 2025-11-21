@@ -41,7 +41,7 @@ import StorageMigrationPrompt from './components/StorageMigrationPrompt';
 import { load, save, initializeCache, checkMigrationNeeded, migrateData, getStorageStatus } from './utils/storage';
 import { generateAIMoment } from './utils/aiMomentsGenerator';
 import { backgroundGenerationService } from './utils/backgroundGenerationService';
-import { initializeLetterTimers } from './utils/letterService';
+import { initializeLetters, initializeLetterTimers } from './utils/letterService';
 import { Letter } from './types/letter';
 
 function App() {
@@ -290,9 +290,15 @@ function App() {
     return () => clearInterval(processIncomeInterval);
   }, []);
 
-  // 📬 初始化慢邮件定时器
+  // 📬 初始化慢邮件系统（数据加载 + 定时器）
   useEffect(() => {
-    initializeLetterTimers();
+    const initLetters = async () => {
+      // 1. 先加载数据到内存（类似conversations的加载方式）
+      await initializeLetters();
+      // 2. 再初始化定时器
+      initializeLetterTimers();
+    };
+    initLetters();
   }, []);
 
   useEffect(() => {
