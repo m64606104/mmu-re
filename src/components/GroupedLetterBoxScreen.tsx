@@ -39,7 +39,7 @@ export default function GroupedLetterBoxScreen({
   const [selectedLetter, setSelectedLetter] = useState<Letter | null>(null);
   const [editingNickname, setEditingNickname] = useState<string | null>(null);
   const [nicknameInput, setNicknameInput] = useState('');
-  const [activeTab, setActiveTab] = useState<'all' | 'penpal' | 'bottle'>('all');
+  const [activeTab, setActiveTab] = useState<'all' | 'penpal' | 'bottle' | 'unanswered'>('all');
 
   useEffect(() => {
     refreshData();
@@ -98,6 +98,13 @@ export default function GroupedLetterBoxScreen({
         return letterData.penPals;
       case 'bottle':
         return letterData.bottles;
+      case 'unanswered':
+        // 筛选有未回复信件的组（用户发了但AI还没回复）
+        const allGroups = [...letterData.penPals, ...letterData.bottles, ...letterData.contacts];
+        return allGroups.filter(group => {
+          const letters = getLettersByReceiver(group.receiverId);
+          return letters.some(letter => letter.status === 'sent');
+        });
       default:
         return [...letterData.penPals, ...letterData.bottles, ...letterData.contacts];
     }
@@ -318,6 +325,16 @@ export default function GroupedLetterBoxScreen({
             }`}
           >
             🌊 漂流瓶 ({letterData.bottles.length})
+          </button>
+          <button
+            onClick={() => setActiveTab('unanswered')}
+            className={`px-4 py-2 rounded-full text-sm font-medium transition-colors ${
+              activeTab === 'unanswered'
+                ? 'bg-orange-500 text-white'
+                : 'bg-white/80 text-gray-600 hover:bg-white'
+            }`}
+          >
+            ⏰ 未回复
           </button>
         </div>
       </div>
