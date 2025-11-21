@@ -37,13 +37,14 @@ export const MessageActionMenu: React.FC<MessageActionMenuProps> = ({
         onClick={onClose}
       />
       
-      {/* 胶囊菜单 */}
+      {/* 胶囊菜单 - 优化尺寸和视觉效果 */}
       <div
-        className="fixed z-50 bg-white rounded-full shadow-2xl border border-gray-200 flex items-center overflow-hidden"
+        className="fixed z-50 bg-white rounded-full shadow-lg border border-gray-200 flex items-center overflow-hidden"
         style={{
           left: `${position.x}px`,
           top: `${position.y}px`,
           transform: 'translate(-50%, -120%)',
+          maxWidth: '90vw', // 限制最大宽度不超过屏幕90%
         }}
       >
         {/* 引用按钮 */}
@@ -52,10 +53,10 @@ export const MessageActionMenu: React.FC<MessageActionMenuProps> = ({
             e.stopPropagation();
             onQuote();
           }}
-          className="flex items-center gap-2 px-4 py-3 hover:bg-gray-50 transition-colors border-r border-gray-200"
+          className="flex items-center gap-1.5 px-2.5 py-2 hover:bg-gray-50 transition-colors border-r border-gray-200"
         >
-          <Reply size={18} className="text-blue-500" />
-          <span className="text-sm font-medium text-gray-700">引用</span>
+          <Reply size={16} className="text-blue-500" />
+          <span className="text-xs font-medium text-gray-700">引用</span>
         </button>
 
         {/* 转发按钮 */}
@@ -65,10 +66,10 @@ export const MessageActionMenu: React.FC<MessageActionMenuProps> = ({
               e.stopPropagation();
               onForward();
             }}
-            className="flex items-center gap-2 px-4 py-3 hover:bg-gray-50 transition-colors border-r border-gray-200"
+            className="flex items-center gap-1.5 px-2.5 py-2 hover:bg-gray-50 transition-colors border-r border-gray-200"
           >
-            <Share2 size={18} className="text-indigo-500" />
-            <span className="text-sm font-medium text-gray-700">转发</span>
+            <Share2 size={16} className="text-indigo-500" />
+            <span className="text-xs font-medium text-gray-700">转发</span>
           </button>
         )}
 
@@ -78,10 +79,10 @@ export const MessageActionMenu: React.FC<MessageActionMenuProps> = ({
             e.stopPropagation();
             onEdit();
           }}
-          className="flex items-center gap-2 px-4 py-3 hover:bg-gray-50 transition-colors border-r border-gray-200"
+          className="flex items-center gap-1.5 px-2.5 py-2 hover:bg-gray-50 transition-colors border-r border-gray-200"
         >
-          <Edit2 size={18} className="text-green-500" />
-          <span className="text-sm font-medium text-gray-700">编辑</span>
+          <Edit2 size={16} className="text-green-500" />
+          <span className="text-xs font-medium text-gray-700">编辑</span>
         </button>
 
         {/* 多选按钮 */}
@@ -90,10 +91,10 @@ export const MessageActionMenu: React.FC<MessageActionMenuProps> = ({
             e.stopPropagation();
             onMultiSelect();
           }}
-          className="flex items-center gap-2 px-4 py-3 hover:bg-gray-50 transition-colors border-r border-gray-200"
+          className="flex items-center gap-1.5 px-2.5 py-2 hover:bg-gray-50 transition-colors border-r border-gray-200"
         >
-          <CheckSquare size={18} className="text-purple-500" />
-          <span className="text-sm font-medium text-gray-700">多选</span>
+          <CheckSquare size={16} className="text-purple-500" />
+          <span className="text-xs font-medium text-gray-700">多选</span>
         </button>
 
         {/* 删除按钮 */}
@@ -102,10 +103,10 @@ export const MessageActionMenu: React.FC<MessageActionMenuProps> = ({
             e.stopPropagation();
             onDelete();
           }}
-          className="flex items-center gap-2 px-4 py-3 hover:bg-gray-50 transition-colors"
+          className="flex items-center gap-1.5 px-2.5 py-2 hover:bg-gray-50 transition-colors"
         >
-          <Trash2 size={18} className="text-red-500" />
-          <span className="text-sm font-medium text-gray-700">删除</span>
+          <Trash2 size={16} className="text-red-500" />
+          <span className="text-xs font-medium text-gray-700">删除</span>
         </button>
       </div>
     </>
