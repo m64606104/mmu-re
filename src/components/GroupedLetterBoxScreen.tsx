@@ -150,23 +150,24 @@ export default function GroupedLetterBoxScreen({
           </button>
         </div>
 
-        {/* 轮次列表 */}
+        {/* 信件列表 */}
         <div className="flex-1 overflow-y-auto px-4 py-4">
           <div className="max-w-2xl mx-auto space-y-3">
-            {/* 显示所有轮次，倒序排列 */}
-            {selectedGroup && receiverLetters[0] && receiverLetters[0].conversationRounds ? 
-              [...receiverLetters[0].conversationRounds].reverse().map((round) => {
-                const letter = receiverLetters[0];
+            {/* 显示所有信件，倒序排列 */}
+            {selectedGroup && receiverLetters.length > 0 ? 
+              [...receiverLetters].reverse().map((letter) => {
+                // 对每封信，显示其最新轮次的状态
+                const latestRound = letter.conversationRounds[letter.conversationRounds.length - 1];
                 
-                // 判断轮次状态
+                // 判断信件状态
                 let status = '';
                 let statusColor = '';
-                if (round.aiReply) {
-                  // AI已回复，检查用户是否已查看并回复
+                if (latestRound?.aiReply) {
+                  // AI已回复
                   status = '已回复';
                   statusColor = 'bg-green-100 text-green-700';
-                } else if (round.roundNumber === letter.currentRound && letter.status === 'sent') {
-                  // 用户已发送，AI还没回复
+                } else if (letter.status === 'sent') {
+                  // 用户已发送，等待AI回复
                   status = '等待回信';
                   statusColor = 'bg-orange-100 text-orange-700';
                 } else {
@@ -176,24 +177,24 @@ export default function GroupedLetterBoxScreen({
 
                 return (
                   <div
-                    key={round.roundNumber}
-                    onClick={() => handleLetterClick({...letter, selectedRound: round.roundNumber})}
+                    key={letter.id}
+                    onClick={() => handleLetterClick(letter)}
                     className="bg-white rounded-2xl shadow-md hover:shadow-lg transform hover:scale-[1.02] transition-all duration-200 cursor-pointer p-4 border border-gray-100 hover:border-orange-200"
                   >
                     <div className="flex items-start justify-between mb-3">
                       <div className="flex items-center gap-2">
                         <div className="w-2 h-2 bg-green-400 rounded-full"></div>
                         <div className="text-sm font-medium text-gray-800">
-                          第 {round.roundNumber} 轮对话
+                          {letter.isAnonymous ? '匿名信件' : `第 ${letter.currentRound} 轮对话`}
                         </div>
                       </div>
                       <div className="text-xs text-gray-500">
-                        {formatLastActivity(round.userLetter.sentAt)}
+                        {formatLastActivity(letter.sentAt)}
                       </div>
                     </div>
                     
                     <div className="text-sm text-gray-700 line-clamp-2 mb-3">
-                      "{round.userLetter.content}"
+                      "{letter.content}"
                     </div>
                     
                     <div className="flex items-center justify-between text-xs">
@@ -204,7 +205,7 @@ export default function GroupedLetterBoxScreen({
                           {status}
                         </span>
                         <span className="text-gray-500">
-                          {round.roundNumber} 轮
+                          {letter.conversationRounds.length} 轮
                         </span>
                       </div>
                       
