@@ -473,26 +473,9 @@ export default function LetterCardsView({ letter, onBack, onViewTimeline, userNa
                   <div className="text-red-700 text-sm font-medium mb-2">
                     📭 {replyStatus.reason}
                   </div>
-                  <button
-                    onClick={handleAddAsPenPal}
-                    className="px-6 py-2 bg-gradient-to-r from-pink-500 to-rose-500 text-white rounded-full font-medium hover:shadow-lg transition-all inline-flex items-center gap-2"
-                  >
-                    <UserPlus size={16} />
-                    点击加为笔友以继续交流
-                  </button>
-                </div>
-              )}
-              
-              {/* 加为笔友按钮 */}
-              {replyStatus.canContinue && (
-                <div className="flex justify-center">
-                  <button
-                    onClick={handleAddAsPenPal}
-                    className="px-6 py-2.5 bg-gradient-to-r from-blue-500 to-indigo-500 text-white rounded-xl font-medium hover:shadow-lg transition-all flex items-center gap-2"
-                  >
-                    <UserPlus size={18} />
-                    加为笔友
-                  </button>
+                  <div className="text-xs text-red-600">
+                    使用右下角按钮可加为笔友继续交流
+                  </div>
                 </div>
               )}
             </div>
@@ -501,9 +484,21 @@ export default function LetterCardsView({ letter, onBack, onViewTimeline, userNa
         </div>
       </div>
 
-      {/* 悬浮的继续回复按钮 */}
-      {replyStatus.canContinue && onContinueReply && (
-        <div className="fixed bottom-6 right-6 z-10">
+      {/* 悬浮按钮组 */}
+      <div className="fixed bottom-6 right-6 z-10 flex flex-col gap-3">
+        {/* 加为笔友按钮 */}
+        {localLetter.isBottle && !localLetter.isPenPalAdded && (
+          <button
+            onClick={handleAddAsPenPal}
+            className="w-14 h-14 bg-gradient-to-r from-pink-500 to-rose-500 text-white rounded-full shadow-lg hover:shadow-xl transition-all flex items-center justify-center"
+            title="加为笔友"
+          >
+            <UserPlus size={24} />
+          </button>
+        )}
+        
+        {/* 继续回复按钮 */}
+        {replyStatus.canContinue && onContinueReply && (
           <button
             onClick={onContinueReply}
             className="w-14 h-14 bg-gradient-to-r from-orange-500 to-amber-500 text-white rounded-full shadow-lg hover:shadow-xl transition-all flex items-center justify-center"
@@ -511,8 +506,8 @@ export default function LetterCardsView({ letter, onBack, onViewTimeline, userNa
           >
             <Reply size={24} />
           </button>
-        </div>
-      )}
+        )}
+      </div>
 
       {showPDFExport && (
         <PDFExportModal
