@@ -23,117 +23,72 @@ export function formatChatRecord(
 ): string {
   const sourceTypeText = sourceType === 'main' ? '主对话' : '子对话';
   
-  // 分析参与者信息
-  const participants = new Set<string>();
-  messages.forEach(msg => {
-    const senderName = msg.role === 'user' ? '用户' : (sourceName || 'AI助手');
-    participants.add(senderName);
-  });
-  
-  const header = `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-📋 转发的聊天记录
-📍 来源：${sourceTypeText}「${sourceName}」
-📅 时间范围：${new Date(messages[0]?.timestamp || Date.now()).toLocaleString()} - ${new Date(messages[messages.length - 1]?.timestamp || Date.now()).toLocaleString()}
-👥 参与者：${Array.from(participants).join('、')} (共${participants.size}人)
-💬 对话内容：共 ${messages.length} 条消息
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // 🔥 使用简洁清晰的格式，像真实聊天记录
+  const header = `【用户转发了聊天记录给你】
+来源：${sourceTypeText}「${sourceName}」
+共 ${messages.length} 条消息
 
-📝 以下是完整的对话记录，请仔细阅读每条消息：`;
+⚠️ 重要提示：以下是真实的聊天记录内容，请仔细阅读每一条，理解对话的上下文和细节。不要瞎编，要基于这些真实内容回复。
+
+────────────────────────────────────`;
 
   const formattedMessages = messages.map((message, index) => {
-    const senderName = message.role === 'user' ? '用户' : (sourceName || 'AI助手');
+    const senderName = message.role === 'user' ? '用户' : sourceName;
     const timestamp = new Date(message.timestamp).toLocaleTimeString('zh-CN', {
       hour: '2-digit',
       minute: '2-digit'
     });
     
-    let content = '';
+    let content = message.content || '';
     
-    // 处理不同类型的消息
-    if (message.content) {
-      content = message.content;
-    }
-    
-    // 添加特殊消息类型信息
-    const attachments = [];
+    // 添加特殊消息类型信息（简洁表达）
+    const extras = [];
     
     if (message.document) {
-      attachments.push(`[📄文档] ${message.document.title}`);
-      if (message.document.content) {
-        attachments.push(`文档内容：${message.document.content.substring(0, 100)}${message.document.content.length > 100 ? '...' : ''}`);
-      }
+      extras.push(`[文档:${message.document.title}]`);
     }
     
     if (message.moneyTransfer) {
       const type = message.moneyTransfer.type === 'redPacket' ? '红包' : '转账';
-      const status = message.moneyTransfer.status === 'pending' ? '待领取' : 
-                   message.moneyTransfer.status === 'received' ? '已领取' : '已退回';
-      attachments.push(`[💰${type}] ¥${message.moneyTransfer.amount} - ${status}`);
-      if (message.moneyTransfer.message) {
-        attachments.push(`留言：${message.moneyTransfer.message}`);
-      }
+      extras.push(`[${type}:¥${message.moneyTransfer.amount}]`);
     }
     
     if (message.mediaType) {
-      let mediaText = '';
       switch (message.mediaType) {
         case 'image':
-          mediaText = `[🖼️图片] ${message.mediaDescription || ''}`;
+          extras.push(message.mediaDescription ? `[图片:${message.mediaDescription}]` : '[图片]');
           break;
         case 'video':
-          mediaText = `[🎥视频] ${message.mediaDescription || ''}`;
+          extras.push(message.mediaDescription ? `[视频:${message.mediaDescription}]` : '[视频]');
           break;
         case 'voice':
-          mediaText = `[🎤语音] ${message.content || ''}${message.voiceDuration ? ` (${message.voiceDuration}秒)` : ''}`;
+          extras.push(`[语音${message.voiceDuration ? `:${message.voiceDuration}秒` : ''}]`);
           break;
         case 'sticker':
-          mediaText = `[😊表情包] ${message.mediaDescription || ''}`;
+          extras.push(message.mediaDescription ? `[表情包:${message.mediaDescription}]` : '[表情包]');
           break;
-      }
-      if (mediaText) {
-        attachments.push(mediaText);
       }
     }
     
     if (message.order) {
-      const type = message.order.type === 'gift' ? '礼物' : '代付请求';
-      const products = message.order.products.map(p => `${p.name} ¥${p.price}`).join('、');
-      const status = message.order.status === 'pending' ? '待处理' : 
-                   message.order.status === 'accepted' ? '已接受' : 
-                   message.order.status === 'paid' ? '已支付' : '已拒绝';
-      attachments.push(`[🎁${type}] ${products} - 总计¥${message.order.totalAmount} - ${status}`);
-      if (message.order.message) {
-        attachments.push(`留言：${message.order.message}`);
-      }
+      const type = message.order.type === 'gift' ? '礼物' : '代付';
+      const products = message.order.products.map(p => p.name).join('、');
+      extras.push(`[${type}:${products}]`);
     }
     
-    // 构建更自然的消息格式，像真实聊天记录
-    const messageNumber = `[${index + 1}/${messages.length}]`;
-    let messageText = `${messageNumber} ${timestamp} ${senderName}:`;
-    
-    if (content || attachments.length > 0) {
-      if (content) {
-        // 如果内容较长，进行适当换行
-        const formattedContent = content.length > 100 
-          ? content.replace(/。/g, '。\n     ').trim()
-          : content;
-        messageText += `\n     ${formattedContent}`;
-      }
-      
-      if (attachments.length > 0) {
-        messageText += content ? '\n' : '';
-        messageText += `\n     ${attachments.join('\n     ')}`;
-      }
-    } else {
-      messageText += '\n     (此消息无文本内容)';
-    }
-    
-    return messageText;
-  }).join('\n\n');
+    // 简洁格式：[序号] 时间 发送者：内容
+    const extrasText = extras.length > 0 ? ` ${extras.join(' ')}` : '';
+    return `[${index + 1}] ${timestamp} ${senderName}：${content}${extrasText}`;
+  }).join('\n');
 
-  const footer = `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-以上是转发的聊天记录，请结合这些内容进行回复。
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`;
+  const footer = `────────────────────────────────────
+以上是完整的聊天记录（${messages.length}条消息）。
+
+💡 回复指引：
+1. 仔细阅读每一条消息，理解对话内容和情境
+2. 基于这些真实内容进行回复，不要编造或猜测
+3. 可以总结、评论、提问或给出建议
+4. 回复要自然，像朋友之间的对话`;
 
   return `${header}\n\n${formattedMessages}\n\n${footer}`;
 }
