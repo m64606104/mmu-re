@@ -966,6 +966,7 @@ function App() {
             }}
             onToPenPals={() => navigateTo('pen-pals')}
             onToBottleFishing={() => navigateTo('bottle-fishing')}
+            onToNotifications={() => navigateTo('notifications')}
             onContinueReply={(letter) => {
               setReplyToLetter(letter);
               navigateTo('letter-writing');
@@ -1056,8 +1057,18 @@ function App() {
             onBack={() => navigateTo('letterbox')}
           />
         );
+      case 'notifications':
+        return (
+          <LetterNotificationCenter
+            onBack={() => navigateTo('letterbox')}
+            onNotificationClick={(notification) => {
+              // 点击通知跳转到对应信件
+              navigateTo('letterbox');
+            }}
+          />
+        );
       default:
-        return <HomeScreen onNavigate={navigateTo} theme={theme} />;
+        return <HomeScreen onNavigate={navigateTo} currentUser={userProfile} />;
     }
   };
 
