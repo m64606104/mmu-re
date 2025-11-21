@@ -9,7 +9,6 @@ import {
   detectAnonymousGroups, 
   mergeAnonymousIdentities, 
   getReceiversNeedingMerge,
-  previewMerge,
   type AnonymousLetterData 
 } from '../utils/anonymousLetterManager';
 import { formatLastActivity } from '../utils/letterListManager';
