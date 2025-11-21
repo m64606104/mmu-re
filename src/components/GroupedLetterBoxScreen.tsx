@@ -4,15 +4,18 @@
  */
 
 import { useState, useEffect } from 'react';
-import { ArrowLeft, Send, Edit2, MessageCircle, Waves, Clock, Check, Bell } from 'lucide-react';
+import { ArrowLeft, Send, Edit2, MessageCircle, Waves, Clock, Check, Bell, UserCheck } from 'lucide-react';
+import { getUnreadCount } from '../utils/letterNotificationSystem';
 import { 
   getGroupedLetterList, 
   getLettersByReceiver,
   formatLastActivity,
   getContactTypeLabel,
-  type LetterGroup 
+  type LetterGroup,
+  type LetterListData 
 } from '../utils/letterListManager';
 import { setAINickname, getAINickname } from '../utils/letterNicknameManager';
+import { setCharacterName, getCharacterName, getCharacterDisplayName } from '../utils/characterNameManager';
 import { Letter } from '../types/letter';
 import LetterDetailView from './LetterDetailView';
 
@@ -35,13 +38,17 @@ export default function GroupedLetterBoxScreen({
   onToNotifications,
   userName
 }: GroupedLetterBoxScreenProps) {
-  const [letterData, setLetterData] = useState(getGroupedLetterList());
+  const [letterData, setLetterData] = useState<LetterListData>({ 
+    penPals: [], bottles: [], contacts: [], total: 0, unreadTotal: 0 
+  });
   const [selectedGroup, setSelectedGroup] = useState<LetterGroup | null>(null);
   const [receiverLetters, setReceiverLetters] = useState<Letter[]>([]);
   const [selectedLetter, setSelectedLetter] = useState<Letter | null>(null);
   const [editingNickname, setEditingNickname] = useState<string | null>(null);
   const [nicknameInput, setNicknameInput] = useState('');
   const [activeTab, setActiveTab] = useState<'all' | 'penpal' | 'bottle'>('all');
+  const [unreadNotificationCount, setUnreadNotificationCount] = useState(0);
+  const [characterNameInput, setCharacterNameInput] = useState('');
 
   useEffect(() => {
     refreshData();
@@ -62,6 +69,7 @@ export default function GroupedLetterBoxScreen({
 
   const refreshData = () => {
     setLetterData(getGroupedLetterList());
+    setUnreadNotificationCount(getUnreadCount());
   };
 
   const handleGroupClick = (group: LetterGroup) => {
@@ -76,22 +84,33 @@ export default function GroupedLetterBoxScreen({
 
   const handleNicknameEdit = (receiverId: string) => {
     const currentNickname = getAINickname(receiverId);
+    const currentCharacterName = getCharacterName(receiverId);
     setNicknameInput(currentNickname || '');
+    setCharacterNameInput(currentCharacterName || '');
     setEditingNickname(receiverId);
   };
 
   const handleNicknameSave = (receiverId: string, originalName: string, avatar: string) => {
+    // 保存备注名
     if (nicknameInput.trim()) {
       setAINickname(receiverId, nicknameInput.trim(), originalName, avatar);
-      refreshData();
     }
+    
+    // 保存角色名字
+    if (characterNameInput.trim()) {
+      setCharacterName(receiverId, characterNameInput.trim(), originalName);
+    }
+    
+    refreshData();
     setEditingNickname(null);
     setNicknameInput('');
+    setCharacterNameInput('');
   };
 
   const handleNicknameCancel = () => {
     setEditingNickname(null);
     setNicknameInput('');
+    setCharacterNameInput('');
   };
 
   const getFilteredGroups = () => {
@@ -146,7 +165,7 @@ export default function GroupedLetterBoxScreen({
             className="p-2 hover:bg-indigo-100 rounded-full transition-colors"
             title="编辑备注名"
           >
-            <div className="text-pink-600 text-xl">👥</div>
+            <UserCheck size={20} className="text-pink-600" />
           </button>
         </div>
 
@@ -228,20 +247,50 @@ export default function GroupedLetterBoxScreen({
         {editingNickname === selectedGroup.receiverId && (
           <div className="absolute inset-0 bg-black/50 flex items-center justify-center z-10">
             <div className="bg-white rounded-2xl p-6 mx-4 w-full max-w-sm">
-              <h3 className="text-lg font-semibold mb-4">设置备注名</h3>
+              <h3 className="text-lg font-semibold mb-4">编辑角色信息</h3>
+              
               <div className="mb-4">
                 <div className="text-sm text-gray-600 mb-2">
                   原名: {selectedGroup.receiverName}
                 </div>
-                <input
-                  type="text"
-                  value={nicknameInput}
-                  onChange={(e) => setNicknameInput(e.target.value)}
-                  placeholder="输入备注名..."
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  maxLength={20}
-                />
+                
+                {/* 角色名字编辑 */}
+                <div className="mb-4">
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    角色名字
+                  </label>
+                  <input
+                    type="text"
+                    value={characterNameInput}
+                    onChange={(e) => setCharacterNameInput(e.target.value)}
+                    placeholder={selectedGroup.receiverName}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-pink-500 focus:border-transparent"
+                    maxLength={20}
+                  />
+                  <div className="text-xs text-gray-500 mt-1">
+                    修改角色的显示名字
+                  </div>
+                </div>
+                
+                {/* 备注名编辑 */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    我的备注
+                  </label>
+                  <input
+                    type="text"
+                    value={nicknameInput}
+                    onChange={(e) => setNicknameInput(e.target.value)}
+                    placeholder="输入个人备注..."
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    maxLength={20}
+                  />
+                  <div className="text-xs text-gray-500 mt-1">
+                    只有你能看到的备注名
+                  </div>
+                </div>
               </div>
+              
               <div className="flex gap-3">
                 <button
                   onClick={handleNicknameCancel}
@@ -251,7 +300,7 @@ export default function GroupedLetterBoxScreen({
                 </button>
                 <button
                   onClick={() => handleNicknameSave(selectedGroup.receiverId, selectedGroup.receiverName, selectedGroup.receiverAvatar)}
-                  className="flex-1 px-4 py-2 text-white bg-blue-500 rounded-lg hover:bg-blue-600 transition-colors"
+                  className="flex-1 px-4 py-2 text-white bg-gradient-to-r from-pink-500 to-blue-500 rounded-lg hover:shadow-lg transition-all"
                 >
                   保存
                 </button>
@@ -288,9 +337,11 @@ export default function GroupedLetterBoxScreen({
           >
             <Bell size={20} className="text-indigo-600" />
             {/* 红色角标 */}
-            <div className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 rounded-full text-xs text-white flex items-center justify-center">
-              3
-            </div>
+            {unreadNotificationCount > 0 && (
+              <div className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 rounded-full text-xs text-white flex items-center justify-center">
+                {unreadNotificationCount > 9 ? '9+' : unreadNotificationCount}
+              </div>
+            )}
           </button>
           <button
             onClick={onWriteNew}

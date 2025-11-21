@@ -70,7 +70,9 @@ export function getGroupedLetterList(): LetterListData {
     
     // 确定联系人类型
     let receiverType: 'bottle' | 'penpal' | 'contact' = 'contact';
-    if (latestLetter.isPenPalAdded) {
+    const isPresetAI = receiverId.startsWith('preset_ai_');
+    
+    if (latestLetter.isPenPalAdded || isPresetAI) {
       receiverType = 'penpal';
     } else if (latestLetter.isBottle) {
       receiverType = 'bottle';
@@ -100,7 +102,7 @@ export function getGroupedLetterList(): LetterListData {
       latestLetter,
       lastActivity,
       hasNewReply,
-      isPenPal: latestLetter.isPenPalAdded,
+      isPenPal: latestLetter.isPenPalAdded || isPresetAI,
       isBottle: latestLetter.isBottle
     });
   });
