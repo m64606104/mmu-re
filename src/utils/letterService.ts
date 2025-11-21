@@ -493,12 +493,14 @@ export function sendLetter(
     isAnonymous,
     anonymousName,
     
-    // 多轮交流初始化
+    // 多轮交流初始化，第一轮也有独立的预计回复时间和催促状态
     conversationRounds: [{
       roundNumber: 1,
       userLetter: {
         content,
-        sentAt: now
+        sentAt: now,
+        willReplyAt: now + replyDelay,  // 第一轮独立的预计回复时间
+        hasUrged: false  // 第一轮独立的催促状态
       }
     }],
     currentRound: 1,
@@ -577,21 +579,42 @@ export function sendLetter(
 }
 
 /**
- * 催促回复
+ * 催促回复（支持催促特定轮次）
+ * @param letterId 信件ID
+ * @param roundNumber 要催促的轮次号（可选，默认催促最后一轮）
  */
-export function urgeLetter(letterId: string): boolean {
+export function urgeLetter(letterId: string, roundNumber?: number): boolean {
   const letters = getLettersFromStorage();
   const letter = letters.find(l => l.id === letterId);
   
-  if (!letter || letter.hasUrged || letter.status === 'replied') {
+  if (!letter) {
     return false;
   }
   
-  // 更新回复时间为15-30分钟后
+  // 确定要催促的轮次
+  const targetRoundNumber = roundNumber || letter.currentRound;
+  const targetRound = letter.conversationRounds.find(r => r.roundNumber === targetRoundNumber);
+  
+  if (!targetRound) {
+    return false;
+  }
+  
+  // 检查该轮次是否已经催促过，或者已经有AI回复了
+  if (targetRound.userLetter.hasUrged || targetRound.aiReply) {
+    return false;
+  }
+  
+  // 更新该轮次的回复时间为15-30分钟后
   const now = Date.now();
   const urgentDelay = calculateReplyDelay(true);
-  letter.willReplyAt = now + urgentDelay;
-  letter.hasUrged = true;
+  targetRound.userLetter.willReplyAt = now + urgentDelay;
+  targetRound.userLetter.hasUrged = true;
+  
+  // 同时更新信件级别的字段（保留用于兼容性）
+  if (targetRoundNumber === letter.currentRound) {
+    letter.willReplyAt = now + urgentDelay;
+    letter.hasUrged = true;
+  }
   
   // 保存
   updateLetterInStorage(letter);
@@ -2116,16 +2139,18 @@ function continueExistingLetter(letterId: string, content: string, _senderName: 
   // 增加轮数
   letter.currentRound += 1;
   
-  // 添加新一轮对话
+  // 添加新一轮对话，每轮有独立的预计回复时间和催促状态
   letter.conversationRounds.push({
     roundNumber: letter.currentRound,
     userLetter: {
       content,
-      sentAt: now
+      sentAt: now,
+      willReplyAt: now + replyDelay,  // 本轮独立的预计回复时间
+      hasUrged: false  // 本轮独立的催促状态
     }
   });
   
-  // 更新信件状态
+  // 更新信件状态（保留用于兼容性）
   letter.status = 'sent';
   letter.willReplyAt = now + replyDelay;
   letter.hasUrged = false;
@@ -2170,16 +2195,18 @@ export function continueReply(
   // 增加轮数
   letter.currentRound += 1;
   
-  // 添加新一轮对话
+  // 添加新一轮对话，每轮有独立的预计回复时间和催促状态
   letter.conversationRounds.push({
     roundNumber: letter.currentRound,
     userLetter: {
       content,
-      sentAt: now
+      sentAt: now,
+      willReplyAt: now + replyDelay,  // 本轮独立的预计回复时间
+      hasUrged: false  // 本轮独立的催促状态
     }
   });
   
-  // 更新信件状态
+  // 更新信件状态（保留用于兼容性）
   letter.status = 'sent';
   letter.willReplyAt = now + replyDelay;
   letter.hasUrged = false;

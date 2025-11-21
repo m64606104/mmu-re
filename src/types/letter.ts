@@ -55,6 +55,8 @@ export interface LetterRound {
   userLetter: {
     content: string;
     sentAt: number;
+    willReplyAt?: number;  // 本轮预计回复时间（独立计算）
+    hasUrged?: boolean;  // 本轮是否已催促
     isDeleted?: boolean;  // 是否已删除（放入回收站）
     deletedAt?: number;  // 删除时间
   };

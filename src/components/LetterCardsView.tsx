@@ -33,17 +33,20 @@ export default function LetterCardsView({ letter, onBack, onViewTimeline, userNa
     setLocalLetter(letter);
   }, [letter]);
   
-  const handleUrge = () => {
-    const success = urgeLetter(localLetter.id);
+  // 催促特定轮次的回复
+  const handleUrge = (roundNumber: number) => {
+    const success = urgeLetter(localLetter.id, roundNumber);
     if (success) {
-      alert('✨ 已催促回复！\n\n预计15-30分钟内收到回信');
+      alert(`✨ 已催促第${roundNumber}轮回复！\n\n预计15-30分钟内收到回信`);
       // 重新获取最新状态
       const updatedLetter = getLetterById(localLetter.id);
       if (updatedLetter) {
         setLocalLetter(updatedLetter);
       }
     } else {
-      alert('无法催促：\n' + (localLetter.hasUrged ? '已经催促过了' : '信件状态不正确'));
+      const targetRound = localLetter.conversationRounds.find(r => r.roundNumber === roundNumber);
+      const hasUrged = targetRound?.userLetter?.hasUrged;
+      alert(`无法催促：\n` + (hasUrged ? `第${roundNumber}轮已经催促过了` : '信件状态不正确'));
     }
   };
   
@@ -133,16 +136,35 @@ export default function LetterCardsView({ letter, onBack, onViewTimeline, userNa
     });
   };
 
-  // 计算预计送达日期（基于willReplyAt）
-  const getExpectedDeliveryDate = () => {
-    if (localLetter.willReplyAt) {
-      const date = new Date(localLetter.willReplyAt);
+  // 计算特定轮次的预计送达日期（使用每轮独立的willReplyAt）
+  const getExpectedDeliveryDate = (roundNumber?: number) => {
+    // 如果指定了轮次号，使用该轮次的willReplyAt
+    if (roundNumber) {
+      const targetRound = localLetter.conversationRounds.find(r => r.roundNumber === roundNumber);
+      if (targetRound?.userLetter?.willReplyAt) {
+        const date = new Date(targetRound.userLetter.willReplyAt);
+        const month = date.getMonth() + 1;
+        const day = date.getDate();
+        return `${month}月${day}日`;
+      }
+      // 如果该轮次没有willReplyAt，使用sentAt + 3天
+      if (targetRound?.userLetter?.sentAt) {
+        const deliveryDate = new Date(targetRound.userLetter.sentAt + 3 * 24 * 60 * 60 * 1000);
+        const month = deliveryDate.getMonth() + 1;
+        const day = deliveryDate.getDate();
+        return `${month}月${day}日`;
+      }
+    }
+    
+    // 默认使用最后一轮（当前轮次）
+    const lastRound = localLetter.conversationRounds[localLetter.conversationRounds.length - 1];
+    if (lastRound?.userLetter?.willReplyAt) {
+      const date = new Date(lastRound.userLetter.willReplyAt);
       const month = date.getMonth() + 1;
       const day = date.getDate();
       return `${month}月${day}日`;
     }
-    // 如果没有设置willReplyAt，使用sentAt + 3天
-    const lastRound = localLetter.conversationRounds[localLetter.conversationRounds.length - 1];
+    // 如果没有willReplyAt，使用sentAt + 3天
     const baseTime = lastRound?.userLetter?.sentAt || localLetter.sentAt;
     const deliveryDate = new Date(baseTime + 3 * 24 * 60 * 60 * 1000);
     const month = deliveryDate.getMonth() + 1;
@@ -446,14 +468,14 @@ export default function LetterCardsView({ letter, onBack, onViewTimeline, userNa
                     <div className="text-4xl mb-2">⌛</div>
                     <div className="text-gray-700 font-medium">等待第 {round.roundNumber} 轮回信中...</div>
                     <div className="text-sm text-gray-500 mt-1 mb-3">
-                      {localLetter.hasUrged 
+                      {round.userLetter.hasUrged 
                         ? '已催促，预计很快收到回信'
-                        : `预计 ${getExpectedDeliveryDate()} 送达`
+                        : `预计 ${getExpectedDeliveryDate(round.roundNumber)} 送达`
                       }
                     </div>
-                    {!localLetter.hasUrged && (
+                    {!round.userLetter.hasUrged && (
                       <button
-                        onClick={handleUrge}
+                        onClick={() => handleUrge(round.roundNumber)}
                         className="px-6 py-2 bg-gradient-to-r from-amber-500 to-orange-500 text-white rounded-full font-medium hover:shadow-lg transition-all flex items-center gap-2 mx-auto"
                       >
                         <Zap size={16} />
@@ -463,17 +485,27 @@ export default function LetterCardsView({ letter, onBack, onViewTimeline, userNa
                   </div>
                 )}
                 
-                {/* 历史轮次的状态显示 - 显示每轮的预计送达时间 */}
+                {/* 历史轮次的状态显示 - 显示每轮的独立预计送达时间 */}
                 {!round.aiReply && round.roundNumber < localLetter.currentRound && (
                   <div className="mb-4 bg-gray-50 border border-gray-200 rounded-2xl p-4 text-center">
                     <div className="text-2xl mb-1">📭</div>
                     <div className="text-sm text-gray-600">第 {round.roundNumber} 轮等待回信</div>
                     <div className="text-xs text-gray-500 mt-1">
-                      预计送达时间: {(() => {
-                        const deliveryTime = new Date(round.userLetter.sentAt + 3 * 24 * 60 * 60 * 1000);
-                        return `${deliveryTime.getMonth() + 1}月${deliveryTime.getDate()}日`;
-                      })()}
+                      {round.userLetter.hasUrged 
+                        ? '已催促，预计很快收到回信'
+                        : `预计送达时间: ${getExpectedDeliveryDate(round.roundNumber)}`
+                      }
                     </div>
+                    {/* 历史轮次也可以催促 */}
+                    {!round.userLetter.hasUrged && (
+                      <button
+                        onClick={() => handleUrge(round.roundNumber)}
+                        className="mt-2 px-4 py-1.5 bg-gradient-to-r from-amber-400 to-orange-400 text-white text-xs rounded-full font-medium hover:shadow-md transition-all flex items-center gap-1 mx-auto"
+                      >
+                        <Zap size={12} />
+                        催促
+                      </button>
+                    )}
                   </div>
                 )}
               </div>
