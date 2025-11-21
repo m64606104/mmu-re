@@ -299,9 +299,41 @@ export default function LetterCardsView({ letter, onBack, onViewTimeline, userNa
                           <Trash2 size={16} className="text-gray-500" />
                         </button>
                         
-                        {/* 邮票 */}
-                        <div className="w-10 h-12 border-2 border-dashed border-orange-400 rounded flex items-center justify-center bg-gradient-to-br from-amber-100 to-yellow-100 text-xl">
-                          {currentStamp?.image || '📮'}
+                        {/* 精致邮票 */}
+                        <div className="relative w-12 h-16">
+                          {/* 邮票主体 */}
+                          <div 
+                            className="w-full h-full bg-gradient-to-br from-orange-100 via-amber-50 to-yellow-100 rounded-sm shadow-lg flex items-center justify-center text-xl relative overflow-hidden"
+                            style={{
+                              background: `
+                                radial-gradient(circle at 0% 50%, transparent 3px, #fef3c7 4px),
+                                radial-gradient(circle at 20% 50%, transparent 3px, #fef3c7 4px),
+                                radial-gradient(circle at 40% 50%, transparent 3px, #fef3c7 4px),
+                                radial-gradient(circle at 60% 50%, transparent 3px, #fef3c7 4px),
+                                radial-gradient(circle at 80% 50%, transparent 3px, #fef3c7 4px),
+                                radial-gradient(circle at 100% 50%, transparent 3px, #fef3c7 4px),
+                                radial-gradient(circle at 50% 0%, transparent 3px, #fef3c7 4px),
+                                radial-gradient(circle at 50% 25%, transparent 3px, #fef3c7 4px),
+                                radial-gradient(circle at 50% 75%, transparent 3px, #fef3c7 4px),
+                                radial-gradient(circle at 50% 100%, transparent 3px, #fef3c7 4px),
+                                linear-gradient(135deg, #fef3c7 0%, #fde68a 50%, #f59e0b 100%)
+                              `,
+                              boxShadow: 'inset 0 1px 2px rgba(251, 191, 36, 0.3), 0 2px 8px rgba(0,0,0,0.1)'
+                            }}
+                          >
+                            {/* 邮票内容 */}
+                            <div className="relative z-10 drop-shadow-sm">
+                              {currentStamp?.image || '📮'}
+                            </div>
+                            
+                            {/* 邮票光泽效果 */}
+                            <div 
+                              className="absolute inset-0 bg-gradient-to-br from-white/20 to-transparent pointer-events-none"
+                              style={{
+                                clipPath: 'polygon(0% 0%, 60% 0%, 40% 100%, 0% 100%)'
+                              }}
+                            />
+                          </div>
                         </div>
                       </div>
                     </div>

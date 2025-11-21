@@ -176,7 +176,7 @@ export default function GroupedLetterBoxScreen({
                   <div
                     key={round.roundNumber}
                     onClick={() => handleLetterClick({...letter, selectedRound: round.roundNumber})}
-                    className="bg-white rounded-2xl shadow-md hover:shadow-lg transition-all cursor-pointer p-4 border border-gray-100"
+                    className="bg-white rounded-2xl shadow-md hover:shadow-lg transform hover:scale-[1.02] transition-all duration-200 cursor-pointer p-4 border border-gray-100 hover:border-orange-200"
                   >
                     <div className="flex items-start justify-between mb-3">
                       <div className="flex items-center gap-2">
@@ -349,7 +349,7 @@ export default function GroupedLetterBoxScreen({
             <div
               key={group.receiverId}
               onClick={() => handleGroupClick(group)}
-              className="bg-white rounded-2xl shadow-md hover:shadow-lg transition-all cursor-pointer overflow-hidden border border-gray-100"
+              className="bg-white rounded-2xl shadow-md hover:shadow-lg transform hover:scale-[1.01] transition-all duration-200 cursor-pointer overflow-hidden border border-gray-100 hover:border-blue-200"
             >
               <div className="p-4">
                 <div className="flex items-center gap-3">
