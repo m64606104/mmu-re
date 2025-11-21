@@ -212,7 +212,7 @@ export function getContactStatusText(group: LetterGroup): string {
   
   if (latestRound?.aiReply && !latestRound.aiReply.isDeleted) {
     // AI已回复，用户还需要回信
-    return '待回复';
+    return '未回信';
   }
   
   if (latestRound && !latestRound.aiReply && group.latestLetter.status === 'sent') {

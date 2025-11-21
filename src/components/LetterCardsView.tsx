@@ -238,6 +238,45 @@ export default function LetterCardsView({ letter, onBack, onViewTimeline, userNa
               })
               .map((round) => (
               <div key={round.roundNumber}>
+                {/* 漂流瓶原内容显示（仅第一轮） */}
+                {letter.isBottle && round.roundNumber === 1 && letter.bottleOriginalContent && (viewMode === 'all' || viewMode === 'sent') && (
+                  <div className="mb-4">
+                    <div className="bg-white rounded-3xl shadow-lg overflow-hidden border-2 border-blue-200">
+                      {/* 漂流瓶卡片头部 */}
+                      <div className="bg-gradient-to-r from-blue-100 to-cyan-100 px-5 py-3 flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <div className="text-blue-600">🌊</div>
+                          <span className="text-sm font-medium text-gray-700">
+                            漂流瓶原内容
+                          </span>
+                        </div>
+                        <div className="text-xs text-blue-600 font-medium">
+                          来自 {letter.bottleAIProfile?.name || '远方'}
+                        </div>
+                      </div>
+
+                      {/* 漂流瓶内容 */}
+                      <div className="p-5">
+                        <div 
+                          className="text-gray-800 leading-relaxed whitespace-pre-wrap font-serif"
+                          style={{
+                            backgroundImage: `repeating-linear-gradient(
+                              transparent,
+                              transparent 24px,
+                              #e5f3ff 25px
+                            )`,
+                            lineHeight: '25px',
+                            paddingTop: '8px',
+                            fontFamily: '"Noto Serif SC", "STSong", serif'
+                          }}
+                        >
+                          {letter.bottleOriginalContent}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
                 {/* 用户发送的信卡片 - 单独的卡片 */}
                 {!round.userLetter.isDeleted && (viewMode === 'all' || viewMode === 'sent') && (
                   <div className="mb-4">
@@ -247,7 +286,7 @@ export default function LetterCardsView({ letter, onBack, onViewTimeline, userNa
                       <div className="flex items-center gap-2">
                         <Check size={16} className="text-green-600" />
                         <span className="text-sm font-medium text-gray-700">
-                          第 {round.roundNumber} 轮 - to {letter.receiverName}
+                          第 {round.roundNumber} 轮 - {letter.isBottle && round.roundNumber === 1 ? '回复漂流瓶' : `to ${letter.receiverName}`}
                         </span>
                       </div>
                       <div className="flex items-center gap-3">
@@ -459,20 +498,21 @@ export default function LetterCardsView({ letter, onBack, onViewTimeline, userNa
             </div>
           )}
 
-          {/* 继续回复按钮 */}
-          {replyStatus.canContinue && onContinueReply && (
-            <div className="mt-6 flex justify-center pb-4">
-              <button
-                onClick={onContinueReply}
-                className="px-8 py-3 bg-gradient-to-r from-orange-500 to-amber-500 text-white rounded-2xl font-medium hover:shadow-lg transition-all flex items-center gap-2 text-base"
-              >
-                <Reply size={20} />
-                继续回复
-              </button>
-            </div>
-          )}
         </div>
       </div>
+
+      {/* 悬浮的继续回复按钮 */}
+      {replyStatus.canContinue && onContinueReply && (
+        <div className="fixed bottom-6 right-6 z-10">
+          <button
+            onClick={onContinueReply}
+            className="w-14 h-14 bg-gradient-to-r from-orange-500 to-amber-500 text-white rounded-full shadow-lg hover:shadow-xl transition-all flex items-center justify-center"
+            title="继续回复"
+          >
+            <Reply size={24} />
+          </button>
+        </div>
+      )}
 
       {showPDFExport && (
         <PDFExportModal

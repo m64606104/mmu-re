@@ -168,7 +168,7 @@ export default function GroupedLetterBoxScreen({
                   status = '等待回信';
                   statusColor = 'bg-orange-100 text-orange-700';
                 } else {
-                  status = '待回复';
+                  status = '未回信';
                   statusColor = 'bg-blue-100 text-blue-700';
                 }
 
@@ -393,7 +393,7 @@ export default function GroupedLetterBoxScreen({
                             // AI已回复，用户需要回信
                             return (
                               <span className="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded-full">
-                                待回复
+                                未回信
                               </span>
                             );
                           }
