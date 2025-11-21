@@ -4,7 +4,7 @@
  */
 
 import { useState, useEffect } from 'react';
-import { ArrowLeft, Send, Users, Waves, Clock, Edit2, Check, MessageCircle } from 'lucide-react';
+import { ArrowLeft, Send, Edit2, MessageCircle, Waves, Clock, Check, Bell } from 'lucide-react';
 import { 
   getGroupedLetterList, 
   getLettersByReceiver,
@@ -22,6 +22,7 @@ interface GroupedLetterBoxScreenProps {
   onToPenPals: () => void;
   onToBottleFishing: () => void;
   onContinueReply?: (letter: Letter) => void;
+  onToNotifications?: () => void;
   userName: string;
 }
 
@@ -31,6 +32,7 @@ export default function GroupedLetterBoxScreen({
   onToPenPals,
   onToBottleFishing,
   onContinueReply,
+  onToNotifications,
   userName
 }: GroupedLetterBoxScreenProps) {
   const [letterData, setLetterData] = useState(getGroupedLetterList());
@@ -144,7 +146,7 @@ export default function GroupedLetterBoxScreen({
             className="p-2 hover:bg-indigo-100 rounded-full transition-colors"
             title="编辑备注名"
           >
-            <Edit2 size={20} className="text-gray-600" />
+            <div className="text-pink-600 text-xl">👥</div>
           </button>
         </div>
 
@@ -277,12 +279,25 @@ export default function GroupedLetterBoxScreen({
             {letterData.total}个联系人 · {letterData.unreadTotal > 0 && `${letterData.unreadTotal}条未读`}
           </div>
         </div>
-        <button
-          onClick={onWriteNew}
-          className="p-2 hover:bg-indigo-100 rounded-full transition-colors"
-        >
-          <Send size={20} className="text-indigo-600" />
-        </button>
+        <div className="flex gap-2">
+          <button
+            onClick={onToNotifications}
+            className="p-2 hover:bg-indigo-100 rounded-full transition-colors relative"
+            title="消息通知"
+          >
+            <Bell size={20} className="text-indigo-600" />
+            {/* 红色角标 */}
+            <div className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 rounded-full text-xs text-white flex items-center justify-center">
+              3
+            </div>
+          </button>
+          <button
+            onClick={onWriteNew}
+            className="p-2 hover:bg-indigo-100 rounded-full transition-colors"
+          >
+            <Send size={20} className="text-indigo-600" />
+          </button>
+        </div>
       </div>
 
       {/* 分类标签栏 */}
@@ -329,7 +344,7 @@ export default function GroupedLetterBoxScreen({
             onClick={onToPenPals}
             className="flex items-center gap-2 px-3 py-2 bg-white/80 rounded-full text-sm text-gray-700 hover:bg-white transition-colors"
           >
-            <Users size={16} />
+            <div className="text-pink-600">👥</div>
             我的笔友
           </button>
           <button
