@@ -270,6 +270,10 @@ export interface Conversation {
   aiStatus?: AIStatusInfo; // AI状态信息（仅私聊AI角色）
   subChats?: SubChat[]; // 子聊天列表
   groupChatMode?: 'sequential' | 'free'; // 群聊回复模式：顺序模式 | 自由模式（默认sequential）
+  groupContextConfig?: { // 群聊上下文配置（仅群聊）
+    enabled: boolean; // 是否启用自定义上下文数量
+    messageCount: number; // 上下文消息数量（1-100，默认30）
+  };
 }
 
 export interface UserProfile {

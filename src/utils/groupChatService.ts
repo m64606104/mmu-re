@@ -431,8 +431,13 @@ async function generateAIReply(
       isFreeMode
     );
     
-    // 构建消息历史（最近30条，增加上下文窗口）
-    const recentMessages = groupConversation.messages.slice(-30);
+    // 构建消息历史（使用自定义上下文数量或默认30条）
+    const contextEnabled = groupConversation.groupContextConfig?.enabled || false;
+    const contextCount = contextEnabled 
+      ? (groupConversation.groupContextConfig?.messageCount || 30)
+      : 30;
+    const recentMessages = groupConversation.messages.slice(-contextCount);
+    console.log(`📝 群聊上下文：${contextEnabled ? '自定义' : '默认'} ${contextCount} 条消息`);
     
     // 🕐 添加时间感知
     const lastUserMessage = recentMessages

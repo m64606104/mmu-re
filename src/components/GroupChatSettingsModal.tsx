@@ -28,6 +28,10 @@ const GroupChatSettingsModal: React.FC<GroupChatSettingsModalProps> = ({
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [selectedNewMembers, setSelectedNewMembers] = useState<string[]>([]);
   
+  // 上下文配置状态
+  const [contextEnabled, setContextEnabled] = useState(conversation.groupContextConfig?.enabled || false);
+  const [contextMessageCount, setContextMessageCount] = useState(conversation.groupContextConfig?.messageCount || 30);
+  
   const imageInputRef = React.useRef<HTMLInputElement>(null);
 
   const handleSave = () => {
@@ -36,6 +40,10 @@ const GroupChatSettingsModal: React.FC<GroupChatSettingsModalProps> = ({
       groupRemark: groupRemark,
       avatar: groupAvatar,
       groupChatMode: groupChatMode,
+      groupContextConfig: {
+        enabled: contextEnabled,
+        messageCount: contextMessageCount,
+      },
     });
     onClose();
   };
@@ -303,6 +311,52 @@ const GroupChatSettingsModal: React.FC<GroupChatSettingsModalProps> = ({
               </div>
             </div>
           )}
+
+          {/* 自定义上下文数量 */}
+          <div className="border-t pt-4 mt-4">
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center gap-2">
+                <MessageCircle className="w-5 h-5 text-green-500" />
+                <h3 className="font-semibold text-gray-900">自定义上下文数量</h3>
+              </div>
+              <label className="relative inline-flex items-center cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={contextEnabled}
+                  onChange={(e) => setContextEnabled(e.target.checked)}
+                  className="sr-only peer"
+                />
+                <div className="w-11 h-6 bg-gray-300 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-green-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-green-600"></div>
+              </label>
+            </div>
+            
+            {contextEnabled && (
+              <div className="space-y-3">
+                <div className="bg-green-50 rounded-lg p-3 border border-green-200">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-sm font-medium text-gray-700">上下文消息数量：</span>
+                    <span className="text-sm font-bold text-green-600">{contextMessageCount} 条</span>
+                  </div>
+                  <input
+                    type="range"
+                    min="1"
+                    max="100"
+                    value={contextMessageCount}
+                    onChange={(e) => setContextMessageCount(parseInt(e.target.value))}
+                    className="w-full h-2 bg-green-200 rounded-lg appearance-none cursor-pointer"
+                  />
+                  <div className="flex justify-between text-xs text-gray-500 mt-1">
+                    <span>1条</span>
+                    <span>100条</span>
+                  </div>
+                </div>
+                <div className="text-xs text-gray-600 bg-gray-50 rounded-lg p-3">
+                  💡 说明：控制AI回复时参考的历史消息数量。消息越多，AI理解上下文越准确，但会增加API调用成本。
+                </div>
+              </div>
+            )}
+          </div>
+
             </div>
           )}
 
