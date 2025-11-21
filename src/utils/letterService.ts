@@ -2112,6 +2112,7 @@ function continueExistingLetter(letterId: string, content: string, _senderName: 
   const now = Date.now();
   const replyDelay = calculateReplyDelay(false);
   
+  // ✅ 允许连续寄信：即使当前轮次还没收到AI回复，也可以开始新一轮
   // 增加轮数
   letter.currentRound += 1;
   
@@ -2249,15 +2250,7 @@ export function canContinueReply(letterId: string): {
     };
   }
   
-  if (letter.status !== 'replied') {
-    return {
-      canContinue: false,
-      reason: '等待回信中',
-      currentRound: letter.currentRound,
-      maxRounds: letter.maxRounds,
-      isLastRound: false
-    };
-  }
+  // ✅ 允许连续寄信：移除status检查，允许在等待回复时继续寄信
   
   // 已加为笔友或非漂流瓶，无限制
   if (letter.isPenPalAdded || !letter.isBottle) {
