@@ -6,6 +6,7 @@
 import { Letter, BottleAI, LetterRound } from '../types/letter';
 import { checkLetterAchievements } from './achievementSystem';
 import { detectAgeFromBottleContent } from './bottleAgeDetector';
+import { save, getCachedData, setCachedData } from './storage';
 
 // 📮 预设AI角色池 - 用户可主动选择的固定角色
 export const PRESET_AI_POOL: BottleAI[] = [
@@ -1514,16 +1515,29 @@ function getRandomStampStyle(): Letter['stampStyle'] {
   return styles[Math.floor(Math.random() * styles.length)];
 }
 
-// 📦 localStorage操作
+// 📦 信件存储 - 使用内存缓存+IndexedDB
+// 数据流：内存缓存(同步读) ← IndexedDB(异步写) ← localStorage(旧数据迁移)
 
 const STORAGE_KEY = 'slow_letters';
 
 function getLettersFromStorage(): Letter[] {
   try {
-    const data = localStorage.getItem(STORAGE_KEY);
-    if (!data) return [];
+    // 优先从内存缓存读取（快速同步）
+    let letters = getCachedData<Letter[]>(STORAGE_KEY);
     
-    const letters: Letter[] = JSON.parse(data);
+    // 如果内存没有，尝试从localStorage读取（兼容旧数据/迁移前）
+    if (!letters || !Array.isArray(letters)) {
+      const localData = localStorage.getItem(STORAGE_KEY);
+      if (localData) {
+        letters = JSON.parse(localData);
+        // 发现localStorage有数据，说明还没迁移，触发迁移提示在App.tsx处理
+        console.log('📮 检测到localStorage中的信件数据，等待迁移到IndexedDB');
+      } else {
+        return [];
+      }
+    }
+    
+    if (!letters || !Array.isArray(letters)) return [];
     
     // 🔧 数据迁移：为旧数据补充 conversationRounds 字段
     const migratedLetters = letters.map(letter => {
@@ -1556,9 +1570,12 @@ function getLettersFromStorage(): Letter[] {
       return letter;
     });
     
-    // 如果有迁移，保存回去
+    // 如果有数据结构迁移，更新缓存和持久化
     if (migratedLetters.some((_, i) => !letters[i].conversationRounds)) {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(migratedLetters));
+      setCachedData(STORAGE_KEY, migratedLetters);
+      save(STORAGE_KEY, migratedLetters).catch(err => 
+        console.error('📮 迁移数据保存失败:', err)
+      );
       console.log('📦 已迁移旧信件数据到新格式');
     }
     
@@ -1572,7 +1589,14 @@ function getLettersFromStorage(): Letter[] {
 function saveLetterToStorage(letter: Letter) {
   const letters = getLettersFromStorage();
   letters.push(letter);
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(letters));
+  
+  // 1. 立即更新内存缓存（用户立即看到）
+  setCachedData(STORAGE_KEY, letters);
+  
+  // 2. 异步写入IndexedDB（永久存储）
+  save(STORAGE_KEY, letters).catch(err => 
+    console.error('📮 信件保存到IndexedDB失败:', err)
+  );
 }
 
 function updateLetterInStorage(updatedLetter: Letter) {
@@ -1580,7 +1604,14 @@ function updateLetterInStorage(updatedLetter: Letter) {
   const index = letters.findIndex(l => l.id === updatedLetter.id);
   if (index !== -1) {
     letters[index] = updatedLetter;
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(letters));
+    
+    // 1. 立即更新内存缓存
+    setCachedData(STORAGE_KEY, letters);
+    
+    // 2. 异步写入IndexedDB
+    save(STORAGE_KEY, letters).catch(err => 
+      console.error('📮 信件更新到IndexedDB失败:', err)
+    );
   }
 }
 
@@ -1691,7 +1722,14 @@ export function deleteLetter(letterId: string): boolean {
   
   // 从数组中删除
   letters.splice(index, 1);
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(letters));
+  
+  // 1. 立即更新内存缓存
+  setCachedData(STORAGE_KEY, letters);
+  
+  // 2. 异步写入IndexedDB
+  save(STORAGE_KEY, letters).catch(err => 
+    console.error('📮 信件删除同步到IndexedDB失败:', err)
+  );
   
   console.log(`🗑️ 已永久删除信件`);
   

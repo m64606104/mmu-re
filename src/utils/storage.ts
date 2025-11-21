@@ -34,7 +34,8 @@ const INDEXED_DB_KEYS = [
   'documents_library',  // 文档库
   'music_library',      // 音乐库
   'user_data',          // 用户扩展数据
-  'app_cache'           // 应用缓存
+  'app_cache',          // 应用缓存
+  'slow_letters'        // 慢邮件/信件数据
 ];
 
 /**
@@ -178,8 +179,8 @@ export const initializeCache = async (): Promise<void> => {
   try {
     console.log('🧠 初始化内存缓存...');
     
-    // 从IndexedDB预载热点数据
-    const hotKeys = ['conversations', 'moments', 'chat_memory_banks'];
+    // 从IndexedDB预载热点数据（常用的大数据）
+    const hotKeys = ['conversations', 'moments', 'chat_memory_banks', 'slow_letters'];
     await Promise.all(hotKeys.map(async (key) => {
       try {
         const data = await loadFromIndexedDB(key);
@@ -573,6 +574,15 @@ export const clearAllData = async (): Promise<void> => {
   }
   
   console.log('✅ 所有数据已清空');
+};
+
+// 🧠 内存缓存访问API（供同步读取使用）
+export const getCachedData = <T>(key: string): T | undefined => {
+  return memoryCache.get(key);
+};
+
+export const setCachedData = (key: string, data: any): void => {
+  memoryCache.set(key, data);
 };
 
 // 兼容性导出（暂时保留旧API名称）
