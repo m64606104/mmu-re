@@ -15,7 +15,7 @@ import {
   type LetterListData 
 } from '../utils/letterListManager';
 import { setAINickname, getAINickname } from '../utils/letterNicknameManager';
-import { setCharacterName, getCharacterName, getCharacterDisplayName } from '../utils/characterNameManager';
+import { setCharacterName, getCharacterName } from '../utils/characterNameManager';
 import { Letter } from '../types/letter';
 import LetterDetailView from './LetterDetailView';
 
