@@ -14,7 +14,7 @@ import {
 } from '../utils/letterListManager';
 import { setAINickname, getAINickname } from '../utils/letterNicknameManager';
 import { Letter } from '../types/letter';
-import RoundBasedLetterView from './RoundBasedLetterView';
+import LetterCardsView from './LetterCardsView';
 
 interface GroupedLetterBoxScreenProps {
   onBack: () => void;
@@ -103,12 +103,13 @@ export default function GroupedLetterBoxScreen({
     }
   };
 
-  // 如果选择了具体信件，显示信件详情
+  // 如果选择了具体信件，直接显示原来的信件详情页（不要轮次列表）
   if (selectedLetter) {
     return (
-      <RoundBasedLetterView
+      <LetterCardsView
         letter={selectedLetter}
         onBack={() => setSelectedLetter(null)}
+        onViewTimeline={() => {}} 
         userName={userName}
         onContinueReply={onContinueReply ? () => onContinueReply(selectedLetter) : undefined}
       />

@@ -4,7 +4,7 @@
  * 参考慢邮件App的卡片设计
  */
 
-import { ArrowLeft, Check, Zap, UserPlus, FileDown, Trash2, Reply, Star } from 'lucide-react';
+import { ArrowLeft, Check, Zap, UserPlus, FileDown, Trash2, Reply, Star, Filter } from 'lucide-react';
 import { Letter } from '../types/letter';
 import { getCurrentStamp } from '../utils/stampSystem';
 import { useEffect, useRef, useState } from 'react';
@@ -22,11 +22,14 @@ interface LetterCardsViewProps {
   onContinueReply?: () => void;
 }
 
+type ViewMode = 'all' | 'sent' | 'received';
+
 export default function LetterCardsView({ letter, onBack, onViewTimeline, userName, scrollToRound, onRoundViewed, onContinueReply }: LetterCardsViewProps) {
   const currentStamp = getCurrentStamp();
   const roundRefs = useRef<{ [key: number]: HTMLDivElement | null }>({});
   const [localLetter, setLocalLetter] = useState(letter);
   const [showPDFExport, setShowPDFExport] = useState(false);
+  const [viewMode, setViewMode] = useState<ViewMode>('all');
   
   useEffect(() => {
     setLocalLetter(letter);
@@ -183,13 +186,66 @@ export default function LetterCardsView({ letter, onBack, onViewTimeline, userNa
         </button>
       </div>
 
+      {/* 筛选标签栏 */}
+      <div className="bg-white/60 backdrop-blur-sm border-b border-orange-100 px-4 py-3 flex-shrink-0">
+        <div className="flex items-center gap-2">
+          <Filter size={16} className="text-gray-500" />
+          <div className="flex gap-1">
+            <button
+              onClick={() => setViewMode('all')}
+              className={`px-4 py-2 rounded-full text-sm font-medium transition-colors ${
+                viewMode === 'all'
+                  ? 'bg-orange-500 text-white'
+                  : 'bg-white/80 text-gray-600 hover:bg-white'
+              }`}
+            >
+              全部
+            </button>
+            <button
+              onClick={() => setViewMode('sent')}
+              className={`px-4 py-2 rounded-full text-sm font-medium transition-colors ${
+                viewMode === 'sent'
+                  ? 'bg-blue-500 text-white'
+                  : 'bg-white/80 text-gray-600 hover:bg-white'
+              }`}
+            >
+              寄信
+            </button>
+            <button
+              onClick={() => setViewMode('received')}
+              className={`px-4 py-2 rounded-full text-sm font-medium transition-colors ${
+                viewMode === 'received'
+                  ? 'bg-green-500 text-white'
+                  : 'bg-white/80 text-gray-600 hover:bg-white'
+              }`}
+            >
+              回信
+            </button>
+          </div>
+        </div>
+      </div>
+
       {/* 信件卡片列表 */}
       <div className="flex-1 overflow-y-auto px-4 py-6 pb-24">
         <div className="max-w-2xl mx-auto space-y-4">
           {/* 遍历所有对话轮次 */}
           {letter.conversationRounds && letter.conversationRounds.length > 0 ? (
             localLetter.conversationRounds
-              .filter(round => !round.userLetter.isDeleted || (round.aiReply && !round.aiReply.isDeleted))
+              .filter(round => {
+                // 基础过滤：未删除的内容
+                const hasValidUserLetter = !round.userLetter.isDeleted;
+                const hasValidAIReply = round.aiReply && !round.aiReply.isDeleted;
+                
+                // 根据viewMode进一步过滤
+                switch (viewMode) {
+                  case 'sent':
+                    return hasValidUserLetter;
+                  case 'received':
+                    return hasValidAIReply;
+                  default: // 'all'
+                    return hasValidUserLetter || hasValidAIReply;
+                }
+              })
               .map((round) => (
               <div 
                 key={round.roundNumber}
@@ -198,7 +254,7 @@ export default function LetterCardsView({ letter, onBack, onViewTimeline, userNa
                 }}
               >
                 {/* 用户发送的信卡片 */}
-                {!round.userLetter.isDeleted && (
+                {!round.userLetter.isDeleted && (viewMode === 'all' || viewMode === 'sent') && (
                   <div className="mb-4">
                     <div className="bg-white rounded-3xl shadow-lg overflow-hidden border-2 border-gray-100">
                     {/* 卡片头部 */}
@@ -257,7 +313,7 @@ export default function LetterCardsView({ letter, onBack, onViewTimeline, userNa
                 )}
 
                 {/* AI回信卡片 */}
-                {round.aiReply && !round.aiReply.isDeleted && (
+                {round.aiReply && !round.aiReply.isDeleted && (viewMode === 'all' || viewMode === 'received') && (
                   <div className="mb-4">
                     <div className="bg-white rounded-3xl shadow-lg overflow-hidden border-2 border-blue-100">
                       {/* 卡片头部 */}
