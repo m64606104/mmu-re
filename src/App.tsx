@@ -1061,14 +1061,14 @@ function App() {
         return (
           <LetterNotificationCenter
             onBack={() => navigateTo('letterbox')}
-            onNotificationClick={(notification) => {
+            onNotificationClick={() => {
               // 点击通知跳转到对应信件
               navigateTo('letterbox');
             }}
           />
         );
       default:
-        return <HomeScreen onNavigate={navigateTo} currentUser={userProfile} />;
+        return <HomeScreen onNavigate={navigateTo} />;
     }
   };
 
