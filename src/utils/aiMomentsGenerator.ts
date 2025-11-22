@@ -79,49 +79,7 @@ export const getMomentsData = async (contactId: string): Promise<MomentsData> =>
     return existing;
   }
   
-  // 🎯 根据AI性格动态设置朋友圈频率
-  const conversationsStr = localStorage.getItem('conversations');
-  const conversations = conversationsStr ? JSON.parse(conversationsStr) : [];
-  const aiConversation = conversations.find((c: any) => c.id === contactId);
-  
-  let minInterval = 168; // 默认7天
-  let maxInterval = 720; // 默认30天
-  
-  if (aiConversation?.characterSettings) {
-    const personality = (aiConversation.characterSettings.personality || '').toLowerCase();
-    const languageStyle = (aiConversation.characterSettings.languageStyle || '').toLowerCase();
-    
-    // 分析性格特征
-    const isOutgoing = 
-      personality.includes('活泼') || personality.includes('外向') || 
-      personality.includes('热情') || personality.includes('开朗') ||
-      languageStyle.includes('活泼') || languageStyle.includes('热情');
-    
-    const isQuiet = 
-      personality.includes('高冷') || personality.includes('内向') || 
-      personality.includes('安静') || personality.includes('冷淡') ||
-      personality.includes('佛系') || personality.includes('慢热') ||
-      languageStyle.includes('简洁') || languageStyle.includes('寡言');
-    
-    if (isOutgoing) {
-      // 活泼外向：7-21天发一次（平均2周）
-      minInterval = 168;  // 7天
-      maxInterval = 504;  // 21天
-      console.log(`🌟 ${aiConversation.characterSettings.nickname} 性格活泼，朋友圈频率较高`);
-    } else if (isQuiet) {
-      // 高冷内向：14-60天发一次（平均1-2个月）
-      minInterval = 336;  // 14天
-      maxInterval = 1440; // 60天
-      console.log(`😎 ${aiConversation.characterSettings.nickname} 性格高冷，朋友圈频率较低`);
-    } else {
-      // 普通性格：7-30天发一次（平均2-3周）
-      minInterval = 168;  // 7天
-      maxInterval = 720;  // 30天
-      console.log(`🙂 ${aiConversation.characterSettings.nickname} 性格普通，朋友圈频率适中`);
-    }
-  }
-  
-  // 创建新的朋友圈数据
+  // 创建新的朋友圈数据 - 统一固定频率
   const newData: MomentsData = {
     contactId,
     posts: [],
@@ -132,8 +90,8 @@ export const getMomentsData = async (contactId: string): Promise<MomentsData> =>
     todayPlans: [],
     settings: {
       autoGenerate: true,
-      minInterval,
-      maxInterval,
+      minInterval: 168,  // 7天
+      maxInterval: 720,  // 30天（平均2-3周发一次）
       minPostsPerDay: 1,
       maxPostsPerDay: 2  // 最多2条
     }
