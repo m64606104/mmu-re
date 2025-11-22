@@ -163,10 +163,10 @@ export default function LetterMenuDropdown({ onNavigate }: LetterMenuDropdownPro
                   <div className="relative">
                     <Icon size={18} className={item.color} strokeWidth={2} />
                     
-                    {/* 通知小红点 */}
-                    {item.badge && item.badge > 0 && (
-                      <span className="absolute -top-1 -right-1 bg-red-500 text-white text-[8px] font-bold rounded-full min-w-[14px] h-[14px] flex items-center justify-center px-0.5">
-                        {item.badge > 9 ? '9+' : item.badge}
+                    {/* 通知小角标 - 只在铃铛图标上显示 */}
+                    {item.badge && item.badge > 0 && item.id === 'letter-notifications' && (
+                      <span className="absolute -top-0.5 -right-0.5 bg-red-500 text-white text-[7px] font-bold rounded-full min-w-[10px] h-[10px] flex items-center justify-center px-0.5 shadow-sm">
+                        {item.badge > 9 ? '9' : item.badge}
                       </span>
                     )}
                   </div>
