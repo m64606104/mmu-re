@@ -4,7 +4,7 @@
  * 参考慢邮件App的卡片设计
  */
 
-import { ArrowLeft, Check, Zap, UserPlus, FileDown, Trash2, Reply, Star, RotateCcw } from 'lucide-react';
+import { ArrowLeft, Check, Zap, UserPlus, FileDown, Trash2, Reply, Star, RotateCcw, MoreVertical } from 'lucide-react';
 import { Letter } from '../types/letter';
 import { getCurrentStamp } from '../utils/stampSystem';
 import { useEffect, useRef, useState } from 'react';
@@ -28,6 +28,7 @@ export default function LetterCardsView({ letter, onBack, onViewTimeline, userNa
   const [localLetter, setLocalLetter] = useState(letter);
   const [showPDFExport, setShowPDFExport] = useState(false);
   const [viewMode, setViewMode] = useState<'all' | 'sent' | 'reply'>('all');
+  const [showRoundMenu, setShowRoundMenu] = useState<number | null>(null);
   
   useEffect(() => {
     setLocalLetter(letter);
@@ -484,7 +485,34 @@ export default function LetterCardsView({ letter, onBack, onViewTimeline, userNa
 
                 {/* 等待回信状态 - 针对当前轮次 */}
                 {!round.aiReply && round.roundNumber === localLetter.currentRound && localLetter.status === 'sent' && (
-                  <div className="mb-4 bg-amber-50 border-2 border-dashed border-amber-300 rounded-2xl p-6 text-center">
+                  <div className="mb-4 bg-amber-50 border-2 border-dashed border-amber-300 rounded-2xl p-6 text-center relative">
+                    {/* 功能菜单按钮 - 右上角 */}
+                    {round.userLetter.hasUrged && round.userLetter.willReplyAt && Date.now() > round.userLetter.willReplyAt && (
+                      <div className="absolute top-2 right-2">
+                        <button
+                          onClick={() => setShowRoundMenu(showRoundMenu === round.roundNumber ? null : round.roundNumber)}
+                          className="p-1.5 hover:bg-amber-200/50 rounded-full transition-colors"
+                          title="功能菜单"
+                        >
+                          <MoreVertical size={16} className="text-gray-600" />
+                        </button>
+                        {/* 下拉菜单 */}
+                        {showRoundMenu === round.roundNumber && (
+                          <div className="absolute right-0 mt-1 bg-white rounded-lg shadow-lg border border-gray-200 py-1 z-10 min-w-[140px]">
+                            <button
+                              onClick={() => {
+                                handleManualRetry(round.roundNumber);
+                                setShowRoundMenu(null);
+                              }}
+                              className="w-full px-4 py-2 text-left text-sm hover:bg-gray-100 flex items-center gap-2 text-gray-700"
+                            >
+                              <RotateCcw size={14} />
+                              重新生成回复
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    )}
                     <div className="text-4xl mb-2">⌛</div>
                     <div className="text-gray-700 font-medium">等待第 {round.roundNumber} 轮回信中...</div>
                     <div className="text-sm text-gray-500 mt-1 mb-3">
@@ -493,32 +521,48 @@ export default function LetterCardsView({ letter, onBack, onViewTimeline, userNa
                         : `预计 ${getExpectedDeliveryDate(round.roundNumber)} 送达`
                       }
                     </div>
-                    <div className="flex gap-2 justify-center">
-                      {!round.userLetter.hasUrged && (
-                        <button
-                          onClick={() => handleUrge(round.roundNumber)}
-                          className="px-6 py-2 bg-gradient-to-r from-amber-500 to-orange-500 text-white rounded-full font-medium hover:shadow-lg transition-all flex items-center gap-2"
-                        >
-                          <Zap size={16} />
-                          催促回复
-                        </button>
-                      )}
-                      {round.userLetter.hasUrged && round.userLetter.willReplyAt && Date.now() > round.userLetter.willReplyAt && (
-                        <button
-                          onClick={() => handleManualRetry(round.roundNumber)}
-                          className="px-6 py-2 bg-gradient-to-r from-blue-500 to-indigo-500 text-white rounded-full font-medium hover:shadow-lg transition-all flex items-center gap-2"
-                        >
-                          <RotateCcw size={16} />
-                          手动重试
-                        </button>
-                      )}
-                    </div>
+                    {!round.userLetter.hasUrged && (
+                      <button
+                        onClick={() => handleUrge(round.roundNumber)}
+                        className="px-6 py-2 bg-gradient-to-r from-amber-500 to-orange-500 text-white rounded-full font-medium hover:shadow-lg transition-all flex items-center gap-2 mx-auto"
+                      >
+                        <Zap size={16} />
+                        催促回复
+                      </button>
+                    )}
                   </div>
                 )}
                 
                 {/* 历史轮次的状态显示 - 显示每轮的独立预计送达时间 */}
                 {!round.aiReply && round.roundNumber < localLetter.currentRound && (
-                  <div className="mb-4 bg-gray-50 border border-gray-200 rounded-2xl p-4 text-center">
+                  <div className="mb-4 bg-gray-50 border border-gray-200 rounded-2xl p-4 text-center relative">
+                    {/* 功能菜单按钮 - 右上角（仅在时间已过时显示） */}
+                    {round.userLetter.hasUrged && round.userLetter.willReplyAt && Date.now() > round.userLetter.willReplyAt && (
+                      <div className="absolute top-2 right-2">
+                        <button
+                          onClick={() => setShowRoundMenu(showRoundMenu === round.roundNumber ? null : round.roundNumber)}
+                          className="p-1 hover:bg-gray-300/50 rounded-full transition-colors"
+                          title="功能菜单"
+                        >
+                          <MoreVertical size={14} className="text-gray-500" />
+                        </button>
+                        {/* 下拉菜单 */}
+                        {showRoundMenu === round.roundNumber && (
+                          <div className="absolute right-0 mt-1 bg-white rounded-lg shadow-lg border border-gray-200 py-1 z-10 min-w-[140px]">
+                            <button
+                              onClick={() => {
+                                handleManualRetry(round.roundNumber);
+                                setShowRoundMenu(null);
+                              }}
+                              className="w-full px-4 py-2 text-left text-sm hover:bg-gray-100 flex items-center gap-2 text-gray-700"
+                            >
+                              <RotateCcw size={14} />
+                              重新生成回复
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    )}
                     <div className="text-2xl mb-1">📭</div>
                     <div className="text-sm text-gray-600">第 {round.roundNumber} 轮等待回信</div>
                     <div className="text-xs text-gray-500 mt-1 mb-2">
@@ -527,27 +571,16 @@ export default function LetterCardsView({ letter, onBack, onViewTimeline, userNa
                         : `预计送达时间: ${getExpectedDeliveryDate(round.roundNumber)}`
                       }
                     </div>
-                    {/* 历史轮次也可以催促或重试 */}
-                    <div className="flex gap-2 justify-center">
-                      {!round.userLetter.hasUrged && (
-                        <button
-                          onClick={() => handleUrge(round.roundNumber)}
-                          className="px-4 py-1.5 bg-gradient-to-r from-amber-400 to-orange-400 text-white text-xs rounded-full font-medium hover:shadow-md transition-all flex items-center gap-1"
-                        >
-                          <Zap size={12} />
-                          催促
-                        </button>
-                      )}
-                      {round.userLetter.hasUrged && round.userLetter.willReplyAt && Date.now() > round.userLetter.willReplyAt && (
-                        <button
-                          onClick={() => handleManualRetry(round.roundNumber)}
-                          className="px-4 py-1.5 bg-gradient-to-r from-blue-400 to-indigo-400 text-white text-xs rounded-full font-medium hover:shadow-md transition-all flex items-center gap-1"
-                        >
-                          <RotateCcw size={12} />
-                          重试
-                        </button>
-                      )}
-                    </div>
+                    {/* 历史轮次催促按钮 */}
+                    {!round.userLetter.hasUrged && (
+                      <button
+                        onClick={() => handleUrge(round.roundNumber)}
+                        className="px-4 py-1.5 bg-gradient-to-r from-amber-400 to-orange-400 text-white text-xs rounded-full font-medium hover:shadow-md transition-all flex items-center gap-1 mx-auto"
+                      >
+                        <Zap size={12} />
+                        催促
+                      </button>
+                    )}
                   </div>
                 )}
               </div>
