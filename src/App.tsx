@@ -297,6 +297,11 @@ function App() {
       await initializeLetters();
       // 2. 再初始化定时器
       initializeLetterTimers();
+      // 3. 初始化调试工具（仅开发环境）
+      if (process.env.NODE_ENV === 'development') {
+        const { initLetterDebugTools } = await import('./utils/letterDebugTools');
+        initLetterDebugTools();
+      }
     };
     initLetters();
   }, []);

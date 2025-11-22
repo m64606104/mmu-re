@@ -675,7 +675,7 @@ function scheduleAutoReply(letter: Letter, roundNumber?: number) {
  * @param retryCount 重试次数
  * @param roundNumber 要回复的轮次号（可选，默认为当前轮次）
  */
-async function generateReply(letterId: string, retryCount: number = 0, roundNumber?: number) {
+export async function generateReply(letterId: string, retryCount: number = 0, roundNumber?: number) {
   const letters = getLettersFromStorage();
   const letter = letters.find(l => l.id === letterId);
   
@@ -1551,7 +1551,7 @@ function getRandomStampStyle(): Letter['stampStyle'] {
 
 const STORAGE_KEY = 'slow_letters';
 
-function getLettersFromStorage(): Letter[] {
+export function getLettersFromStorage(): Letter[] {
   try {
     // 从内存缓存读取（initLetters会在App启动时加载）
     const letters = getCachedData<Letter[]>(STORAGE_KEY);
@@ -1620,7 +1620,7 @@ function saveLetterToStorage(letter: Letter) {
   );
 }
 
-function updateLetterInStorage(updatedLetter: Letter) {
+export function updateLetterInStorage(updatedLetter: Letter) {
   const letters = getLettersFromStorage();
   const index = letters.findIndex(l => l.id === updatedLetter.id);
   if (index !== -1) {

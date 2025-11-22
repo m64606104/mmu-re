@@ -4,11 +4,11 @@
  * 参考慢邮件App的卡片设计
  */
 
-import { ArrowLeft, Check, Zap, UserPlus, FileDown, Trash2, Reply, Star } from 'lucide-react';
+import { ArrowLeft, Check, Zap, UserPlus, FileDown, Trash2, Reply, Star, RotateCcw } from 'lucide-react';
 import { Letter } from '../types/letter';
 import { getCurrentStamp } from '../utils/stampSystem';
 import { useEffect, useRef, useState } from 'react';
-import { urgeLetter, addAsPenPal, canContinueReply, deleteUserLetter, deleteAIReply, getLetterById, favoriteAIReply } from '../utils/letterService';
+import { urgeLetter, addAsPenPal, canContinueReply, deleteUserLetter, deleteAIReply, getLetterById, favoriteAIReply, generateReply } from '../utils/letterService';
 import { getAIDisplayName } from '../utils/letterNicknameManager';
 import PDFExportModal from './PDFExportModal';
 
@@ -47,6 +47,26 @@ export default function LetterCardsView({ letter, onBack, onViewTimeline, userNa
       const targetRound = localLetter.conversationRounds.find(r => r.roundNumber === roundNumber);
       const hasUrged = targetRound?.userLetter?.hasUrged;
       alert(`无法催促：\n` + (hasUrged ? `第${roundNumber}轮已经催促过了` : '信件状态不正确'));
+    }
+  };
+  
+  // 手动重试生成回复
+  const handleManualRetry = async (roundNumber: number) => {
+    const confirmed = confirm(`确定要手动重试生成第${roundNumber}轮的AI回复吗？\n\n这将立即调用API生成回复。`);
+    if (!confirmed) return;
+    
+    try {
+      await generateReply(localLetter.id, 0, roundNumber);
+      alert('✅ 回复生成请求已发送！\n\n请稍后刷新页面查看结果。');
+      // 等待2秒后刷新数据
+      setTimeout(() => {
+        const updatedLetter = getLetterById(localLetter.id);
+        if (updatedLetter) {
+          setLocalLetter(updatedLetter);
+        }
+      }, 2000);
+    } catch (error) {
+      alert(`❌ 生成回复失败：\n${error}\n\n请检查API配置或稍后重试。`);
     }
   };
   
@@ -473,15 +493,26 @@ export default function LetterCardsView({ letter, onBack, onViewTimeline, userNa
                         : `预计 ${getExpectedDeliveryDate(round.roundNumber)} 送达`
                       }
                     </div>
-                    {!round.userLetter.hasUrged && (
-                      <button
-                        onClick={() => handleUrge(round.roundNumber)}
-                        className="px-6 py-2 bg-gradient-to-r from-amber-500 to-orange-500 text-white rounded-full font-medium hover:shadow-lg transition-all flex items-center gap-2 mx-auto"
-                      >
-                        <Zap size={16} />
-                        催促第 {round.roundNumber} 轮回复
-                      </button>
-                    )}
+                    <div className="flex gap-2 justify-center">
+                      {!round.userLetter.hasUrged && (
+                        <button
+                          onClick={() => handleUrge(round.roundNumber)}
+                          className="px-6 py-2 bg-gradient-to-r from-amber-500 to-orange-500 text-white rounded-full font-medium hover:shadow-lg transition-all flex items-center gap-2"
+                        >
+                          <Zap size={16} />
+                          催促回复
+                        </button>
+                      )}
+                      {round.userLetter.hasUrged && round.userLetter.willReplyAt && Date.now() > round.userLetter.willReplyAt && (
+                        <button
+                          onClick={() => handleManualRetry(round.roundNumber)}
+                          className="px-6 py-2 bg-gradient-to-r from-blue-500 to-indigo-500 text-white rounded-full font-medium hover:shadow-lg transition-all flex items-center gap-2"
+                        >
+                          <RotateCcw size={16} />
+                          手动重试
+                        </button>
+                      )}
+                    </div>
                   </div>
                 )}
                 
@@ -490,22 +521,33 @@ export default function LetterCardsView({ letter, onBack, onViewTimeline, userNa
                   <div className="mb-4 bg-gray-50 border border-gray-200 rounded-2xl p-4 text-center">
                     <div className="text-2xl mb-1">📭</div>
                     <div className="text-sm text-gray-600">第 {round.roundNumber} 轮等待回信</div>
-                    <div className="text-xs text-gray-500 mt-1">
+                    <div className="text-xs text-gray-500 mt-1 mb-2">
                       {round.userLetter.hasUrged 
                         ? '已催促，预计很快收到回信'
                         : `预计送达时间: ${getExpectedDeliveryDate(round.roundNumber)}`
                       }
                     </div>
-                    {/* 历史轮次也可以催促 */}
-                    {!round.userLetter.hasUrged && (
-                      <button
-                        onClick={() => handleUrge(round.roundNumber)}
-                        className="mt-2 px-4 py-1.5 bg-gradient-to-r from-amber-400 to-orange-400 text-white text-xs rounded-full font-medium hover:shadow-md transition-all flex items-center gap-1 mx-auto"
-                      >
-                        <Zap size={12} />
-                        催促
-                      </button>
-                    )}
+                    {/* 历史轮次也可以催促或重试 */}
+                    <div className="flex gap-2 justify-center">
+                      {!round.userLetter.hasUrged && (
+                        <button
+                          onClick={() => handleUrge(round.roundNumber)}
+                          className="px-4 py-1.5 bg-gradient-to-r from-amber-400 to-orange-400 text-white text-xs rounded-full font-medium hover:shadow-md transition-all flex items-center gap-1"
+                        >
+                          <Zap size={12} />
+                          催促
+                        </button>
+                      )}
+                      {round.userLetter.hasUrged && round.userLetter.willReplyAt && Date.now() > round.userLetter.willReplyAt && (
+                        <button
+                          onClick={() => handleManualRetry(round.roundNumber)}
+                          className="px-4 py-1.5 bg-gradient-to-r from-blue-400 to-indigo-400 text-white text-xs rounded-full font-medium hover:shadow-md transition-all flex items-center gap-1"
+                        >
+                          <RotateCcw size={12} />
+                          重试
+                        </button>
+                      )}
+                    </div>
                   </div>
                 )}
               </div>
