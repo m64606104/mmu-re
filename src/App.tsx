@@ -30,9 +30,7 @@ import LetterNotificationCenter from './components/LetterNotificationCenter';
 import RecycleBinScreen from './components/RecycleBinScreen';
 import BottleFishingScreen from './components/BottleFishingScreen';
 import FavoriteRepliesScreen from './components/FavoriteRepliesScreen';
-import UnrepliedLettersScreen from './components/UnrepliedLettersScreen';
 import BottomNavBar from './components/BottomNavBar';
-import TopNavBar from './components/TopNavBar';
 import ToastContainer from './components/ToastContainer';
 import { MomentsAutoGenerator } from './components/MomentsAutoGenerator';
 import { AIMomentsInteractionManager } from './components/AIMomentsInteractionManager';
@@ -48,7 +46,7 @@ import { initializeLetters, initializeLetterTimers } from './utils/letterService
 import { Letter } from './types/letter';
 
 function App() {
-  const [currentScreen, setCurrentScreen] = useState<Screen>('letter-write'); // 默认显示写信页面
+  const [currentScreen, setCurrentScreen] = useState<Screen>('letter-writing'); // 默认显示写信页面
   const [previousScreen, setPreviousScreen] = useState<Screen>('social'); // 记录来源页面
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [currentConversationId, setCurrentConversationId] = useState<string | null>(null);
@@ -1083,7 +1081,9 @@ function App() {
       <div className="w-full h-screen flex items-start justify-center bg-slate-100 fixed inset-0 overflow-hidden pt-[10.5px] md:pt-[14px]">
         {/* 手机容器 - 优化尺寸 (393x800) */}
         <div className="w-[393px] h-[800px] bg-white rounded-[40px] shadow-2xl overflow-hidden relative -mt-[10.2px]">
-          {renderScreen()}
+          <div className={['pen-pals', 'letterbox', 'letter-writing', 'recycle-bin'].includes(currentScreen) ? 'pb-20' : ''}>
+            {renderScreen()}
+          </div>
           
           {/* 消息通知 - QQ风格顶部弹窗 */}
           <MessageNotification
@@ -1093,6 +1093,30 @@ function App() {
               setCurrentScreen('chat');
             }}
           />
+          
+          {/* 底部导航栏 - 仅在主页面显示 */}
+          {['pen-pals', 'letterbox', 'letter-writing', 'recycle-bin'].includes(currentScreen) && (
+            <BottomNavBar
+              currentPage={
+                currentScreen === 'pen-pals' ? 'penpals' :
+                currentScreen === 'letter-writing' ? 'letter-write' :
+                currentScreen
+              }
+              onNavigate={(page) => {
+                if (page === 'unreplied-letters') {
+                  // 未回复信件 → 跳转到信件列表的未回复tab
+                  navigateTo('letterbox');
+                  // TODO: 需要传递defaultTab参数
+                } else if (page === 'penpals') {
+                  navigateTo('pen-pals');
+                } else if (page === 'letter-write') {
+                  navigateTo('letter-writing');
+                } else {
+                  navigateTo(page as Screen);
+                }
+              }}
+            />
+          )}
         </div>
       </div>
       
