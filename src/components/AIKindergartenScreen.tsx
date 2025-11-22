@@ -37,6 +37,7 @@ export default function AIKindergartenScreen({ onBack, apiConfig }: AIKindergart
   const [dailyRounds, setDailyRounds] = useState(0);
   const [teachResult, setTeachResult] = useState('');
   const [selectedCard, setSelectedCard] = useState<WordCard | null>(null);
+  const [userDefinition, setUserDefinition] = useState('');
 
   useEffect(() => {
     loadChildren();
@@ -110,27 +111,37 @@ export default function AIKindergartenScreen({ onBack, apiConfig }: AIKindergart
     saveChild();
   };
 
-  const handleSelectCard = async (card: WordCard) => {
-    if (!selectedChild || !selectedChild.aiChildData) return;
-    
-    // 检查每日限制
+  // 选择词卡（不立即教学）
+  const handleSelectCard = (card: WordCard) => {
     if (dailyRounds >= 20) {
       setTeachResult('🌙 今天已经学了20个词啦，明天再来吧～');
       return;
     }
-
-    setSelectedCard(card);
     
-    // 教学这个词
+    setSelectedCard(card);
+    setUserDefinition(''); // 清空之前的输入
+    setTeachResult('');
+  };
+
+  // 确认教学
+  const handleConfirmTeach = async () => {
+    if (!selectedChild || !selectedChild.aiChildData || !selectedCard) return;
+    
+    if (!userDefinition.trim()) {
+      setTeachResult('⚠️ 请输入你对这个词的理解');
+      return;
+    }
+
+    // 教学这个词（使用用户的理解）
     const result = await teachWord(
       selectedChild.id,
-      card.word,
-      card.definition,
-      card.examples
+      selectedCard.word,
+      userDefinition.trim(),
+      selectedCard.examples
     );
 
     if (result) {
-      setTeachResult(`✨ 成功学会了"${card.word}"！获得了10点经验值`);
+      setTeachResult(`✨ 成功学会了"${selectedCard.word}"！获得了10点经验值`);
       
       // 更新每日轮数
       const newRounds = dailyRounds + 1;
@@ -142,10 +153,11 @@ export default function AIKindergartenScreen({ onBack, apiConfig }: AIKindergart
       setTimeout(() => {
         loadChildren();
         refreshCards();
+        setSelectedCard(null);
+        setUserDefinition('');
       }, 1500);
     } else {
       setTeachResult('❌ 教学失败，请重试');
-      setSelectedCard(null);
     }
   };
 
@@ -352,46 +364,103 @@ export default function AIKindergartenScreen({ onBack, apiConfig }: AIKindergart
                 </div>
 
                 {/* 四宫格词卡 */}
-                {currentCards.length > 0 ? (
-                  <div className="grid grid-cols-2 gap-3 mb-4">
-                    {currentCards.map((card) => (
-                      <button
-                        key={card.id}
-                        onClick={() => handleSelectCard(card)}
-                        disabled={selectedCard?.id === card.id}
-                        className={`relative p-4 rounded-xl border-2 transition-all ${
-                          selectedCard?.id === card.id
-                            ? 'border-blue-500 bg-blue-50 scale-105'
-                            : 'border-gray-200 hover:border-blue-300 hover:shadow-md active:scale-95'
-                        }`}
-                      >
-                        {/* 表情符号 */}
-                        <div className="text-4xl mb-2 text-center">{card.emoji}</div>
-                        
-                        {/* 词语 */}
-                        <div className="text-center font-semibold text-gray-800 mb-1">
-                          {card.word}
-                        </div>
-                        
-                        {/* 难度标签 */}
-                        <div className="flex justify-center">
-                          <span className={`text-xs px-2 py-0.5 rounded ${
-                            card.difficulty === 1 ? 'bg-green-100 text-green-600' :
-                            card.difficulty === 2 ? 'bg-blue-100 text-blue-600' :
-                            'bg-purple-100 text-purple-600'
-                          }`}>
-                            Lv.{card.difficulty}
-                          </span>
-                        </div>
-
-                        {/* 选中动画 */}
-                        {selectedCard?.id === card.id && (
-                          <div className="absolute inset-0 flex items-center justify-center bg-blue-500/10 rounded-xl">
-                            <div className="text-2xl">✨</div>
+                {!selectedCard && currentCards.length > 0 ? (
+                  <>
+                    <div className="grid grid-cols-2 gap-3 mb-4">
+                      {currentCards.map((card) => (
+                        <button
+                          key={card.id}
+                          onClick={() => handleSelectCard(card)}
+                          className="relative p-4 rounded-xl border-2 border-gray-200 hover:border-blue-300 hover:shadow-md active:scale-95 transition-all"
+                        >
+                          {/* 表情符号 */}
+                          <div className="text-4xl mb-2 text-center">{card.emoji}</div>
+                          
+                          {/* 词语 */}
+                          <div className="text-center font-semibold text-gray-800 mb-1">
+                            {card.word}
                           </div>
-                        )}
+                          
+                          {/* 难度标签 */}
+                          <div className="flex justify-center">
+                            <span className={`text-xs px-2 py-0.5 rounded ${
+                              card.difficulty === 1 ? 'bg-green-100 text-green-600' :
+                              card.difficulty === 2 ? 'bg-blue-100 text-blue-600' :
+                              'bg-purple-100 text-purple-600'
+                            }`}>
+                              Lv.{card.difficulty}
+                            </span>
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                    
+                    {/* 刷新按钮 */}
+                    <button
+                      onClick={refreshCards}
+                      disabled={dailyRounds >= 20}
+                      className="w-full py-2 text-sm text-gray-600 hover:text-blue-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      🔄 换一批词卡
+                    </button>
+                  </>
+                ) : selectedCard ? (
+                  /* 编辑区域 */
+                  <div className="space-y-4">
+                    {/* 选中的卡片展示 */}
+                    <div className="bg-gradient-to-r from-blue-50 to-purple-50 rounded-xl p-4">
+                      <div className="flex items-center gap-3 mb-3">
+                        <div className="text-3xl">{selectedCard.emoji}</div>
+                        <div>
+                          <div className="font-semibold text-gray-800">{selectedCard.word}</div>
+                          <div className="text-xs text-gray-500">Level {selectedCard.difficulty}</div>
+                        </div>
+                      </div>
+                      
+                      {/* 简短示例参考 */}
+                      <div className="bg-white/50 rounded-lg p-3 border border-blue-100">
+                        <div className="text-xs text-blue-600 font-medium mb-1">💡 参考示例（可以自己修改）</div>
+                        <div className="text-sm text-gray-700">{selectedCard.definition}</div>
+                      </div>
+                    </div>
+
+                    {/* 用户输入区 */}
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        ✏️ 你想怎么教{selectedChild.name}这个词？
+                      </label>
+                      <textarea
+                        value={userDefinition}
+                        onChange={(e) => setUserDefinition(e.target.value)}
+                        placeholder="可以参考上面的示例，也可以用你自己的话来解释..."
+                        rows={4}
+                        className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+                      />
+                      <div className="text-xs text-gray-500 mt-1">
+                        💬 用你自己的话解释，{selectedChild.name}会更容易理解哦
+                      </div>
+                    </div>
+
+                    {/* 操作按钮 */}
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => {
+                          setSelectedCard(null);
+                          setUserDefinition('');
+                          setTeachResult('');
+                        }}
+                        className="flex-1 py-3 border border-gray-200 rounded-xl font-medium text-gray-700 hover:bg-gray-50 transition-all"
+                      >
+                        取消
                       </button>
-                    ))}
+                      <button
+                        onClick={handleConfirmTeach}
+                        disabled={!userDefinition.trim()}
+                        className="flex-1 py-3 bg-gradient-to-r from-blue-500 to-purple-500 text-white rounded-xl font-medium hover:shadow-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        确定教学
+                      </button>
+                    </div>
                   </div>
                 ) : (
                   <div className="text-center py-8 text-gray-500">
@@ -399,15 +468,6 @@ export default function AIKindergartenScreen({ onBack, apiConfig }: AIKindergart
                     <p className="text-sm">太棒了！所有词卡都学完啦</p>
                   </div>
                 )}
-
-                {/* 刷新按钮 */}
-                <button
-                  onClick={refreshCards}
-                  disabled={dailyRounds >= 20}
-                  className="w-full py-2 text-sm text-gray-600 hover:text-blue-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  🔄 换一批词卡
-                </button>
 
                 {/* 教学结果 */}
                 {teachResult && (
