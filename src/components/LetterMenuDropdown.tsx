@@ -3,12 +3,28 @@
  * 4格图标收纳：漂流瓶、收藏、成就、通知
  */
 
-import { Waves, Star, Trophy, Bell, Grid } from 'lucide-react';
+import { Waves, Star, Trophy, Bell } from 'lucide-react';
 import { useState, useEffect, useRef } from 'react';
 
 interface LetterMenuDropdownProps {
   onNavigate: (page: 'bottle-fishing' | 'favorite-replies' | 'achievements' | 'letter-notifications') => void;
 }
+
+// 4个圆角方格图标组件
+const GridIcon = ({ size = 24, className = '' }: { size?: number; className?: string }) => (
+  <svg 
+    width={size} 
+    height={size} 
+    viewBox="0 0 24 24" 
+    fill="none" 
+    className={className}
+  >
+    <rect x="4" y="4" width="7" height="7" rx="2" stroke="currentColor" strokeWidth="2" />
+    <rect x="13" y="4" width="7" height="7" rx="2" stroke="currentColor" strokeWidth="2" />
+    <rect x="4" y="13" width="7" height="7" rx="2" stroke="currentColor" strokeWidth="2" />
+    <rect x="13" y="13" width="7" height="7" rx="2" stroke="currentColor" strokeWidth="2" />
+  </svg>
+);
 
 export default function LetterMenuDropdown({ onNavigate }: LetterMenuDropdownProps) {
   const [isOpen, setIsOpen] = useState(false);
@@ -92,13 +108,13 @@ export default function LetterMenuDropdown({ onNavigate }: LetterMenuDropdownPro
   };
 
   return (
-    <div className="relative" ref={dropdownRef}>
+    <div className="relative z-[100]" ref={dropdownRef}>
       {/* 4格图标按钮 */}
       <button
         onClick={() => setIsOpen(!isOpen)}
         className="relative p-2 hover:bg-orange-50 rounded-full transition-colors"
       >
-        <Grid size={22} className="text-gray-700" strokeWidth={2} />
+        <GridIcon size={22} className="text-gray-700" />
         
         {/* 未读数量红点 */}
         {unreadCount > 0 && (
@@ -110,7 +126,7 @@ export default function LetterMenuDropdown({ onNavigate }: LetterMenuDropdownPro
 
       {/* 下拉菜单 */}
       {isOpen && (
-        <div className="absolute top-12 left-0 bg-white rounded-2xl shadow-2xl border border-gray-100 overflow-hidden z-50 min-w-[180px]">
+        <div className="absolute top-12 left-0 bg-white rounded-2xl shadow-2xl border border-gray-100 overflow-hidden z-[200] min-w-[180px]">
           {menuItems.map((item, index) => {
             const Icon = item.icon;
             return (

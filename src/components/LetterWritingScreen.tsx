@@ -149,7 +149,7 @@ const LetterWritingScreen: React.FC<LetterWritingScreenProps> = ({
   return (
     <div className="fixed inset-0 bg-gradient-to-br from-amber-50 via-orange-50 to-yellow-50 z-50 flex flex-col">
       {/* 顶部导航栏 */}
-      <div className="bg-white/80 backdrop-blur-sm border-b border-orange-200 px-4 py-3 flex items-center justify-between">
+      <div className="relative z-[60] bg-white/80 backdrop-blur-sm border-b border-orange-200 px-4 py-3 flex items-center justify-between">
         {/* 左侧：返回 + 功能菜单 */}
         <div className="flex items-center gap-2">
           <button
