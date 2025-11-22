@@ -1059,6 +1059,7 @@ function App() {
               conversations={conversations}
               userName={userProfile.username}
               replyToLetter={replyToLetter}
+              onNavigate={(page) => navigateTo(page as Screen)}
             />
             <BottomNavBar
               currentPage="letter-writing"

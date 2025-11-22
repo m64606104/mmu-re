@@ -10,6 +10,7 @@ import { getSafeAvatar } from '../utils/avatarHelper';
 import { ArrowLeft, Send, Sparkles, Users, UserPlus } from 'lucide-react';
 import LetterSendingAnimation from './LetterSendingAnimation';
 import CustomPenPalCreator from './CustomPenPalCreator';
+import TopNavButtons from './TopNavButtons';
 
 interface LetterWritingScreenProps {
   onBack: () => void;
@@ -17,6 +18,7 @@ interface LetterWritingScreenProps {
   conversations: Conversation[];
   userName: string;
   replyToLetter?: Letter | null;
+  onNavigate?: (page: string) => void;
 }
 
 const LetterWritingScreen: React.FC<LetterWritingScreenProps> = ({
@@ -24,7 +26,8 @@ const LetterWritingScreen: React.FC<LetterWritingScreenProps> = ({
   onSent,
   conversations,
   userName,
-  replyToLetter
+  replyToLetter,
+  onNavigate
 }) => {
   const [content, setContent] = useState('');
   const [selectedReceiver, setSelectedReceiver] = useState<{
@@ -154,18 +157,27 @@ const LetterWritingScreen: React.FC<LetterWritingScreenProps> = ({
           <ArrowLeft size={24} className="text-gray-700" />
         </button>
         <h1 className="text-lg font-semibold text-gray-800">写信</h1>
-        <button
-          onClick={handleSendLetter}
-          disabled={!content.trim() || !selectedReceiver}
-          className={`px-4 py-2 rounded-full font-medium transition-all flex items-center gap-2 ${
-            content.trim() && selectedReceiver
-              ? 'bg-gradient-to-r from-orange-500 to-amber-500 text-white hover:shadow-lg'
-              : 'bg-gray-200 text-gray-400 cursor-not-allowed'
-          }`}
-        >
-          <Send size={18} />
-          寄出
-        </button>
+        
+        <div className="flex items-center gap-3">
+          {/* 顶部导航按钮 */}
+          {onNavigate && (
+            <TopNavButtons onNavigate={onNavigate} />
+          )}
+          
+          {/* 寄出按钮 */}
+          <button
+            onClick={handleSendLetter}
+            disabled={!content.trim() || !selectedReceiver}
+            className={`px-4 py-2 rounded-full font-medium transition-all flex items-center gap-2 ${
+              content.trim() && selectedReceiver
+                ? 'bg-gradient-to-r from-orange-500 to-amber-500 text-white hover:shadow-lg'
+                : 'bg-gray-200 text-gray-400 cursor-not-allowed'
+            }`}
+          >
+            <Send size={18} />
+            寄出
+          </button>
+        </div>
       </div>
 
       {/* 主体内容 */}
