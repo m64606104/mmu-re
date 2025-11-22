@@ -30,6 +30,7 @@ import LetterNotificationCenter from './components/LetterNotificationCenter';
 import RecycleBinScreen from './components/RecycleBinScreen';
 import BottleFishingScreen from './components/BottleFishingScreen';
 import FavoriteRepliesScreen from './components/FavoriteRepliesScreen';
+import AIKindergartenScreen from './components/AIKindergartenScreen';
 import BottomNavBar from './components/BottomNavBar';
 import UnrepliedLettersScreen from './components/UnrepliedLettersScreen';
 import ToastContainer from './components/ToastContainer';
@@ -1084,6 +1085,13 @@ function App() {
         return (
           <FavoriteRepliesScreen
             onBack={() => navigateTo('letter-writing')}
+          />
+        );
+      case 'kindergarten':
+        return (
+          <AIKindergartenScreen
+            onBack={() => navigateTo('home')}
+            apiConfig={apiConfig}
           />
         );
       default:

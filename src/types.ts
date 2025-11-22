@@ -278,6 +278,8 @@ export interface Conversation {
     enabled: boolean; // 是否启用自定义上下文数量
     messageCount: number; // 上下文消息数量（1-100，默认30）
   };
+  pinned?: boolean; // 是否置顶
+  aiChildData?: AIChildData; // AI儿童数据（仅AI幼儿园角色）
 }
 
 export interface UserProfile {
@@ -402,7 +404,7 @@ export interface MemoryBank {
   };
 }
 
-export type Screen = 'home' | 'settings' | 'social' | 'chat' | 'character-settings' | 'new-conversation' | 'profile' | 'moments' | 'contacts' | 'add-friend' | 'create-group' | 'theme' | 'guide' | 'relationships' | 'announcement' | 'wallet' | 'shopping' | 'user-system' | 'order-history' | 'database' | 'letterbox' | 'letter-writing' | 'pen-pals' | 'archived-letters' | 'achievements' | 'favorite-letters' | 'stamp-collection' | 'letter-notifications' | 'letter-home' | 'letter-timeline' | 'letter-cards' | 'bottle-fishing' | 'recycle-bin' | 'favorite-replies' | 'unreplied';
+export type Screen = 'home' | 'settings' | 'social' | 'chat' | 'character-settings' | 'new-conversation' | 'profile' | 'moments' | 'contacts' | 'add-friend' | 'create-group' | 'theme' | 'guide' | 'relationships' | 'announcement' | 'wallet' | 'shopping' | 'user-system' | 'order-history' | 'database' | 'letterbox' | 'letter-writing' | 'pen-pals' | 'archived-letters' | 'achievements' | 'favorite-letters' | 'stamp-collection' | 'letter-notifications' | 'letter-home' | 'letter-timeline' | 'letter-cards' | 'bottle-fishing' | 'recycle-bin' | 'favorite-replies' | 'unreplied' | 'kindergarten';
 
 // 购物类型
 export type ShopType = 'food' | 'movie' | 'shopping';
@@ -563,4 +565,104 @@ export interface LyricsLine {
   time: number; // 开始时间（秒）
   text: string; // 歌词文本
   endTime?: number; // 结束时间（秒）
+}
+
+// 🎓 ============ AI幼儿园系统 ============
+
+// 词汇知识
+export interface WordKnowledge {
+  word: string;           // 词语
+  familiarity: number;    // 熟悉度 (0-100)
+  learnedAt: number;      // 学习时间戳
+  reviewCount: number;    // 复习次数
+  lastReview: number;     // 上次复习时间
+  definition: string;     // 用户教的定义
+  examples: string[];     // 例句
+  category?: string;      // 词汇分类（动物、颜色、情感等）
+}
+
+// 理解力系统
+export interface Comprehension {
+  level: number;          // 理解等级 (1-10)
+  abilities: {
+    literal: number;      // 字面理解 (0-100)
+    context: number;      // 上下文理解 (0-100)
+    abstract: number;     // 抽象理解 (0-100)
+    emotion: number;      // 情感理解 (0-100)
+    logic: number;        // 逻辑推理 (0-100)
+  };
+}
+
+// 学习课程记录
+export interface Lesson {
+  id: string;
+  type: 'word' | 'reading' | 'conversation' | 'story';
+  content: string;        // 课程内容
+  wordsLearned: string[]; // 学到的新词
+  timestamp: number;
+  userFeedback?: string;  // 用户的教学内容
+  aiResponse?: string;    // AI的回应
+}
+
+// AI提问记录
+export interface Question {
+  id: string;
+  question: string;       // AI的问题
+  answer?: string;        // 用户的回答
+  timestamp: number;
+  category: 'vocabulary' | 'comprehension' | 'curiosity' | 'clarification';
+  resolved: boolean;      // 是否得到解答
+}
+
+// 阅读材料
+export interface ReadingMaterial {
+  id: string;
+  title: string;
+  content: string;
+  level: 1 | 2 | 3 | 4 | 5;  // 难度等级
+  wordCount: number;
+  coverImage?: string;
+  category: 'picture_book' | 'story' | 'article' | 'knowledge' | 'custom';
+  author?: string;
+  addedAt: number;
+  readCount: number;       // 阅读次数
+  lastRead?: number;       // 上次阅读时间
+  userAdded: boolean;      // 是否用户添加
+}
+
+// AI儿童成长阶段
+export type GrowthStage = 'baby' | 'toddler' | 'child' | 'teen';
+
+// AI儿童数据（基于Conversation扩展）
+export interface AIChildData {
+  stage: GrowthStage;
+  age: number;             // 成长天数
+  level: number;           // 等级
+  exp: number;             // 经验值
+  expToNextLevel: number;  // 升级所需经验
+  
+  // 认知能力
+  vocabulary: WordKnowledge[];     // 词汇库
+  comprehension: Comprehension;    // 理解力
+  
+  // 学习记录
+  booksRead: string[];             // 读过的书ID列表
+  lessons: Lesson[];               // 课程记录
+  questions: Question[];           // 提问记录
+  
+  // 性格养成
+  values: string[];                // 学到的价值观
+  interests: string[];             // 兴趣爱好
+  personality: string[];           // 性格特点
+  
+  // 统计数据
+  totalWordsLearned: number;       // 总学词数
+  totalLessons: number;            // 总课程数
+  totalReadingTime: number;        // 总阅读时间（分钟）
+  consecutiveDays: number;         // 连续学习天数
+  
+  // 最近活动
+  lastInteraction: number;         // 上次互动时间
+  lastLessonTime?: number;         // 上次上课时间
+  lastReadingTime?: number;        // 上次阅读时间
 }
