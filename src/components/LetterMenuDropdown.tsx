@@ -1,6 +1,7 @@
 /**
  * 信件功能下拉菜单
  * 4格图标收纳：漂流瓶、收藏、成就、通知
+ * 最后更新：2025-11-22 17:57 - 竖向布局，小角标
  */
 
 import { Waves, Star, Trophy, Bell } from 'lucide-react';
