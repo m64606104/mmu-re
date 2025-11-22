@@ -709,20 +709,12 @@ async function generateReply(letterId: string, retryCount: number = 0, roundNumb
       repliedAt: now
     };
     
-    // 更新信件级别的字段（保留用于兼容性，使用最新的AI回复）
-    // 如果当前轮次是最后一轮，更新信件状态
-    if (targetRound === letter.currentRound) {
-      letter.replyContent = replyContent;
-      letter.repliedAt = now;
+    // 更新信件级别的字段（保留用于兼容性，使用最后一轮的数据）
+    const lastRound = letter.conversationRounds[letter.conversationRounds.length - 1];
+    if (lastRound.aiReply) {
+      letter.replyContent = lastRound.aiReply.content;
+      letter.repliedAt = lastRound.aiReply.repliedAt;
       letter.status = 'replied';
-    } else {
-      // 如果回复的是历史轮次，检查最后一轮是否也有回复
-      const lastRound = letter.conversationRounds[letter.conversationRounds.length - 1];
-      if (lastRound.aiReply) {
-        letter.replyContent = lastRound.aiReply.content;
-        letter.repliedAt = lastRound.aiReply.repliedAt;
-        letter.status = 'replied';
-      }
     }
     
     updateLetterInStorage(letter);
