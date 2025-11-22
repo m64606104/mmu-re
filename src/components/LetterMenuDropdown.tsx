@@ -1,7 +1,6 @@
 /**
  * 信件功能下拉菜单
  * 4格图标收纳：漂流瓶、收藏、成就、通知
- * 最后更新：2025-11-22 17:57 - 竖向布局，小角标
  */
 
 import { Waves, Star, Trophy, Bell } from 'lucide-react';
@@ -121,10 +120,10 @@ export default function LetterMenuDropdown({ onNavigate }: LetterMenuDropdownPro
       >
         <GridIcon size={22} className="text-gray-700" />
         
-        {/* 未读数量红点 - 缩小为10px */}
+        {/* 未读数量红点 */}
         {unreadCount > 0 && (
-          <span className="absolute top-0 right-0 bg-red-500 text-white text-[7px] font-bold rounded-full min-w-[10px] h-[10px] flex items-center justify-center px-0.5 shadow-sm">
-            {unreadCount > 9 ? '9' : unreadCount}
+          <span className="absolute top-0 right-0 bg-red-500 text-white text-[9px] font-bold rounded-full min-w-[16px] h-[16px] flex items-center justify-center px-1">
+            {unreadCount > 99 ? '99+' : unreadCount}
           </span>
         )}
       </button>
@@ -164,8 +163,8 @@ export default function LetterMenuDropdown({ onNavigate }: LetterMenuDropdownPro
                   <div className="relative">
                     <Icon size={18} className={item.color} strokeWidth={2} />
                     
-                    {/* 通知小角标 - 只在铃铛图标上显示 */}
-                    {item.badge && item.badge > 0 && item.id === 'letter-notifications' && (
+                    {/* 通知小红点角标 - 放在图标右上角 */}
+                    {item.badge && item.badge > 0 && (
                       <span className="absolute -top-0.5 -right-0.5 bg-red-500 text-white text-[7px] font-bold rounded-full min-w-[10px] h-[10px] flex items-center justify-center px-0.5 shadow-sm">
                         {item.badge > 9 ? '9' : item.badge}
                       </span>

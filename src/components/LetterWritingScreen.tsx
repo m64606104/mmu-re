@@ -10,7 +10,7 @@ import { getSafeAvatar } from '../utils/avatarHelper';
 import { ArrowLeft, Send, Sparkles, Users, UserPlus } from 'lucide-react';
 import LetterSendingAnimation from './LetterSendingAnimation';
 import CustomPenPalCreator from './CustomPenPalCreator';
-import LetterMenuDropdown from './LetterMenuDropdownNew';
+import LetterMenuDropdown from './LetterMenuDropdown';
 
 interface LetterWritingScreenProps {
   onBack: () => void;
@@ -151,10 +151,10 @@ const LetterWritingScreen: React.FC<LetterWritingScreenProps> = ({
       {/* 顶部导航栏 */}
       <div className="relative z-[60] bg-white/80 backdrop-blur-sm border-b border-orange-200 px-4 py-3 flex items-center justify-between">
         {/* 左侧：返回 + 功能菜单 */}
-        <div className="relative z-[250] flex items-center gap-2">
+        <div className="flex items-center gap-2">
           <button
             onClick={onBack}
-            className="relative z-[260] p-2 hover:bg-orange-100 rounded-full transition-colors"
+            className="relative z-[70] p-2 hover:bg-orange-100 rounded-full transition-colors"
           >
             <ArrowLeft size={22} className="text-gray-700" />
           </button>

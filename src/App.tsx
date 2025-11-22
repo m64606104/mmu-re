@@ -1050,7 +1050,7 @@ function App() {
             <LetterWritingScreen
               onBack={() => {
                 setReplyToLetter(null);
-                navigateTo('letter-writing');
+                navigateTo('home');
               }}
               onSent={() => {
                 setReplyToLetter(null);
