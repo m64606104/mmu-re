@@ -99,7 +99,8 @@ export default function LetterMenuDropdown({ onNavigate }: LetterMenuDropdownPro
       color: 'text-orange-600',
       bgGradient: 'from-orange-100 to-red-100',
       hoverBg: 'hover:bg-gradient-to-br hover:from-orange-50/50 hover:to-red-50/50',
-      badge: unreadCount
+      // 只有在有未读时才添加badge属性，确保为undefined时不显示
+      ...(unreadCount > 0 ? { badge: unreadCount } : {})
     }
   ];
 
