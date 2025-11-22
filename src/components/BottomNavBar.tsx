@@ -32,10 +32,22 @@ export default function BottomNavBar({ currentPage, onNavigate }: BottomNavBarPr
       setScrollTimeout(timeout);
     };
 
+    // 监听所有可能的滚动容器
     window.addEventListener('scroll', handleScroll, { passive: true });
+    document.addEventListener('scroll', handleScroll, { passive: true });
+    
+    // 监听所有overflow滚动容器
+    const scrollContainers = document.querySelectorAll('[class*="overflow"]');
+    scrollContainers.forEach(container => {
+      container.addEventListener('scroll', handleScroll, { passive: true });
+    });
     
     return () => {
       window.removeEventListener('scroll', handleScroll);
+      document.removeEventListener('scroll', handleScroll);
+      scrollContainers.forEach(container => {
+        container.removeEventListener('scroll', handleScroll);
+      });
       if (scrollTimeout) {
         clearTimeout(scrollTimeout);
       }
@@ -55,9 +67,9 @@ export default function BottomNavBar({ currentPage, onNavigate }: BottomNavBarPr
       isScrolling ? 'scale-75' : 'scale-100'
     }`}>
       <div className={`bg-white/90 backdrop-blur-md rounded-full shadow-2xl border border-gray-200/50 transition-all duration-300 ${
-        isScrolling ? 'px-4 py-4' : 'px-6 py-3'
+        isScrolling ? 'px-4 py-4' : 'px-4 py-2'
       }`}>
-        <div className={`flex items-center gap-2 transition-all duration-300 ${
+        <div className={`flex items-center gap-1 transition-all duration-300 ${
           isScrolling ? 'opacity-0 w-0 overflow-hidden' : 'opacity-100'
         }`}>
           {navItems.map((item) => {
@@ -70,7 +82,7 @@ export default function BottomNavBar({ currentPage, onNavigate }: BottomNavBarPr
                 <button
                   key={item.id}
                   onClick={() => onNavigate(item.id)}
-                  className="flex flex-col items-center gap-1 mx-2"
+                  className="flex flex-col items-center gap-1 mx-1"
                 >
                   <div className={`w-14 h-14 rounded-full flex items-center justify-center transition-all ${
                     isActive 
@@ -79,7 +91,7 @@ export default function BottomNavBar({ currentPage, onNavigate }: BottomNavBarPr
                   }`}>
                     <Icon size={28} className="text-white" strokeWidth={2.5} />
                   </div>
-                  <span className={`text-[10px] ${isActive ? 'text-orange-600 font-bold' : 'text-gray-600 font-medium'}`}>
+                  <span className={`text-[9px] whitespace-nowrap ${isActive ? 'text-orange-600 font-bold' : 'text-gray-600 font-medium'}`}>
                     {item.label}
                   </span>
                 </button>
@@ -91,14 +103,14 @@ export default function BottomNavBar({ currentPage, onNavigate }: BottomNavBarPr
               <button
                 key={item.id}
                 onClick={() => onNavigate(item.id)}
-                className="flex flex-col items-center gap-1 px-3 py-1"
+                className="flex flex-col items-center gap-1 px-2 py-1 min-w-[48px]"
               >
                 <Icon 
-                  size={22} 
+                  size={20} 
                   className={`transition-all ${isActive ? 'text-orange-600' : 'text-gray-500'}`}
                   strokeWidth={isActive ? 2.5 : 2}
                 />
-                <span className={`text-[10px] ${isActive ? 'text-orange-600 font-semibold' : 'text-gray-500 font-medium'}`}>
+                <span className={`text-[9px] whitespace-nowrap ${isActive ? 'text-orange-600 font-semibold' : 'text-gray-500 font-medium'}`}>
                   {item.label}
                 </span>
               </button>
