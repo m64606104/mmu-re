@@ -377,13 +377,13 @@ export default function GroupedLetterBoxScreen({
                       {group.latestLetter.content}
                     </div>
                     
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <span className={`text-xs px-2 py-1 rounded-full ${getContactTypeLabel(group).bgColor} ${getContactTypeLabel(group).color}`}>
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <span className={`text-xs px-2 py-0.5 rounded-full whitespace-nowrap ${getContactTypeLabel(group).bgColor} ${getContactTypeLabel(group).color}`}>
                           {getContactTypeLabel(group).text}
                         </span>
-                        <span className="text-xs text-gray-500">
-                          {group.letterCount}封信
+                        <span className="text-xs text-gray-500 whitespace-nowrap">
+                          {group.letterCount}封
                         </span>
                         {/* 状态胶囊 */}
                         {(() => {
@@ -392,8 +392,8 @@ export default function GroupedLetterBoxScreen({
                           if (latestRound?.aiReply && !latestRound.aiReply.isDeleted) {
                             // AI已回复，用户需要回信
                             return (
-                              <span className="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded-full">
-                                未回信
+                              <span className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full whitespace-nowrap">
+                                未回
                               </span>
                             );
                           }
@@ -401,8 +401,8 @@ export default function GroupedLetterBoxScreen({
                           if (latestRound && !latestRound.aiReply && group.latestLetter.status === 'sent') {
                             // 用户已发送，等待AI回信
                             return (
-                              <span className="text-xs bg-orange-100 text-orange-700 px-2 py-1 rounded-full">
-                                等待回信
+                              <span className="text-xs bg-orange-100 text-orange-700 px-2 py-0.5 rounded-full whitespace-nowrap">
+                                等待
                               </span>
                             );
                           }
@@ -411,7 +411,7 @@ export default function GroupedLetterBoxScreen({
                         })()}
                       </div>
                       
-                      <div className="text-xs text-gray-500">
+                      <div className="text-xs text-gray-500 whitespace-nowrap flex-shrink-0">
                         {formatLastActivity(group.lastActivity)}
                       </div>
                     </div>
