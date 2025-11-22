@@ -620,79 +620,107 @@ export function urgeLetter(letterId: string, roundNumber?: number): boolean {
   // 保存
   updateLetterInStorage(letter);
   
-  // 重新设置定时器
-  scheduleAutoReply(letter);
+  // 🔧 设置该轮次的定时器
+  scheduleAutoReply(letter, targetRoundNumber);
   
+  console.log(`💨 已催促第 ${targetRoundNumber} 轮回复！`);
   return true;
 }
 
 // 📦 定时器管理 - 使用Map管理所有定时器，避免重复和泄漏
+// 存储格式：letterId-roundNumber -> Timeout
 const activeTimers = new Map<string, NodeJS.Timeout>();
 
 /**
- * 设置自动回信定时器
+ * 设置自动回信定时器（支持指定轮次）
+ * @param letter 信件对象
+ * @param roundNumber 要回复的轮次号（可选，默认为当前轮次）
  */
-function scheduleAutoReply(letter: Letter) {
-  if (!letter.willReplyAt || letter.status === 'replied') {
-    return;
+function scheduleAutoReply(letter: Letter, roundNumber?: number) {
+  const targetRound = roundNumber || letter.currentRound;
+  const round = letter.conversationRounds.find(r => r.roundNumber === targetRound);
+  
+  if (!round || !round.userLetter.willReplyAt || round.aiReply) {
+    return; // 该轮没有预计回复时间或已回复
   }
   
-  // 🔧 清除该信件的旧定时器（如果有）
-  if (activeTimers.has(letter.id)) {
-    clearTimeout(activeTimers.get(letter.id)!);
-    activeTimers.delete(letter.id);
+  const timerKey = `${letter.id}-${targetRound}`;
+  
+  // 🔧 清除该轮次的旧定时器（如果有）
+  if (activeTimers.has(timerKey)) {
+    clearTimeout(activeTimers.get(timerKey)!);
+    activeTimers.delete(timerKey);
   }
   
-  const delay = letter.willReplyAt - Date.now();
+  const delay = round.userLetter.willReplyAt - Date.now();
   
   if (delay <= 0) {
     // 已经到时间了，立即回复
-    generateReply(letter.id);
+    generateReply(letter.id, 0, targetRound);
   } else {
     // 设置新定时器并保存引用
     const timerId = setTimeout(() => {
-      generateReply(letter.id);
-      activeTimers.delete(letter.id); // 执行后移除
+      generateReply(letter.id, 0, targetRound);
+      activeTimers.delete(timerKey); // 执行后移除
     }, delay);
     
-    activeTimers.set(letter.id, timerId);
-    console.log(`⏰ 信件 ${letter.id} 定时器已设置，${Math.round(delay / 1000 / 60)}分钟后回复`);
+    activeTimers.set(timerKey, timerId);
+    console.log(`⏰ 信件 ${letter.id} 第${targetRound}轮定时器已设置，${Math.round(delay / 1000 / 60)}分钟后回复`);
   }
 }
 
 /**
  * 生成AI回信 - 使用真实API
+ * @param letterId 信件ID
+ * @param retryCount 重试次数
+ * @param roundNumber 要回复的轮次号（可选，默认为当前轮次）
  */
-async function generateReply(letterId: string, retryCount: number = 0) {
+async function generateReply(letterId: string, retryCount: number = 0, roundNumber?: number) {
   const letters = getLettersFromStorage();
   const letter = letters.find(l => l.id === letterId);
   
-  if (!letter || letter.status === 'replied') {
+  if (!letter) {
+    return;
+  }
+  
+  // 确定要回复的轮次
+  const targetRound = roundNumber || letter.currentRound;
+  const roundData = letter.conversationRounds.find(r => r.roundNumber === targetRound);
+  
+  if (!roundData) {
+    console.error(`❌ 找不到第${targetRound}轮数据`);
+    return;
+  }
+  
+  // 检查该轮是否已经回复
+  if (roundData.aiReply) {
+    console.log(`ℹ️ 第${targetRound}轮已经回复过了`);
     return;
   }
   
   try {
     // 调用真实AI API生成回信内容
-    const replyContent = await generateRealAIReply(letter);
+    const replyContent = await generateRealAIReply(letter, targetRound);
     const now = Date.now();
     
-    // 更新当前轮次的AI回复
-    const currentRoundData = letter.conversationRounds[letter.conversationRounds.length - 1];
-    if (currentRoundData) {
-      currentRoundData.aiReply = {
-        content: replyContent,
-        repliedAt: now
-      };
-    }
+    // 更新指定轮次的AI回复
+    roundData.aiReply = {
+      content: replyContent,
+      repliedAt: now
+    };
     
-    letter.replyContent = replyContent;
-    letter.repliedAt = now;
-    letter.status = 'replied';
+    // 更新信件级别的字段（保留用于兼容性，使用最后一轮的数据）
+    const lastRound = letter.conversationRounds[letter.conversationRounds.length - 1];
+    if (lastRound.aiReply) {
+      letter.replyContent = lastRound.aiReply.content;
+      letter.repliedAt = lastRound.aiReply.repliedAt;
+      letter.status = 'replied';
+    }
     
     updateLetterInStorage(letter);
     
     // 触发通知
-    console.log(`📬 收到来自 ${letter.receiverName} 的回信！`);
+    console.log(`📬 收到来自 ${letter.receiverName} 的第${targetRound}轮回信！`);
     
     // 触发浏览器通知
     triggerLetterNotification(letter);
@@ -751,19 +779,20 @@ async function generateReply(letterId: string, retryCount: number = 0) {
         generateReply(letterId, retryCount + 1);
       }, retryDelay);
     } else {
-      // 重试失败后，标记为错误状态
-      console.error('❌ API调用多次失败，请检查API配置');
+      // 重试失败后，延长该轮次的回复时间
+      console.error(`❌ 第${targetRound}轮API调用多次失败，请检查API配置`);
       
-      // 将信件标记为待回复状态，不使用模板回复
-      letter.status = 'sent';
-      // 延长回复时间15分钟后再试
-      letter.willReplyAt = Date.now() + 15 * 60 * 1000;
-      letter.hasUrged = false;
-      
-      updateLetterInStorage(letter);
-      
-      // 重新调度
-      scheduleAutoReply(letter);
+      const roundData = letter.conversationRounds.find(r => r.roundNumber === targetRound);
+      if (roundData) {
+        // 延长回复时间15分钟后再试
+        roundData.userLetter.willReplyAt = Date.now() + 15 * 60 * 1000;
+        roundData.userLetter.hasUrged = false;
+        
+        updateLetterInStorage(letter);
+        
+        // 重新调度该轮次
+        scheduleAutoReply(letter, targetRound);
+      }
       
       // 可以考虑显示通知告知用户
       if ('Notification' in window && Notification.permission === 'granted') {
@@ -778,8 +807,10 @@ async function generateReply(letterId: string, retryCount: number = 0) {
 
 /**
  * 使用真实AI API生成回信内容
+ * @param letter 信件对象
+ * @param roundNumber 要回复的轮次号（可选，用于生成更准确的上下文）
  */
-async function generateRealAIReply(letter: Letter): Promise<string> {
+async function generateRealAIReply(letter: Letter, roundNumber?: number): Promise<string> {
   // 获取API配置
   const apiConfig = JSON.parse(localStorage.getItem('apiConfig') || '{}');
   
@@ -2207,8 +2238,8 @@ function continueExistingLetter(letterId: string, content: string, _senderName: 
   
   updateLetterInStorage(letter);
   
-  // 设置新的回信定时器
-  scheduleAutoReply(letter);
+  // 设置新轮次的回信定时器
+  scheduleAutoReply(letter, letter.currentRound);
   
   console.log(`📮 继续现有信件第 ${letter.currentRound} 轮交流`);
   
@@ -2271,8 +2302,8 @@ export function continueReply(
     console.log('📬 已触发信件继续回复事件，通知UI刷新');
   }
   
-  // 设置新的回信定时器
-  scheduleAutoReply(letter);
+  // 设置新轮次的回信定时器
+  scheduleAutoReply(letter, letter.currentRound);
   
   console.log(`📮 继续第 ${letter.currentRound} 轮交流`);
   
