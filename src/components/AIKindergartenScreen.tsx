@@ -532,11 +532,24 @@ export default function AIKindergartenScreen({ onBack, apiConfig }: AIKindergart
               </button>
 
               <button
-                onClick={() => setShowTopicSelection(true)}
-                className="bg-white p-4 rounded-xl text-gray-700 font-medium hover:bg-gray-50 transition-all"
+                onClick={() => {
+                  const vocabularyCount = selectedChild.aiChildData?.vocabulary.length || 0;
+                  if (vocabularyCount < 20) {
+                    alert(`${selectedChild.name}的词汇量还不够哦！\n\n目前认识：${vocabularyCount}个词\n需要至少：20个词\n\n继续教${selectedChild.name}认字吧～`);
+                    return;
+                  }
+                  setShowTopicSelection(true);
+                }}
+                disabled={!selectedChild.aiChildData || selectedChild.aiChildData.vocabulary.length < 20}
+                className="bg-white p-4 rounded-xl text-gray-700 font-medium hover:bg-gray-50 transition-all disabled:opacity-50 disabled:cursor-not-allowed relative"
               >
                 <MessageSquare className="w-6 h-6 mx-auto mb-2" />
                 话题讨论
+                {selectedChild.aiChildData && selectedChild.aiChildData.vocabulary.length < 20 && (
+                  <div className="absolute top-1 right-1 bg-red-500 text-white text-xs px-1.5 py-0.5 rounded">
+                    🔒 {selectedChild.aiChildData.vocabulary.length}/20
+                  </div>
+                )}
               </button>
 
               <button

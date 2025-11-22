@@ -21,6 +21,8 @@ export default function AIChildChat({ childId, onBack, apiConfig }: AIChildChatP
   const [messages, setMessages] = useState<Message[]>([]);
   const [inputText, setInputText] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [pendingMessage, setPendingMessage] = useState<string>(''); // 待确认的消息
+  const [isEditingPending, setIsEditingPending] = useState(false); // 是否在编辑待确认消息
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -40,18 +42,48 @@ export default function AIChildChat({ childId, onBack, apiConfig }: AIChildChatP
     }
   };
 
-  const sendMessage = async () => {
-    if (!inputText.trim() || !child || !child.aiChildData || isLoading) return;
+  // 第1步：点击发送，显示为待确认消息
+  const handleSend = () => {
+    if (!inputText.trim() || pendingMessage) return;
+    setPendingMessage(inputText.trim());
+    setInputText('');
+  };
+
+  // 编辑待确认消息
+  const handleEditPending = () => {
+    setIsEditingPending(true);
+  };
+
+  // 取消编辑
+  const handleCancelEdit = () => {
+    setIsEditingPending(false);
+  };
+
+  // 保存编辑
+  const handleSaveEdit = () => {
+    setIsEditingPending(false);
+  };
+
+  // 取消发送
+  const handleCancelSend = () => {
+    setPendingMessage('');
+    setIsEditingPending(false);
+  };
+
+  // 第2步：确认发送，调用AI回复
+  const confirmSend = async () => {
+    if (!pendingMessage || !child || !child.aiChildData || isLoading) return;
 
     const userMessage: Message = {
       id: `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
       role: 'user',
-      content: inputText.trim(),
+      content: pendingMessage,
       timestamp: Date.now()
     };
 
     setMessages(prev => [...prev, userMessage]);
-    setInputText('');
+    setPendingMessage('');
+    setIsEditingPending(false);
     setIsLoading(true);
 
     try {
@@ -479,6 +511,67 @@ ${userTitle}：说得很好
           </div>
         ))}
 
+        {/* 待确认消息 */}
+        {pendingMessage && (
+          <div className="flex justify-end">
+            <div className="max-w-[70%]">
+              {isEditingPending ? (
+                <div className="bg-blue-50 border-2 border-blue-300 rounded-2xl p-3">
+                  <textarea
+                    value={pendingMessage}
+                    onChange={(e) => setPendingMessage(e.target.value)}
+                    className="w-full p-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+                    rows={3}
+                    autoFocus
+                  />
+                  <div className="flex gap-2 mt-2">
+                    <button
+                      onClick={handleSaveEdit}
+                      className="flex-1 py-1.5 bg-blue-500 text-white rounded-lg text-sm hover:bg-blue-600"
+                    >
+                      保存
+                    </button>
+                    <button
+                      onClick={handleCancelEdit}
+                      className="flex-1 py-1.5 bg-gray-300 text-gray-700 rounded-lg text-sm hover:bg-gray-400"
+                    >
+                      取消
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div className="bg-blue-500 text-white rounded-2xl px-4 py-2 relative">
+                  <p className="text-sm whitespace-pre-wrap pr-8">{pendingMessage}</p>
+                  <div className="absolute top-1 right-1 bg-yellow-400 text-xs px-2 py-0.5 rounded-full text-gray-800">
+                    待确认
+                  </div>
+                  <div className="flex gap-2 mt-3 pt-2 border-t border-blue-400">
+                    <button
+                      onClick={handleEditPending}
+                      className="flex-1 py-1.5 bg-blue-400 text-white rounded-lg text-xs hover:bg-blue-300"
+                    >
+                      ✏️ 编辑
+                    </button>
+                    <button
+                      onClick={confirmSend}
+                      disabled={isLoading}
+                      className="flex-1 py-1.5 bg-green-500 text-white rounded-lg text-xs hover:bg-green-600 disabled:opacity-50"
+                    >
+                      ✅ 确认发送
+                    </button>
+                    <button
+                      onClick={handleCancelSend}
+                      className="flex-1 py-1.5 bg-red-500 text-white rounded-lg text-xs hover:bg-red-600"
+                    >
+                      ✖️ 取消
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
         {isLoading && (
           <div className="flex justify-start">
             <div className="bg-white rounded-2xl px-4 py-2 shadow-sm">
@@ -496,32 +589,40 @@ ${userTitle}：说得很好
 
       {/* Input */}
       <div className="bg-white border-t border-gray-200 p-4">
-        <div className="flex gap-2">
-          <input
-            type="text"
-            value={inputText}
-            onChange={(e) => setInputText(e.target.value)}
-            onKeyPress={(e) => e.key === 'Enter' && sendMessage()}
-            placeholder={
-              child.aiChildData.vocabulary.length === 0 
-                ? '先教宝宝认字吧～' 
-                : `和${child.name}说话...`
-            }
-            disabled={child.aiChildData.vocabulary.length === 0}
-            className="flex-1 px-4 py-2 border border-gray-200 rounded-full focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100 disabled:cursor-not-allowed"
-          />
-          <button
-            onClick={sendMessage}
-            disabled={!inputText.trim() || isLoading || child.aiChildData.vocabulary.length === 0}
-            className="p-2 bg-blue-500 text-white rounded-full hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-          >
-            <Send className="w-5 h-5" />
-          </button>
-        </div>
-        {child.aiChildData.vocabulary.length === 0 && (
-          <p className="text-xs text-gray-500 mt-2 text-center">
-            💡 提示：先在教学页面教{child.name}认字，才能聊天哦
-          </p>
+        {pendingMessage ? (
+          <div className="text-center py-2 text-sm text-gray-500">
+            👆 请先确认发送上面的消息
+          </div>
+        ) : (
+          <>
+            <div className="flex gap-2">
+              <input
+                type="text"
+                value={inputText}
+                onChange={(e) => setInputText(e.target.value)}
+                onKeyPress={(e) => e.key === 'Enter' && !e.shiftKey && handleSend()}
+                placeholder={
+                  child.aiChildData.vocabulary.length === 0 
+                    ? '先教宝宝认字吧～' 
+                    : `和${child.name}说话...`
+                }
+                disabled={child.aiChildData.vocabulary.length === 0 || isLoading}
+                className="flex-1 px-4 py-2 border border-gray-200 rounded-full focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100 disabled:cursor-not-allowed"
+              />
+              <button
+                onClick={handleSend}
+                disabled={!inputText.trim() || isLoading || child.aiChildData.vocabulary.length === 0}
+                className="p-2 bg-blue-500 text-white rounded-full hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              >
+                <Send className="w-5 h-5" />
+              </button>
+            </div>
+            {child.aiChildData.vocabulary.length === 0 && (
+              <p className="text-xs text-gray-500 mt-2 text-center">
+                💡 提示：先在教学页面教{child.name}认字，才能聊天哦
+              </p>
+            )}
+          </>
         )}
       </div>
     </div>
