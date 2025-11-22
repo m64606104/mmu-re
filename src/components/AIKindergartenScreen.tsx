@@ -395,6 +395,7 @@ export default function AIKindergartenScreen({ onBack, apiConfig }: AIKindergart
           loadChildren(); // 刷新数据
         }}
         onUpdate={loadChildren}
+        apiConfig={apiConfig}
       />
     );
   }

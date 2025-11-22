@@ -4,22 +4,28 @@
  */
 
 import { useState, useEffect } from 'react';
-import { ArrowLeft, Save, User, Heart, Users } from 'lucide-react';
-import { Conversation } from '../types';
+import { ArrowLeft, Save, User, Heart, Users, GraduationCap } from 'lucide-react';
+import { Conversation, ApiConfig } from '../types';
 import { smartLoad, smartSave } from '../utils/storage';
+import { graduateAIChild } from '../utils/aiGraduation';
 
 interface AIChildSettingsProps {
   child: Conversation;
   onBack: () => void;
   onUpdate: () => void;
+  apiConfig: ApiConfig;
 }
 
-export default function AIChildSettings({ child, onBack, onUpdate }: AIChildSettingsProps) {
+export default function AIChildSettings({ child, onBack, onUpdate, apiConfig }: AIChildSettingsProps) {
   const [formalName, setFormalName] = useState('');
   const [nickname, setNickname] = useState('');
   const [gender, setGender] = useState<'male' | 'female' | 'neutral'>('neutral');
   const [userTitle, setUserTitle] = useState('');
   const [userName, setUserName] = useState('');
+  const [showGraduateConfirm, setShowGraduateConfirm] = useState(false);
+  const [showFarewellLetter, setShowFarewellLetter] = useState(false);
+  const [farewellLetter, setFarewellLetter] = useState('');
+  const [isGraduating, setIsGraduating] = useState(false);
 
   useEffect(() => {
     if (child.aiChildData) {
@@ -30,6 +36,34 @@ export default function AIChildSettings({ child, onBack, onUpdate }: AIChildSett
       setUserName(child.aiChildData.userName || '');
     }
   }, [child]);
+
+  // 处理一键成年
+  const handleGraduate = async () => {
+    setShowGraduateConfirm(false);
+    setIsGraduating(true);
+
+    try {
+      const result = await graduateAIChild(child.id, apiConfig);
+      
+      if (result.success && result.farewellLetter) {
+        setFarewellLetter(result.farewellLetter);
+        setShowFarewellLetter(true);
+      } else {
+        alert(result.error || 'AI成年失败');
+        setIsGraduating(false);
+      }
+    } catch (error) {
+      console.error('AI成年失败:', error);
+      alert('处理失败，请重试');
+      setIsGraduating(false);
+    }
+  };
+
+  // 关闭告别信后返回
+  const handleCloseFarewellLetter = () => {
+    setShowFarewellLetter(false);
+    onBack(); // 返回上一页
+  };
 
   const handleSave = async () => {
     try {
@@ -238,8 +272,8 @@ export default function AIChildSettings({ child, onBack, onUpdate }: AIChildSett
         </div>
       </div>
 
-      {/* Save Button */}
-      <div className="bg-white border-t border-gray-200 p-4">
+      {/* Action Buttons */}
+      <div className="bg-white border-t border-gray-200 p-4 space-y-3">
         <button
           onClick={handleSave}
           className="w-full py-3 bg-gradient-to-r from-blue-500 to-purple-500 text-white rounded-xl font-medium hover:shadow-lg transition-all flex items-center justify-center gap-2"
@@ -247,7 +281,91 @@ export default function AIChildSettings({ child, onBack, onUpdate }: AIChildSett
           <Save className="w-5 h-5" />
           保存设置
         </button>
+
+        {/* 一键成年按钮 */}
+        <button
+          onClick={() => setShowGraduateConfirm(true)}
+          className="w-full py-3 bg-gradient-to-r from-orange-500 to-red-500 text-white rounded-xl font-medium hover:shadow-lg transition-all flex items-center justify-center gap-2"
+        >
+          <GraduationCap className="w-5 h-5" />
+          一键成年
+        </button>
       </div>
+
+      {/* 确认对话框 */}
+      {showGraduateConfirm && (
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl p-6 w-full max-w-md">
+            <h2 className="text-xl font-bold text-gray-800 mb-3">⚠️ 重要决定</h2>
+            <div className="space-y-3 mb-6">
+              <p className="text-gray-700">
+                当你做出这个选择后，<span className="font-bold text-red-600">{child.name}</span>将会：
+              </p>
+              <ul className="space-y-2 text-sm text-gray-600">
+                <li className="flex items-start gap-2">
+                  <span className="text-blue-500">•</span>
+                  <span>瞬间学习所有知识，成长到成年水平</span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <span className="text-blue-500">•</span>
+                  <span>给你写一封告别信，表达TA的感受</span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <span className="text-red-500">•</span>
+                  <span className="font-semibold">永远离开你，所有数据将被删除</span>
+                </li>
+              </ul>
+              <div className="bg-red-50 border border-red-200 rounded-lg p-3 mt-4">
+                <p className="text-sm text-red-700 font-medium">
+                  💔 这个操作<span className="underline">无法撤销</span>，请慎重考虑
+                </p>
+              </div>
+            </div>
+            <div className="flex gap-3">
+              <button
+                onClick={() => setShowGraduateConfirm(false)}
+                className="flex-1 py-3 border-2 border-gray-300 rounded-xl font-medium text-gray-700 hover:bg-gray-50"
+              >
+                取消
+              </button>
+              <button
+                onClick={handleGraduate}
+                disabled={isGraduating}
+                className="flex-1 py-3 bg-gradient-to-r from-orange-500 to-red-500 text-white rounded-xl font-medium hover:shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {isGraduating ? '处理中...' : '确认离开'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 告别信弹窗 */}
+      {showFarewellLetter && farewellLetter && (
+        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl p-6 w-full max-w-2xl max-h-[80vh] overflow-y-auto">
+            <div className="text-center mb-4">
+              <div className="text-4xl mb-2">💌</div>
+              <h2 className="text-2xl font-bold text-gray-800">
+                来自 {child.name} 的告别信
+              </h2>
+            </div>
+            
+            <div className="bg-amber-50 rounded-xl p-6 mb-6 border-2 border-amber-200">
+              <pre className="whitespace-pre-wrap font-serif text-gray-800 leading-relaxed text-sm">
+                {farewellLetter}
+              </pre>
+            </div>
+
+            <button
+              onClick={handleCloseFarewellLetter}
+              className="w-full py-3 bg-gradient-to-r from-blue-500 to-purple-500 text-white rounded-xl font-medium hover:shadow-lg"
+            >
+              永别了，{child.name}...
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
