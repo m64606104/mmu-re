@@ -159,17 +159,17 @@ export default function LetterMenuDropdown({ onNavigate }: LetterMenuDropdownPro
                   onClick={() => handleMenuClick(item.id)}
                   className="w-full flex flex-col items-center gap-1 py-2.5 rounded-full hover:bg-orange-50 transition-all duration-200"
                 >
-                  {/* 图标容器 - 只显示图标和角标 */}
-                  <div className="relative w-[18px] h-[18px] flex items-center justify-center">
+                  {/* 图标容器 - 相对定位，不限制大小 */}
+                  <div className="relative inline-flex items-center justify-center">
                     <Icon size={18} className={item.color} strokeWidth={2} />
                     
                     {/* 小红点角标 - 只在有未读时显示在图标右上角 */}
                     {item.id === 'letter-notifications' && item.badge && item.badge > 0 && (
-                      <span className="absolute -top-1 -right-1 bg-red-500 rounded-full w-[8px] h-[8px] border border-white"></span>
+                      <span className="absolute -top-1 -right-1 bg-red-500 rounded-full w-[8px] h-[8px] border border-white shadow-sm"></span>
                     )}
                   </div>
                   
-                  {/* 文字标签 - 不显示数字 */}
+                  {/* 文字标签 */}
                   <span className="text-[9px] font-medium text-gray-600 whitespace-nowrap">
                     {item.label.length > 4 ? item.label.substring(0, 4) : item.label}
                   </span>
