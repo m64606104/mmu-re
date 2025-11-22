@@ -61,12 +61,12 @@ const PenPalListScreen: React.FC<PenPalListScreenProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 bg-gradient-to-br from-sky-50 via-blue-50 to-cyan-50 z-50 flex flex-col">
+    <div className="fixed inset-0 bg-gradient-to-br from-amber-50 via-orange-50 to-yellow-50 z-50 flex flex-col">
       {/* 顶部导航栏 */}
-      <div className="bg-white/80 backdrop-blur-sm border-b border-blue-200 px-4 py-3 flex items-center justify-between">
+      <div className="bg-white/80 backdrop-blur-sm border-b border-orange-200 px-4 py-3 flex items-center justify-between">
         <button
           onClick={onBack}
-          className="p-2 hover:bg-blue-100 rounded-full transition-colors"
+          className="p-2 hover:bg-orange-100 rounded-full transition-colors"
         >
           <ArrowLeft size={24} className="text-gray-700" />
         </button>
@@ -77,21 +77,21 @@ const PenPalListScreen: React.FC<PenPalListScreenProps> = ({
       {/* 统计卡片 */}
       {stats && stats.total > 0 && (
         <div className="p-4">
-          <div className="bg-gradient-to-br from-sky-400 via-blue-400 to-cyan-400 rounded-3xl p-6 text-white shadow-lg shadow-blue-200/50">
+          <div className="bg-gradient-to-br from-orange-400 via-amber-400 to-yellow-400 rounded-3xl p-6 text-white shadow-lg shadow-orange-200/50">
             <div className="flex items-center justify-between mb-4">
               <div>
                 <div className="text-4xl font-bold">{stats.total}</div>
-                <div className="text-sky-100 text-sm">位笔友</div>
+                <div className="text-orange-100 text-sm">位笔友</div>
               </div>
               <Heart size={56} className="text-white/20" />
             </div>
             <div className="flex gap-8 text-sm">
               <div>
-                <div className="text-sky-100">总交流轮数</div>
+                <div className="text-orange-100">总交流轮数</div>
                 <div className="text-2xl font-semibold">{stats.totalRounds}</div>
               </div>
               <div>
-                <div className="text-sky-100">来自地区</div>
+                <div className="text-orange-100">来自地区</div>
                 <div className="text-2xl font-semibold">{stats.locations.length}</div>
               </div>
             </div>
@@ -191,7 +191,7 @@ const PenPalListScreen: React.FC<PenPalListScreenProps> = ({
             {penPals.length > 0 && (
               <>
                 {customPenPals.length > 0 && (
-                  <div className="flex items-center gap-2 text-sm font-semibold text-blue-700 px-3 py-2 bg-blue-50/80 rounded-xl mt-2">
+                  <div className="flex items-center gap-2 text-sm font-semibold text-amber-700 px-3 py-2 bg-amber-50/80 rounded-xl mt-2">
                     <Heart size={16} />
                     已通信笔友 ({penPals.length})
                   </div>
@@ -213,7 +213,7 @@ const PenPalListScreen: React.FC<PenPalListScreenProps> = ({
                       <span className="font-medium text-gray-800">
                         {letter.receiverName}
                       </span>
-                      <span className="text-xs bg-pink-100 text-pink-600 px-2 py-0.5 rounded-full">
+                      <span className="text-xs bg-amber-100 text-amber-600 px-2 py-0.5 rounded-full">
                         笔友
                       </span>
                     </div>
@@ -259,7 +259,7 @@ const PenPalListScreen: React.FC<PenPalListScreenProps> = ({
                           letter.receiverName,
                           letter.receiverAvatar || '💌'
                         )}
-                        className="flex-1 px-3 py-2 bg-gradient-to-r from-pink-500 to-rose-500 hover:shadow-lg text-white rounded-xl text-sm font-medium transition-all flex items-center justify-center gap-1"
+                        className="flex-1 px-3 py-2 bg-gradient-to-r from-orange-500 to-amber-500 hover:shadow-lg text-white rounded-xl text-sm font-medium transition-all flex items-center justify-center gap-1"
                       >
                         <Mail size={16} />
                         写信
