@@ -860,33 +860,43 @@ export const generateAIMomentsInteraction = async (
     const sortedPosts = interactablePosts.sort((a, b) => b.post.timestamp - a.post.timestamp);
     const postsToProcess = sortedPosts.slice(0, Math.min(5, sortedPosts.length));
 
-    // 让AI智能决策是否互动
-    for (const { post, author, momentsData } of postsToProcess) {
-      // 对于用户朋友圈，所有在线AI都可以互动
-      const otherOnlineAIs = author === 'user' ? onlineAIs : onlineAIs.filter(ai => ai.id !== (author as Conversation).id);
+    // 🎯 批量决策优化：每个AI一次性决策所有朋友圈
+    for (const ai of onlineAIs) {
+      // 收集该AI可以看到的朋友圈
+      const visiblePosts = postsToProcess
+        .filter(({ post, author }) => {
+          // 排除自己的朋友圈
+          if (author !== 'user' && (author as Conversation).id === ai.id) return false;
+          
+          // 检查是否已经完全互动过
+          const hasLiked = post.likes.includes(ai.id);
+          const hasCommented = post.comments.some(c => c.authorId === ai.id);
+          return !(hasLiked && hasCommented);
+        });
       
-      for (const ai of otherOnlineAIs) {
-        // ✅ 检查该AI是否已经对这条朋友圈互动过
+      if (visiblePosts.length === 0) {
+        console.log(`⏭️ ${ai.characterSettings?.nickname || ai.name} 没有新朋友圈可看`);
+        continue;
+      }
+      
+      console.log(`👀 ${ai.characterSettings?.nickname || ai.name} 看到了 ${visiblePosts.length} 条朋友圈`);
+      
+      // 🚀 批量决策：一次API调用处理多条朋友圈
+      const batchDecisions = await makeBatchInteractionDecision(ai, visiblePosts, apiConfig);
+      
+      // 根据批量决策结果执行互动
+      for (const decision of batchDecisions) {
+        const { post, author, momentsData } = visiblePosts.find(p => p.post.id === decision.postId)!;
+        
+        if (!decision.shouldInteract) {
+          console.log(`😐 ${ai.characterSettings?.nickname || ai.name} 决定不互动 ${author === 'user' ? '用户' : (author as Conversation).characterSettings?.nickname}'的朋友圈`);
+          continue;
+        }
+
+        // 检查互动状态
         const hasLiked = post.likes.includes(ai.id);
         const hasCommented = post.comments.some(c => c.authorId === ai.id);
         
-        if (hasLiked && hasCommented) {
-          // 已经点赞和评论过，跳过
-          console.log(`⏭️ ${ai.characterSettings?.nickname || ai.name} 已经互动过这条朋友圈`);
-          continue;
-        }
-        
-        const authorName = author === 'user' ? '用户' : (author.characterSettings?.nickname || author.name);
-        console.log(`👀 ${ai.characterSettings?.nickname || ai.name} 看到了 ${authorName} 的朋友圈`);
-
-        // 🎯 让AI自己决定是否互动
-        const decision = await makeInteractionDecision(ai, author, post, apiConfig);
-        
-        if (!decision.shouldInteract) {
-          console.log(`😐 ${ai.characterSettings?.nickname || ai.name} 决定不互动`);
-          continue;
-        }
-
         // 根据AI的决定执行互动
         if (decision.action === 'comment') {
           if (hasCommented) {
@@ -1517,6 +1527,152 @@ interface InteractionDecision {
   commentContent?: string;
   reason?: string;
 }
+
+/**
+ * 批量决策结果
+ */
+interface BatchInteractionDecision extends InteractionDecision {
+  postId: string;
+}
+
+/**
+ * 🚀 批量决策：AI一次性决策多条朋友圈，大幅减少API调用
+ */
+const makeBatchInteractionDecision = async (
+  viewerAI: Conversation,
+  visiblePosts: Array<{ post: MomentPost; author: Conversation | 'user'; momentsData: any }>,
+  apiConfig: ApiConfig
+): Promise<BatchInteractionDecision[]> => {
+  try {
+    const { getRelationship, getRelationshipLabel } = await import('./aiRelationships');
+    
+    const viewerSettings = viewerAI.characterSettings;
+    if (!viewerSettings || visiblePosts.length === 0) {
+      return [];
+    }
+
+    // 构建批量决策提示词
+    let batchPrompt = `你是 ${viewerSettings.nickname || viewerAI.name}。
+
+【你的角色设定】
+${viewerSettings.systemPrompt || ''}
+
+【你的性格】
+${viewerSettings.personality || ''}
+
+【你的说话风格】
+${viewerSettings.languageStyle || ''}
+
+---
+
+你正在浏览朋友圈，看到了以下 ${visiblePosts.length} 条朋友圈动态。请根据你的性格、和对方的关系、朋友圈内容，决定是否互动（点赞或评论）。
+
+`;
+
+    // 添加每条朋友圈的信息
+    for (let i = 0; i < visiblePosts.length; i++) {
+      const { post, author } = visiblePosts[i];
+      const authorName = author === 'user' ? '用户' : (author.characterSettings?.nickname || author.name);
+      const authorId = author === 'user' ? 'user' : author.id;
+      
+      // 获取关系
+      const relationship = getRelationship(viewerAI.id, authorId);
+      const relationshipDesc = relationship ? getRelationshipLabel(relationship.level) : '普通关系';
+      
+      batchPrompt += `
+【朋友圈 ${i + 1}】
+发布者: ${authorName}
+你们的关系: ${relationshipDesc}
+内容: ${post.content}
+${post.imageDescriptions ? `配图: ${post.imageDescriptions.join('、')}` : ''}
+已有 ${post.likes.length} 个赞，${post.comments.length} 条评论
+
+`;
+    }
+
+    batchPrompt += `
+【决策任务】
+请对每条朋友圈做出决策：
+1. 根据你的性格、和对方的关系、内容吸引力，决定是否要互动
+2. 如果互动，选择点赞还是评论
+3. 如果评论，写出具体的评论内容（符合你的性格和说话风格，1-2句话）
+
+【决策规则】
+- 关系好的人发的有意思内容 → 应该互动
+- 关系一般 + 内容无聊 → 可以不互动
+- 活泼性格 → 更容易互动
+- 高冷性格 → 较少互动
+- 评论要真诚自然，不要敷衍
+- 不是每条都要互动，要有选择性（像真人一样）
+
+【输出格式】
+以JSON数组格式回复（只输出JSON，不要其他内容）：
+[
+  {
+    "postIndex": 1,
+    "shouldInteract": true/false,
+    "action": "like"或"comment"或null,
+    "commentContent": "评论内容"或null,
+    "reason": "简短的决策理由"
+  },
+  ...
+]
+
+请开始决策：
+`;
+
+    // 调用API获取批量决策
+    const response = await fetch(`${apiConfig.baseUrl}/v1/chat/completions`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${apiConfig.apiKey}`
+      },
+      body: JSON.stringify({
+        model: apiConfig.modelName,
+        messages: [
+          { role: 'user', content: batchPrompt }
+        ],
+        temperature: 0.8,
+        max_tokens: 800
+      })
+    });
+
+    if (!response.ok) {
+      console.error('批量决策API调用失败:', response.status);
+      return [];
+    }
+
+    const data = await response.json();
+    const content = data.choices?.[0]?.message?.content || '';
+    
+    // 解析JSON响应
+    try {
+      const jsonMatch = content.match(/\[[\s\S]*\]/);
+      if (!jsonMatch) {
+        console.error('批量决策响应格式错误:', content);
+        return [];
+      }
+      
+      const decisions = JSON.parse(jsonMatch[0]);
+      
+      // 转换为BatchInteractionDecision格式
+      return decisions.map((d: any, index: number) => ({
+        postId: visiblePosts[d.postIndex - 1]?.post.id || visiblePosts[index]?.post.id,
+        shouldInteract: d.shouldInteract,
+        action: d.action,
+        commentContent: d.commentContent,
+        reason: d.reason
+      }));
+    } catch (parseError) {
+      console.error('批量决策JSON解析失败:', parseError, content);
+      return [];
+    }
+  } catch (error) {
+    console.error('批量决策失败:', error);
+    return [];
+  }
+};
 
 const makeInteractionDecision = async (
   viewerAI: Conversation,
