@@ -30,6 +30,9 @@ import LetterNotificationCenter from './components/LetterNotificationCenter';
 import RecycleBinScreen from './components/RecycleBinScreen';
 import BottleFishingScreen from './components/BottleFishingScreen';
 import FavoriteRepliesScreen from './components/FavoriteRepliesScreen';
+import UnrepliedLettersScreen from './components/UnrepliedLettersScreen';
+import BottomNavBar from './components/BottomNavBar';
+import TopNavBar from './components/TopNavBar';
 import ToastContainer from './components/ToastContainer';
 import { MomentsAutoGenerator } from './components/MomentsAutoGenerator';
 import { AIMomentsInteractionManager } from './components/AIMomentsInteractionManager';
@@ -45,7 +48,7 @@ import { initializeLetters, initializeLetterTimers } from './utils/letterService
 import { Letter } from './types/letter';
 
 function App() {
-  const [currentScreen, setCurrentScreen] = useState<Screen>('home');
+  const [currentScreen, setCurrentScreen] = useState<Screen>('letter-write'); // 默认显示写信页面
   const [previousScreen, setPreviousScreen] = useState<Screen>('social'); // 记录来源页面
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [currentConversationId, setCurrentConversationId] = useState<string | null>(null);
