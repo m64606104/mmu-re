@@ -61,6 +61,7 @@ export default function LetterMenuDropdown({ onNavigate }: LetterMenuDropdownPro
       const notifications = JSON.parse(localStorage.getItem('letter_notifications') || '[]');
       const unread = notifications.filter((n: any) => !n.read).length;
       setUnreadCount(unread);
+      console.log('📊 LetterMenuDropdown - unreadCount:', unread);
     } catch (error) {
       console.error('加载未读通知失败:', error);
     }
@@ -154,6 +155,10 @@ export default function LetterMenuDropdown({ onNavigate }: LetterMenuDropdownPro
           <div className="bg-white/90 backdrop-blur-md rounded-full shadow-xl border border-orange-200/50 py-2 px-1.5">
             {menuItems.map((item) => {
               const Icon = item.icon;
+              // 调试：输出通知项的badge值
+              if (item.id === 'letter-notifications') {
+                console.log('🔔 通知项 badge值:', item.badge, '类型:', typeof item.badge);
+              }
               return (
                 <button
                   key={item.id}
@@ -176,6 +181,10 @@ export default function LetterMenuDropdown({ onNavigate }: LetterMenuDropdownPro
                   </span>
                   
                   {/* ⚠️ 确保不渲染badge数字 - 已移除 */}
+                  {/* 调试：如果有badge，输出警告 */}
+                  {item.id === 'letter-notifications' && item.badge !== undefined && (
+                    <span style={{display: 'none'}}>badge={item.badge}</span>
+                  )}
                 </button>
               );
             })}
