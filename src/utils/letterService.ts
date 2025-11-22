@@ -2418,6 +2418,60 @@ export function getCustomPenPals(): BottleAI[] {
 }
 
 /**
+ * 使用AI生成自定义角色的自我介绍
+ */
+export async function generateSelfIntroByAI(rolePrompt: string, apiConfig: any): Promise<string> {
+  try {
+    const prompt = `${rolePrompt}
+
+现在，请你以第一人称写一段简短的自我介绍（30-50字），就像在社交平台上介绍自己一样。
+
+要求：
+1. 用第一人称"我"
+2. 简单介绍你的性格、爱好
+3. 像真人说话一样自然、亲切
+4. 不要提"你是谁"、"你会怎么做"等系统性的话
+5. 直接输出介绍内容，不要加"自我介绍："等前缀
+
+示例格式：
+"我是XX，性格XX，喜欢XX，平时喜欢XX"
+`;
+
+    const response = await fetch(`${apiConfig.baseUrl}/v1/chat/completions`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${apiConfig.apiKey}`
+      },
+      body: JSON.stringify({
+        model: apiConfig.model,
+        messages: [
+          {
+            role: 'user',
+            content: prompt
+          }
+        ],
+        temperature: 0.8,
+        max_tokens: 150
+      })
+    });
+
+    if (!response.ok) {
+      throw new Error(`AI请求失败: ${response.status}`);
+    }
+
+    const data = await response.json();
+    const intro = data.choices?.[0]?.message?.content?.trim() || '';
+    
+    console.log('✨ AI生成的自我介绍:', intro);
+    return intro;
+  } catch (error) {
+    console.error('生成自我介绍失败:', error);
+    return '一个有趣的灵魂，期待与你交流';
+  }
+}
+
+/**
  * 保存自定义笔友
  */
 export function saveCustomPenPal(penPal: BottleAI): boolean {

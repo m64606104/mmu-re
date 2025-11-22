@@ -5,7 +5,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { Letter, BottleAI } from '../types/letter';
-import { getAllPenPals, getPenPalStats, getCustomPenPals, saveCustomPenPal } from '../utils/letterService';
+import { getAllPenPals, getPenPalStats, getCustomPenPals, saveCustomPenPal, generateSelfIntroByAI } from '../utils/letterService';
 import { ArrowLeft, MapPin, Heart, MessageCircle, Mail, Sparkles, ChevronDown, ChevronUp, Edit, X, Save } from 'lucide-react';
 import LetterDetailModal from './LetterDetailModal';
 
@@ -29,7 +29,20 @@ const PenPalListScreen: React.FC<PenPalListScreenProps> = ({
 
   useEffect(() => {
     loadPenPals();
+    // 为自定义笔友生成AI介绍
+    generateIntrosForCustomPenPals();
   }, []);
+
+  // 为所有没有customBackground的自定义笔友生成介绍
+  const generateIntrosForCustomPenPals = async () => {
+    const customPals = getCustomPenPals();
+    for (const penPal of customPals) {
+      if (!penPal.customBackground || !penPal.customBackground.trim()) {
+        // 异步生成，不阻塞UI
+        ensureSelfIntro(penPal);
+      }
+    }
+  };
 
   const loadPenPals = () => {
     const pals = getAllPenPals();
@@ -38,6 +51,39 @@ const PenPalListScreen: React.FC<PenPalListScreenProps> = ({
     setPenPals(pals);
     setCustomPenPals(customPals);
     setStats(statistics);
+  };
+
+  // 为自定义笔友生成AI自我介绍（如果还没有）
+  const ensureSelfIntro = async (penPal: BottleAI) => {
+    // 如果已经有customBackground，直接返回
+    if (penPal.customBackground && penPal.customBackground.trim()) {
+      return;
+    }
+    
+    try {
+      // 获取API配置
+      const apiConfigStr = localStorage.getItem('api_config');
+      if (!apiConfigStr) {
+        console.log('未配置API，无法生成自我介绍');
+        return;
+      }
+      
+      const apiConfig = JSON.parse(apiConfigStr);
+      
+      // 调用AI生成自我介绍
+      console.log(`🤖 正在为${penPal.name}生成自我介绍...`);
+      const intro = await generateSelfIntroByAI(penPal.customRolePrompt || '', apiConfig);
+      
+      // 更新并保存
+      penPal.customBackground = intro;
+      saveCustomPenPal(penPal);
+      
+      // 刷新列表
+      loadPenPals();
+      console.log(`✨ ${penPal.name}的自我介绍已生成`);
+    } catch (error) {
+      console.error('生成自我介绍失败:', error);
+    }
   };
 
   const formatTime = (timestamp: number) => {
@@ -150,15 +196,9 @@ const PenPalListScreen: React.FC<PenPalListScreenProps> = ({
                             <MapPin size={12} />
                             <span>虚拟世界</span>
                           </div>
-                          {penPal.customBackground ? (
-                            <div className="text-xs text-gray-600 line-clamp-2">
-                              {penPal.customBackground}
-                            </div>
-                          ) : (
-                            <div className="text-xs text-gray-500 italic">
-                              一个有趣的灵魂，等待与你交流
-                            </div>
-                          )}
+                          <div className="text-xs text-gray-600 line-clamp-2">
+                            {penPal.customBackground || '正在生成自我介绍...'}
+                          </div>
                         </div>
 
                         {/* 操作按钮 */}
