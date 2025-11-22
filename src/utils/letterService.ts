@@ -808,15 +808,18 @@ export async function generateReply(letterId: string, retryCount: number = 0, ro
 /**
  * 使用真实AI API生成回信内容
  * @param letter 信件对象
- * @param _roundNumber 要回复的轮次号（可选，预留用于未来根据轮次生成不同风格的回复）
+ * @param roundNumber 要回复的轮次号（可选，默认为当前轮次）
  */
-async function generateRealAIReply(letter: Letter, _roundNumber?: number): Promise<string> {
+async function generateRealAIReply(letter: Letter, roundNumber?: number): Promise<string> {
   // 获取API配置
   const apiConfig = JSON.parse(localStorage.getItem('apiConfig') || '{}');
   
   if (!apiConfig.baseUrl || !apiConfig.apiKey) {
     throw new Error('API配置不完整');
   }
+  
+  // 确定要回复的轮次（使用传入的参数，或默认为当前轮次）
+  const targetRoundNumber = roundNumber || letter.currentRound;
   
   // 构建AI人设提示
   const aiProfile = letter.bottleAIProfile;
@@ -981,13 +984,16 @@ async function generateRealAIReply(letter: Letter, _roundNumber?: number): Promi
 写信动机：${motivation.description}` 
     : `你是${letter.receiverName}。`;
   
-  // 获取当前轮次
-  const currentRound = letter.conversationRounds[letter.conversationRounds.length - 1];
+  // 获取目标轮次的用户来信
+  const currentRound = letter.conversationRounds.find(r => r.roundNumber === targetRoundNumber);
   
-  // 获取之前的对话历史（排除当前轮次）
+  if (!currentRound) {
+    throw new Error(`找不到第${targetRoundNumber}轮的数据`);
+  }
+  
+  // 获取之前的对话历史（只包含目标轮次之前的轮次）
   const allHistory = letter.conversationRounds
-    .slice(0, -1) // 排除当前轮次
-    .filter(round => round.aiReply && !round.userLetter.isDeleted && !round.aiReply.isDeleted);
+    .filter(round => round.roundNumber < targetRoundNumber && round.aiReply && !round.userLetter.isDeleted && !round.aiReply.isDeleted);
   
   // 智能历史记忆：前期总结 + 详细最近对话
   let historyContext = '';
@@ -1041,8 +1047,8 @@ ${allDetails}
   }
   
   // 判断是否是第一次交流
-  const isFirstReply = letter.currentRound === 1;
-  const roundInfo = isFirstReply ? '这是你们第一次通过漂流瓶相遇。' : `这是你们的第${letter.currentRound}次交流。`;
+  const isFirstReply = targetRoundNumber === 1;
+  const roundInfo = isFirstReply ? '这是你们第一次通过漂流瓶相遇。' : `这是你们的第${targetRoundNumber}次交流。`;
   
   // 简化的性格描述 - 不要详细列举行为特点，让AI自己演绎
   let styleGuide = '';
