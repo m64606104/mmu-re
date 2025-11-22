@@ -179,12 +179,6 @@ export default function LetterMenuDropdown({ onNavigate }: LetterMenuDropdownPro
                   <span className="text-[9px] font-medium text-gray-600 whitespace-nowrap">
                     {item.label.length > 4 ? item.label.substring(0, 4) : item.label}
                   </span>
-                  
-                  {/* ⚠️ 确保不渲染badge数字 - 已移除 */}
-                  {/* 调试：如果有badge，输出警告 */}
-                  {item.id === 'letter-notifications' && item.badge !== undefined && (
-                    <span style={{display: 'none'}}>badge={item.badge}</span>
-                  )}
                 </button>
               );
             })}
