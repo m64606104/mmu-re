@@ -4,7 +4,7 @@
  */
 
 import { useState, useEffect } from 'react';
-import { ArrowLeft, Send, Users, Waves, Clock, Edit2, Check, MessageCircle, Heart, Trash2, Award, Star } from 'lucide-react';
+import { ArrowLeft, Send, Clock, Edit2, Check, MessageCircle } from 'lucide-react';
 import { 
   getGroupedLetterList, 
   getLettersByReceiver,
@@ -19,12 +19,6 @@ import LetterDetailView from './LetterDetailView';
 interface GroupedLetterBoxScreenProps {
   onBack: () => void;
   onWriteNew: () => void;
-  onToPenPals: () => void;
-  onToBottleFishing: () => void;
-  onToRecycleBin: () => void; // 回收站
-  onToFavorites?: () => void; // 收藏夹
-  onToAchievements?: () => void; // 成就系统
-  onToStamps?: () => void; // 邮票收藏
   onContinueReply?: (letter: Letter) => void;
   userName: string;
 }
@@ -32,12 +26,6 @@ interface GroupedLetterBoxScreenProps {
 export default function GroupedLetterBoxScreen({
   onBack,
   onWriteNew,
-  onToPenPals,
-  onToBottleFishing,
-  onToRecycleBin,
-  onToFavorites,
-  onToAchievements,
-  onToStamps,
   onContinueReply,
   userName
 }: GroupedLetterBoxScreenProps) {
@@ -282,127 +270,73 @@ export default function GroupedLetterBoxScreen({
 
   // 主列表页面
   return (
-    <div className="fixed inset-0 bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50 z-50 flex flex-col">
+    <div className="fixed inset-0 bg-gradient-to-br from-amber-50 via-orange-50 to-yellow-50 z-50 flex flex-col">
       {/* 顶部导航栏 */}
-      <div className="bg-white/80 backdrop-blur-sm border-b border-indigo-200 px-4 py-3 flex items-center justify-between">
+      <div className="bg-white/80 backdrop-blur-sm border-b border-orange-200 px-4 py-3 flex items-center justify-between">
         <button
           onClick={onBack}
-          className="p-2 hover:bg-indigo-100 rounded-full transition-colors"
+          className="p-2 hover:bg-orange-100 rounded-full transition-colors"
         >
           <ArrowLeft size={24} className="text-gray-700" />
         </button>
-        <div>
+        <div className="text-center">
           <h1 className="text-lg font-semibold text-gray-800">信箱</h1>
           <div className="text-xs text-gray-500">
-            {letterData.total}个联系人 · {letterData.unreadTotal > 0 && `${letterData.unreadTotal}条未读`}
+            {letterData.total}个联系人{letterData.unreadTotal > 0 && ` · ${letterData.unreadTotal}条未读`}
           </div>
         </div>
         <button
           onClick={onWriteNew}
-          className="p-2 hover:bg-indigo-100 rounded-full transition-colors"
+          className="p-2 hover:bg-orange-100 rounded-full transition-colors"
         >
-          <Send size={20} className="text-indigo-600" />
+          <Send size={20} className="text-orange-600" />
         </button>
       </div>
 
-      {/* 分类标签栏 */}
-      <div className="bg-white/60 backdrop-blur-sm border-b border-indigo-100 px-4 py-3">
-        <div className="flex gap-1">
+      {/* 筛选标签栏 - 优雅设计 */}
+      <div className="bg-gradient-to-br from-white/80 via-orange-50/50 to-amber-50/50 backdrop-blur-xl border-b border-orange-100/50 px-4 py-4">
+        <div className="flex gap-2 overflow-x-auto no-scrollbar">
           <button
             onClick={() => setActiveTab('all')}
-            className={`px-4 py-2 rounded-full text-sm font-medium transition-colors ${
+            className={`px-5 py-2.5 rounded-full text-sm font-semibold transition-all duration-300 whitespace-nowrap ${
               activeTab === 'all'
-                ? 'bg-indigo-500 text-white'
-                : 'bg-white/80 text-gray-600 hover:bg-white'
+                ? 'bg-gradient-to-r from-orange-500 to-amber-500 text-white shadow-lg shadow-orange-300/50 scale-105'
+                : 'bg-white/80 text-gray-700 hover:bg-white hover:shadow-md'
             }`}
           >
-            <MessageCircle size={16} className="inline mr-1" />
+            <MessageCircle size={16} className="inline mr-1.5" />
             全部 ({letterData.total})
           </button>
           <button
             onClick={() => setActiveTab('penpal')}
-            className={`px-4 py-2 rounded-full text-sm font-medium transition-colors ${
+            className={`px-5 py-2.5 rounded-full text-sm font-semibold transition-all duration-300 whitespace-nowrap ${
               activeTab === 'penpal'
-                ? 'bg-pink-500 text-white'
-                : 'bg-white/80 text-gray-600 hover:bg-white'
+                ? 'bg-gradient-to-r from-pink-500 to-rose-500 text-white shadow-lg shadow-pink-300/50 scale-105'
+                : 'bg-white/80 text-gray-700 hover:bg-white hover:shadow-md'
             }`}
           >
-            ❤️ 笔友 ({letterData.penPals.length})
+            ❤️ 笔友 ({letterData.penPals.length + letterData.contacts.length})
           </button>
           <button
             onClick={() => setActiveTab('bottle')}
-            className={`px-4 py-2 rounded-full text-sm font-medium transition-colors ${
+            className={`px-5 py-2.5 rounded-full text-sm font-semibold transition-all duration-300 whitespace-nowrap ${
               activeTab === 'bottle'
-                ? 'bg-blue-500 text-white'
-                : 'bg-white/80 text-gray-600 hover:bg-white'
+                ? 'bg-gradient-to-r from-blue-500 to-cyan-500 text-white shadow-lg shadow-blue-300/50 scale-105'
+                : 'bg-white/80 text-gray-700 hover:bg-white hover:shadow-md'
             }`}
           >
             🌊 漂流瓶 ({letterData.bottles.length})
           </button>
           <button
             onClick={() => setActiveTab('unanswered')}
-            className={`px-4 py-2 rounded-full text-sm font-medium transition-colors ${
+            className={`px-5 py-2.5 rounded-full text-sm font-semibold transition-all duration-300 whitespace-nowrap ${
               activeTab === 'unanswered'
-                ? 'bg-orange-500 text-white'
-                : 'bg-white/80 text-gray-600 hover:bg-white'
+                ? 'bg-gradient-to-r from-purple-500 to-indigo-500 text-white shadow-lg shadow-purple-300/50 scale-105'
+                : 'bg-white/80 text-gray-700 hover:bg-white hover:shadow-md'
             }`}
           >
             ⏰ 未回复
           </button>
-        </div>
-      </div>
-
-      {/* 快捷操作栏 - 参考图1的完整入口设计 */}
-      <div className="bg-white/40 backdrop-blur-sm border-b border-indigo-100 px-4 py-3">
-        <div className="grid grid-cols-5 gap-3">
-          <button
-            onClick={onToPenPals}
-            className="flex flex-col items-center justify-center gap-1 p-3 bg-white/80 rounded-2xl text-gray-700 hover:bg-white hover:shadow-md transition-all"
-          >
-            <Users size={20} className="text-pink-500" />
-            <span className="text-xs font-medium">笔友</span>
-          </button>
-          <button
-            onClick={onToBottleFishing}
-            className="flex flex-col items-center justify-center gap-1 p-3 bg-white/80 rounded-2xl text-gray-700 hover:bg-white hover:shadow-md transition-all"
-          >
-            <Waves size={20} className="text-blue-500" />
-            <span className="text-xs font-medium">漂流瓶</span>
-          </button>
-          {onToFavorites && (
-            <button
-              onClick={onToFavorites}
-              className="flex flex-col items-center justify-center gap-1 p-3 bg-white/80 rounded-2xl text-gray-700 hover:bg-white hover:shadow-md transition-all"
-            >
-              <Heart size={20} className="text-red-500" />
-              <span className="text-xs font-medium">收藏</span>
-            </button>
-          )}
-          {onToStamps && (
-            <button
-              onClick={onToStamps}
-              className="flex flex-col items-center justify-center gap-1 p-3 bg-white/80 rounded-2xl text-gray-700 hover:bg-white hover:shadow-md transition-all"
-            >
-              <Star size={20} className="text-yellow-500" />
-              <span className="text-xs font-medium">回复</span>
-            </button>
-          )}
-          <button
-            onClick={onToRecycleBin}
-            className="flex flex-col items-center justify-center gap-1 p-3 bg-white/80 rounded-2xl text-gray-700 hover:bg-white hover:shadow-md transition-all"
-          >
-            <Trash2 size={20} className="text-gray-500" />
-            <span className="text-xs font-medium">回收站</span>
-          </button>
-          {onToAchievements && (
-            <button
-              onClick={onToAchievements}
-              className="flex flex-col items-center justify-center gap-1 p-3 bg-white/80 rounded-2xl text-gray-700 hover:bg-white hover:shadow-md transition-all"
-            >
-              <Award size={20} className="text-orange-500" />
-              <span className="text-xs font-medium">邮票</span>
-            </button>
-          )}
         </div>
       </div>
 
@@ -413,31 +347,33 @@ export default function GroupedLetterBoxScreen({
             <div
               key={group.receiverId}
               onClick={() => handleGroupClick(group)}
-              className="bg-white rounded-2xl shadow-md hover:shadow-lg transform hover:scale-[1.01] transition-all duration-200 cursor-pointer overflow-hidden border border-gray-100 hover:border-blue-200"
+              className="group bg-gradient-to-br from-white to-orange-50/30 rounded-3xl shadow-md hover:shadow-xl transform hover:scale-[1.02] transition-all duration-300 cursor-pointer overflow-hidden border border-orange-100/50 hover:border-orange-300"
             >
-              <div className="p-4">
-                <div className="flex items-center gap-3">
+              <div className="p-5">
+                <div className="flex items-start gap-4">
                   {/* 头像 */}
-                  <div className="relative">
-                    <div className="w-12 h-12 rounded-full bg-gradient-to-br from-orange-400 to-amber-500 flex items-center justify-center text-2xl">
+                  <div className="relative flex-shrink-0">
+                    <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-orange-400 via-amber-400 to-yellow-400 flex items-center justify-center text-2xl shadow-lg shadow-orange-200/50 transform group-hover:scale-110 transition-transform duration-300">
                       {group.receiverAvatar}
                     </div>
+                    {/* 小装饰点 */}
+                    <div className="absolute -bottom-0.5 -right-0.5 w-3 h-3 bg-green-400 rounded-full border-2 border-white"></div>
                   </div>
 
                   {/* 信息区域 */}
                   <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 mb-1">
-                      <h3 className="font-semibold text-gray-800 truncate">
+                    <div className="flex items-center gap-2 mb-1.5">
+                      <h3 className="font-bold text-gray-900 truncate text-base">
                         {group.displayName}
                       </h3>
                       {group.displayName !== group.receiverName && (
-                        <span className="text-xs text-gray-500 bg-gray-100 px-1.5 py-0.5 rounded">
+                        <span className="text-xs text-gray-500 bg-white/80 px-2 py-0.5 rounded-full border border-gray-200">
                           {group.receiverName}
                         </span>
                       )}
                     </div>
                     
-                    <div className="text-sm text-gray-600 line-clamp-1 mb-2">
+                    <div className="text-sm text-gray-600 line-clamp-2 mb-3 leading-relaxed">
                       {group.latestLetter.content}
                     </div>
                     
