@@ -4,7 +4,7 @@
  */
 
 import { useState, useRef, useEffect } from 'react';
-import { ArrowLeft, Send, Edit2, Trash2, Plus } from 'lucide-react';
+import { ArrowLeft, Send, Edit2, Trash2 } from 'lucide-react';
 import { Conversation, ApiConfig } from '../types';
 import { TopicCard } from '../utils/topicCardLibrary';
 import { teachWord } from '../utils/aiKindergartenManager';
@@ -312,14 +312,14 @@ ${childData.stage === 'baby' ? '用很简单的话，1-2个字的词' :
       {!aiResponse && (
         <div className="bg-white border-t border-gray-200 p-4 space-y-3">
           {/* Text Input */}
-          <div className="relative">
+          <div className="space-y-2">
             <textarea
               ref={textareaRef}
               value={currentInput}
               onChange={(e) => setCurrentInput(e.target.value)}
               placeholder={editingId ? "编辑你的讲解..." : "用你的话给孩子解释..."}
               rows={3}
-              className="w-full px-4 py-3 pr-12 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500 resize-none text-sm"
+              className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500 resize-none text-sm"
               onKeyDown={(e) => {
                 if (e.key === 'Enter' && !e.shiftKey) {
                   e.preventDefault();
@@ -334,9 +334,19 @@ ${childData.stage === 'baby' ? '用很简单的话，1-2个字的词' :
             <button
               onClick={editingId ? saveEdit : addDraftMessage}
               disabled={!currentInput.trim()}
-              className="absolute right-2 bottom-2 p-2 bg-purple-500 text-white rounded-lg hover:bg-purple-600 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+              className="w-full py-2.5 bg-purple-500 text-white rounded-xl hover:bg-purple-600 disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center justify-center gap-2 font-medium"
             >
-              {editingId ? <Edit2 className="w-4 h-4" /> : <Plus className="w-4 h-4" />}
+              {editingId ? (
+                <>
+                  <Edit2 className="w-4 h-4" />
+                  <span>保存修改</span>
+                </>
+              ) : (
+                <>
+                  <Send className="w-4 h-4" />
+                  <span>发送到草稿</span>
+                </>
+              )}
             </button>
           </div>
 
@@ -376,9 +386,18 @@ ${childData.stage === 'baby' ? '用很简单的话，1-2个字的词' :
             </button>
           </div>
 
-          <p className="text-xs text-gray-500 text-center">
-            💬 可以发送多条消息，点击"确定发送"后AI会一起理解
-          </p>
+          {/* 美化的提示信息 */}
+          <div className="bg-gradient-to-r from-purple-50 to-pink-50 rounded-xl p-3 border border-purple-100">
+            <div className="flex items-start gap-2">
+              <div className="flex-shrink-0 text-lg">💡</div>
+              <div className="flex-1 text-xs text-gray-700 space-y-1">
+                <div className="font-medium text-purple-700">使用提示：</div>
+                <div>• 可以发送多条消息到草稿区</div>
+                <div>• 点击"确定发送"后，{child.name}会一起理解所有内容</div>
+                <div>• 按 Enter 快速发送，Shift+Enter 换行</div>
+              </div>
+            </div>
+          </div>
         </div>
       )}
     </div>
