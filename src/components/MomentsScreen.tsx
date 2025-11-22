@@ -1,7 +1,9 @@
 import { useState, useRef, useEffect } from 'react';
-import { ChevronLeft, Camera, Heart, MessageCircle, Send, Image as ImageIcon, MoreHorizontal, Trash2 } from 'lucide-react';
+import { ChevronLeft, Camera, Heart, MessageCircle, Send, Image as ImageIcon, MoreHorizontal, Trash2, Bell } from 'lucide-react';
 import { MomentPost, UserProfile, Conversation, ApiConfig } from '../types';
 import { getAllMomentPosts, likeMomentPost, commentMomentPost, deleteMomentPost, handleUserInteractionResponse } from '../utils/aiMomentsGenerator';
+import { getUnreadNotificationCount } from '../utils/momentsNotificationManager';
+import MomentsNotifications from './MomentsNotifications';
 
 interface MomentsScreenProps {
   moments: MomentPost[];
@@ -37,6 +39,22 @@ export default function MomentsScreen({
   const [imageLoadErrors, setImageLoadErrors] = useState<Set<string>>(new Set());
   const [selectedComment, setSelectedComment] = useState<{ momentId: string; commentId: string } | null>(null);
   const [replyToComment, setReplyToComment] = useState<{ id: string; authorName: string } | null>(null);
+  const [showNotifications, setShowNotifications] = useState(false);
+  const [unreadCount, setUnreadCount] = useState(0);
+
+  // 加载未读通知数量
+  useEffect(() => {
+    const loadUnreadCount = async () => {
+      const count = await getUnreadNotificationCount();
+      setUnreadCount(count);
+    };
+    
+    loadUnreadCount();
+    
+    // 每30秒刷新一次未读数量
+    const interval = setInterval(loadUnreadCount, 30000);
+    return () => clearInterval(interval);
+  }, []);
 
   // 点击其他地方关闭评论菜单
   useEffect(() => {
@@ -426,12 +444,26 @@ export default function MomentsScreen({
           <button onClick={onBack} className="p-2 -ml-2 bg-black/30 rounded-full backdrop-blur-sm">
             <ChevronLeft className="w-6 h-6 text-white" />
           </button>
-          <button
-            onClick={() => setShowNewPost(true)}
-            className="p-2 -mr-2 bg-black/30 rounded-full backdrop-blur-sm"
-          >
-            <Camera className="w-6 h-6 text-white" />
-          </button>
+          <div className="flex items-center gap-2">
+            {/* 通知按钮 */}
+            <button
+              onClick={() => setShowNotifications(true)}
+              className="relative p-2 bg-black/30 rounded-full backdrop-blur-sm"
+            >
+              <Bell className="w-6 h-6 text-white" />
+              {unreadCount > 0 && (
+                <span className="absolute -top-1 -right-1 min-w-[20px] h-5 px-1.5 bg-red-500 text-white text-xs font-bold rounded-full flex items-center justify-center">
+                  {unreadCount > 99 ? '99+' : unreadCount}
+                </span>
+              )}
+            </button>
+            <button
+              onClick={() => setShowNewPost(true)}
+              className="p-2 bg-black/30 rounded-full backdrop-blur-sm"
+            >
+              <Camera className="w-6 h-6 text-white" />
+            </button>
+          </div>
         </div>
 
         {/* User Info */}
@@ -875,6 +907,24 @@ export default function MomentsScreen({
             onClick={(e) => e.stopPropagation()}
           />
         </div>
+      )}
+
+      {/* 朋友圈通知面板 */}
+      {showNotifications && (
+        <MomentsNotifications
+          onClose={async () => {
+            setShowNotifications(false);
+            // 刷新未读数量
+            const count = await getUnreadNotificationCount();
+            setUnreadCount(count);
+          }}
+          onNavigateToPost={(postId, commentId) => {
+            // 找到对应的帖子并滚动到评论位置
+            // 这里可以添加滚动逻辑，暂时先关闭通知面板
+            console.log('跳转到帖子:', postId, '评论:', commentId);
+            // TODO: 实现滚动到指定帖子和评论的逻辑
+          }}
+        />
       )}
     </div>
   );

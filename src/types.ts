@@ -208,6 +208,10 @@ export interface CharacterSettings {
   };
   // 📚 资料库配置
   knowledgeBase?: KnowledgeBaseItem[];
+  // 📸 朋友圈频率配置
+  momentsConfig?: {
+    description?: string; // 用户用自然语言描述的发布规则
+  };
 }
 
 // 资料库条目

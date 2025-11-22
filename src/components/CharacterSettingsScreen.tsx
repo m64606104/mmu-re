@@ -1,9 +1,10 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { ChevronLeft, Upload, Brain, Trash2, Download, FileUp, Zap, X, Camera, RefreshCw, BookOpen, Plus, Edit, FileText, Users } from 'lucide-react';
 import { Conversation, ApiConfig, KnowledgeBaseItem } from '../types';
 import MemoryManager from './MemoryManager';
 import RelationshipManagementScreen from './RelationshipManagementScreen';
 import { addMomentPost } from '../utils/aiMomentsGenerator';
+import { parseComplexFrequencyRules, getCurrentFrequencyRule, getRulesSummary } from '../utils/momentsFrequencyParser';
 import '../styles/relationshipAnimations.css';
 
 interface CharacterSettingsScreenProps {
@@ -65,6 +66,25 @@ export default function CharacterSettingsScreen({
   
   // 📸 朋友圈记忆配置
   const [momentsMemoryEnabled, setMomentsMemoryEnabled] = useState(settings.momentsMemoryConfig?.enabled ?? true);
+  
+  // 📸 朋友圈频率配置
+  const [momentsFrequencyDescription, setMomentsFrequencyDescription] = useState(settings.momentsConfig?.description || '');
+  const [parsedRules, setParsedRules] = useState<any>(null);
+  const [currentRuleInfo, setCurrentRuleInfo] = useState<string>('');
+  
+  // 实时解析朋友圈频率规则
+  useEffect(() => {
+    if (momentsFrequencyDescription && momentsFrequencyDescription.trim()) {
+      const rules = parseComplexFrequencyRules(momentsFrequencyDescription);
+      setParsedRules(rules);
+      
+      const currentRule = getCurrentFrequencyRule(rules);
+      setCurrentRuleInfo(currentRule.description);
+    } else {
+      setParsedRules(null);
+      setCurrentRuleInfo('');
+    }
+  }, [momentsFrequencyDescription]);
   
   // 📝 自定义上下文配置
   const [contextConfigEnabled, setContextConfigEnabled] = useState(settings.contextConfig?.enabled || false);
@@ -195,6 +215,9 @@ export default function CharacterSettingsScreen({
           },
           momentsMemoryConfig: {
             enabled: momentsMemoryEnabled,
+          },
+          momentsConfig: {
+            description: momentsFrequencyDescription,
           },
           contextConfig: {
             enabled: contextConfigEnabled,
@@ -981,6 +1004,95 @@ export default function CharacterSettingsScreen({
                 <><span className="font-medium">⚡ 已关闭</span> - 朋友圈内容不会记录到记忆库，减少记忆负担</>
               )}
             </p>
+          </div>
+        </div>
+
+        {/* 📸 朋友圈发布频率设置 */}
+        <div className="bg-white rounded-lg shadow-sm p-4">
+          <div className="flex items-center gap-2 mb-3">
+            <RefreshCw className="w-5 h-5 text-indigo-500" />
+            <h3 className="text-sm font-medium text-gray-900">朋友圈发布频率</h3>
+          </div>
+          
+          <div className="space-y-3">
+            <div>
+              <label className="block text-xs font-medium text-gray-700 mb-2">
+                用你的话描述发布习惯：
+              </label>
+              <textarea
+                value={momentsFrequencyDescription}
+                onChange={(e) => setMomentsFrequencyDescription(e.target.value)}
+                placeholder={"例如：\n工作日比较忙，偶尔发一次\n周末会多发一些，大概一天一次\n假期会疯狂发朋友圈，记录生活"}
+                rows={4}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 resize-none text-sm"
+              />
+            </div>
+            
+            {/* 智能分析结果 */}
+            {parsedRules && (
+              <div className="bg-gradient-to-r from-indigo-50 to-purple-50 border border-indigo-100 rounded-lg p-3">
+                <div className="flex items-start gap-2 mb-2">
+                  <span className="text-indigo-700 text-xs font-medium">✨ 智能分析结果：</span>
+                </div>
+                <div className="space-y-1">
+                  {getRulesSummary(parsedRules).map((rule, index) => (
+                    <div key={index} className="text-xs text-gray-700">
+                      {rule}
+                    </div>
+                  ))}
+                </div>
+                {currentRuleInfo && (
+                  <div className="mt-2 pt-2 border-t border-indigo-200">
+                    <div className="text-xs text-indigo-600">
+                      📍 当前时间应用规则：
+                      <span className="font-medium ml-1">{currentRuleInfo}</span>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+            
+            {/* 示例提示 */}
+            <details className="text-sm">
+              <summary className="cursor-pointer text-indigo-600 font-medium text-xs hover:text-indigo-700">
+                💡 查看示例
+              </summary>
+              
+              <div className="mt-2 space-y-3 p-3 bg-gray-50 rounded-lg">
+                <div>
+                  <div className="font-medium text-xs text-gray-900">📝 学生示例：</div>
+                  <div className="text-gray-600 text-xs mt-1 leading-relaxed">
+                    平时上课比较忙，一周发一两次<br/>
+                    周末和朋友出去玩会多发<br/>
+                    寒暑假基本天天发，记录生活
+                  </div>
+                </div>
+                
+                <div>
+                  <div className="font-medium text-xs text-gray-900">📝 上班族示例：</div>
+                  <div className="text-gray-600 text-xs mt-1 leading-relaxed">
+                    工作日很少发，太忙了<br/>
+                    周末偶尔发一下，放松心情<br/>
+                    月底发工资时会发红包和庆祝
+                  </div>
+                </div>
+                
+                <div>
+                  <div className="font-medium text-xs text-gray-900">📝 研究生示例：</div>
+                  <div className="text-gray-600 text-xs mt-1 leading-relaxed">
+                    平时实验室很忙，半个月发一次<br/>
+                    周末会发一些生活照<br/>
+                    假期回家会多发，和家人朋友聚会
+                  </div>
+                </div>
+              </div>
+            </details>
+            
+            <div className="bg-blue-50 border border-blue-100 rounded-lg p-3">
+              <p className="text-xs text-blue-700 leading-relaxed">
+                💡 你可以描述工作日vs周末、月初/月中/月末、假期等不同时间段的发布习惯，系统会智能分析并应用相应规则
+              </p>
+            </div>
           </div>
         </div>
 

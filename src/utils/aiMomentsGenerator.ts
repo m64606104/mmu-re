@@ -9,6 +9,8 @@ import { getMemoryBank } from './memory';
 import { getErrorFromResponse, formatErrorMessage } from './apiErrorHandler';
 import { SmartMomentsGenerator } from './smartMomentsSystem';
 import { recordApiCall } from './apiUsageManager';
+import { parseComplexFrequencyRules, getCurrentFrequencyRule } from './momentsFrequencyParser';
+import { addMomentsNotification } from './momentsNotificationManager';
 
 const MOMENTS_STORAGE_KEY = 'moments_data';
 
@@ -161,18 +163,51 @@ export const shouldGenerateMoment = async (contactId: string): Promise<{shouldGe
   const now = Date.now();
   const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
   
+  // 🎯 获取AI角色的动态频率规则
+  let dynamicMinInterval = data.settings.minInterval;
+  let dynamicMaxInterval = data.settings.maxInterval;
+  let ruleSource = 'default';
+  
+  try {
+    // 从IndexedDB获取AI角色设置
+    const conversations = await smartLoad('conversations') as Conversation[] || [];
+    const aiConversation = conversations.find((c: Conversation) => c.id === contactId);
+    
+    // 如果配置了朋友圈频率规则
+    if (aiConversation?.characterSettings?.momentsConfig?.description) {
+      const description = aiConversation.characterSettings.momentsConfig.description;
+      console.log(`📋 [${aiConversation.characterSettings.nickname}] 解析朋友圈频率规则：`, description);
+      
+      // 解析规则
+      const rules = parseComplexFrequencyRules(description);
+      
+      // 获取当前时间应该使用的规则
+      const currentRule = getCurrentFrequencyRule(rules);
+      
+      dynamicMinInterval = currentRule.minInterval;
+      dynamicMaxInterval = currentRule.maxInterval;
+      ruleSource = currentRule.condition;
+      
+      console.log(`✅ [${aiConversation.characterSettings.nickname}] 应用${currentRule.condition}规则：${currentRule.description}`);
+      console.log(`   最小间隔：${dynamicMinInterval}小时，最大间隔：${dynamicMaxInterval}小时`);
+    }
+  } catch (error) {
+    console.error('解析朋友圈频率规则失败，使用默认配置:', error);
+  }
+  
   // 检查是否是新的一天
   if (data.lastGenerationDate !== today) {
     // 新的一天，重置计数器
     const hoursSinceLastGeneration = (now - data.lastGeneratedTime) / 3600000;
     
-    // 检查是否超过最小间隔（3-14天）
-    if (hoursSinceLastGeneration < data.settings.minInterval) {
+    // 使用动态间隔检查
+    if (hoursSinceLastGeneration < dynamicMinInterval) {
+      console.log(`⏳ 距离上次发布仅${Math.round(hoursSinceLastGeneration)}小时，需要至少${dynamicMinInterval}小时（${ruleSource}规则）`);
       return {shouldGenerate: false, count: 0};
     }
     
-    // 🎯 更真实的概率计算：模拟真实用户行为
-    const timeFactor = Math.min(hoursSinceLastGeneration / data.settings.maxInterval, 1.0);
+    // 🎯 更真实的概率计算：模拟真实用户行为（使用动态间隔）
+    const timeFactor = Math.min(hoursSinceLastGeneration / dynamicMaxInterval, 1.0);
     const baseChance = 0.15; // 基础15%概率（更低）
     const timeBonus = timeFactor * 0.45; // 时间因子增加45%概率
     let finalChance = Math.min(baseChance + timeBonus, 0.6); // 最高60%概率
@@ -758,6 +793,24 @@ export const commentMomentPost = async (
   
   post.comments.push(newComment);
   await saveMomentsData(data);
+  
+  // 🔔 如果是评论用户的朋友圈，添加通知
+  if (contactId === 'user' && comment.authorId !== 'user') {
+    await addMomentsNotification(
+      comment.replyTo ? 'reply' : 'comment',
+      {
+        postId: post.id,
+        postAuthorId: contactId,
+        postContent: post.content,
+        commentId: newComment.id,
+        commentAuthorId: comment.authorId,
+        commentAuthorName: comment.authorName,
+        commentAuthorAvatar: comment.authorAvatar,
+        commentContent: comment.content,
+        replyToName: comment.replyToName
+      }
+    );
+  }
 };
 
 /**
