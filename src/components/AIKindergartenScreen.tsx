@@ -4,11 +4,12 @@
  */
 
 import { useState, useEffect } from 'react';
-import { ChevronLeft, Book, MessageCircle, TrendingUp, Award } from 'lucide-react';
+import { ChevronLeft, Book, MessageCircle, TrendingUp, Award, MessageSquare } from 'lucide-react';
 import { Conversation, ApiConfig } from '../types';
 import AIChildChat from './AIChildChat';
 import ReadingScreen from './ReadingScreen';
 import GrowthReportScreen from './GrowthReportScreen';
+import TopicDiscussionScreen from './TopicDiscussionScreen';
 import { 
   createAIChild, 
   getAllAIChildren,
@@ -16,6 +17,7 @@ import {
   updateDailyInteraction 
 } from '../utils/aiKindergartenManager';
 import { WordCard, getRandomCards, getRecommendedDifficulty } from '../utils/wordCardLibrary';
+import { TopicCard, getRandomTopics, getRecommendedTopicDifficulty } from '../utils/topicCardLibrary';
 
 interface AIKindergartenScreenProps {
   onBack: () => void;
@@ -31,6 +33,9 @@ export default function AIKindergartenScreen({ onBack, apiConfig }: AIKindergart
   const [chatMode, setChatMode] = useState(false);
   const [readingMode, setReadingMode] = useState(false);
   const [reportMode, setReportMode] = useState(false);
+  const [topicMode, setTopicMode] = useState(false);
+  const [selectedTopic, setSelectedTopic] = useState<TopicCard | null>(null);
+  const [showTopicSelection, setShowTopicSelection] = useState(false);
   
   // 词卡系统
   const [currentCards, setCurrentCards] = useState<WordCard[]>([]);
@@ -231,6 +236,23 @@ export default function AIKindergartenScreen({ onBack, apiConfig }: AIKindergart
     );
   }
 
+  // 如果在话题讨论模式，显示话题讨论
+  if (topicMode && selectedChild && selectedTopic) {
+    return (
+      <TopicDiscussionScreen
+        child={selectedChild}
+        topic={selectedTopic}
+        onBack={() => {
+          setTopicMode(false);
+          setSelectedTopic(null);
+          loadChildren(); // 刷新数据
+        }}
+        onUpdateChild={loadChildren}
+        apiConfig={apiConfig}
+      />
+    );
+  }
+
   return (
     <div className="h-full bg-gradient-to-br from-blue-50 via-purple-50 to-pink-50 flex flex-col">
       {/* Header */}
@@ -334,11 +356,19 @@ export default function AIKindergartenScreen({ onBack, apiConfig }: AIKindergart
               </button>
 
               <button
+                onClick={() => setShowTopicSelection(true)}
+                className="bg-white p-4 rounded-xl text-gray-700 font-medium hover:bg-gray-50 transition-all"
+              >
+                <MessageSquare className="w-6 h-6 mx-auto mb-2" />
+                话题讨论
+              </button>
+
+              <button
                 onClick={() => setChatMode(true)}
                 className="bg-white p-4 rounded-xl text-gray-700 font-medium hover:bg-gray-50 transition-all"
               >
                 <MessageCircle className="w-6 h-6 mx-auto mb-2" />
-                聊天互动
+                自由聊天
               </button>
 
               <button
@@ -351,7 +381,7 @@ export default function AIKindergartenScreen({ onBack, apiConfig }: AIKindergart
 
               <button
                 onClick={() => setReportMode(true)}
-                className="bg-white p-4 rounded-xl text-gray-700 font-medium hover:bg-gray-50 transition-all"
+                className="bg-white p-4 rounded-xl text-gray-700 font-medium hover:bg-gray-50 transition-all col-span-2"
               >
                 <TrendingUp className="w-6 h-6 mx-auto mb-2" />
                 成长报告
@@ -544,6 +574,51 @@ export default function AIKindergartenScreen({ onBack, apiConfig }: AIKindergart
                 创建
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Topic Selection Modal */}
+      {showTopicSelection && selectedChild && selectedChild.aiChildData && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl p-6 w-full max-w-md max-h-[80vh] overflow-y-auto">
+            <h2 className="text-xl font-bold text-gray-800 mb-2">选择一个话题</h2>
+            <p className="text-sm text-gray-500 mb-4">通过对话的方式教{selectedChild.name}理解</p>
+            
+            {/* Topic Cards Grid */}
+            <div className="grid grid-cols-2 gap-3 mb-4">
+              {getRandomTopics(6, getRecommendedTopicDifficulty(selectedChild.aiChildData.vocabulary.length)).map((topic) => (
+                <button
+                  key={topic.id}
+                  onClick={() => {
+                    setSelectedTopic(topic);
+                    setTopicMode(true);
+                    setShowTopicSelection(false);
+                  }}
+                  className="p-4 rounded-xl border-2 border-gray-200 hover:border-purple-300 hover:shadow-md active:scale-95 transition-all text-left"
+                >
+                  <div className="text-4xl mb-2 text-center">{topic.emoji}</div>
+                  <div className="text-center font-semibold text-gray-800 mb-1">{topic.topic}</div>
+                  <div className="text-xs text-gray-500 text-center line-clamp-2">{topic.description}</div>
+                  <div className="flex justify-center mt-2">
+                    <span className={`text-xs px-2 py-0.5 rounded ${
+                      topic.difficulty === 1 ? 'bg-green-100 text-green-600' :
+                      topic.difficulty === 2 ? 'bg-blue-100 text-blue-600' :
+                      'bg-purple-100 text-purple-600'
+                    }`}>
+                      Lv.{topic.difficulty}
+                    </span>
+                  </div>
+                </button>
+              ))}
+            </div>
+
+            <button
+              onClick={() => setShowTopicSelection(false)}
+              className="w-full py-3 border border-gray-200 rounded-xl font-medium text-gray-700 hover:bg-gray-50"
+            >
+              取消
+            </button>
           </div>
         </div>
       )}
