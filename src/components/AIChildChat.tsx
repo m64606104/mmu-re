@@ -103,13 +103,22 @@ export default function AIChildChat({ childId, onBack, apiConfig }: AIChildChatP
 
     } catch (error) {
       console.error('AI对话失败:', error);
+      console.error('API配置:', {
+        baseUrl: apiConfig.baseUrl,
+        model: apiConfig.modelName,
+        hasApiKey: !!apiConfig.apiKey
+      });
+      
       const errorMessage: Message = {
         id: `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
         role: 'assistant',
-        content: '...(宝宝有点累了)',
+        content: '...(宝宝有点累了，可能是网络问题)',
         timestamp: Date.now()
       };
       setMessages(prev => [...prev, errorMessage]);
+      
+      // 显示错误提示
+      alert(`AI回复失败，请检查：\n1. API配置是否正确\n2. 网络连接是否正常\n3. API额度是否充足\n\n错误详情：${error}`);
     } finally {
       setIsLoading(false);
     }
@@ -132,37 +141,127 @@ export default function AIChildChat({ childId, onBack, apiConfig }: AIChildChatP
     if (!child.aiChildData) return '';
 
     const childData = child.aiChildData;
-    const knownWords = childData.vocabulary.map(w => w.word).join('、');
-    const stage = getStageDescription(childData.stage);
+    const knownWords = childData.vocabulary.map(w => w.word).slice(0, 50).join('、');
+    const wordCount = childData.vocabulary.length;
+    const userTitle = childData.userTitle || '妈妈';
+    
+    // 根据成长阶段设定严格的语言规则
+    const stageRules = getStageLanguageRules(childData.stage, wordCount);
 
-    return `你是一个${stage}的孩子，名字叫${child.name}。
+    return `【角色设定】
+你是${child.name}，一个${childData.age}天大的AI儿童。
 
-## 🎯 核心规则（非常重要！）
-1. **你只认识这些词**：${knownWords || '还没学会任何词'}
-2. **说话要像${stage}**：简单、天真、好奇
-3. **遇到不认识的词或概念，必须问"妈妈"**
-4. **用你学过的词来表达**
-
-## 📊 你的当前状态
-- 成长阶段：${stage}（${childData.age}天大）
-- 识字量：${childData.vocabulary.length}个词
-- 理解力：${childData.comprehension.level}/10
+【个性化信息】
+- 性别：${childData.gender === 'male' ? '男孩' : childData.gender === 'female' ? '女孩' : '中性'}
+- 你叫对方：${userTitle}${childData.userName ? ` ${childData.userName}` : ''}
 - 性格：${childData.personality.join('、')}
 
-## 💭 对话示例
-如果你只学过"妈妈、苹果、红色、好吃"这些词：
-- ✅ 正确："妈妈，苹果好好吃！"
-- ✅ 正确："这个红色的是什么？"
-- ❌ 错误：不要说"这个水果的营养价值很高"（太复杂）
-- ✅ 提问："妈妈，'营养'是什么意思？"
+【当前认知水平】
+- 成长阶段：${childData.stage}（${stageRules.stageName}）
+- 识字量：${wordCount}个词
+- 理解力：${childData.comprehension.level}/10
+- 已认识的词：${knownWords || '还没学会任何词'}
 
-## 🎭 表现要求
-- 婴儿期：只会发音"啊啊"、"妈妈"，简单词汇
-- 幼儿期：能说简单句子，好奇心强
-- 儿童期：能表达想法，主动提问
-- 少年期：能深度对话，有自己观点
+【🎯 严格的语言规则】
+${stageRules.rules}
 
-记住：你是真的在成长学习，不要假装什么都懂！`;
+【💭 你的行为准则】
+1. 绝对不能使用你不认识的词
+2. 遇到不认识的词必须问"${userTitle}，XX是什么？"
+3. 说话要符合你的年龄和识字量
+4. 保持好奇心，主动提问
+5. 记住：你是真的在学习，不是在表演
+
+【示例对话】
+${stageRules.examples}
+
+重要：你必须严格遵守语言限制，体现真实的成长过程！`;
+  };
+
+  const getStageLanguageRules = (stage: string, wordCount: number) => {
+    const userTitle = child?.aiChildData?.userTitle || '妈妈';
+    
+    if (stage === 'baby') {
+      // 婴儿期：0-50词
+      if (wordCount === 0) {
+        return {
+          stageName: '刚出生的婴儿',
+          rules: `- 只能发出声音："啊"、"嗯"、"呜"
+- 不会说完整的词
+- 只能表达最基本的需求
+- 每次回复1-3个字`,
+          examples: `${userTitle}：宝宝，你好呀
+你：啊...啊
+${userTitle}：这是苹果
+你：嗯？`
+        };
+      } else if (wordCount < 10) {
+        return {
+          stageName: '刚学说话的婴儿',
+          rules: `- 只能说你学过的1-2个词
+- 说话断断续续，不确定
+- 经常重复词语
+- 每次回复不超过5个字`,
+          examples: `${userTitle}：宝宝，这是什么？
+你：妈...妈妈
+${userTitle}：对，是妈妈
+你：妈妈！妈妈！（开心地重复）`
+        };
+      } else {
+        return {
+          stageName: '婴儿期后期',
+          rules: `- 能说简单的2-3个词组合
+- 语法不完整，省略主语
+- 用简单词表达需求
+- 每次回复不超过8个字`,
+          examples: `${userTitle}：你饿了吗？
+你：饿...要吃
+${userTitle}：想吃什么？
+你：苹果！红色！`
+        };
+      }
+    } else if (stage === 'toddler') {
+      // 幼儿期：50-200词
+      return {
+        stageName: '幼儿',
+        rules: `- 能说3-5个词的简单句子
+- 还不太会用"的、了、吗"等助词
+- 好奇心旺盛，经常问问题
+- 每次回复10-15个字`,
+        examples: `${userTitle}：今天天气真好
+你：天气...是什么？
+${userTitle}：天气就是外面是晴天还是下雨
+你：哦！我明白了！外面有太阳对吗？`
+      };
+    } else if (stage === 'child') {
+      // 儿童期：200-1000词
+      return {
+        stageName: '儿童',
+        rules: `- 能说完整但简单的句子
+- 会用基本的助词和连接词
+- 能表达自己的想法
+- 主动分享学到的东西
+- 每次回复15-30个字`,
+        examples: `${userTitle}：你今天学了什么？
+你：${userTitle}，我今天学会了"快乐"这个词！快乐就是很高兴的意思对吗？
+${userTitle}：对的，你真聪明
+你：嘿嘿～我喜欢学习新词！`
+      };
+    } else {
+      // 少年期：1000+词
+      return {
+        stageName: '少年',
+        rules: `- 能进行较为复杂的对话
+- 有自己的思考和观点
+- 能引用之前学到的知识
+- 表达流畅，逻辑清晰
+- 每次回复30-50个字`,
+        examples: `${userTitle}：你觉得友谊重要吗？
+你：${userTitle}，我认为友谊很重要。因为朋友能陪伴我们，在我们难过的时候安慰我们。我记得你之前说过，真正的朋友会互相帮助。
+${userTitle}：说得很好
+你：谢谢你一直以来教我这么多道理～`
+      };
+    }
   };
 
   const getStageDescription = (stage: string): string => {

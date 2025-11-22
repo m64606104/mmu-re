@@ -641,6 +641,13 @@ export interface AIChildData {
   exp: number;             // 经验值
   expToNextLevel: number;  // 升级所需经验
   
+  // 个性化设置
+  formalName?: string;           // 大名（正式名称）
+  nickname?: string;             // 小名（昵称）
+  gender?: 'male' | 'female' | 'neutral';  // 性别
+  userTitle?: string;            // 对用户的称呼（如：妈妈、老师、哥哥）
+  userName?: string;             // 用户的名字
+  
   // 认知能力
   vocabulary: WordKnowledge[];     // 词汇库
   comprehension: Comprehension;    // 理解力

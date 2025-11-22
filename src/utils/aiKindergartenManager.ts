@@ -19,12 +19,23 @@ import { smartLoad, smartSave } from './storage';
 export const createAIChild = (name: string, avatar?: string): Conversation => {
   const childId = `child_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
   
+  // 随机分配性别
+  const genders: Array<'male' | 'female' | 'neutral'> = ['male', 'female', 'neutral'];
+  const randomGender = genders[Math.floor(Math.random() * genders.length)];
+  
   const aiChildData: AIChildData = {
     stage: 'baby',
     age: 0,
     level: 1,
     exp: 0,
     expToNextLevel: 100,
+    
+    // 个性化设置
+    formalName: name || '宝宝',
+    nickname: '',
+    gender: randomGender,
+    userTitle: '妈妈',
+    userName: '',
     
     vocabulary: [],
     comprehension: {

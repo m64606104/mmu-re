@@ -4,12 +4,13 @@
  */
 
 import { useState, useEffect } from 'react';
-import { ChevronLeft, Book, MessageCircle, TrendingUp, Award, MessageSquare } from 'lucide-react';
+import { ChevronLeft, Book, MessageCircle, TrendingUp, Award, MessageSquare, Settings } from 'lucide-react';
 import { Conversation, ApiConfig } from '../types';
 import AIChildChat from './AIChildChat';
 import ReadingScreen from './ReadingScreen';
 import GrowthReportScreen from './GrowthReportScreen';
 import TopicDiscussionScreen from './TopicDiscussionScreen';
+import AIChildSettings from './AIChildSettings';
 import { 
   createAIChild, 
   getAllAIChildren,
@@ -36,6 +37,7 @@ export default function AIKindergartenScreen({ onBack, apiConfig }: AIKindergart
   const [topicMode, setTopicMode] = useState(false);
   const [selectedTopic, setSelectedTopic] = useState<TopicCard | null>(null);
   const [showTopicSelection, setShowTopicSelection] = useState(false);
+  const [settingsMode, setSettingsMode] = useState(false);
   
   // 词卡系统
   const [currentCards, setCurrentCards] = useState<WordCard[]>([]);
@@ -253,6 +255,20 @@ export default function AIKindergartenScreen({ onBack, apiConfig }: AIKindergart
     );
   }
 
+  // 如果在设置模式，显示设置界面
+  if (settingsMode && selectedChild) {
+    return (
+      <AIChildSettings
+        child={selectedChild}
+        onBack={() => {
+          setSettingsMode(false);
+          loadChildren(); // 刷新数据
+        }}
+        onUpdate={loadChildren}
+      />
+    );
+  }
+
   return (
     <div className="h-full bg-gradient-to-br from-blue-50 via-purple-50 to-pink-50 flex flex-col">
       {/* Header */}
@@ -297,7 +313,16 @@ export default function AIKindergartenScreen({ onBack, apiConfig }: AIKindergart
                   {getStageEmoji(selectedChild.aiChildData.stage)}
                 </div>
                 <div className="flex-1">
-                  <h2 className="text-2xl font-bold text-gray-800">{selectedChild.name}</h2>
+                  <div className="flex items-center justify-between">
+                    <h2 className="text-2xl font-bold text-gray-800">{selectedChild.name}</h2>
+                    <button
+                      onClick={() => setSettingsMode(true)}
+                      className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+                      title="个性化设置"
+                    >
+                      <Settings className="w-5 h-5 text-gray-600" />
+                    </button>
+                  </div>
                   <div className="flex items-center gap-2 text-sm text-gray-500 mt-1">
                     <span className="px-2 py-0.5 bg-blue-100 text-blue-600 rounded">
                       {getStageName(selectedChild.aiChildData.stage)}
