@@ -10,7 +10,7 @@ import { getSafeAvatar } from '../utils/avatarHelper';
 import { ArrowLeft, Send, Sparkles, Users, UserPlus } from 'lucide-react';
 import LetterSendingAnimation from './LetterSendingAnimation';
 import CustomPenPalCreator from './CustomPenPalCreator';
-import LetterMenuDropdown from './LetterMenuDropdown';
+import LetterMenuDropdown from './LetterMenuDropdownNew';
 
 interface LetterWritingScreenProps {
   onBack: () => void;
