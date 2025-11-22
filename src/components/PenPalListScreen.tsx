@@ -28,14 +28,20 @@ const PenPalListScreen: React.FC<PenPalListScreenProps> = ({
   const [editingPenPal, setEditingPenPal] = useState<BottleAI | null>(null);
 
   useEffect(() => {
-    loadPenPals();
-    // 为自定义笔友生成AI介绍
-    generateIntrosForCustomPenPals();
+    // 先加载数据，再生成介绍
+    initializeData();
   }, []);
+
+  const initializeData = async () => {
+    // 1. 先加载所有数据
+    await loadPenPals();
+    // 2. 数据加载完成后，为自定义笔友生成AI介绍
+    await generateIntrosForCustomPenPals();
+  };
 
   // 为所有没有customBackground的自定义笔友生成介绍
   const generateIntrosForCustomPenPals = async () => {
-    const customPals = getCustomPenPals();
+    const customPals = getCustomPenPals(); // 此时缓存已经加载
     for (const penPal of customPals) {
       if (!penPal.customBackground || !penPal.customBackground.trim()) {
         // 异步生成，不阻塞UI
