@@ -12,6 +12,7 @@ import {
   GrowthStage 
 } from '../types';
 import { smartLoad, smartSave } from './storage';
+import { recordWordLearning } from './aiMemorySystem';
 
 /**
  * 创建新的AI儿童
@@ -213,8 +214,17 @@ export const teachWord = async (
         );
       }
       
-      // 保存
+      // 保存到conversations（用户可见）
       await smartSave('conversations', conversations);
+      
+      // 保存到AI记忆库（后台）
+      await recordWordLearning(
+        childId,
+        word,
+        definition,
+        'wordcard', // 从词卡学习
+        `用户教学：${definition}`
+      );
       
       return { 
         success: true, 

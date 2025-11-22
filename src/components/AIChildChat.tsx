@@ -4,10 +4,11 @@
  */
 
 import { useState, useEffect, useRef } from 'react';
-import { Send, ArrowLeft } from 'lucide-react';
+import { ArrowLeft, Send } from 'lucide-react';
 import { Conversation, Message, ApiConfig } from '../types';
-import { getAIChild } from '../utils/aiKindergartenManager';
 import { smartLoad, smartSave } from '../utils/storage';
+import { recordWordLearning } from '../utils/aiMemorySystem';
+import { getAIChild } from '../utils/aiKindergartenManager';
 
 interface AIChildChatProps {
   childId: string;
@@ -189,12 +190,22 @@ export default function AIChildChat({ childId, onBack, apiConfig }: AIChildChatP
             const alreadyKnows = child.aiChildData.vocabulary.some(w => w.word === word);
             
             if (!alreadyKnows) {
-              // 自动学习这个词
+              // 自动学习这个词（保存用户教的定义）
               const { teachWord } = await import('../utils/aiKindergartenManager');
-              const success = await teachWord(childId, word, userInput, []);
+              const result = await teachWord(childId, word, userInput, []);
               
-              if (success) {
+              if (result.success) {
                 console.log(`✨ 从对话中学会了"${word}"!`);
+                
+                // 保存到AI记忆库（后台）
+                await recordWordLearning(
+                  childId,
+                  word,
+                  userInput, // 用户教的定义（原文）
+                  'chat', // 从聊天学习
+                  `聊天中学习，用户说：${userInput}`
+                );
+                
                 // 清除标记
                 sessionStorage.removeItem('lastAIQuestion');
                 
@@ -231,10 +242,20 @@ export default function AIChildChat({ childId, onBack, apiConfig }: AIChildChatP
         
         if (!alreadyKnows) {
           const { teachWord } = await import('../utils/aiKindergartenManager');
-          const success = await teachWord(childId, word, definition, []);
+          const result = await teachWord(childId, word, definition, []);
           
-          if (success) {
+          if (result.success) {
             console.log(`✨ 从对话中学会了"${word}"!`);
+            
+            // 保存到AI记忆库（后台）
+            await recordWordLearning(
+              childId,
+              word,
+              definition, // 用户教的定义（原文）
+              'chat', // 从聊天学习
+              `用户主动教学：${userInput}`
+            );
+            
             await loadChild();
           }
         }
