@@ -1,21 +1,17 @@
 /**
- * 顶部功能菜单按钮组件
- * 参考慢邮件设计，点击展开下拉菜单
+ * 顶部导航按钮组件
+ * 显示在写信页顶部右侧：漂流瓶、我的收藏、成就、通知
  */
 
-import { Waves, Star, Trophy, Bell, MoreVertical, Send } from 'lucide-react';
-import { useState, useEffect, useRef } from 'react';
+import { Waves, Star, Trophy, Bell } from 'lucide-react';
+import { useState, useEffect } from 'react';
 
 interface TopNavButtonsProps {
   onNavigate: (page: 'bottle-fishing' | 'favorite-replies' | 'achievements' | 'letter-notifications') => void;
-  onSend?: () => void;
-  canSend?: boolean;
 }
 
-export default function TopNavButtons({ onNavigate, onSend, canSend = false }: TopNavButtonsProps) {
-  const [isMenuOpen, setIsMenuOpen] = useState(false);
+export default function TopNavButtons({ onNavigate }: TopNavButtonsProps) {
   const [unreadCount, setUnreadCount] = useState(0);
-  const menuRef = useRef<HTMLDivElement>(null);
 
   // 加载未读通知数量
   useEffect(() => {
@@ -25,23 +21,6 @@ export default function TopNavButtons({ onNavigate, onSend, canSend = false }: T
     const interval = setInterval(loadUnreadCount, 10000);
     return () => clearInterval(interval);
   }, []);
-
-  // 点击外部关闭菜单
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
-        setIsMenuOpen(false);
-      }
-    };
-
-    if (isMenuOpen) {
-      document.addEventListener('mousedown', handleClickOutside);
-    }
-    
-    return () => {
-      document.removeEventListener('mousedown', handleClickOutside);
-    };
-  }, [isMenuOpen]);
 
   const loadUnreadCount = () => {
     try {
@@ -53,54 +32,27 @@ export default function TopNavButtons({ onNavigate, onSend, canSend = false }: T
     }
   };
 
-  const menuItems = [
-    {
-      id: 'send' as const,
-      icon: Send,
-      label: '寄出',
-      color: 'text-orange-600',
-      bgHover: 'hover:bg-orange-50',
-      show: canSend && onSend,
-      onClick: () => {
-        onSend?.();
-        setIsMenuOpen(false);
-      }
-    },
+  const buttons = [
     {
       id: 'bottle-fishing' as const,
       icon: Waves,
       label: '漂流瓶',
       color: 'text-blue-600',
-      bgHover: 'hover:bg-blue-50',
-      show: true,
-      onClick: () => {
-        onNavigate('bottle-fishing');
-        setIsMenuOpen(false);
-      }
+      bgHover: 'hover:bg-blue-50'
     },
     {
       id: 'favorite-replies' as const,
       icon: Star,
-      label: '我的收藏',
+      label: '收藏',
       color: 'text-yellow-600',
-      bgHover: 'hover:bg-yellow-50',
-      show: true,
-      onClick: () => {
-        onNavigate('favorite-replies');
-        setIsMenuOpen(false);
-      }
+      bgHover: 'hover:bg-yellow-50'
     },
     {
       id: 'achievements' as const,
       icon: Trophy,
       label: '成就',
       color: 'text-purple-600',
-      bgHover: 'hover:bg-purple-50',
-      show: true,
-      onClick: () => {
-        onNavigate('achievements');
-        setIsMenuOpen(false);
-      }
+      bgHover: 'hover:bg-purple-50'
     },
     {
       id: 'letter-notifications' as const,
@@ -108,81 +60,38 @@ export default function TopNavButtons({ onNavigate, onSend, canSend = false }: T
       label: '通知',
       color: 'text-orange-600',
       bgHover: 'hover:bg-orange-50',
-      badge: unreadCount,
-      show: true,
-      onClick: () => {
-        onNavigate('letter-notifications');
-        setIsMenuOpen(false);
-        setTimeout(loadUnreadCount, 500);
-      }
+      badge: unreadCount
     }
   ];
 
   return (
-    <div className="relative" ref={menuRef}>
-      {/* 菜单按钮 */}
-      <button
-        onClick={() => setIsMenuOpen(!isMenuOpen)}
-        className="relative p-2 rounded-full hover:bg-gray-100 transition-all"
-      >
-        <MoreVertical size={24} className="text-gray-700" strokeWidth={2} />
-        
-        {/* 未读数量红点 */}
-        {unreadCount > 0 && (
-          <span className="absolute top-0 right-0 bg-red-500 text-white text-[9px] font-bold rounded-full min-w-[16px] h-[16px] flex items-center justify-center px-1">
-            {unreadCount > 99 ? '99+' : unreadCount}
-          </span>
-        )}
-      </button>
-
-      {/* 下拉菜单 */}
-      {isMenuOpen && (
-        <div className="absolute right-0 top-full mt-2 w-48 bg-white rounded-2xl shadow-2xl border border-gray-200 overflow-hidden z-50 animate-slideDown">
-          {menuItems.filter(item => item.show).map((item, index) => {
-            const Icon = item.icon;
-            const isFirst = index === 0;
+    <div className="flex items-center gap-2">
+      {buttons.map((button) => {
+        const Icon = button.icon;
+        return (
+          <button
+            key={button.id}
+            onClick={() => {
+              onNavigate(button.id);
+              // 如果是通知按钮，点击后刷新未读数
+              if (button.id === 'letter-notifications') {
+                setTimeout(loadUnreadCount, 500);
+              }
+            }}
+            className={`relative p-2 rounded-full transition-all ${button.bgHover} ${button.color}`}
+            title={button.label}
+          >
+            <Icon size={20} strokeWidth={2} />
             
-            return (
-              <button
-                key={item.id}
-                onClick={item.onClick}
-                className={`w-full flex items-center gap-3 px-4 py-3 transition-all ${item.bgHover} ${
-                  isFirst ? 'border-b-2 border-orange-200' : ''
-                }`}
-              >
-                <div className={`relative ${item.color}`}>
-                  <Icon size={20} strokeWidth={2} />
-                  {item.badge && item.badge > 0 && (
-                    <span className="absolute -top-1 -right-1 bg-red-500 text-white text-[8px] font-bold rounded-full min-w-[14px] h-[14px] flex items-center justify-center px-0.5">
-                      {item.badge > 99 ? '99+' : item.badge}
-                    </span>
-                  )}
-                </div>
-                <span className={`text-sm font-medium ${item.color}`}>
-                  {item.label}
-                </span>
-              </button>
-            );
-          })}
-        </div>
-      )}
-
-      {/* 下拉动画 */}
-      <style>{`
-        @keyframes slideDown {
-          from {
-            opacity: 0;
-            transform: translateY(-10px);
-          }
-          to {
-            opacity: 1;
-            transform: translateY(0);
-          }
-        }
-        .animate-slideDown {
-          animation: slideDown 0.2s ease-out;
-        }
-      `}</style>
+            {/* 未读数量红点 */}
+            {button.badge && button.badge > 0 && (
+              <span className="absolute -top-1 -right-1 bg-red-500 text-white text-[10px] font-bold rounded-full min-w-[18px] h-[18px] flex items-center justify-center px-1">
+                {button.badge > 99 ? '99+' : button.badge}
+              </span>
+            )}
+          </button>
+        );
+      })}
     </div>
   );
 }

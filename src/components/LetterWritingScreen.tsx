@@ -7,10 +7,10 @@ import { Conversation } from '../types';
 import { sendLetter, getAllPresetAIs, getCustomPenPals, saveCustomPenPal, continueReply } from '../utils/letterService';
 import { BottleAI, Letter } from '../types/letter';
 import { getSafeAvatar } from '../utils/avatarHelper';
-import { ArrowLeft, Sparkles, Users, UserPlus } from 'lucide-react';
+import { ArrowLeft, Send, Sparkles, Users, UserPlus } from 'lucide-react';
 import LetterSendingAnimation from './LetterSendingAnimation';
 import CustomPenPalCreator from './CustomPenPalCreator';
-import TopNavButtons from './TopNavButtons';
+import LetterMenuDropdown from './LetterMenuDropdown';
 
 interface LetterWritingScreenProps {
   onBack: () => void;
@@ -150,22 +150,37 @@ const LetterWritingScreen: React.FC<LetterWritingScreenProps> = ({
     <div className="fixed inset-0 bg-gradient-to-br from-amber-50 via-orange-50 to-yellow-50 z-50 flex flex-col">
       {/* 顶部导航栏 */}
       <div className="bg-white/80 backdrop-blur-sm border-b border-orange-200 px-4 py-3 flex items-center justify-between">
-        <button
-          onClick={onBack}
-          className="p-2 hover:bg-orange-100 rounded-full transition-colors"
-        >
-          <ArrowLeft size={24} className="text-gray-700" />
-        </button>
+        {/* 左侧：返回 + 功能菜单 */}
+        <div className="flex items-center gap-2">
+          <button
+            onClick={onBack}
+            className="p-2 hover:bg-orange-100 rounded-full transition-colors"
+          >
+            <ArrowLeft size={22} className="text-gray-700" />
+          </button>
+          
+          {/* 功能菜单下拉 */}
+          {onNavigate && (
+            <LetterMenuDropdown onNavigate={onNavigate} />
+          )}
+        </div>
+        
+        {/* 中间：标题 */}
         <h1 className="text-lg font-semibold text-gray-800">写信</h1>
         
-        {/* 功能菜单按钮 */}
-        {onNavigate && (
-          <TopNavButtons 
-            onNavigate={onNavigate}
-            onSend={handleSendLetter}
-            canSend={!!(content.trim() && selectedReceiver)}
-          />
-        )}
+        {/* 右侧：寄出按钮（简化版） */}
+        <button
+          onClick={handleSendLetter}
+          disabled={!content.trim() || !selectedReceiver}
+          className={`p-2 rounded-full transition-all ${
+            content.trim() && selectedReceiver
+              ? 'bg-orange-500 text-white hover:bg-orange-600'
+              : 'bg-gray-200 text-gray-400 cursor-not-allowed'
+          }`}
+          title="寄出"
+        >
+          <Send size={20} strokeWidth={2} />
+        </button>
       </div>
 
       {/* 主体内容 */}
