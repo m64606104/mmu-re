@@ -35,7 +35,8 @@ const INDEXED_DB_KEYS = [
   'music_library',      // 音乐库
   'user_data',          // 用户扩展数据
   'app_cache',          // 应用缓存
-  'slow_letters'        // 慢邮件/信件数据
+  'slow_letters',       // 慢邮件/信件数据
+  'custom_pen_pals'     // 自定义笔友数据
 ];
 
 /**

@@ -5,7 +5,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { Letter, BottleAI } from '../types/letter';
-import { getAllPenPals, getPenPalStats, getCustomPenPals, saveCustomPenPal, generateSelfIntroByAI } from '../utils/letterService';
+import { getAllPenPals, getPenPalStats, getCustomPenPals, loadCustomPenPals, saveCustomPenPal, generateSelfIntroByAI } from '../utils/letterService';
 import { ArrowLeft, MapPin, Heart, MessageCircle, Mail, Sparkles, ChevronDown, ChevronUp, Edit, X, Save } from 'lucide-react';
 import LetterDetailModal from './LetterDetailModal';
 
@@ -44,9 +44,9 @@ const PenPalListScreen: React.FC<PenPalListScreenProps> = ({
     }
   };
 
-  const loadPenPals = () => {
+  const loadPenPals = async () => {
     const pals = getAllPenPals();
-    const customPals = getCustomPenPals();
+    const customPals = await loadCustomPenPals(); // 从IndexedDB异步加载
     const statistics = getPenPalStats();
     setPenPals(pals);
     setCustomPenPals(customPals);
@@ -74,7 +74,7 @@ const PenPalListScreen: React.FC<PenPalListScreenProps> = ({
       
       // 更新并保存
       penPal.customBackground = intro;
-      saveCustomPenPal(penPal);
+      await saveCustomPenPal(penPal);
       
       // 刷新列表
       loadPenPals();
@@ -427,8 +427,8 @@ const PenPalListScreen: React.FC<PenPalListScreenProps> = ({
                   取消
                 </button>
                 <button
-                  onClick={() => {
-                    if (saveCustomPenPal(editingPenPal)) {
+                  onClick={async () => {
+                    if (await saveCustomPenPal(editingPenPal)) {
                       setEditingPenPal(null);
                       loadPenPals();
                     } else {

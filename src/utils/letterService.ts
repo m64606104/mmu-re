@@ -2404,15 +2404,35 @@ export function canContinueReply(letterId: string): {
 
 const CUSTOM_PENPALS_KEY = 'custom_pen_pals';
 
+// 内存缓存
+let customPenPalsCache: BottleAI[] | null = null;
+
 /**
- * 获取所有自定义笔友
+ * 获取所有自定义笔友（从IndexedDB）
  */
 export function getCustomPenPals(): BottleAI[] {
+  // 返回缓存数据
+  if (customPenPalsCache !== null) {
+    return customPenPalsCache;
+  }
+  
+  // 如果缓存未初始化，返回空数组（异步加载中）
+  return [];
+}
+
+/**
+ * 异步加载自定义笔友数据
+ */
+export async function loadCustomPenPals(): Promise<BottleAI[]> {
   try {
-    const data = localStorage.getItem(CUSTOM_PENPALS_KEY);
-    return data ? JSON.parse(data) : [];
+    const { load } = await import('./storage');
+    const data = await load(CUSTOM_PENPALS_KEY);
+    const penpals = (data as BottleAI[]) || [];
+    customPenPalsCache = penpals;
+    return penpals;
   } catch (error) {
     console.error('读取自定义笔友失败:', error);
+    customPenPalsCache = [];
     return [];
   }
 }
@@ -2483,9 +2503,9 @@ export async function generateSelfIntroByAI(rolePrompt: string, apiConfig: any):
 }
 
 /**
- * 保存自定义笔友
+ * 保存自定义笔友（到IndexedDB）
  */
-export function saveCustomPenPal(penPal: BottleAI): boolean {
+export async function saveCustomPenPal(penPal: BottleAI): Promise<boolean> {
   try {
     // 验证必填字段
     if (!penPal.customRolePrompt || !penPal.customRolePrompt.trim()) {
@@ -2503,7 +2523,12 @@ export function saveCustomPenPal(penPal: BottleAI): boolean {
       customPenPals.push(penPal);
     }
     
-    localStorage.setItem(CUSTOM_PENPALS_KEY, JSON.stringify(customPenPals));
+    // 更新缓存
+    customPenPalsCache = customPenPals;
+    
+    // 保存到IndexedDB
+    const { save } = await import('./storage');
+    await save(CUSTOM_PENPALS_KEY, customPenPals);
     
     console.log(`✨ 已保存自定义笔友: ${penPal.name}`);
     return true;
@@ -2514,9 +2539,9 @@ export function saveCustomPenPal(penPal: BottleAI): boolean {
 }
 
 /**
- * 删除自定义笔友
+ * 删除自定义笔友（从IndexedDB）
  */
-export function deleteCustomPenPal(penPalId: string): boolean {
+export async function deleteCustomPenPal(penPalId: string): Promise<boolean> {
   try {
     const customPenPals = getCustomPenPals();
     const filtered = customPenPals.filter(p => p.id !== penPalId);
@@ -2525,7 +2550,13 @@ export function deleteCustomPenPal(penPalId: string): boolean {
       return false; // 未找到
     }
     
-    localStorage.setItem(CUSTOM_PENPALS_KEY, JSON.stringify(filtered));
+    // 更新缓存
+    customPenPalsCache = filtered;
+    
+    // 保存到IndexedDB
+    const { save } = await import('./storage');
+    await save(CUSTOM_PENPALS_KEY, filtered);
+    
     console.log(`🗑️ 已删除自定义笔友`);
     return true;
   } catch (error) {
