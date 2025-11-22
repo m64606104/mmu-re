@@ -169,7 +169,7 @@ const LetterWritingScreen: React.FC<LetterWritingScreenProps> = ({
       </div>
 
       {/* 主体内容 */}
-      <div className="flex-1 overflow-y-auto p-4">
+      <div className="flex-1 overflow-y-auto p-4 pb-28">
         {/* 信纸 */}
         <div className="max-w-2xl mx-auto rounded-3xl shadow-2xl overflow-hidden relative">
           {/* 信封背景 */}
