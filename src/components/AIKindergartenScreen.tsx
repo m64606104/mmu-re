@@ -7,6 +7,8 @@ import { useState, useEffect } from 'react';
 import { ChevronLeft, Book, MessageCircle, TrendingUp, Award } from 'lucide-react';
 import { Conversation, ApiConfig } from '../types';
 import AIChildChat from './AIChildChat';
+import ReadingScreen from './ReadingScreen';
+import GrowthReportScreen from './GrowthReportScreen';
 import { 
   createAIChild, 
   getAIChild, 
@@ -27,6 +29,8 @@ export default function AIKindergartenScreen({ onBack, apiConfig }: AIKindergart
   const [newChildName, setNewChildName] = useState('');
   const [teachingMode, setTeachingMode] = useState(false);
   const [chatMode, setChatMode] = useState(false);
+  const [readingMode, setReadingMode] = useState(false);
+  const [reportMode, setReportMode] = useState(false);
   const [currentWord, setCurrentWord] = useState('');
   const [currentDefinition, setCurrentDefinition] = useState('');
   const [teachResult, setTeachResult] = useState('');
@@ -123,6 +127,34 @@ export default function AIKindergartenScreen({ onBack, apiConfig }: AIKindergart
           loadChildren(); // 刷新数据
         }}
         apiConfig={apiConfig}
+      />
+    );
+  }
+
+  // 如果在阅读模式，显示阅读组件
+  if (readingMode && selectedChild) {
+    return (
+      <ReadingScreen
+        child={selectedChild}
+        onBack={() => {
+          setReadingMode(false);
+          loadChildren(); // 刷新数据
+        }}
+        onUpdateChild={loadChildren}
+        apiConfig={apiConfig}
+      />
+    );
+  }
+
+  // 如果在报告模式，显示成长报告
+  if (reportMode && selectedChild) {
+    return (
+      <GrowthReportScreen
+        child={selectedChild}
+        onBack={() => {
+          setReportMode(false);
+          loadChildren(); // 刷新数据
+        }}
       />
     );
   }
@@ -238,6 +270,7 @@ export default function AIKindergartenScreen({ onBack, apiConfig }: AIKindergart
               </button>
 
               <button
+                onClick={() => setReadingMode(true)}
                 className="bg-white p-4 rounded-xl text-gray-700 font-medium hover:bg-gray-50 transition-all"
               >
                 <Book className="w-6 h-6 mx-auto mb-2" />
@@ -245,6 +278,7 @@ export default function AIKindergartenScreen({ onBack, apiConfig }: AIKindergart
               </button>
 
               <button
+                onClick={() => setReportMode(true)}
                 className="bg-white p-4 rounded-xl text-gray-700 font-medium hover:bg-gray-50 transition-all"
               >
                 <TrendingUp className="w-6 h-6 mx-auto mb-2" />
