@@ -114,8 +114,8 @@ const LetterWritingScreen: React.FC<LetterWritingScreenProps> = ({
     }
   };
   
-  const handleCreateCustomPenPal = (penPal: BottleAI) => {
-    const success = saveCustomPenPal(penPal);
+  const handleCreateCustomPenPal = async (penPal: BottleAI) => {
+    const success = await saveCustomPenPal(penPal);
     if (success) {
       setCustomPenPals(getCustomPenPals());
       setShowCustomPenPalCreator(false);
