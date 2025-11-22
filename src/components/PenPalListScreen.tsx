@@ -144,14 +144,19 @@ const PenPalListScreen: React.FC<PenPalListScreenProps> = ({
                           </span>
                         </div>
 
-                        {/* 角色设定 */}
+                        {/* 角色简介 - 改为更自然的展示方式 */}
                         <div className="space-y-1 mb-3">
-                          <div className="text-xs text-gray-600 line-clamp-2">
-                            {penPal.customRolePrompt}
+                          <div className="flex items-center gap-2 text-xs text-gray-500">
+                            <MapPin size={12} />
+                            <span>虚拟世界</span>
                           </div>
-                          {penPal.customBackground && (
-                            <div className="text-xs text-gray-500 line-clamp-1">
-                              💭 {penPal.customBackground}
+                          {penPal.customBackground ? (
+                            <div className="text-xs text-gray-600 line-clamp-2">
+                              {penPal.customBackground}
+                            </div>
+                          ) : (
+                            <div className="text-xs text-gray-500 italic">
+                              一个有趣的灵魂，等待与你交流
                             </div>
                           )}
                         </div>
