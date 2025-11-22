@@ -123,7 +123,7 @@ export default function LetterMenuDropdownNew({ onNavigate }: LetterMenuDropdown
       {/* 下拉菜单 - 窄胶囊，流体延伸 */}
       {isOpen && (
         <div 
-          className="absolute top-11 left-1/2 transform -translate-x-1/2 z-[200] w-[52px]"
+          className="absolute top-11 left-1/2 transform -translate-x-1/2 z-[200] w-[52px] pointer-events-none"
           style={{
             animation: 'expandDown 300ms cubic-bezier(0.4, 0, 0.2, 1)',
           }}
@@ -142,7 +142,7 @@ export default function LetterMenuDropdownNew({ onNavigate }: LetterMenuDropdown
           `}</style>
           
           {/* 胶囊容器 */}
-          <div className="bg-white/90 backdrop-blur-md rounded-full shadow-xl border border-orange-200/50 py-2 px-1.5">
+          <div className="bg-white/90 backdrop-blur-md rounded-full shadow-xl border border-orange-200/50 py-2 px-1.5 pointer-events-auto">
             {menuItems.map((item) => {
               const Icon = item.icon;
               const isNotification = item.id === 'letter-notifications';
