@@ -11,11 +11,11 @@ import ReadingScreen from './ReadingScreen';
 import GrowthReportScreen from './GrowthReportScreen';
 import { 
   createAIChild, 
-  getAIChild, 
   getAllAIChildren,
   teachWord,
   updateDailyInteraction 
 } from '../utils/aiKindergartenManager';
+import { WordCard, getRandomCards, getRecommendedDifficulty } from '../utils/wordCardLibrary';
 
 interface AIKindergartenScreenProps {
   onBack: () => void;
@@ -31,13 +31,53 @@ export default function AIKindergartenScreen({ onBack, apiConfig }: AIKindergart
   const [chatMode, setChatMode] = useState(false);
   const [readingMode, setReadingMode] = useState(false);
   const [reportMode, setReportMode] = useState(false);
-  const [currentWord, setCurrentWord] = useState('');
-  const [currentDefinition, setCurrentDefinition] = useState('');
+  
+  // 词卡系统
+  const [currentCards, setCurrentCards] = useState<WordCard[]>([]);
+  const [dailyRounds, setDailyRounds] = useState(0);
   const [teachResult, setTeachResult] = useState('');
+  const [selectedCard, setSelectedCard] = useState<WordCard | null>(null);
 
   useEffect(() => {
     loadChildren();
   }, []);
+
+  // 加载今日学习轮数
+  useEffect(() => {
+    const today = new Date().toDateString();
+    const savedData = localStorage.getItem('dailyTeachingData');
+    if (savedData) {
+      const data = JSON.parse(savedData);
+      if (data.date === today) {
+        setDailyRounds(data.rounds);
+      } else {
+        // 新的一天，重置
+        localStorage.setItem('dailyTeachingData', JSON.stringify({ date: today, rounds: 0 }));
+        setDailyRounds(0);
+      }
+    } else {
+      localStorage.setItem('dailyTeachingData', JSON.stringify({ date: today, rounds: 0 }));
+    }
+  }, []);
+
+  // 刷新词卡
+  const refreshCards = () => {
+    if (!selectedChild || !selectedChild.aiChildData) return;
+    
+    const learnedWords = selectedChild.aiChildData.vocabulary.map(w => w.word);
+    const maxDifficulty = getRecommendedDifficulty(selectedChild.aiChildData.vocabulary.length);
+    const newCards = getRandomCards(4, learnedWords, maxDifficulty);
+    setCurrentCards(newCards);
+    setSelectedCard(null);
+    setTeachResult('');
+  };
+
+  // 打开教学模式时加载词卡
+  useEffect(() => {
+    if (teachingMode && selectedChild) {
+      refreshCards();
+    }
+  }, [teachingMode, selectedChild]);
 
   const loadChildren = async () => {
     const allChildren = await getAllAIChildren();
@@ -70,31 +110,43 @@ export default function AIKindergartenScreen({ onBack, apiConfig }: AIKindergart
     saveChild();
   };
 
-  const handleTeachWord = async () => {
-    if (!selectedChild || !currentWord.trim() || !currentDefinition.trim()) {
-      alert('请输入词语和解释');
+  const handleSelectCard = async (card: WordCard) => {
+    if (!selectedChild || !selectedChild.aiChildData) return;
+    
+    // 检查每日限制
+    if (dailyRounds >= 20) {
+      setTeachResult('🌙 今天已经学了20个词啦，明天再来吧～');
       return;
     }
 
+    setSelectedCard(card);
+    
+    // 教学这个词
     const result = await teachWord(
       selectedChild.id,
-      currentWord.trim(),
-      currentDefinition.trim()
+      card.word,
+      card.definition,
+      card.examples
     );
 
-    setTeachResult(result.message);
-    setCurrentWord('');
-    setCurrentDefinition('');
-
-    // 刷新儿童数据
-    const updatedChild = await getAIChild(selectedChild.id);
-    if (updatedChild) {
-      setSelectedChild(updatedChild);
-      loadChildren();
+    if (result) {
+      setTeachResult(`✨ 成功学会了"${card.word}"！获得了10点经验值`);
+      
+      // 更新每日轮数
+      const newRounds = dailyRounds + 1;
+      setDailyRounds(newRounds);
+      const today = new Date().toDateString();
+      localStorage.setItem('dailyTeachingData', JSON.stringify({ date: today, rounds: newRounds }));
+      
+      // 刷新数据和卡片
+      setTimeout(() => {
+        loadChildren();
+        refreshCards();
+      }, 1500);
+    } else {
+      setTeachResult('❌ 教学失败，请重试');
+      setSelectedCard(null);
     }
-
-    // 3秒后清除结果
-    setTimeout(() => setTeachResult(''), 3000);
   };
 
   const getStageEmoji = (stage: string) => {
@@ -286,54 +338,87 @@ export default function AIKindergartenScreen({ onBack, apiConfig }: AIKindergart
               </button>
             </div>
 
-            {/* Teaching Panel */}
+            {/* Teaching Panel - 词卡四宫格 */}
             {teachingMode && (
               <div className="bg-white rounded-2xl p-6 shadow-sm">
-                <h3 className="text-lg font-semibold text-gray-800 mb-4 flex items-center gap-2">
-                  <Award className="w-5 h-5 text-blue-500" />
-                  教{selectedChild.name}认字
-                </h3>
-                
-                <div className="space-y-3">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      教什么词？
-                    </label>
-                    <input
-                      type="text"
-                      value={currentWord}
-                      onChange={(e) => setCurrentWord(e.target.value)}
-                      placeholder="例如：苹果"
-                      className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    />
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-lg font-semibold text-gray-800 flex items-center gap-2">
+                    <Award className="w-5 h-5 text-blue-500" />
+                    选一张词卡教{selectedChild.name}
+                  </h3>
+                  <div className="text-sm text-gray-600">
+                    今日 {dailyRounds}/20
                   </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      怎么解释？
-                    </label>
-                    <textarea
-                      value={currentDefinition}
-                      onChange={(e) => setCurrentDefinition(e.target.value)}
-                      placeholder="例如：苹果是一种水果，红色的，圆圆的，很好吃"
-                      rows={3}
-                      className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    />
-                  </div>
-
-                  <button
-                    onClick={handleTeachWord}
-                    className="w-full py-3 bg-gradient-to-r from-blue-500 to-purple-500 text-white rounded-xl font-medium hover:shadow-lg transition-all"
-                  >
-                    开始教学
-                  </button>
-
-                  {teachResult && (
-                    <div className="p-3 bg-green-50 border border-green-200 rounded-xl text-green-700 text-sm text-center">
-                      {teachResult}
-                    </div>
-                  )}
                 </div>
+
+                {/* 四宫格词卡 */}
+                {currentCards.length > 0 ? (
+                  <div className="grid grid-cols-2 gap-3 mb-4">
+                    {currentCards.map((card) => (
+                      <button
+                        key={card.id}
+                        onClick={() => handleSelectCard(card)}
+                        disabled={selectedCard?.id === card.id}
+                        className={`relative p-4 rounded-xl border-2 transition-all ${
+                          selectedCard?.id === card.id
+                            ? 'border-blue-500 bg-blue-50 scale-105'
+                            : 'border-gray-200 hover:border-blue-300 hover:shadow-md active:scale-95'
+                        }`}
+                      >
+                        {/* 表情符号 */}
+                        <div className="text-4xl mb-2 text-center">{card.emoji}</div>
+                        
+                        {/* 词语 */}
+                        <div className="text-center font-semibold text-gray-800 mb-1">
+                          {card.word}
+                        </div>
+                        
+                        {/* 难度标签 */}
+                        <div className="flex justify-center">
+                          <span className={`text-xs px-2 py-0.5 rounded ${
+                            card.difficulty === 1 ? 'bg-green-100 text-green-600' :
+                            card.difficulty === 2 ? 'bg-blue-100 text-blue-600' :
+                            'bg-purple-100 text-purple-600'
+                          }`}>
+                            Lv.{card.difficulty}
+                          </span>
+                        </div>
+
+                        {/* 选中动画 */}
+                        {selectedCard?.id === card.id && (
+                          <div className="absolute inset-0 flex items-center justify-center bg-blue-500/10 rounded-xl">
+                            <div className="text-2xl">✨</div>
+                          </div>
+                        )}
+                      </button>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="text-center py-8 text-gray-500">
+                    <div className="text-4xl mb-2">🎉</div>
+                    <p className="text-sm">太棒了！所有词卡都学完啦</p>
+                  </div>
+                )}
+
+                {/* 刷新按钮 */}
+                <button
+                  onClick={refreshCards}
+                  disabled={dailyRounds >= 20}
+                  className="w-full py-2 text-sm text-gray-600 hover:text-blue-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  🔄 换一批词卡
+                </button>
+
+                {/* 教学结果 */}
+                {teachResult && (
+                  <div className={`mt-3 p-3 rounded-xl text-sm text-center ${
+                    teachResult.includes('成功') 
+                      ? 'bg-green-50 border border-green-200 text-green-700'
+                      : 'bg-orange-50 border border-orange-200 text-orange-700'
+                  }`}>
+                    {teachResult}
+                  </div>
+                )}
 
                 {/* Recent Words */}
                 {selectedChild.aiChildData.vocabulary.length > 0 && (
