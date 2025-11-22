@@ -411,7 +411,7 @@ export default function HomeScreen({ onNavigate, theme }: HomeScreenProps) {
     music: { icon: Music, name: '音乐' },
     phone: { icon: Phone, name: '电话' },
     bell: { icon: BookOpen, name: '使用说明', onClick: () => onNavigate('guide') },
-    mail: { icon: Mailbox, name: '信箱', onClick: () => onNavigate('letterbox') },
+    mail: { icon: Mailbox, name: '信箱', onClick: () => onNavigate('letter-writing') },
     announcement: { icon: Bell, name: '公告', onClick: () => onNavigate('announcement') },
     heart: { icon: Heart, name: '收藏' },
     database: { icon: Database, name: '资料库', onClick: () => onNavigate('database') },

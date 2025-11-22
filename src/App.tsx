@@ -31,6 +31,7 @@ import RecycleBinScreen from './components/RecycleBinScreen';
 import BottleFishingScreen from './components/BottleFishingScreen';
 import FavoriteRepliesScreen from './components/FavoriteRepliesScreen';
 import BottomNavBar from './components/BottomNavBar';
+import UnrepliedLettersScreen from './components/UnrepliedLettersScreen';
 import ToastContainer from './components/ToastContainer';
 import { MomentsAutoGenerator } from './components/MomentsAutoGenerator';
 import { AIMomentsInteractionManager } from './components/AIMomentsInteractionManager';
@@ -46,7 +47,7 @@ import { initializeLetters, initializeLetterTimers } from './utils/letterService
 import { Letter } from './types/letter';
 
 function App() {
-  const [currentScreen, setCurrentScreen] = useState<Screen>('letter-writing'); // 默认显示写信页面
+  const [currentScreen, setCurrentScreen] = useState<Screen>('home');
   const [previousScreen, setPreviousScreen] = useState<Screen>('social'); // 记录来源页面
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [currentConversationId, setCurrentConversationId] = useState<string | null>(null);
@@ -970,7 +971,7 @@ function App() {
       case 'letterbox':
         return (
           <GroupedLetterBoxScreen
-            onBack={() => navigateTo('home')}
+            onBack={() => navigateTo('letter-writing')}
             onWriteNew={() => {
               setReplyToLetter(null);
               navigateTo('letter-writing');
@@ -991,7 +992,7 @@ function App() {
       case 'pen-pals':
         return (
           <PenPalListScreen
-            onBack={() => navigateTo('letterbox')}
+            onBack={() => navigateTo('letter-writing')}
             onWriteTo={() => {
               // 跟转到写信页面
               navigateTo('letter-writing');
@@ -1002,32 +1003,32 @@ function App() {
       case 'archived-letters':
         return (
           <ArchivedLettersScreen
-            onBack={() => navigateTo('letterbox')}
+            onBack={() => navigateTo('letter-writing')}
           />
         );
       case 'favorite-letters':
         return (
           <FavoriteLettersScreen
-            onBack={() => navigateTo('letterbox')}
+            onBack={() => navigateTo('letter-writing')}
             userName={userProfile.username}
           />
         );
       case 'achievements':
         return (
           <AchievementScreen
-            onBack={() => navigateTo('letterbox')}
+            onBack={() => navigateTo('letter-writing')}
           />
         );
       case 'stamp-collection':
         return (
           <StampCollectionScreen
-            onBack={() => navigateTo('letterbox')}
+            onBack={() => navigateTo('letter-writing')}
           />
         );
       case 'letter-notifications':
         return (
           <LetterNotificationCenter
-            onBack={() => navigateTo('letterbox')}
+            onBack={() => navigateTo('letter-writing')}
             onNotificationClick={(notification) => {
               // 点击通知跳转到对应的信件
               if (notification.letterId) {
@@ -1039,36 +1040,55 @@ function App() {
       case 'bottle-fishing':
         return (
           <BottleFishingScreen
-            onBack={() => navigateTo('letterbox')}
+            onBack={() => navigateTo('letter-writing')}
             userName={userProfile.username}
           />
         );
       case 'letter-writing':
         return (
-          <LetterWritingScreen
-            onBack={() => {
-              setReplyToLetter(null);
-              navigateTo('letterbox');
+          <div className="relative">
+            <LetterWritingScreen
+              onBack={() => {
+                setReplyToLetter(null);
+                navigateTo('letter-writing');
+              }}
+              onSent={() => {
+                setReplyToLetter(null);
+                navigateTo('letter-writing');
+              }}
+              conversations={conversations}
+              userName={userProfile.username}
+              replyToLetter={replyToLetter}
+            />
+            <BottomNavBar
+              currentPage="letter-writing"
+              onNavigate={(page) => {
+                setReplyToLetter(null);
+                navigateTo(page as Screen);
+              }}
+            />
+          </div>
+        );
+      case 'unreplied':
+        return (
+          <UnrepliedLettersScreen
+            onBack={() => navigateTo('letter-writing')}
+            onReply={(letter) => {
+              setReplyToLetter(letter);
+              navigateTo('letter-writing');
             }}
-            onSent={() => {
-              setReplyToLetter(null);
-              navigateTo('letterbox');
-            }}
-            conversations={conversations}
-            userName={userProfile.username}
-            replyToLetter={replyToLetter}
           />
         );
       case 'recycle-bin':
         return (
           <RecycleBinScreen
-            onBack={() => navigateTo('letterbox')}
+            onBack={() => navigateTo('letter-writing')}
           />
         );
       case 'favorite-replies':
         return (
           <FavoriteRepliesScreen
-            onBack={() => navigateTo('letterbox')}
+            onBack={() => navigateTo('letter-writing')}
           />
         );
       default:
@@ -1081,9 +1101,7 @@ function App() {
       <div className="w-full h-screen flex items-start justify-center bg-slate-100 fixed inset-0 overflow-hidden pt-[10.5px] md:pt-[14px]">
         {/* 手机容器 - 优化尺寸 (393x800) */}
         <div className="w-[393px] h-[800px] bg-white rounded-[40px] shadow-2xl overflow-hidden relative -mt-[10.2px]">
-          <div className={['pen-pals', 'letterbox', 'letter-writing', 'recycle-bin'].includes(currentScreen) ? 'pb-20' : ''}>
-            {renderScreen()}
-          </div>
+          {renderScreen()}
           
           {/* 消息通知 - QQ风格顶部弹窗 */}
           <MessageNotification
@@ -1093,30 +1111,6 @@ function App() {
               setCurrentScreen('chat');
             }}
           />
-          
-          {/* 底部导航栏 - 仅在主页面显示 */}
-          {['pen-pals', 'letterbox', 'letter-writing', 'recycle-bin'].includes(currentScreen) && (
-            <BottomNavBar
-              currentPage={
-                currentScreen === 'pen-pals' ? 'penpals' :
-                currentScreen === 'letter-writing' ? 'letter-write' :
-                currentScreen
-              }
-              onNavigate={(page) => {
-                if (page === 'unreplied-letters') {
-                  // 未回复信件 → 跳转到信件列表的未回复tab
-                  navigateTo('letterbox');
-                  // TODO: 需要传递defaultTab参数
-                } else if (page === 'penpals') {
-                  navigateTo('pen-pals');
-                } else if (page === 'letter-write') {
-                  navigateTo('letter-writing');
-                } else {
-                  navigateTo(page as Screen);
-                }
-              }}
-            />
-          )}
         </div>
       </div>
       
