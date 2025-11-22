@@ -120,10 +120,10 @@ export default function LetterMenuDropdown({ onNavigate }: LetterMenuDropdownPro
       >
         <GridIcon size={22} className="text-gray-700" />
         
-        {/* 未读数量红点 */}
+        {/* 未读数量红点 - 缩小为10px */}
         {unreadCount > 0 && (
-          <span className="absolute top-0 right-0 bg-red-500 text-white text-[9px] font-bold rounded-full min-w-[16px] h-[16px] flex items-center justify-center px-1">
-            {unreadCount > 99 ? '99+' : unreadCount}
+          <span className="absolute top-0 right-0 bg-red-500 text-white text-[7px] font-bold rounded-full min-w-[10px] h-[10px] flex items-center justify-center px-0.5 shadow-sm">
+            {unreadCount > 9 ? '9' : unreadCount}
           </span>
         )}
       </button>

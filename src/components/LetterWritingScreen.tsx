@@ -154,7 +154,7 @@ const LetterWritingScreen: React.FC<LetterWritingScreenProps> = ({
         <div className="flex items-center gap-2">
           <button
             onClick={onBack}
-            className="relative z-[70] p-2 hover:bg-orange-100 rounded-full transition-colors"
+            className="relative z-[250] p-2 hover:bg-orange-100 rounded-full transition-colors"
           >
             <ArrowLeft size={22} className="text-gray-700" />
           </button>
