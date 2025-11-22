@@ -20,6 +20,7 @@ import {
 import { WordCard } from '../utils/wordCardLibrary';
 import { TopicCard, getRandomTopics, getRecommendedTopicDifficulty } from '../utils/topicCardLibrary';
 import { generateDailyCards, getNextRound, markWordSelected, DailyCardPool } from '../utils/smartCardGenerator';
+import { getMaxChildren, canCreateNewChild, shouldShowSwitchButton, UpgradeMessages } from '../config/kindergartenConfig';
 
 interface AIKindergartenScreenProps {
   onBack: () => void;
@@ -51,6 +52,7 @@ export default function AIKindergartenScreen({ onBack, apiConfig }: AIKindergart
   const [isGenerating, setIsGenerating] = useState(false);
   const [cardPool, setCardPool] = useState<DailyCardPool | null>(null);
   const [isLoadingCards, setIsLoadingCards] = useState(false);
+  const [showChildrenList, setShowChildrenList] = useState(false);
 
   useEffect(() => {
     loadChildren();
@@ -146,6 +148,12 @@ export default function AIKindergartenScreen({ onBack, apiConfig }: AIKindergart
   const handleCreateChild = () => {
     if (!newChildName.trim()) {
       alert('请输入宝宝的名字');
+      return;
+    }
+
+    // 检查数量限制
+    if (!canCreateNewChild(children.length)) {
+      alert(UpgradeMessages.reachedLimit(getMaxChildren()));
       return;
     }
 
@@ -398,13 +406,33 @@ export default function AIKindergartenScreen({ onBack, apiConfig }: AIKindergart
         <button onClick={onBack} className="p-2 -ml-2">
           <ChevronLeft className="w-6 h-6" />
         </button>
-        <h1 className="text-lg font-semibold">🎓 AI幼儿园</h1>
-        <button
-          onClick={() => setShowCreateChild(true)}
-          className="px-4 py-2 bg-gradient-to-r from-blue-500 to-purple-500 text-white rounded-lg text-sm font-medium"
-        >
-          + 新建
-        </button>
+        <div className="flex items-center gap-2">
+          <h1 className="text-lg font-semibold">🎓 AI幼儿园</h1>
+          {children.length > 0 && (
+            <span className="text-xs text-gray-500">
+              ({children.length}/{getMaxChildren()})
+            </span>
+          )}
+        </div>
+        <div className="flex items-center gap-2">
+          {shouldShowSwitchButton(children.length) && (
+            <button
+              onClick={() => setShowChildrenList(true)}
+              className="px-3 py-2 bg-gray-100 text-gray-700 rounded-lg text-sm font-medium hover:bg-gray-200"
+              title="切换AI"
+            >
+              切换
+            </button>
+          )}
+          {canCreateNewChild(children.length) && (
+            <button
+              onClick={() => setShowCreateChild(true)}
+              className="px-4 py-2 bg-gradient-to-r from-blue-500 to-purple-500 text-white rounded-lg text-sm font-medium"
+            >
+              + 新建
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Content */}
@@ -847,6 +875,63 @@ export default function AIKindergartenScreen({ onBack, apiConfig }: AIKindergart
                 </button>
               </div>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Children List Modal - 切换AI列表 */}
+      {showChildrenList && children.length > 1 && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl p-6 w-full max-w-md max-h-[70vh] overflow-y-auto">
+            <h2 className="text-xl font-bold text-gray-800 mb-2">选择AI宝宝</h2>
+            <p className="text-sm text-gray-500 mb-4">
+              当前版本：最多{getMaxChildren()}个AI（未来可扩展）
+            </p>
+            
+            <div className="space-y-3 mb-4">
+              {children.map((child) => (
+                <button
+                  key={child.id}
+                  onClick={() => {
+                    setSelectedChild(child);
+                    setShowChildrenList(false);
+                  }}
+                  className={`w-full p-4 rounded-xl border-2 text-left transition-all ${
+                    selectedChild?.id === child.id
+                      ? 'border-blue-500 bg-blue-50'
+                      : 'border-gray-200 hover:border-blue-300 hover:bg-gray-50'
+                  }`}
+                >
+                  <div className="flex items-center gap-3">
+                    <div className="text-3xl">
+                      {child.aiChildData ? getStageEmoji(child.aiChildData.stage) : '👶'}
+                    </div>
+                    <div className="flex-1">
+                      <div className="font-semibold text-gray-800">{child.name}</div>
+                      {child.aiChildData && (
+                        <div className="text-xs text-gray-500 mt-1">
+                          <span>{getStageName(child.aiChildData.stage)}</span>
+                          <span className="mx-2">•</span>
+                          <span>识字{child.aiChildData.vocabulary.length}个</span>
+                          <span className="mx-2">•</span>
+                          <span>Lv.{child.aiChildData.level}</span>
+                        </div>
+                      )}
+                    </div>
+                    {selectedChild?.id === child.id && (
+                      <div className="text-blue-500">✓</div>
+                    )}
+                  </div>
+                </button>
+              ))}
+            </div>
+
+            <button
+              onClick={() => setShowChildrenList(false)}
+              className="w-full py-3 border border-gray-200 rounded-xl font-medium text-gray-700 hover:bg-gray-50"
+            >
+              取消
+            </button>
           </div>
         </div>
       )}
