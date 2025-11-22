@@ -1,6 +1,7 @@
 /**
  * 信件功能下拉菜单
  * 4格图标收纳：漂流瓶、收藏、成就、通知
+ * Version: 2.0 - 移除badge数字显示，只显示小红点
  */
 
 import { Waves, Star, Trophy, Bell } from 'lucide-react';
@@ -159,20 +160,22 @@ export default function LetterMenuDropdown({ onNavigate }: LetterMenuDropdownPro
                   onClick={() => handleMenuClick(item.id)}
                   className="w-full flex flex-col items-center gap-1 py-2.5 rounded-full hover:bg-orange-50 transition-all duration-200"
                 >
-                  {/* 图标容器 - 相对定位，不限制大小 */}
+                  {/* 图标 */}
                   <div className="relative inline-flex items-center justify-center">
                     <Icon size={18} className={item.color} strokeWidth={2} />
                     
-                    {/* 小红点角标 - 只在有未读时显示在图标右上角 */}
+                    {/* 小红点 - 只在通知且有未读时显示 */}
                     {item.id === 'letter-notifications' && item.badge && item.badge > 0 && (
                       <span className="absolute -top-1 -right-1 bg-red-500 rounded-full w-[8px] h-[8px] border border-white shadow-sm"></span>
                     )}
                   </div>
                   
-                  {/* 文字标签 */}
+                  {/* 只显示文字标签，不显示badge数字 - Version 2.0 */}
                   <span className="text-[9px] font-medium text-gray-600 whitespace-nowrap">
                     {item.label.length > 4 ? item.label.substring(0, 4) : item.label}
                   </span>
+                  
+                  {/* ⚠️ 确保不渲染badge数字 - 已移除 */}
                 </button>
               );
             })}
