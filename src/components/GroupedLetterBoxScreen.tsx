@@ -175,16 +175,21 @@ export default function GroupedLetterBoxScreen({
                 let status = '';
                 let statusColor = '';
                 if (round.aiReply) {
-                  // AI已回复，检查用户是否已查看并回复
+                  // AI已回复
                   status = '已回复';
                   statusColor = 'bg-green-100 text-green-700';
-                } else if (round.roundNumber === letter.currentRound && letter.status === 'sent') {
-                  // 用户已发送，AI还没回复
+                } else if (round.userLetter.willReplyAt && Date.now() < round.userLetter.willReplyAt) {
+                  // 预计回复时间还没到，正在等待中
                   status = '等待回信';
                   statusColor = 'bg-orange-100 text-orange-700';
-                } else {
+                } else if (round.userLetter.willReplyAt && Date.now() >= round.userLetter.willReplyAt) {
+                  // 预计回复时间已过，但AI还没回复
                   status = '未回信';
                   statusColor = 'bg-blue-100 text-blue-700';
+                } else {
+                  // 没有设置willReplyAt（异常情况）
+                  status = '等待回信';
+                  statusColor = 'bg-orange-100 text-orange-700';
                 }
 
                 return (
