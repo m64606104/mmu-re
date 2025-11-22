@@ -83,7 +83,15 @@ export default function AIKindergartenScreen({ onBack, apiConfig }: AIKindergart
   const loadChildren = async () => {
     const allChildren = await getAllAIChildren();
     setChildren(allChildren);
-    if (allChildren.length > 0 && !selectedChild) {
+    
+    // 如果有选中的child，更新其最新数据
+    if (selectedChild && allChildren.length > 0) {
+      const updatedChild = allChildren.find(c => c.id === selectedChild.id);
+      if (updatedChild) {
+        setSelectedChild(updatedChild);
+      }
+    } else if (allChildren.length > 0 && !selectedChild) {
+      // 如果没有选中的child，选中第一个
       setSelectedChild(allChildren[0]);
       await updateDailyInteraction(allChildren[0].id);
     }
