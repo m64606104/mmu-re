@@ -71,28 +71,32 @@ export default function LetterMenuDropdown({ onNavigate }: LetterMenuDropdownPro
       icon: Waves,
       label: '漂流瓶',
       color: 'text-blue-600',
-      bgColor: 'bg-blue-50'
+      bgGradient: 'from-blue-100 to-cyan-100',
+      hoverBg: 'hover:bg-gradient-to-br hover:from-blue-50/50 hover:to-cyan-50/50'
     },
     {
       id: 'favorite-replies' as const,
       icon: Star,
       label: '我的收藏',
-      color: 'text-yellow-600',
-      bgColor: 'bg-yellow-50'
+      color: 'text-amber-600',
+      bgGradient: 'from-yellow-100 to-amber-100',
+      hoverBg: 'hover:bg-gradient-to-br hover:from-yellow-50/50 hover:to-amber-50/50'
     },
     {
       id: 'achievements' as const,
       icon: Trophy,
       label: '成就',
       color: 'text-purple-600',
-      bgColor: 'bg-purple-50'
+      bgGradient: 'from-purple-100 to-pink-100',
+      hoverBg: 'hover:bg-gradient-to-br hover:from-purple-50/50 hover:to-pink-50/50'
     },
     {
       id: 'letter-notifications' as const,
       icon: Bell,
       label: '通知',
       color: 'text-orange-600',
-      bgColor: 'bg-orange-50',
+      bgGradient: 'from-orange-100 to-red-100',
+      hoverBg: 'hover:bg-gradient-to-br hover:from-orange-50/50 hover:to-red-50/50',
       badge: unreadCount
     }
   ];
@@ -126,34 +130,39 @@ export default function LetterMenuDropdown({ onNavigate }: LetterMenuDropdownPro
 
       {/* 下拉菜单 */}
       {isOpen && (
-        <div className="absolute top-12 left-0 bg-white rounded-2xl shadow-2xl border border-gray-100 overflow-hidden z-[200] min-w-[180px]">
-          {menuItems.map((item, index) => {
-            const Icon = item.icon;
-            return (
-              <button
-                key={item.id}
-                onClick={() => handleMenuClick(item.id)}
-                className={`w-full flex items-center gap-3 px-4 py-3 hover:bg-gray-50 transition-colors ${
-                  index !== menuItems.length - 1 ? 'border-b border-gray-100' : ''
-                }`}
-              >
-                <div className={`w-10 h-10 rounded-full ${item.bgColor} flex items-center justify-center`}>
-                  <Icon size={20} className={item.color} strokeWidth={2} />
-                </div>
-                
-                <span className="flex-1 text-left text-sm font-medium text-gray-700">
-                  {item.label}
-                </span>
-                
-                {/* 通知数量角标 */}
-                {item.badge && item.badge > 0 && (
-                  <span className="bg-red-500 text-white text-xs font-bold rounded-full min-w-[20px] h-[20px] flex items-center justify-center px-1.5">
-                    {item.badge > 99 ? '99+' : item.badge}
+        <div className="absolute top-12 left-0 overflow-hidden z-[200] min-w-[200px] animate-in fade-in slide-in-from-top-2 duration-200">
+          {/* 温暖的背景容器 */}
+          <div className="bg-gradient-to-br from-amber-50/95 via-orange-50/95 to-yellow-50/95 backdrop-blur-xl rounded-3xl shadow-2xl border border-orange-200/50 overflow-hidden">
+            {menuItems.map((item, index) => {
+              const Icon = item.icon;
+              return (
+                <button
+                  key={item.id}
+                  onClick={() => handleMenuClick(item.id)}
+                  className={`w-full flex items-center gap-3 px-5 py-4 transition-all duration-200 ${item.hoverBg} ${
+                    index !== menuItems.length - 1 ? 'border-b border-orange-100/50' : ''
+                  }`}
+                >
+                  {/* 渐变图标背景 */}
+                  <div className={`w-11 h-11 rounded-2xl bg-gradient-to-br ${item.bgGradient} flex items-center justify-center shadow-sm`}>
+                    <Icon size={20} className={item.color} strokeWidth={2.5} />
+                  </div>
+                  
+                  {/* 标签文字 */}
+                  <span className="flex-1 text-left text-sm font-semibold text-gray-800">
+                    {item.label}
                   </span>
-                )}
-              </button>
-            );
-          })}
+                  
+                  {/* 通知数量角标 */}
+                  {item.badge && item.badge > 0 && (
+                    <span className="bg-gradient-to-br from-red-500 to-orange-500 text-white text-xs font-bold rounded-full min-w-[22px] h-[22px] flex items-center justify-center px-2 shadow-md">
+                      {item.badge > 99 ? '99+' : item.badge}
+                    </span>
+                  )}
+                </button>
+              );
+            })}
+          </div>
         </div>
       )}
     </div>
