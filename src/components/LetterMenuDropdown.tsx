@@ -157,21 +157,19 @@ export default function LetterMenuDropdown({ onNavigate }: LetterMenuDropdownPro
                 <button
                   key={item.id}
                   onClick={() => handleMenuClick(item.id)}
-                  className="w-full flex flex-col items-center gap-0.5 py-2 rounded-full hover:bg-orange-50 transition-all duration-200 relative"
+                  className="w-full flex flex-col items-center gap-1 py-2.5 rounded-full hover:bg-orange-50 transition-all duration-200"
                 >
-                  {/* 小图标 */}
-                  <div className="relative">
+                  {/* 图标容器 - 只显示图标和角标 */}
+                  <div className="relative w-[18px] h-[18px] flex items-center justify-center">
                     <Icon size={18} className={item.color} strokeWidth={2} />
                     
-                    {/* 通知小红点角标 - 放在图标右上角 */}
-                    {item.badge && item.badge > 0 && (
-                      <span className="absolute -top-0.5 -right-0.5 bg-red-500 text-white text-[7px] font-bold rounded-full min-w-[10px] h-[10px] flex items-center justify-center px-0.5 shadow-sm">
-                        {item.badge > 9 ? '9' : item.badge}
-                      </span>
+                    {/* 小红点角标 - 只在有未读时显示在图标右上角 */}
+                    {item.id === 'letter-notifications' && item.badge && item.badge > 0 && (
+                      <span className="absolute -top-1 -right-1 bg-red-500 rounded-full w-[8px] h-[8px] border border-white"></span>
                     )}
                   </div>
                   
-                  {/* 小文字在下方 */}
+                  {/* 文字标签 - 不显示数字 */}
                   <span className="text-[9px] font-medium text-gray-600 whitespace-nowrap">
                     {item.label.length > 4 ? item.label.substring(0, 4) : item.label}
                   </span>
