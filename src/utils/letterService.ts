@@ -808,9 +808,9 @@ async function generateReply(letterId: string, retryCount: number = 0, roundNumb
 /**
  * 使用真实AI API生成回信内容
  * @param letter 信件对象
- * @param roundNumber 要回复的轮次号（可选，用于生成更准确的上下文）
+ * @param _roundNumber 要回复的轮次号（可选，预留用于未来根据轮次生成不同风格的回复）
  */
-async function generateRealAIReply(letter: Letter, roundNumber?: number): Promise<string> {
+async function generateRealAIReply(letter: Letter, _roundNumber?: number): Promise<string> {
   // 获取API配置
   const apiConfig = JSON.parse(localStorage.getItem('apiConfig') || '{}');
   
