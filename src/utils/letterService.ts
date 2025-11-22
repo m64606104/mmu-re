@@ -2168,11 +2168,22 @@ export function getAllFavoriteReplies(): FavoriteReply[] {
 
 /**
  * 获取所有笔友（已加为笔友的漂流瓶AI）
+ * 按receiverId去重，只返回每个笔友的最新一封信
  */
 export function getAllPenPals(): Letter[] {
-  return getLettersFromStorage()
+  const letters = getLettersFromStorage()
     .filter(l => l.isPenPalAdded && !l.isArchived)
     .sort((a, b) => (b.repliedAt || b.sentAt) - (a.repliedAt || a.sentAt));
+  
+  // 按receiverId去重，只保留最新的一封信
+  const uniquePenPals = new Map<string, Letter>();
+  for (const letter of letters) {
+    if (!uniquePenPals.has(letter.receiverId)) {
+      uniquePenPals.set(letter.receiverId, letter);
+    }
+  }
+  
+  return Array.from(uniquePenPals.values());
 }
 
 /**
