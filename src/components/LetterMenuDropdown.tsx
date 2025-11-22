@@ -128,37 +128,53 @@ export default function LetterMenuDropdown({ onNavigate }: LetterMenuDropdownPro
         )}
       </button>
 
-      {/* 下拉菜单 */}
+      {/* 下拉菜单 - 窄窄的胶囊，流体延伸 */}
       {isOpen && (
-        <div className="absolute top-12 left-0 overflow-hidden z-[200] min-w-[200px] animate-in fade-in slide-in-from-top-2 duration-200">
-          {/* 温暖的背景容器 */}
-          <div className="bg-gradient-to-br from-amber-50/95 via-orange-50/95 to-yellow-50/95 backdrop-blur-xl rounded-3xl shadow-2xl border border-orange-200/50 overflow-hidden">
-            {menuItems.map((item, index) => {
+        <div 
+          className="absolute top-11 left-1/2 transform -translate-x-1/2 z-[200] w-[52px]"
+          style={{
+            animation: 'expandDown 300ms cubic-bezier(0.4, 0, 0.2, 1)',
+          }}
+        >
+          <style>{`
+            @keyframes expandDown {
+              from {
+                max-height: 0;
+                opacity: 0;
+              }
+              to {
+                max-height: 400px;
+                opacity: 1;
+              }
+            }
+          `}</style>
+          
+          {/* 胶囊容器 - 跟图标等宽 */}
+          <div className="bg-white/90 backdrop-blur-md rounded-full shadow-xl border border-orange-200/50 py-2 px-1.5">
+            {menuItems.map((item) => {
               const Icon = item.icon;
               return (
                 <button
                   key={item.id}
                   onClick={() => handleMenuClick(item.id)}
-                  className={`w-full flex items-center gap-3 px-5 py-4 transition-all duration-200 ${item.hoverBg} ${
-                    index !== menuItems.length - 1 ? 'border-b border-orange-100/50' : ''
-                  }`}
+                  className="w-full flex flex-col items-center gap-0.5 py-2 rounded-full hover:bg-orange-50 transition-all duration-200 relative"
                 >
-                  {/* 渐变图标背景 */}
-                  <div className={`w-11 h-11 rounded-2xl bg-gradient-to-br ${item.bgGradient} flex items-center justify-center shadow-sm`}>
-                    <Icon size={20} className={item.color} strokeWidth={2.5} />
+                  {/* 小图标 */}
+                  <div className="relative">
+                    <Icon size={18} className={item.color} strokeWidth={2} />
+                    
+                    {/* 通知小红点 */}
+                    {item.badge && item.badge > 0 && (
+                      <span className="absolute -top-1 -right-1 bg-red-500 text-white text-[8px] font-bold rounded-full min-w-[14px] h-[14px] flex items-center justify-center px-0.5">
+                        {item.badge > 9 ? '9+' : item.badge}
+                      </span>
+                    )}
                   </div>
                   
-                  {/* 标签文字 */}
-                  <span className="flex-1 text-left text-sm font-semibold text-gray-800">
-                    {item.label}
+                  {/* 小文字在下方 */}
+                  <span className="text-[9px] font-medium text-gray-600 whitespace-nowrap">
+                    {item.label.length > 4 ? item.label.substring(0, 4) : item.label}
                   </span>
-                  
-                  {/* 通知数量角标 */}
-                  {item.badge && item.badge > 0 && (
-                    <span className="bg-gradient-to-br from-red-500 to-orange-500 text-white text-xs font-bold rounded-full min-w-[22px] h-[22px] flex items-center justify-center px-2 shadow-md">
-                      {item.badge > 99 ? '99+' : item.badge}
-                    </span>
-                  )}
                 </button>
               );
             })}
