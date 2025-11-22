@@ -7,7 +7,7 @@ import { Conversation } from '../types';
 import { sendLetter, getAllPresetAIs, getCustomPenPals, saveCustomPenPal, continueReply } from '../utils/letterService';
 import { BottleAI, Letter } from '../types/letter';
 import { getSafeAvatar } from '../utils/avatarHelper';
-import { ArrowLeft, Send, Sparkles, Users, UserPlus } from 'lucide-react';
+import { ArrowLeft, Sparkles, Users, UserPlus } from 'lucide-react';
 import LetterSendingAnimation from './LetterSendingAnimation';
 import CustomPenPalCreator from './CustomPenPalCreator';
 import TopNavButtons from './TopNavButtons';
@@ -158,26 +158,14 @@ const LetterWritingScreen: React.FC<LetterWritingScreenProps> = ({
         </button>
         <h1 className="text-lg font-semibold text-gray-800">写信</h1>
         
-        <div className="flex items-center gap-3">
-          {/* 顶部导航按钮 */}
-          {onNavigate && (
-            <TopNavButtons onNavigate={onNavigate} />
-          )}
-          
-          {/* 寄出按钮 */}
-          <button
-            onClick={handleSendLetter}
-            disabled={!content.trim() || !selectedReceiver}
-            className={`px-4 py-2 rounded-full font-medium transition-all flex items-center gap-2 ${
-              content.trim() && selectedReceiver
-                ? 'bg-gradient-to-r from-orange-500 to-amber-500 text-white hover:shadow-lg'
-                : 'bg-gray-200 text-gray-400 cursor-not-allowed'
-            }`}
-          >
-            <Send size={18} />
-            寄出
-          </button>
-        </div>
+        {/* 功能菜单按钮 */}
+        {onNavigate && (
+          <TopNavButtons 
+            onNavigate={onNavigate}
+            onSend={handleSendLetter}
+            canSend={!!(content.trim() && selectedReceiver)}
+          />
+        )}
       </div>
 
       {/* 主体内容 */}
