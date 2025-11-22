@@ -973,6 +973,10 @@ function App() {
             }}
             onToPenPals={() => navigateTo('pen-pals')}
             onToBottleFishing={() => navigateTo('bottle-fishing')}
+            onToRecycleBin={() => navigateTo('recycle-bin')}
+            onToFavorites={() => navigateTo('favorite-letters')}
+            onToAchievements={() => navigateTo('achievements')}
+            onToStamps={() => navigateTo('stamp-collection')}
             onContinueReply={(letter) => {
               setReplyToLetter(letter);
               navigateTo('letter-writing');

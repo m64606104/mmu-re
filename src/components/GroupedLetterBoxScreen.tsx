@@ -4,7 +4,7 @@
  */
 
 import { useState, useEffect } from 'react';
-import { ArrowLeft, Send, Users, Waves, Clock, Edit2, Check, MessageCircle } from 'lucide-react';
+import { ArrowLeft, Send, Users, Waves, Clock, Edit2, Check, MessageCircle, Heart, Trash2, Award, Star } from 'lucide-react';
 import { 
   getGroupedLetterList, 
   getLettersByReceiver,
@@ -21,6 +21,10 @@ interface GroupedLetterBoxScreenProps {
   onWriteNew: () => void;
   onToPenPals: () => void;
   onToBottleFishing: () => void;
+  onToRecycleBin: () => void; // 回收站
+  onToFavorites?: () => void; // 收藏夹
+  onToAchievements?: () => void; // 成就系统
+  onToStamps?: () => void; // 邮票收藏
   onContinueReply?: (letter: Letter) => void;
   userName: string;
 }
@@ -30,6 +34,10 @@ export default function GroupedLetterBoxScreen({
   onWriteNew,
   onToPenPals,
   onToBottleFishing,
+  onToRecycleBin,
+  onToFavorites,
+  onToAchievements,
+  onToStamps,
   onContinueReply,
   userName
 }: GroupedLetterBoxScreenProps) {
@@ -339,23 +347,57 @@ export default function GroupedLetterBoxScreen({
         </div>
       </div>
 
-      {/* 快捷操作栏 */}
+      {/* 快捷操作栏 - 参考图1的完整入口设计 */}
       <div className="bg-white/40 backdrop-blur-sm border-b border-indigo-100 px-4 py-3">
-        <div className="flex gap-3">
+        <div className="grid grid-cols-5 gap-3">
           <button
             onClick={onToPenPals}
-            className="flex items-center gap-2 px-3 py-2 bg-white/80 rounded-full text-sm text-gray-700 hover:bg-white transition-colors"
+            className="flex flex-col items-center justify-center gap-1 p-3 bg-white/80 rounded-2xl text-gray-700 hover:bg-white hover:shadow-md transition-all"
           >
-            <Users size={16} />
-            我的笔友
+            <Users size={20} className="text-pink-500" />
+            <span className="text-xs font-medium">笔友</span>
           </button>
           <button
             onClick={onToBottleFishing}
-            className="flex items-center gap-2 px-3 py-2 bg-white/80 rounded-full text-sm text-gray-700 hover:bg-white transition-colors"
+            className="flex flex-col items-center justify-center gap-1 p-3 bg-white/80 rounded-2xl text-gray-700 hover:bg-white hover:shadow-md transition-all"
           >
-            <Waves size={16} />
-            漂流瓶
+            <Waves size={20} className="text-blue-500" />
+            <span className="text-xs font-medium">漂流瓶</span>
           </button>
+          {onToFavorites && (
+            <button
+              onClick={onToFavorites}
+              className="flex flex-col items-center justify-center gap-1 p-3 bg-white/80 rounded-2xl text-gray-700 hover:bg-white hover:shadow-md transition-all"
+            >
+              <Heart size={20} className="text-red-500" />
+              <span className="text-xs font-medium">收藏</span>
+            </button>
+          )}
+          {onToStamps && (
+            <button
+              onClick={onToStamps}
+              className="flex flex-col items-center justify-center gap-1 p-3 bg-white/80 rounded-2xl text-gray-700 hover:bg-white hover:shadow-md transition-all"
+            >
+              <Star size={20} className="text-yellow-500" />
+              <span className="text-xs font-medium">回复</span>
+            </button>
+          )}
+          <button
+            onClick={onToRecycleBin}
+            className="flex flex-col items-center justify-center gap-1 p-3 bg-white/80 rounded-2xl text-gray-700 hover:bg-white hover:shadow-md transition-all"
+          >
+            <Trash2 size={20} className="text-gray-500" />
+            <span className="text-xs font-medium">回收站</span>
+          </button>
+          {onToAchievements && (
+            <button
+              onClick={onToAchievements}
+              className="flex flex-col items-center justify-center gap-1 p-3 bg-white/80 rounded-2xl text-gray-700 hover:bg-white hover:shadow-md transition-all"
+            >
+              <Award size={20} className="text-orange-500" />
+              <span className="text-xs font-medium">邮票</span>
+            </button>
+          )}
         </div>
       </div>
 
