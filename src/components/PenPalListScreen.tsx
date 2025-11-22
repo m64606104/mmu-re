@@ -64,14 +64,12 @@ const PenPalListScreen: React.FC<PenPalListScreenProps> = ({
       // 获取API配置
       const apiConfigStr = localStorage.getItem('api_config');
       if (!apiConfigStr) {
-        console.log('未配置API，无法生成自我介绍');
         return;
       }
       
       const apiConfig = JSON.parse(apiConfigStr);
       
       // 调用AI生成自我介绍
-      console.log(`🤖 正在为${penPal.name}生成自我介绍...`);
       const intro = await generateSelfIntroByAI(penPal.customRolePrompt || '', apiConfig);
       
       // 更新并保存
@@ -80,7 +78,6 @@ const PenPalListScreen: React.FC<PenPalListScreenProps> = ({
       
       // 刷新列表
       loadPenPals();
-      console.log(`✨ ${penPal.name}的自我介绍已生成`);
     } catch (error) {
       console.error('生成自我介绍失败:', error);
     }

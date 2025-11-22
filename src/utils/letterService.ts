@@ -2475,8 +2475,7 @@ export async function generateSelfIntroByAI(rolePrompt: string, apiConfig: any):
     const data = await response.json();
     const intro = data.choices?.[0]?.message?.content?.trim() || '';
     
-    console.log('✨ AI生成的自我介绍:', intro);
-    return intro;
+    return intro || '一个有趣的灵魂，期待与你交流';
   } catch (error) {
     console.error('生成自我介绍失败:', error);
     return '一个有趣的灵魂，期待与你交流';
