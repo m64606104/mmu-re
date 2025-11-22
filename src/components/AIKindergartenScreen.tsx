@@ -45,6 +45,9 @@ export default function AIKindergartenScreen({ onBack, apiConfig }: AIKindergart
   const [teachResult, setTeachResult] = useState('');
   const [selectedCard, setSelectedCard] = useState<WordCard | null>(null);
   const [userDefinition, setUserDefinition] = useState('');
+  const [showCustomCard, setShowCustomCard] = useState(false);
+  const [customWord, setCustomWord] = useState('');
+  const [isGenerating, setIsGenerating] = useState(false);
 
   useEffect(() => {
     loadChildren();
@@ -173,6 +176,86 @@ export default function AIKindergartenScreen({ onBack, apiConfig }: AIKindergart
       }, 1500);
     } else {
       setTeachResult('❌ 教学失败，请重试');
+    }
+  };
+
+  // 生成自定义词卡的定义
+  const handleGenerateDefinition = async () => {
+    if (!customWord.trim()) {
+      alert('请输入要教的词语');
+      return;
+    }
+
+    setIsGenerating(true);
+
+    try {
+      const response = await fetch(`${apiConfig.baseUrl}/chat/completions`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${apiConfig.apiKey}`
+        },
+        body: JSON.stringify({
+          model: apiConfig.modelName,
+          messages: [
+            {
+              role: 'system',
+              content: '你是一个儿童教育专家。请为词语生成简单易懂的定义和例句，适合教给AI儿童。'
+            },
+            {
+              role: 'user',
+              content: `请为"${customWord.trim()}"这个词生成：
+1. 简单的定义（10-20字）
+2. 2个简单的例句（每句10-15字）
+
+格式：
+定义：xxx
+例句1：xxx
+例句2：xxx`
+            }
+          ],
+          temperature: 0.7,
+          max_tokens: 200
+        })
+      });
+
+      if (!response.ok) throw new Error('生成失败');
+
+      const data = await response.json();
+      const content = data.choices[0]?.message?.content || '';
+
+      // 解析AI返回的内容
+      const definitionMatch = content.match(/定义[：:](.*?)(?=例句|$)/s);
+      const example1Match = content.match(/例句1[：:](.*?)(?=例句2|$)/s);
+      const example2Match = content.match(/例句2[：:](.*?)$/s);
+
+      const definition = definitionMatch?.[1]?.trim() || content;
+      const examples = [
+        example1Match?.[1]?.trim() || '',
+        example2Match?.[1]?.trim() || ''
+      ].filter(e => e);
+
+      // 创建自定义词卡
+      const customCard: WordCard = {
+        id: `custom_${Date.now()}`,
+        word: customWord.trim(),
+        emoji: '✨',
+        definition: definition,
+        examples: examples,
+        difficulty: 2,
+        category: 'custom'
+      };
+
+      setSelectedCard(customCard);
+      setUserDefinition(definition);
+      setShowCustomCard(false);
+      setCustomWord('');
+
+    } catch (error) {
+      console.error('生成定义失败:', error);
+      alert('生成失败，请检查API配置或手动输入定义');
+    } finally {
+      setIsGenerating(false);
     }
   };
 
@@ -458,14 +541,23 @@ export default function AIKindergartenScreen({ onBack, apiConfig }: AIKindergart
                       ))}
                     </div>
                     
-                    {/* 刷新按钮 */}
-                    <button
-                      onClick={refreshCards}
-                      disabled={dailyRounds >= 20}
-                      className="w-full py-2 text-sm text-gray-600 hover:text-blue-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
-                      🔄 换一批词卡
-                    </button>
+                    {/* 操作按钮 */}
+                    <div className="flex gap-2">
+                      <button
+                        onClick={refreshCards}
+                        disabled={dailyRounds >= 20}
+                        className="flex-1 py-2 text-sm text-gray-600 hover:text-blue-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        🔄 换一批词卡
+                      </button>
+                      <button
+                        onClick={() => setShowCustomCard(true)}
+                        disabled={dailyRounds >= 20}
+                        className="flex-1 py-2 text-sm text-purple-600 hover:text-purple-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed font-medium"
+                      >
+                        ✨ 自定义词卡
+                      </button>
+                    </div>
                   </>
                 ) : selectedCard ? (
                   /* 编辑区域 */
@@ -644,6 +736,72 @@ export default function AIKindergartenScreen({ onBack, apiConfig }: AIKindergart
             >
               取消
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* Custom Word Card Modal */}
+      {showCustomCard && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl p-6 w-full max-w-md">
+            <h2 className="text-xl font-bold text-gray-800 mb-2">✨ 自定义词卡</h2>
+            <p className="text-sm text-gray-500 mb-4">输入你想教的词语，AI会帮你生成定义</p>
+            
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  要教的词语
+                </label>
+                <input
+                  type="text"
+                  value={customWord}
+                  onChange={(e) => setCustomWord(e.target.value)}
+                  placeholder="例如：梦想、勇敢、坚持..."
+                  className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500"
+                  autoFocus
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && customWord.trim()) {
+                      handleGenerateDefinition();
+                    }
+                  }}
+                />
+              </div>
+
+              <div className="bg-blue-50 rounded-lg p-3 border border-blue-200">
+                <div className="text-xs text-blue-600 font-medium mb-1">💡 提示</div>
+                <div className="text-xs text-gray-600">
+                  点击"生成定义"后，AI会自动为这个词生成简单的解释和例句，你可以修改后再教给{selectedChild?.name}
+                </div>
+              </div>
+
+              <div className="flex gap-2">
+                <button
+                  onClick={() => {
+                    setShowCustomCard(false);
+                    setCustomWord('');
+                  }}
+                  className="flex-1 py-3 border border-gray-200 rounded-xl font-medium text-gray-700 hover:bg-gray-50"
+                >
+                  取消
+                </button>
+                <button
+                  onClick={handleGenerateDefinition}
+                  disabled={!customWord.trim() || isGenerating}
+                  className="flex-1 py-3 bg-gradient-to-r from-purple-500 to-pink-500 text-white rounded-xl font-medium hover:shadow-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                >
+                  {isGenerating ? (
+                    <>
+                      <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                      生成中...
+                    </>
+                  ) : (
+                    <>
+                      ✨ 生成定义
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       )}

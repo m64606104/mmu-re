@@ -92,11 +92,19 @@ export default function AIChildChat({ childId, onBack, apiConfig }: AIChildChatP
 
       setMessages(prev => [...prev, aiMessage]);
 
-      // 检测AI是否在提问（自动记录）
-      if (aiReply.includes('？') || aiReply.includes('是什么')) {
-        // 这是AI的提问，可以记录
-        console.log('🤔 AI提问:', aiReply);
+      // 检测AI是否在提问（自动学习机会）
+      const aiAskedAbout = detectAIQuestion(aiReply);
+      if (aiAskedAbout) {
+        console.log('🤔 AI提问关于:', aiAskedAbout);
+        // 标记最后一个问题，等待用户回答
+        sessionStorage.setItem('lastAIQuestion', JSON.stringify({
+          word: aiAskedAbout,
+          timestamp: Date.now()
+        }));
       }
+
+      // 检测用户是否在教新词（聊天中学习）
+      await detectAndLearnFromChat(inputText.trim(), messages);
 
       // 保存对话历史
       await saveMessages([...messages, userMessage, aiMessage]);
@@ -134,6 +142,104 @@ export default function AIChildChat({ childId, onBack, apiConfig }: AIChildChatP
       }
     } catch (error) {
       console.error('保存对话失败:', error);
+    }
+  };
+
+  // 检测AI是否在提问某个词
+  const detectAIQuestion = (aiReply: string): string | null => {
+    // 匹配模式："XX是什么？" "什么是XX？" "XX...是什么？"
+    const patterns = [
+      /「?([^，。！？\s]{1,6})」?是什么[？?]/,
+      /什么是「?([^，。！？\s]{1,6})」?[？?]/,
+      /([^，。！？\s]{1,6})\.\.\.是什么/,
+      /不懂「?([^，。！？\s]{1,6})」?/
+    ];
+
+    for (const pattern of patterns) {
+      const match = aiReply.match(pattern);
+      if (match && match[1]) {
+        return match[1];
+      }
+    }
+    return null;
+  };
+
+  // 检测用户是否在教新词并自动学习
+  const detectAndLearnFromChat = async (userInput: string, _messageHistory: Message[]) => {
+    if (!child || !child.aiChildData) return;
+
+    // 检查是否是在回答AI的问题
+    const lastQuestion = sessionStorage.getItem('lastAIQuestion');
+    if (lastQuestion) {
+      try {
+        const { word, timestamp } = JSON.parse(lastQuestion);
+        const timeElapsed = Date.now() - timestamp;
+        
+        // 5分钟内的问题才算
+        if (timeElapsed < 5 * 60 * 1000) {
+          // 检查用户的回复是否包含解释性内容
+          const isTeaching = userInput.includes('就是') || 
+                           userInput.includes('意思是') || 
+                           userInput.includes('是指') ||
+                           userInput.includes('表示') ||
+                           userInput.length > 10; // 较长的回复可能是解释
+
+          if (isTeaching) {
+            // 检查AI是否已经认识这个词
+            const alreadyKnows = child.aiChildData.vocabulary.some(w => w.word === word);
+            
+            if (!alreadyKnows) {
+              // 自动学习这个词
+              const { teachWord } = await import('../utils/aiKindergartenManager');
+              const success = await teachWord(childId, word, userInput, []);
+              
+              if (success) {
+                console.log(`✨ 从对话中学会了"${word}"!`);
+                // 清除标记
+                sessionStorage.removeItem('lastAIQuestion');
+                
+                // 更新本地状态
+                await loadChild();
+              }
+            }
+          }
+        } else {
+          // 过期的问题，清除
+          sessionStorage.removeItem('lastAIQuestion');
+        }
+      } catch (e) {
+        console.error('解析学习数据失败:', e);
+      }
+    }
+
+    // 检测用户主动教词的模式："XX就是..." "XX的意思是..."
+    const teachingPatterns = [
+      /([^，。！？\s]{1,6})就是(.+)/,
+      /([^，。！？\s]{1,6})的意思是(.+)/,
+      /([^，。！？\s]{1,6})是指(.+)/,
+      /([^，。！？\s]{1,6})表示(.+)/
+    ];
+
+    for (const pattern of teachingPatterns) {
+      const match = userInput.match(pattern);
+      if (match && match[1] && match[2]) {
+        const word = match[1];
+        const definition = match[2].replace(/[。！？]+$/, '');
+        
+        // 检查是否已经认识
+        const alreadyKnows = child.aiChildData.vocabulary.some(w => w.word === word);
+        
+        if (!alreadyKnows) {
+          const { teachWord } = await import('../utils/aiKindergartenManager');
+          const success = await teachWord(childId, word, definition, []);
+          
+          if (success) {
+            console.log(`✨ 从对话中学会了"${word}"!`);
+            await loadChild();
+          }
+        }
+        break;
+      }
     }
   };
 
