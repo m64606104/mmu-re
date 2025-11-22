@@ -17,8 +17,9 @@ import {
   teachWord,
   updateDailyInteraction 
 } from '../utils/aiKindergartenManager';
-import { WordCard, getRandomCards, getRecommendedDifficulty } from '../utils/wordCardLibrary';
+import { WordCard } from '../utils/wordCardLibrary';
 import { TopicCard, getRandomTopics, getRecommendedTopicDifficulty } from '../utils/topicCardLibrary';
+import { generateDailyCards, getNextRound, markWordSelected, DailyCardPool } from '../utils/smartCardGenerator';
 
 interface AIKindergartenScreenProps {
   onBack: () => void;
@@ -48,6 +49,8 @@ export default function AIKindergartenScreen({ onBack, apiConfig }: AIKindergart
   const [showCustomCard, setShowCustomCard] = useState(false);
   const [customWord, setCustomWord] = useState('');
   const [isGenerating, setIsGenerating] = useState(false);
+  const [cardPool, setCardPool] = useState<DailyCardPool | null>(null);
+  const [isLoadingCards, setIsLoadingCards] = useState(false);
 
   useEffect(() => {
     loadChildren();
@@ -71,22 +74,55 @@ export default function AIKindergartenScreen({ onBack, apiConfig }: AIKindergart
     }
   }, []);
 
-  // 刷新词卡
-  const refreshCards = () => {
+  // 初始化每日词卡池
+  const initDailyCardPool = async () => {
     if (!selectedChild || !selectedChild.aiChildData) return;
     
-    const learnedWords = selectedChild.aiChildData.vocabulary.map(w => w.word);
-    const maxDifficulty = getRecommendedDifficulty(selectedChild.aiChildData.vocabulary.length);
-    const newCards = getRandomCards(4, learnedWords, maxDifficulty);
-    setCurrentCards(newCards);
+    setIsLoadingCards(true);
+    try {
+      const learnedWords = selectedChild.aiChildData.vocabulary.map(w => w.word);
+      const pool = await generateDailyCards(
+        selectedChild.aiChildData.vocabulary.length,
+        learnedWords,
+        selectedChild.aiChildData.stage,
+        apiConfig
+      );
+      setCardPool(pool);
+      
+      // 加载当前轮次的词卡
+      const nextCards = getNextRound(pool, dailyRounds);
+      if (nextCards.length > 0) {
+        setCurrentCards(nextCards);
+      }
+    } catch (error) {
+      console.error('生成词卡失败:', error);
+    } finally {
+      setIsLoadingCards(false);
+    }
+  };
+
+  // 刷新词卡（切换到下一轮）
+  const refreshCards = () => {
+    if (!cardPool) return;
+    
+    const nextCards = getNextRound(cardPool, dailyRounds);
+    if (nextCards.length > 0) {
+      setCurrentCards(nextCards);
+    } else {
+      // 如果当前轮次没有可用的词，尝试下一轮
+      const nextRoundCards = getNextRound(cardPool, dailyRounds + 1);
+      if (nextRoundCards.length > 0) {
+        setCurrentCards(nextRoundCards);
+      }
+    }
     setSelectedCard(null);
     setTeachResult('');
   };
 
-  // 打开教学模式时加载词卡
+  // 打开教学模式时初始化词卡池
   useEffect(() => {
-    if (teachingMode && selectedChild) {
-      refreshCards();
+    if (teachingMode && selectedChild && !cardPool) {
+      initDailyCardPool();
     }
   }, [teachingMode, selectedChild]);
 
@@ -160,6 +196,9 @@ export default function AIKindergartenScreen({ onBack, apiConfig }: AIKindergart
 
     if (result) {
       setTeachResult(`✨ 成功学会了"${selectedCard.word}"！获得了10点经验值`);
+      
+      // 标记词已被选择
+      markWordSelected(selectedCard.word);
       
       // 更新每日轮数
       const newRounds = dailyRounds + 1;
@@ -509,8 +548,14 @@ export default function AIKindergartenScreen({ onBack, apiConfig }: AIKindergart
                   </div>
                 </div>
 
-                {/* 四宫格词卡 */}
-                {!selectedCard && currentCards.length > 0 ? (
+                {/* 加载状态 */}
+                {isLoadingCards ? (
+                  <div className="py-12 text-center">
+                    <div className="w-12 h-12 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+                    <p className="text-gray-600">🎯 AI正在生成今日词卡...</p>
+                    <p className="text-xs text-gray-500 mt-2">基于{selectedChild.name}的识字量和理解力</p>
+                  </div>
+                ) : !selectedCard && currentCards.length > 0 ? (
                   <>
                     <div className="grid grid-cols-2 gap-3 mb-4">
                       {currentCards.map((card) => (
