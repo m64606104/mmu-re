@@ -79,6 +79,48 @@ export const getMomentsData = async (contactId: string): Promise<MomentsData> =>
     return existing;
   }
   
+  // 🎯 根据AI性格动态设置朋友圈频率
+  const conversationsStr = localStorage.getItem('conversations');
+  const conversations = conversationsStr ? JSON.parse(conversationsStr) : [];
+  const aiConversation = conversations.find((c: any) => c.id === contactId);
+  
+  let minInterval = 168; // 默认7天
+  let maxInterval = 720; // 默认30天
+  
+  if (aiConversation?.characterSettings) {
+    const personality = (aiConversation.characterSettings.personality || '').toLowerCase();
+    const languageStyle = (aiConversation.characterSettings.languageStyle || '').toLowerCase();
+    
+    // 分析性格特征
+    const isOutgoing = 
+      personality.includes('活泼') || personality.includes('外向') || 
+      personality.includes('热情') || personality.includes('开朗') ||
+      languageStyle.includes('活泼') || languageStyle.includes('热情');
+    
+    const isQuiet = 
+      personality.includes('高冷') || personality.includes('内向') || 
+      personality.includes('安静') || personality.includes('冷淡') ||
+      personality.includes('佛系') || personality.includes('慢热') ||
+      languageStyle.includes('简洁') || languageStyle.includes('寡言');
+    
+    if (isOutgoing) {
+      // 活泼外向：7-21天发一次（平均2周）
+      minInterval = 168;  // 7天
+      maxInterval = 504;  // 21天
+      console.log(`🌟 ${aiConversation.characterSettings.nickname} 性格活泼，朋友圈频率较高`);
+    } else if (isQuiet) {
+      // 高冷内向：14-60天发一次（平均1-2个月）
+      minInterval = 336;  // 14天
+      maxInterval = 1440; // 60天
+      console.log(`😎 ${aiConversation.characterSettings.nickname} 性格高冷，朋友圈频率较低`);
+    } else {
+      // 普通性格：7-30天发一次（平均2-3周）
+      minInterval = 168;  // 7天
+      maxInterval = 720;  // 30天
+      console.log(`🙂 ${aiConversation.characterSettings.nickname} 性格普通，朋友圈频率适中`);
+    }
+  }
+  
   // 创建新的朋友圈数据
   const newData: MomentsData = {
     contactId,
@@ -90,8 +132,8 @@ export const getMomentsData = async (contactId: string): Promise<MomentsData> =>
     todayPlans: [],
     settings: {
       autoGenerate: true,
-      minInterval: 72,  // 最少3天（更真实）
-      maxInterval: 336, // 最多14天（2周）
+      minInterval,
+      maxInterval,
       minPostsPerDay: 1,
       maxPostsPerDay: 2  // 最多2条
     }
@@ -370,7 +412,11 @@ ${todayPosts.length > 0 ? todayPosts.map((p, i) => {
 6. **长度适中**：1-3句话，不要太长
 7. **可以带情绪**：开心、吐槽、感慨、撒娇等都可以
 8. **不要格式化**：直接输出朋友圈文字内容，不要有"朋友圈："等前缀
-9. **可以配图片**：如果内容适合配图（如风景、美食、自拍、宠物等），可以在内容后添加图片描述
+9. **⚠️ 图片使用规范（重要）**：
+   - **大多数时候发纯文字**：像真人一样，70%的朋友圈应该只有文字，不配图
+   - **只在特定情况配图**：只有在拍了照片、看到美景、吃美食、买了东西等明确的"视觉场景"时才配图
+   - **日常吐槽、心情感慨、简单分享等不要配图**：如"好累啊"、"今天真开心"、"不想上班"等日常状态，直接纯文字即可
+   - **如果配图，数量要合理**：1-3张为主，特殊场合（旅行、聚会）才4-9张
 
 【输出格式】
 必须按以下格式输出，第一行是时间，第二行空行，第三行开始是朋友圈内容：
@@ -382,20 +428,40 @@ ${todayPosts.length > 0 ? todayPosts.map((p, i) => {
 [图片2:图片描述]
 ...
 
-示例1（纯文字）：
+示例1（纯文字 - 最常见）：
 时间：18:30
 
 今天又被老板留下加班了😤 说好的准时下班呢...
 
-示例2（带图片）：
-时间：22:15
+示例2（纯文字 - 心情感慨）：
+时间：23:15
 
-终于下班了！路边买杯咖啡放松一下✨
-[图片1:手拿咖啡杯，背景是夜晚的街道灯光]
-[图片2:咖啡拉花特写，心形图案]
+终于把论文初稿赶出来了！累到崩溃但是也很有成就感💪
 
-【图片数量规范】
-根据内容需要，你可以自由决定发送1-9张图片：
+示例3（纯文字 - 日常吐槽）：
+时间：08:45
+
+地铁又晚点了...看来今天又要迟到了🥲
+
+示例4（纯文字 - 简单分享）：
+时间：12:20
+
+中午吃了传说中的那家烤鱼，真的超级好吃！下次还想去~
+
+示例5（带图片 - 明确视觉场景）：
+时间：19:30
+
+路过江边拍了夕阳，今天的晚霞也太美了吧✨
+[图片1:金色的夕阳将整片江面染成温暖的橙红色，远处的大桥轮廓清晰，天边的云朵像被镀上了金边，整个画面宁静而浪漫]
+
+【⚠️ 重要提醒】
+**默认发纯文字朋友圈，不要配图！**
+- 只有在内容中明确提到"拍了"、"看到"、"去了"等视觉相关的动作时，才考虑配图
+- 单纯的心情、吐槽、感慨、日常状态等，一律纯文字，不配图
+- **70%以上的朋友圈都应该是纯文字的**
+
+【图片数量规范（仅当确实需要配图时）】
+如果内容确实需要配图，数量要合理：
 - 1张图：适合单一主体（风景、自拍、重点物品等）
 - 2张图：适合对比、前后对照
 - 3张图：适合记录多个相关场景
