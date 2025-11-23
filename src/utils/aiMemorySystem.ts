@@ -242,6 +242,56 @@ export async function getWordMemory(childId: string, word: string): Promise<Word
 }
 
 /**
+ * 批量获取词汇记忆（供AI调用）
+ * @param childId AI儿童ID
+ * @param words 词汇列表
+ * @returns 词汇记忆数组
+ */
+export async function getMultipleWordMemories(
+  childId: string, 
+  words: string[]
+): Promise<WordMemory[]> {
+  try {
+    const memoryBank = await getAIMemoryBank(childId);
+    return words
+      .map(word => memoryBank.wordDeepUnderstanding.find(w => w.word === word))
+      .filter((m): m is WordMemory => m !== undefined);
+  } catch (error) {
+    console.error('批量获取词汇记忆失败:', error);
+    return [];
+  }
+}
+
+/**
+ * 获取所有词汇记忆摘要（供对话上下文使用）
+ * @param childId AI儿童ID
+ * @param limit 返回数量限制
+ * @returns 格式化的词汇摘要
+ */
+export async function getVocabularyMemorySummary(
+  childId: string,
+  limit: number = 30
+): Promise<string> {
+  try {
+    const memoryBank = await getAIMemoryBank(childId);
+    const recentWords = memoryBank.wordDeepUnderstanding.slice(-limit);
+    
+    if (recentWords.length === 0) {
+      return '还没有学会任何词';
+    }
+    
+    return recentWords.map(w => {
+      const confidence = w.confidenceLevel >= 80 ? '✅' : 
+                        w.confidenceLevel >= 50 ? '⚡' : '🌱';
+      return `${confidence} ${w.word}：${w.userDefinition}`;
+    }).join('\n');
+  } catch (error) {
+    console.error('获取词汇摘要失败:', error);
+    return '词汇记忆获取失败';
+  }
+}
+
+/**
  * 添加学习笔记
  */
 export async function addLearningNote(

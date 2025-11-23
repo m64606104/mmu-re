@@ -29,6 +29,7 @@ const INDEXED_DB_KEYS = [
   'conversations',      // 对话列表
   'moments',            // 朋友圈数据
   'chat_memory_banks',  // 记忆库
+  'ai_memory_banks',    // AI儿童词汇记忆库（专用）⭐ 新增
   'ai_finance_data',    // AI财务
   'relationships',      // 关系网络  
   'documents_library',  // 文档库
