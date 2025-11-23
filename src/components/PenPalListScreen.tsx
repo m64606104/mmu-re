@@ -24,7 +24,7 @@ const PenPalListScreen: React.FC<PenPalListScreenProps> = ({
   const [customPenPals, setCustomPenPals] = useState<BottleAI[]>([]);
   const [stats, setStats] = useState<ReturnType<typeof getPenPalStats>>();
   const [selectedLetter, setSelectedLetter] = useState<Letter | null>(null);
-  const [isCustomExpanded, setIsCustomExpanded] = useState(true); // 默认展开自定义笔友
+  const [isCustomExpanded, setIsCustomExpanded] = useState(false); // 默认折叠
   const [editingPenPal, setEditingPenPal] = useState<BottleAI | null>(null);
 
   useEffect(() => {
