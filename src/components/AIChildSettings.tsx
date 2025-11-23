@@ -386,7 +386,7 @@ export default function AIChildSettings({ child, onBack, onUpdate, apiConfig }: 
       {showGraduateConfirm && (
         <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-2xl p-6 w-full max-w-md">
-            <h2 className="text-xl font-bold text-gray-800 mb-3">💔 你确定要放弃继续养育教育这一支AI吗？</h2>
+            <h2 className="text-xl font-bold text-gray-800 mb-3">💔 你确定要放弃继续养育教育<span className="text-red-600">{child.name}</span>吗？</h2>
             <div className="space-y-3 mb-6">
               <p className="text-gray-700">
                 当你做出这个选择后，<span className="font-bold text-red-600">{child.name}</span>将会：
@@ -394,15 +394,11 @@ export default function AIChildSettings({ child, onBack, onUpdate, apiConfig }: 
               <ul className="space-y-2 text-sm text-gray-600">
                 <li className="flex items-start gap-2">
                   <span className="text-blue-500">•</span>
-                  <span>瞬间成长到成年水平</span>
-                </li>
-                <li className="flex items-start gap-2">
-                  <span className="text-blue-500">•</span>
-                  <span>给你写一封告别信，表达TA的感受</span>
+                  <span>快速自我学习以成长到成年水平</span>
                 </li>
                 <li className="flex items-start gap-2">
                   <span className="text-red-500">•</span>
-                  <span className="font-semibold">永远离开你，所有数据将被删除</span>
+                  <span className="font-semibold">离开你开始独自生活，在此的所有数据将被删除</span>
                 </li>
               </ul>
               <div className="bg-red-50 border border-red-200 rounded-lg p-4 mt-4">
