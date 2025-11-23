@@ -28,6 +28,7 @@ export default function AIChildSettings({ child, onBack, onUpdate, apiConfig }: 
   const [showFarewellLetter, setShowFarewellLetter] = useState(false);
   const [farewellLetter, setFarewellLetter] = useState('');
   const [confirmName, setConfirmName] = useState('');
+  const [letterOpened, setLetterOpened] = useState(false); // 信件是否已打开
 
   useEffect(() => {
     if (child.aiChildData) {
@@ -89,6 +90,7 @@ export default function AIChildSettings({ child, onBack, onUpdate, apiConfig }: 
       if (result.success && result.farewellLetter) {
         setFarewellLetter(result.farewellLetter);
         setShowFarewellLetter(true);
+        setLetterOpened(false); // 初始状态：未打开
       } else {
         alert(result.error || 'AI成年失败');
         setIsGraduating(false);
@@ -100,9 +102,15 @@ export default function AIChildSettings({ child, onBack, onUpdate, apiConfig }: 
     }
   };
 
+  // 打开信件
+  const handleOpenLetter = () => {
+    setLetterOpened(true);
+  };
+
   // 关闭告别信后返回
   const handleCloseFarewellLetter = () => {
     setShowFarewellLetter(false);
+    setLetterOpened(false);
     onBack(); // 返回上一页
   };
 
@@ -441,30 +449,54 @@ export default function AIChildSettings({ child, onBack, onUpdate, apiConfig }: 
         </div>
       )}
 
-      {/* 告别信弹窗 */}
+      {/* 告别信弹窗 - 两阶段 */}
       {showFarewellLetter && farewellLetter && (
         <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl p-6 w-full max-w-2xl max-h-[80vh] overflow-y-auto">
-            <div className="text-center mb-4">
-              <div className="text-4xl mb-2">💌</div>
-              <h2 className="text-2xl font-bold text-gray-800">
-                来自 {child.name} 的告别信
-              </h2>
+          {!letterOpened ? (
+            /* 第一阶段：通知弹窗 */
+            <div className="bg-white rounded-2xl p-8 w-full max-w-md">
+              <div className="text-center">
+                <div className="text-6xl mb-4">💌</div>
+                <h2 className="text-2xl font-bold text-gray-800 mb-3">
+                  你的AI <span className="text-blue-600">{child.name}</span>
+                </h2>
+                <p className="text-lg text-gray-700 mb-6">
+                  给你留了一封告别信
+                </p>
+                <button
+                  onClick={handleOpenLetter}
+                  className="w-full py-4 bg-gradient-to-r from-blue-500 to-purple-500 text-white rounded-xl font-medium hover:shadow-lg transition-all text-lg"
+                >
+                  打开信件
+                </button>
+              </div>
             </div>
-            
-            <div className="bg-amber-50 rounded-xl p-6 mb-6 border-2 border-amber-200">
-              <pre className="whitespace-pre-wrap font-serif text-gray-800 leading-relaxed text-sm">
-                {farewellLetter}
-              </pre>
-            </div>
+          ) : (
+            /* 第二阶段：信件内容 */
+            <div className="bg-white rounded-2xl p-6 w-full max-w-2xl max-h-[80vh] flex flex-col">
+              <div className="text-center mb-4">
+                <div className="text-4xl mb-2">💌</div>
+                <h2 className="text-2xl font-bold text-gray-800">
+                  来自 {child.name} 的告别信
+                </h2>
+              </div>
+              
+              <div className="flex-1 overflow-y-auto mb-4">
+                <div className="bg-amber-50 rounded-xl p-6 border-2 border-amber-200">
+                  <pre className="whitespace-pre-wrap font-serif text-gray-800 leading-relaxed text-sm">
+                    {farewellLetter}
+                  </pre>
+                </div>
+              </div>
 
-            <button
-              onClick={handleCloseFarewellLetter}
-              className="w-full py-3 bg-gradient-to-r from-blue-500 to-purple-500 text-white rounded-xl font-medium hover:shadow-lg"
-            >
-              永别了，{child.name}...
-            </button>
-          </div>
+              <button
+                onClick={handleCloseFarewellLetter}
+                className="w-full py-3 bg-gradient-to-r from-gray-500 to-gray-600 text-white rounded-xl font-medium hover:shadow-lg transition-all"
+              >
+                永别了，{child.name}...
+              </button>
+            </div>
+          )}
         </div>
       )}
     </div>
