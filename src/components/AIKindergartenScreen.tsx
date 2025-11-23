@@ -797,6 +797,36 @@ export default function AIKindergartenScreen({ onBack, onOpenChat, apiConfig }: 
                   </div>
                 )}
 
+                {/* 自由聊天提示 */}
+                {(dailyRounds >= 20 || (teachResult && teachResult.includes('成功'))) && (
+                  <div className="mt-4 bg-gradient-to-r from-blue-50 to-purple-50 border border-blue-200 rounded-xl p-4">
+                    <div className="flex items-start gap-3">
+                      <div className="text-2xl">💬</div>
+                      <div className="flex-1">
+                        <h4 className="font-semibold text-gray-800 mb-2">💡 随时可以自由聊天</h4>
+                        <ul className="space-y-1.5 text-sm text-gray-700">
+                          <li className="flex items-start gap-2">
+                            <span className="text-blue-500 mt-0.5">•</span>
+                            <span>可以随时在<span className="font-semibold text-blue-600">自由聊天</span>中与{selectedChild.name}交流</span>
+                          </li>
+                          <li className="flex items-start gap-2">
+                            <span className="text-blue-500 mt-0.5">•</span>
+                            <span>检验{selectedChild.name}的学习情况和理解能力</span>
+                          </li>
+                          <li className="flex items-start gap-2">
+                            <span className="text-purple-500 mt-0.5">•</span>
+                            <span>在聊天中{selectedChild.name}也会学习新知识</span>
+                          </li>
+                          <li className="flex items-start gap-2">
+                            <span className="text-orange-500 mt-0.5">•</span>
+                            <span className="font-semibold">但只有词卡教学会记录经验值哦</span>
+                          </li>
+                        </ul>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
                 {/* Recent Words */}
                 {selectedChild.aiChildData.vocabulary.length > 0 && (
                   <div className="mt-6">

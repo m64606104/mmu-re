@@ -24,9 +24,10 @@ export default function AIChildSettings({ child, onBack, onUpdate, apiConfig }: 
   const [userName, setUserName] = useState('');
   const [avatar, setAvatar] = useState<string>('');
   const [showGraduateConfirm, setShowGraduateConfirm] = useState(false);
+  const [isGraduating, setIsGraduating] = useState(false);
   const [showFarewellLetter, setShowFarewellLetter] = useState(false);
   const [farewellLetter, setFarewellLetter] = useState('');
-  const [isGraduating, setIsGraduating] = useState(false);
+  const [confirmName, setConfirmName] = useState('');
 
   useEffect(() => {
     if (child.aiChildData) {
@@ -70,10 +71,17 @@ export default function AIChildSettings({ child, onBack, onUpdate, apiConfig }: 
     setAvatar('');
   };
 
-  // 处理一键成年
+  // 处理不再抚养（一键成年）
   const handleGraduate = async () => {
+    // 验证名字
+    if (confirmName.trim() !== child.name) {
+      alert(`请正确输入AI的名字 "${child.name}" 以确认`);
+      return;
+    }
+    
     setShowGraduateConfirm(false);
     setIsGraduating(true);
+    setConfirmName(''); // 清空输入
 
     try {
       const result = await graduateAIChild(child.id, apiConfig);
@@ -364,13 +372,13 @@ export default function AIChildSettings({ child, onBack, onUpdate, apiConfig }: 
           保存设置
         </button>
 
-        {/* 一键成年按钮 */}
+        {/* 不再抚养按钮 */}
         <button
           onClick={() => setShowGraduateConfirm(true)}
           className="w-full py-3 bg-gradient-to-r from-orange-500 to-red-500 text-white rounded-xl font-medium hover:shadow-lg transition-all flex items-center justify-center gap-2"
         >
           <GraduationCap className="w-5 h-5" />
-          一键成年
+          不再抚养
         </button>
       </div>
 
@@ -378,7 +386,7 @@ export default function AIChildSettings({ child, onBack, onUpdate, apiConfig }: 
       {showGraduateConfirm && (
         <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-2xl p-6 w-full max-w-md">
-            <h2 className="text-xl font-bold text-gray-800 mb-3">⚠️ 重要决定</h2>
+            <h2 className="text-xl font-bold text-gray-800 mb-3">💔 你确定要放弃继续养育教育这一支AI吗？</h2>
             <div className="space-y-3 mb-6">
               <p className="text-gray-700">
                 当你做出这个选择后，<span className="font-bold text-red-600">{child.name}</span>将会：
@@ -386,7 +394,7 @@ export default function AIChildSettings({ child, onBack, onUpdate, apiConfig }: 
               <ul className="space-y-2 text-sm text-gray-600">
                 <li className="flex items-start gap-2">
                   <span className="text-blue-500">•</span>
-                  <span>瞬间学习所有知识，成长到成年水平</span>
+                  <span>瞬间成长到成年水平</span>
                 </li>
                 <li className="flex items-start gap-2">
                   <span className="text-blue-500">•</span>
@@ -397,25 +405,40 @@ export default function AIChildSettings({ child, onBack, onUpdate, apiConfig }: 
                   <span className="font-semibold">永远离开你，所有数据将被删除</span>
                 </li>
               </ul>
-              <div className="bg-red-50 border border-red-200 rounded-lg p-3 mt-4">
-                <p className="text-sm text-red-700 font-medium">
-                  💔 这个操作<span className="underline">无法撤销</span>，请慎重考虑
+              <div className="bg-red-50 border border-red-200 rounded-lg p-4 mt-4">
+                <p className="text-sm text-red-700 font-medium mb-3">
+                  ⚠️ 这个操作<span className="underline">无法撤销</span>，请慎重考虑
                 </p>
+                <div>
+                  <label className="block text-sm text-red-700 font-medium mb-2">
+                    请输入AI的名字 "<span className="font-bold">{child.name}</span>" 以确认：
+                  </label>
+                  <input
+                    type="text"
+                    value={confirmName}
+                    onChange={(e) => setConfirmName(e.target.value)}
+                    placeholder={`输入 ${child.name}`}
+                    className="w-full px-3 py-2 border-2 border-red-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500 text-sm"
+                  />
+                </div>
               </div>
             </div>
             <div className="flex gap-3">
               <button
-                onClick={() => setShowGraduateConfirm(false)}
+                onClick={() => {
+                  setShowGraduateConfirm(false);
+                  setConfirmName('');
+                }}
                 className="flex-1 py-3 border-2 border-gray-300 rounded-xl font-medium text-gray-700 hover:bg-gray-50"
               >
                 取消
               </button>
               <button
                 onClick={handleGraduate}
-                disabled={isGraduating}
+                disabled={isGraduating || confirmName.trim() !== child.name}
                 className="flex-1 py-3 bg-gradient-to-r from-orange-500 to-red-500 text-white rounded-xl font-medium hover:shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                {isGraduating ? '处理中...' : '确认离开'}
+                {isGraduating ? '处理中...' : '确认放弃'}
               </button>
             </div>
           </div>
