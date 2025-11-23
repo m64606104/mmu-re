@@ -8,12 +8,17 @@ import { ApiConfig } from '../types';
 
 export interface DailyCardPool {
   date: string;
-  rounds: WordCard[][];  // 20轮，每轮4个词
+  phases: WordCard[][][];  // 3个阶段，每阶段5轮，每轮4个词
   selectedWords: string[];  // 当天已选择的词
+  currentPhase: number;  // 当前阶段 0-2
+  currentRound: number;  // 当前阶段内的轮数 0-4
 }
 
 /**
- * 为当天生成20轮词卡（共80个词）
+ * 为当天生成3个阶段的词卡（共60个词）
+ * - 第0阶段(首轮): 5轮×4卡=20词，增加经验值
+ * - 第1阶段: 5轮×4卡=20词，不增加经验值
+ * - 第2阶段: 5轮×4卡=20词，不增加经验值，最后一次机会
  */
 export async function generateDailyCards(
   vocabularyCount: number,
@@ -32,19 +37,26 @@ export async function generateDailyCards(
     }
   }
 
-  // 使用AI生成80个适合的词
+  // 使用AI生成60个适合的词
   const words = await generateWordsWithAI(vocabularyCount, learnedWords, stage, apiConfig);
   
-  // 分成20轮，每轮4个
-  const rounds: WordCard[][] = [];
-  for (let i = 0; i < 20; i++) {
-    rounds.push(words.slice(i * 4, (i + 1) * 4));
+  // 分成3个阶段，每阶段5轮，每轮4个词
+  const phases: WordCard[][][] = [];
+  for (let p = 0; p < 3; p++) {
+    const phaseRounds: WordCard[][] = [];
+    for (let r = 0; r < 5; r++) {
+      const index = p * 20 + r * 4;
+      phaseRounds.push(words.slice(index, index + 4));
+    }
+    phases.push(phaseRounds);
   }
 
   const pool: DailyCardPool = {
     date: today,
-    rounds,
-    selectedWords: []
+    phases,
+    selectedWords: [],
+    currentPhase: 0,
+    currentRound: 0
   };
 
   localStorage.setItem('dailyCardPool', JSON.stringify(pool));
@@ -123,7 +135,7 @@ function buildGenerationPrompt(vocabularyCount: number, learnedWords: string[], 
 - 已学过的词：${learnedWords.slice(0, 20).join('、')}${learnedWords.length > 20 ? '等' : ''}
 
 【要求】
-1. 生成80个词，按难度递进
+1. 生成60个词，按难度递进
 2. 不要包含已学过的词
 3. 不要太基础（如"我你他这那"）
 4. 要实用，能构成对话
@@ -138,7 +150,7 @@ function buildGenerationPrompt(vocabularyCount: number, learnedWords: string[], 
   ]
 }
 
-请生成80个词的完整JSON列表。`;
+请生成60个词的完整JSON列表。`;
 }
 
 /**
@@ -256,9 +268,9 @@ function getFallbackWords(_vocabularyCount: number, learnedWords: string[]): Wor
   // 过滤已学过的词
   const available = baseWords.filter(w => !learnedWords.includes(w.word));
   
-  // 随机打乱并取80个
+  // 随机打乱并取60个
   const shuffled = available.sort(() => Math.random() - 0.5);
-  return shuffled.slice(0, 80).map((w, i) => ({
+  return shuffled.slice(0, 60).map((w, i) => ({
     ...w,
     id: `fallback_${Date.now()}_${i}`,
     examples: []
@@ -266,18 +278,87 @@ function getFallbackWords(_vocabularyCount: number, learnedWords: string[]): Wor
 }
 
 /**
- * 获取下一轮词卡（排除已选的词）
+ * 获取当前阶段当前轮次的词卡
  */
-export function getNextRound(pool: DailyCardPool, currentRound: number): WordCard[] {
-  if (currentRound >= pool.rounds.length) {
+export function getCurrentRoundCards(pool: DailyCardPool): WordCard[] {
+  const { currentPhase, currentRound, phases } = pool;
+  
+  if (currentPhase >= phases.length) {
     return [];
   }
-
-  // 获取这一轮的词
-  const round = pool.rounds[currentRound];
+  
+  const phaseRounds = phases[currentPhase];
+  if (currentRound >= phaseRounds.length) {
+    return [];
+  }
+  
+  // 获取当前轮的词卡（已经是固定4张）
+  const round = phaseRounds[currentRound];
   
   // 过滤掉已经选择过的词
   return round.filter(card => !pool.selectedWords.includes(card.word));
+}
+
+/**
+ * 进入下一轮
+ * @returns 是否成功进入下一轮
+ */
+export function nextRound(pool: DailyCardPool): boolean {
+  pool.currentRound++;
+  
+  // 如果当前阶段已完成，返回false（需要用户决定是否开启新阶段）
+  if (pool.currentRound >= 5) {
+    return false;
+  }
+  
+  localStorage.setItem('dailyCardPool', JSON.stringify(pool));
+  return true;
+}
+
+/**
+ * 开启新阶段
+ * @returns 是否成功开启（false表示已达到上限）
+ */
+export function nextPhase(pool: DailyCardPool): { success: boolean; isLastPhase: boolean } {
+  if (pool.currentPhase >= 2) {
+    return { success: false, isLastPhase: true };
+  }
+  
+  pool.currentPhase++;
+  pool.currentRound = 0;
+  
+  localStorage.setItem('dailyCardPool', JSON.stringify(pool));
+  
+  return {
+    success: true,
+    isLastPhase: pool.currentPhase === 2  // 第三阶段是最后一个
+  };
+}
+
+/**
+ * 获取当前学习进度信息
+ */
+export function getProgress(pool: DailyCardPool): {
+  phase: number;  // 当前阶段 0-2
+  round: number;  // 当前轮次 0-4
+  wordsLearned: number;  // 已学词数
+  phaseCompleted: boolean;  // 当前阶段是否完成
+  allCompleted: boolean;  // 所有阶段是否完成
+  canAddExp: boolean;  // 是否增加经验值
+} {
+  const wordsLearned = pool.selectedWords.length;
+  const phaseCompleted = pool.currentRound >= 5;
+  const allCompleted = pool.currentPhase >= 2 && phaseCompleted;
+  const canAddExp = pool.currentPhase === 0;  // 只有首轮增加经验
+  
+  return {
+    phase: pool.currentPhase,
+    round: pool.currentRound,
+    wordsLearned,
+    phaseCompleted,
+    allCompleted,
+    canAddExp
+  };
 }
 
 /**

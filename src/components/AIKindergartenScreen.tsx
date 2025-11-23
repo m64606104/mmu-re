@@ -19,7 +19,7 @@ import {
 } from '../utils/aiKindergartenManager';
 import { WordCard } from '../utils/wordCardLibrary';
 import { TopicCard, getRandomTopics, getRecommendedTopicDifficulty } from '../utils/topicCardLibrary';
-import { generateDailyCards, getNextRound, markWordSelected, DailyCardPool } from '../utils/smartCardGenerator';
+import { generateDailyCards, getCurrentRoundCards, nextRound, nextPhase, getProgress, markWordSelected, DailyCardPool } from '../utils/smartCardGenerator';
 import { getMaxChildren, canCreateNewChild, shouldShowSwitchButton, UpgradeMessages } from '../config/kindergartenConfig';
 
 interface AIKindergartenScreenProps {
@@ -43,7 +43,6 @@ export default function AIKindergartenScreen({ onBack, onOpenChat, apiConfig }: 
   
   // 词卡系统
   const [currentCards, setCurrentCards] = useState<WordCard[]>([]);
-  const [dailyRounds, setDailyRounds] = useState(0);
   const [teachResult, setTeachResult] = useState('');
   const [selectedCard, setSelectedCard] = useState<WordCard | null>(null);
   const [userDefinition, setUserDefinition] = useState('');
@@ -53,27 +52,13 @@ export default function AIKindergartenScreen({ onBack, onOpenChat, apiConfig }: 
   const [cardPool, setCardPool] = useState<DailyCardPool | null>(null);
   const [isLoadingCards, setIsLoadingCards] = useState(false);
   const [showChildrenList, setShowChildrenList] = useState(false);
+  
+  // 阶段完成和继续学习
+  const [showPhaseComplete, setShowPhaseComplete] = useState(false);
+  const [showAllComplete, setShowAllComplete] = useState(false);
 
   useEffect(() => {
     loadChildren();
-  }, []);
-
-  // 加载今日学习轮数
-  useEffect(() => {
-    const today = new Date().toDateString();
-    const savedData = localStorage.getItem('dailyTeachingData');
-    if (savedData) {
-      const data = JSON.parse(savedData);
-      if (data.date === today) {
-        setDailyRounds(data.rounds);
-      } else {
-        // 新的一天，重置
-        localStorage.setItem('dailyTeachingData', JSON.stringify({ date: today, rounds: 0 }));
-        setDailyRounds(0);
-      }
-    } else {
-      localStorage.setItem('dailyTeachingData', JSON.stringify({ date: today, rounds: 0 }));
-    }
   }, []);
 
   // 初始化每日词卡池
@@ -92,10 +77,8 @@ export default function AIKindergartenScreen({ onBack, onOpenChat, apiConfig }: 
       setCardPool(pool);
       
       // 加载当前轮次的词卡
-      const nextCards = getNextRound(pool, dailyRounds);
-      if (nextCards.length > 0) {
-        setCurrentCards(nextCards);
-      }
+      const cards = getCurrentRoundCards(pool);
+      setCurrentCards(cards);
     } catch (error) {
       console.error('生成词卡失败:', error);
     } finally {
@@ -103,22 +86,32 @@ export default function AIKindergartenScreen({ onBack, onOpenChat, apiConfig }: 
     }
   };
 
-  // 刷新词卡（切换到下一轮）
+  // 刷新词卡（获取当前轮次的词卡）
   const refreshCards = () => {
     if (!cardPool) return;
     
-    const nextCards = getNextRound(cardPool, dailyRounds);
-    if (nextCards.length > 0) {
-      setCurrentCards(nextCards);
-    } else {
-      // 如果当前轮次没有可用的词，尝试下一轮
-      const nextRoundCards = getNextRound(cardPool, dailyRounds + 1);
-      if (nextRoundCards.length > 0) {
-        setCurrentCards(nextRoundCards);
-      }
-    }
+    const cards = getCurrentRoundCards(cardPool);
+    setCurrentCards(cards);
     setSelectedCard(null);
     setTeachResult('');
+  };
+  
+  // 继续学习（开启新阶段）
+  const handleContinueLearning = () => {
+    if (!cardPool) return;
+    
+    const result = nextPhase(cardPool);
+    if (result.success) {
+      setCardPool({...cardPool});  // 触发重新渲染
+      refreshCards();
+      setShowPhaseComplete(false);
+      
+      if (result.isLastPhase) {
+        setTeachResult('⚠️ 这是最后一次新增轮次，珍惜学习机会哦！');
+      }
+    } else {
+      setShowAllComplete(true);
+    }
   };
 
   // 打开教学模式时初始化词卡池
@@ -175,8 +168,11 @@ export default function AIKindergartenScreen({ onBack, onOpenChat, apiConfig }: 
 
   // 选择词卡（不立即教学）
   const handleSelectCard = (card: WordCard) => {
-    if (dailyRounds >= 20) {
-      setTeachResult('🌙 今天已经学了20个词啦，明天再来吧～');
+    if (!cardPool) return;
+    
+    const progress = getProgress(cardPool);
+    if (progress.allCompleted) {
+      setTeachResult('� 今天的所有学习机会已用完，明天再来吧～');
       return;
     }
     
@@ -187,7 +183,7 @@ export default function AIKindergartenScreen({ onBack, onOpenChat, apiConfig }: 
 
   // 确认教学
   const handleConfirmTeach = async () => {
-    if (!selectedChild || !selectedChild.aiChildData || !selectedCard) return;
+    if (!selectedChild || !selectedChild.aiChildData || !selectedCard || !cardPool) return;
     
     if (!userDefinition.trim()) {
       setTeachResult('⚠️ 请输入你对这个词的理解');
@@ -195,25 +191,23 @@ export default function AIKindergartenScreen({ onBack, onOpenChat, apiConfig }: 
     }
 
     try {
+      const progress = getProgress(cardPool);
+      
       // 教学这个词（使用用户的理解）
       const result = await teachWord(
         selectedChild.id,
         selectedCard.word,
         userDefinition.trim(),
-        selectedCard.examples
+        selectedCard.examples,
+        progress.canAddExp  // 只有首轮增加经验
       );
 
       if (result.success) {
-        setTeachResult(`✨ 成功学会了"${selectedCard.word}"！获得了10点经验值`);
+        const expMessage = progress.canAddExp ? '获得了10点经验值' : '（不增加经验值）';
+        setTeachResult(`✨ 成功学会了“${selectedCard.word}”！${expMessage}`);
         
         // 标记词已被选择
         markWordSelected(selectedCard.word);
-        
-        // 更新每日轮数
-        const today = new Date().toDateString();
-        const newRounds = dailyRounds + 1;
-        setDailyRounds(newRounds);
-        localStorage.setItem('dailyTeachingData', JSON.stringify({ date: today, rounds: newRounds }));
         
         // 刷新数据和卡片
         setTimeout(async () => {
@@ -225,17 +219,27 @@ export default function AIKindergartenScreen({ onBack, onOpenChat, apiConfig }: 
             setSelectedChild(updatedChild);
           }
           
-          // 刷新词卡
+          // 移除已学的词卡
           const remainingCards = currentCards.filter(c => c.id !== selectedCard.id);
-          if (remainingCards.length === 0 && cardPool) {
-            const nextCards = getNextRound(cardPool, newRounds);
-            if (nextCards.length > 0) {
-              setCurrentCards(nextCards);
+          setCurrentCards(remainingCards);
+          
+          // 检查是否完成当前轮次
+          if (remainingCards.length === 0) {
+            const hasNext = nextRound(cardPool);
+            if (hasNext) {
+              // 进入下一轮
+              refreshCards();
             } else {
-              setCurrentCards([]);
+              // 当前阶段完成
+              const newProgress = getProgress(cardPool);
+              if (newProgress.phaseCompleted && !newProgress.allCompleted) {
+                // 显示阶段完成提示
+                setShowPhaseComplete(true);
+              } else if (newProgress.allCompleted) {
+                // 所有阶段完成
+                setShowAllComplete(true);
+              }
             }
-          } else {
-            setCurrentCards(remainingCards);
           }
           
           setSelectedCard(null);

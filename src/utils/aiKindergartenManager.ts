@@ -178,7 +178,8 @@ export const teachWord = async (
   childId: string,
   word: string,
   definition: string,
-  examples: string[] = []
+  examples: string[] = [],
+  canAddExp: boolean = true  // 是否增加经验值，默认true
 ): Promise<{ success: boolean; message: string }> => {
   try {
     const conversations = await smartLoad('conversations') as Conversation[] || [];
@@ -219,8 +220,10 @@ export const teachWord = async (
       child.aiChildData.vocabulary.push(newWord);
       child.aiChildData.totalWordsLearned++;
       
-      // 增加经验值
-      addExp(child, 10);
+      // 增加经验值（只有首轮才增加）
+      if (canAddExp) {
+        addExp(child, 10);
+      }
       
       // 更新系统提示词
       if (child.characterSettings) {

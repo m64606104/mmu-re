@@ -391,6 +391,10 @@ export const splitMessages = (message: string): string[] => {
       .replace(/\[同意代付\]/g, '')
       .replace(/\[拒绝代付\]/g, '');
     
+    // 🔥 移除引用回复标记（防止显示给用户）
+    cleaned = cleaned
+      .replace(/\[回复\s+(?:我|你)\s+说的"[^"]+"\]/g, '');
+    
     // 🔥 移除多媒体相关标记（防止泄露）
     cleaned = cleaned
       .replace(/\[多媒体消息\]/g, '')
