@@ -11,6 +11,7 @@ import ReadingScreen from './ReadingScreen';
 import GrowthReportScreen from './GrowthReportScreen';
 import TopicDiscussionScreen from './TopicDiscussionScreen';
 import AIChildSettings from './AIChildSettings';
+import WordTeachingChat, { TeachingDialogue } from './WordTeachingChat';
 import { 
   createAIChild, 
   getAllAIChildren,
@@ -21,10 +22,6 @@ import { WordCard } from '../utils/wordCardLibrary';
 import { TopicCard, getRandomTopics, getRecommendedTopicDifficulty } from '../utils/topicCardLibrary';
 import { generateDailyCards, getNextRound, markWordSelected, DailyCardPool } from '../utils/smartCardGenerator';
 import { getMaxChildren, canCreateNewChild, shouldShowSwitchButton, UpgradeMessages } from '../config/kindergartenConfig';
-import { 
-  getTeachingStageConfig,
-  generateBabyRepetitionResponse
-} from '../utils/teachingStageHelper';
 
 interface AIKindergartenScreenProps {
   onBack: () => void;
@@ -57,6 +54,7 @@ export default function AIKindergartenScreen({ onBack, apiConfig }: AIKindergart
   const [cardPool, setCardPool] = useState<DailyCardPool | null>(null);
   const [isLoadingCards, setIsLoadingCards] = useState(false);
   const [showChildrenList, setShowChildrenList] = useState(false);
+  const [showChatTeaching, setShowChatTeaching] = useState(false); // 聊天式教学模式
 
   useEffect(() => {
     loadChildren();
@@ -177,7 +175,7 @@ export default function AIKindergartenScreen({ onBack, apiConfig }: AIKindergart
     saveChild();
   };
 
-  // 选择词卡（不立即教学）
+  // 选择词卡 → 打开聊天式教学
   const handleSelectCard = (card: WordCard) => {
     if (dailyRounds >= 20) {
       setTeachResult('🌙 今天已经学了20个词啦，明天再来吧～');
@@ -185,8 +183,72 @@ export default function AIKindergartenScreen({ onBack, apiConfig }: AIKindergart
     }
     
     setSelectedCard(card);
+    setShowChatTeaching(true); // 打开聊天式教学
     setUserDefinition(''); // 清空之前的输入
     setTeachResult('');
+  };
+
+  // 聊天式教学完成
+  const handleChatTeachingComplete = async (definition: string, dialogue: TeachingDialogue[]) => {
+    if (!selectedChild || !selectedChild.aiChildData || !selectedCard) return;
+
+    try {
+      // 保存词汇学习记录
+      await teachWord(
+        selectedChild.id,
+        selectedCard.word,
+        definition,
+        [] // 例句暂时为空，可以从对话中提取
+      );
+
+      // 标记词卡已选
+      markWordSelected(selectedCard.word);
+
+      // 更新学习次数
+      const today = new Date().toDateString();
+      const newRounds = dailyRounds + 1;
+      setDailyRounds(newRounds);
+      localStorage.setItem('dailyTeachingData', JSON.stringify({ date: today, rounds: newRounds }));
+
+      // 更新每日互动
+      await updateDailyInteraction(selectedChild.id);
+
+      // 重新加载children以获取最新数据
+      const updatedChildren = await getAllAIChildren();
+      setChildren(updatedChildren);
+      const updatedChild = updatedChildren.find(c => c.id === selectedChild.id);
+      if (updatedChild) {
+        setSelectedChild(updatedChild);
+      }
+
+      // 显示成功消息
+      setTeachResult(`✨ 太棒了！${selectedChild.name}通过${dialogue.length}轮对话学会了"${selectedCard.word}"！`);
+
+      // 关闭聊天式教学，清除选中
+      setShowChatTeaching(false);
+      setSelectedCard(null);
+
+      // 3秒后清除结果
+      setTimeout(() => {
+        setTeachResult('');
+      }, 3000);
+
+      // 如果当前轮次的词卡都学完了，加载下一轮
+      const remainingCards = currentCards.filter(c => c.id !== selectedCard.id);
+      if (remainingCards.length === 0 && cardPool) {
+        const nextCards = getNextRound(cardPool, newRounds);
+        if (nextCards.length > 0) {
+          setCurrentCards(nextCards);
+        } else {
+          setCurrentCards([]);
+        }
+      } else {
+        setCurrentCards(remainingCards);
+      }
+    } catch (error) {
+      console.error('教学记录保存失败:', error);
+      setTeachResult('❌ 保存失败，请重试');
+    }
   };
 
   // 确认教学
@@ -198,9 +260,6 @@ export default function AIKindergartenScreen({ onBack, apiConfig }: AIKindergart
       return;
     }
 
-    // 获取当前阶段配置
-    const stageConfig = getTeachingStageConfig(selectedChild.aiChildData.vocabulary.length);
-    
     // 教学这个词（使用用户的理解）
     const result = await teachWord(
       selectedChild.id,
@@ -209,55 +268,25 @@ export default function AIKindergartenScreen({ onBack, apiConfig }: AIKindergart
       selectedCard.examples
     );
 
-    if (result.success) {
-      // 刷新数据以获取最新的重复计数
-      await loadChildren();
-      const updatedChild = children.find(c => c.id === selectedChild.id);
-      const learnedWord = updatedChild?.aiChildData?.vocabulary.find(w => w.word === selectedCard.word);
+    if (result) {
+      setTeachResult(`✨ 成功学会了"${selectedCard.word}"！获得了10点经验值`);
       
-      // 生成AI反应
-      let aiResponse = '';
-      if (stageConfig.stage === 'baby' && learnedWord) {
-        const repetitionCount = learnedWord.repetitionCount || 0;
-        aiResponse = generateBabyRepetitionResponse(repetitionCount, selectedCard.word);
-      }
+      // 标记词已被选择
+      markWordSelected(selectedCard.word);
       
-      // 显示教学结果（包含AI反应）
-      const displayMessage = aiResponse 
-        ? `${aiResponse}\n\n${result.message}`
-        : result.message;
+      // 更新每日轮数
+      const newRounds = dailyRounds + 1;
+      setDailyRounds(newRounds);
+      const today = new Date().toDateString();
+      localStorage.setItem('dailyTeachingData', JSON.stringify({ date: today, rounds: newRounds }));
       
-      setTeachResult(displayMessage);
-      
-      // 检查是否完全学会（Baby期需要多次，其他阶段一次就学会）
-      const isFullyLearned = learnedWord?.fullyLearned !== false;
-      
-      if (isFullyLearned) {
-        // 标记词已被选择
-        markWordSelected(selectedCard.word);
-        
-        // 更新每日轮数
-        const newRounds = dailyRounds + 1;
-        setDailyRounds(newRounds);
-        const today = new Date().toDateString();
-        localStorage.setItem('dailyTeachingData', JSON.stringify({ date: today, rounds: newRounds }));
-        
-        // 刷新数据和卡片
-        setTimeout(() => {
-          loadChildren();
-          refreshCards();
-          setSelectedCard(null);
-          setUserDefinition('');
-          setTeachResult('');
-        }, 2000);
-      } else {
-        // Baby期未完全学会，保持选中状态，允许继续教
-        setTimeout(() => {
-          setUserDefinition(''); // 清空输入
-          setTeachResult(''); // 清空结果，准备下一次
-          loadChildren(); // 刷新数据
-        }, 1500);
-      }
+      // 刷新数据和卡片
+      setTimeout(() => {
+        loadChildren();
+        refreshCards();
+        setSelectedCard(null);
+        setUserDefinition('');
+      }, 1500);
     } else {
       setTeachResult('❌ 教学失败，请重试');
     }
@@ -701,35 +730,9 @@ export default function AIKindergartenScreen({ onBack, apiConfig }: AIKindergart
                     <div className="bg-gradient-to-r from-blue-50 to-purple-50 rounded-xl p-4">
                       <div className="flex items-center gap-3 mb-3">
                         <div className="text-3xl">{selectedCard.emoji}</div>
-                        <div className="flex-1">
+                        <div>
                           <div className="font-semibold text-gray-800">{selectedCard.word}</div>
                           <div className="text-xs text-gray-500">Level {selectedCard.difficulty}</div>
-                          
-                          {/* Baby期学习进度显示 */}
-                          {(() => {
-                            const stageConfig = getTeachingStageConfig(selectedChild.aiChildData.vocabulary.length);
-                            const existingWord = selectedChild.aiChildData.vocabulary.find(w => w.word === selectedCard.word);
-                            const repetitionCount = existingWord?.repetitionCount || 0;
-                            
-                            if (stageConfig.stage === 'baby' && existingWord && !existingWord.fullyLearned) {
-                              return (
-                                <div className="mt-2">
-                                  <div className="flex items-center gap-2 mb-1">
-                                    <span className="text-xs text-orange-600 font-medium">
-                                      👶 学习中 {repetitionCount}/{stageConfig.minRepetitions}
-                                    </span>
-                                  </div>
-                                  <div className="w-full bg-gray-200 rounded-full h-1.5">
-                                    <div 
-                                      className="bg-gradient-to-r from-orange-400 to-pink-500 h-1.5 rounded-full transition-all duration-500"
-                                      style={{ width: `${(repetitionCount / stageConfig.minRepetitions) * 100}%` }}
-                                    ></div>
-                                  </div>
-                                </div>
-                              );
-                            }
-                            return null;
-                          })()}
                         </div>
                       </div>
                       
@@ -774,16 +777,7 @@ export default function AIKindergartenScreen({ onBack, apiConfig }: AIKindergart
                         disabled={!userDefinition.trim()}
                         className="flex-1 py-3 bg-gradient-to-r from-blue-500 to-purple-500 text-white rounded-xl font-medium hover:shadow-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                       >
-                        {(() => {
-                          const stageConfig = getTeachingStageConfig(selectedChild.aiChildData.vocabulary.length);
-                          const existingWord = selectedChild.aiChildData.vocabulary.find(w => w.word === selectedCard.word);
-                          const isLearning = existingWord && !existingWord.fullyLearned;
-                          
-                          if (stageConfig.stage === 'baby' && isLearning) {
-                            return '📢 再教一次';
-                          }
-                          return '✨ 确定教学';
-                        })()}
+                        确定教学
                       </button>
                     </div>
                   </div>
@@ -796,60 +790,12 @@ export default function AIKindergartenScreen({ onBack, apiConfig }: AIKindergart
 
                 {/* 教学结果 */}
                 {teachResult && (
-                  <div className="mt-3 space-y-2">
-                    {(() => {
-                      // 检查是否包含AI反应（用引号包裹的部分）
-                      const parts = teachResult.split('\n\n');
-                      const hasAIResponse = parts.length > 1;
-                      
-                      if (hasAIResponse) {
-                        const aiResponse = parts[0];
-                        const systemMessage = parts[1];
-                        
-                        return (
-                          <>
-                            {/* AI反应气泡 */}
-                            <div className="bg-white border-2 border-blue-200 rounded-2xl p-3 relative animate-bounce-in">
-                              <div className="flex items-start gap-2">
-                                <div className="text-2xl">👶</div>
-                                <div className="flex-1">
-                                  <div className="text-sm font-medium text-gray-800">
-                                    {selectedChild.name}的反应：
-                                  </div>
-                                  <div className="text-base text-gray-700 mt-1">
-                                    {aiResponse}
-                                  </div>
-                                </div>
-                              </div>
-                              {/* 小三角 */}
-                              <div className="absolute -bottom-2 left-8 w-4 h-4 bg-white border-b-2 border-r-2 border-blue-200 transform rotate-45"></div>
-                            </div>
-                            
-                            {/* 系统消息 */}
-                            <div className={`p-3 rounded-xl text-sm text-center ${
-                              systemMessage.includes('终于学会') || systemMessage.includes('成功')
-                                ? 'bg-gradient-to-r from-green-50 to-emerald-50 border border-green-200 text-green-700'
-                                : 'bg-gradient-to-r from-orange-50 to-amber-50 border border-orange-200 text-orange-700'
-                            }`}>
-                              {systemMessage}
-                            </div>
-                          </>
-                        );
-                      }
-                      
-                      // 没有AI反应，只显示系统消息
-                      return (
-                        <div className={`p-3 rounded-xl text-sm text-center ${
-                          teachResult.includes('成功') || teachResult.includes('学会')
-                            ? 'bg-green-50 border border-green-200 text-green-700'
-                            : teachResult.includes('失败')
-                            ? 'bg-red-50 border border-red-200 text-red-700'
-                            : 'bg-orange-50 border border-orange-200 text-orange-700'
-                        }`}>
-                          {teachResult}
-                        </div>
-                      );
-                    })()}
+                  <div className={`mt-3 p-3 rounded-xl text-sm text-center ${
+                    teachResult.includes('成功') 
+                      ? 'bg-green-50 border border-green-200 text-green-700'
+                      : 'bg-orange-50 border border-orange-200 text-orange-700'
+                  }`}>
+                    {teachResult}
                   </div>
                 )}
 
@@ -1079,6 +1025,20 @@ export default function AIKindergartenScreen({ onBack, apiConfig }: AIKindergart
             </button>
           </div>
         </div>
+      )}
+
+      {/* 聊天式教学 */}
+      {showChatTeaching && selectedCard && selectedChild && (
+        <WordTeachingChat
+          word={selectedCard}
+          aiChild={selectedChild}
+          apiConfig={apiConfig}
+          onComplete={handleChatTeachingComplete}
+          onCancel={() => {
+            setShowChatTeaching(false);
+            setSelectedCard(null);
+          }}
+        />
       )}
     </div>
   );

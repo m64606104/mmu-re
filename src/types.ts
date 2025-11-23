@@ -579,8 +579,6 @@ export interface WordKnowledge {
   definition: string;     // 用户教的定义
   examples: string[];     // 例句
   category?: string;      // 词汇分类（动物、颜色、情感等）
-  repetitionCount?: number;  // Baby期重复教学次数（用于0-100词阶段）
-  fullyLearned?: boolean;    // 是否已完全学会（Baby期达到重复次数后为true）
 }
 
 // 理解力系统
