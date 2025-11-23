@@ -7,6 +7,7 @@ import ChatScreen from './components/ChatScreen';
 import ProfileScreen from './components/ProfileScreen';
 import MomentsScreen from './components/MomentsScreen';
 import CharacterSettingsScreen from './components/CharacterSettingsScreen';
+import AIChildSimpleSettings from './components/AIChildSimpleSettings';
 import NewConversationScreen from './components/NewConversationScreen';
 import ContactsScreen from './components/ContactsScreen';
 import AddFriendScreen from './components/AddFriendScreen';
@@ -865,17 +866,24 @@ function App() {
         );
       case 'character-settings':
         return currentConversation ? (
-          <CharacterSettingsScreen 
-            conversation={currentConversation}
-            allConversations={conversations}
-            apiConfig={apiConfig}
-            onUpdateConversation={updateConversation}
-            onDeleteConversation={deleteConversation}
-            onBack={() => navigateTo('chat')}
-          />
-        ) : (
-          <HomeScreen onNavigate={navigateTo} />
-        );
+          // AI儿童使用简化设置，普通角色使用完整设置
+          currentConversation.aiChildData ? (
+            <AIChildSimpleSettings
+              conversation={currentConversation}
+              onUpdateConversation={updateConversation}
+              onBack={() => navigateTo(previousScreen)}
+            />
+          ) : (
+            <CharacterSettingsScreen 
+              conversation={currentConversation}
+              allConversations={conversations}
+              apiConfig={apiConfig}
+              onUpdateConversation={updateConversation}
+              onDeleteConversation={deleteConversation}
+              onBack={() => navigateTo(previousScreen)}
+            />
+          )
+        ) : null;
       case 'new-conversation':
         return (
           <NewConversationScreen 
