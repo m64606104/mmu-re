@@ -1313,18 +1313,32 @@ ${post.imageDescriptions ? `配图：${post.imageDescriptions.join('、')}` : ''
       }
       
       if (decision.replyContent) {
-        // 🎯 回复评论（找到最后一条评论作为回复目标）
-        const lastComment = post.comments[post.comments.length - 1];
-        await commentMomentPost(aiConversation.id, post.id, {
-          authorId: aiConversation.id,
-          authorName: aiConversation.characterSettings.nickname || aiConversation.name,
-          authorAvatar: aiConversation.characterSettings.avatar || aiConversation.avatar,
-          content: decision.replyContent,
-          // ✅ 添加回复信息，让作者的回复也显示为回复样式
-          replyTo: lastComment?.id,
-          replyToName: lastComment?.authorName || lastComment?.username
-        });
-        console.log(`✅ ${aiConversation.characterSettings.nickname} 回复 ${lastComment?.authorName}: ${decision.replyContent}`);
+        // 🎯 回复评论（找到最后一条不是自己的评论作为回复目标）
+        const lastCommentNotBySelf = [...post.comments]
+          .reverse()
+          .find(c => (c.authorId || c.userId) !== aiConversation.id);
+        
+        if (lastCommentNotBySelf) {
+          // 有其他人的评论，回复该评论
+          await commentMomentPost(aiConversation.id, post.id, {
+            authorId: aiConversation.id,
+            authorName: aiConversation.characterSettings.nickname || aiConversation.name,
+            authorAvatar: aiConversation.characterSettings.avatar || aiConversation.avatar,
+            content: decision.replyContent,
+            replyTo: lastCommentNotBySelf.id,
+            replyToName: lastCommentNotBySelf.authorName || lastCommentNotBySelf.username
+          });
+          console.log(`✅ ${aiConversation.characterSettings.nickname} 回复 ${lastCommentNotBySelf.authorName}: ${decision.replyContent}`);
+        } else {
+          // 评论区只有自己的评论，直接评论朋友圈（不回复任何人）
+          await commentMomentPost(aiConversation.id, post.id, {
+            authorId: aiConversation.id,
+            authorName: aiConversation.characterSettings.nickname || aiConversation.name,
+            authorAvatar: aiConversation.characterSettings.avatar || aiConversation.avatar,
+            content: decision.replyContent
+          });
+          console.log(`✅ ${aiConversation.characterSettings.nickname} 评论: ${decision.replyContent}`);
+        }
       }
     } catch (parseError) {
       console.error('解析AI决策失败:', decisionContent, parseError);
@@ -1661,6 +1675,11 @@ ${commentsOverview}${specialContext}
 - 评论区话题对你完全没兴趣
 - 重复之前说过的内容
 
+🚫 绝对禁止的情况：
+- ❌ 绝对不要回复自己的评论（标记了【你的评论】的）
+- ❌ 不要和自己对话
+- ❌ 如果要回复的评论是你自己的，replyToCommentId必须填null
+
 💡 提示：真实的朋友圈评论区会有连续对话，比如：
 A: 好好看啊！
 B 回复 A: 谢谢～
@@ -1719,8 +1738,17 @@ B 回复 A: xx公园～
         const commentIndex = parseInt(decision.replyToCommentId) - 1;
         if (commentIndex >= 0 && commentIndex < post.comments.length) {
           const targetComment = post.comments[commentIndex];
-          decision.replyToCommentId = targetComment.id;
-          decision.replyToName = targetComment.authorName || targetComment.username;
+          const targetAuthorId = targetComment.authorId || targetComment.userId;
+          
+          // ⚠️ 防止AI回复自己的评论
+          if (targetAuthorId === viewerAI.id) {
+            console.warn(`⚠️ ${viewerAI.characterSettings?.nickname} 试图回复自己的评论，已阻止`);
+            decision.replyToCommentId = undefined;
+            decision.replyToName = undefined;
+          } else {
+            decision.replyToCommentId = targetComment.id;
+            decision.replyToName = targetComment.authorName || targetComment.username;
+          }
         } else {
           // 序号无效，清除回复信息
           decision.replyToCommentId = undefined;
