@@ -753,16 +753,67 @@ export const generateAIMoment = async (
     console.log('🖼️ 提取的图片描述:', imageDescriptions);
     
     // 🎵 智能检测并补充分享卡片数据
+    // 如果expectedFormat指示了link_sharing类型，尝试使用真实API生成的数据
     let contentType: 'text' | 'images' | 'music' | 'link' = imageDescriptions.length > 0 ? 'images' : 'text';
     let musicInfo: MomentPost['musicInfo'] | undefined;
     let linkInfo: MomentPost['linkInfo'] | undefined;
     
-    // 检测音乐分享关键词
-    if (cleanedContent.match(/单曲循环|在听|分享.*歌|推荐.*歌|音乐|旋律/)) {
+    // 优先检查格式类型（来自精简版生成器）
+    if (expectedFormat?.format?.type === 'link_sharing') {
+      // 使用真实API生成的数据（已在prompt生成阶段准备）
+      // 这里尝试从内容中提取或使用随机数据
+      const isMusicHint = cleanedContent.match(/单曲循环|在听|分享.*歌|推荐.*歌|音乐|旋律/);
+      
+      if (isMusicHint) {
+        contentType = 'music';
+        // 使用真实音乐API
+        try {
+          const { getMusicByPersonality } = await import('./realMusicAPI');
+          const music = await getMusicByPersonality(conversation.characterSettings?.personality || '');
+          musicInfo = {
+            title: music.title,
+            artist: music.artist,
+            coverUrl: music.coverUrl
+          };
+        } catch (error) {
+          console.error('获取真实音乐失败:', error);
+          musicInfo = generateRandomMusicInfo();
+        }
+      } else {
+        contentType = 'link';
+        // 使用AI生成的内容池
+        try {
+          const { getRandomArticle, getRandomNews } = await import('./contentPoolGenerator');
+          const useArticle = Math.random() < 0.6;
+          
+          if (useArticle) {
+            const article = await getRandomArticle(apiConfig);
+            linkInfo = {
+              title: article.title,
+              description: article.summary,
+              coverUrl: article.coverUrl,
+              url: '#'
+            };
+          } else {
+            const news = await getRandomNews(apiConfig);
+            linkInfo = {
+              title: news.title,
+              description: news.summary,
+              coverUrl: news.coverUrl,
+              url: '#'
+            };
+          }
+        } catch (error) {
+          console.error('获取AI生成内容失败:', error);
+          linkInfo = generateRandomArticleInfo();
+        }
+      }
+    }
+    // 兼容：关键词检测（降级方案）
+    else if (cleanedContent.match(/单曲循环|在听|分享.*歌|推荐.*歌|音乐|旋律/)) {
       contentType = 'music';
       musicInfo = generateRandomMusicInfo();
     }
-    // 检测文章/链接分享关键词  
     else if (cleanedContent.match(/推荐.*文章|分享.*文|好文|值得一读|转发/)) {
       contentType = 'link';
       linkInfo = generateRandomArticleInfo();
@@ -798,15 +849,10 @@ export const generateAIMoment = async (
     const todayCount = parseInt(localStorage.getItem(storageKey) || '0');
     localStorage.setItem(storageKey, (todayCount + 1).toString());
     
-    // 📊 更新AI内容变化记录（避免重复内容）
-    if (expectedFormat && expectedFormat.theme && expectedFormat.format) {
-      const { DiverseMomentsGenerator } = await import('./diverseMomentsGenerator');
-      DiverseMomentsGenerator.updateContentVariation(
-        conversation.id,
-        expectedFormat.theme,
-        expectedFormat.format
-      );
-      console.log(`📝 已记录内容变化: ${expectedFormat.theme} (${expectedFormat.format.type})`);
+    // 📊 精简版生成器不需要复杂的内容变化记录
+    // 已简化为6种核心类型，避免重复由API智能处理
+    if (expectedFormat && expectedFormat.format) {
+      console.log(`📝 朋友圈类型: ${expectedFormat.format.type}`);
     }
     
     // 💰 智能分析朋友圈内容，自动产生支出

@@ -9,7 +9,7 @@
 
 import { Conversation, MomentPost, ApiConfig } from '../types';
 import TrendingContentGenerator from './trendingContentGenerator';
-import DiverseMomentsGenerator from './diverseMomentsGenerator';
+import { SimplifiedMomentsGenerator } from './simplifiedMomentsGenerator';
 
 /**
  * 智能朋友圈生成器
@@ -23,9 +23,11 @@ export class SmartMomentsGenerator {
     conversation: Conversation,
     currentTime: Date
   ): Promise<{ prompt: string; expectedFormat: any }> {
-    // 🎯 获取多样化内容建议
-    const diverseContent = DiverseMomentsGenerator.generateDiverseContent(conversation);
-    const { content: suggestedContent, format, theme } = diverseContent;
+    // 🎯 获取精简版内容建议（6种核心类型）
+    const generatedContent = SimplifiedMomentsGenerator.generateContent(conversation);
+    const { content: suggestedContent, format, shareData: _shareData } = generatedContent;
+    const theme = format.type;
+    // TODO: shareData将在下一步集成真实音乐API和内容生成器时使用
     
     const characterSettings = conversation.characterSettings;
     const nickname = characterSettings?.nickname || conversation.name;
@@ -39,7 +41,7 @@ export class SmartMomentsGenerator {
       characterSettings?.personality
     );
     
-    // 根据格式调整prompt
+    // 根据精简版格式调整prompt（6种核心类型）
     let formatInstructions = '';
     switch (format.type) {
       case 'text_only':
@@ -51,10 +53,13 @@ export class SmartMomentsGenerator {
       case 'multi_image':
         formatInstructions = `• 配${format.imageCount}张图片\n• 展示丰富的生活场景`;
         break;
-      case 'news_sharing':
-        formatInstructions = '• 分享和评论时事热点\n• 体现你的观点和态度';
+      case 'life_sharing':
+        formatInstructions = '• 分享生活中的实物照片\n• 展示真实的生活细节';
         break;
-      case 'mood_check':
+      case 'link_sharing':
+        formatInstructions = '• 分享音乐或文章链接\n• 简短评论表达你的想法';
+        break;
+      case 'mood_moment':
         formatInstructions = '• 表达当下心情和感受\n• 真实自然的情感流露';
         break;
     }

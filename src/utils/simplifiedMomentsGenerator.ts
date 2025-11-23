@@ -1,9 +1,12 @@
 /**
- * 精简版朋友圈生成器 - 方案A（6种类型）
+ * 精简版朋友圈生成器 - 方案D（6种类型 + 真实API）
  * 解决格式混乱、类型过多的问题
+ * 集成真实音乐API和AI生成的新闻/文章内容
  */
 
-import { Conversation } from '../types';
+import { Conversation, ApiConfig } from '../types';
+import { getMusicByPersonality } from './realMusicAPI';
+import { getRandomNews, getRandomArticle } from './contentPoolGenerator';
 
 export interface SimpleMomentsFormat {
   type: 'text_only' | 'single_image' | 'multi_image' | 'life_sharing' | 'link_sharing' | 'mood_moment';
@@ -236,6 +239,8 @@ export class SimplifiedMomentsGenerator {
   
   /**
    * 生成链接分享内容（音乐/文章）
+   * 注意：此函数需要在异步环境中调用才能使用真实API
+   * 同步版本使用本地库，异步版本见generateLinkContentAsync
    */
   static generateLinkContent(_personality: string): { 
     content: string; 
@@ -247,6 +252,22 @@ export class SimplifiedMomentsGenerator {
       return this.generateMusicShare();
     } else {
       return this.generateArticleShare();
+    }
+  }
+  
+  /**
+   * 生成链接分享内容（异步版本，使用真实API）
+   */
+  static async generateLinkContentAsync(
+    personality: string,
+    apiConfig: ApiConfig
+  ): Promise<{ content: string; shareData: MomentsShareData }> {
+    const isMusicType = Math.random() < 0.6; // 60%音乐，40%文章
+    
+    if (isMusicType) {
+      return await this.generateMusicShareAsync(personality, apiConfig);
+    } else {
+      return await this.generateArticleShareAsync(apiConfig);
     }
   }
   
@@ -289,6 +310,41 @@ export class SimplifiedMomentsGenerator {
         }
       }
     };
+  }
+  
+  /**
+   * 生成音乐分享（异步版本，使用真实API）
+   */
+  static async generateMusicShareAsync(
+    personality: string,
+    _apiConfig: ApiConfig
+  ): Promise<{ content: string; shareData: MomentsShareData }> {
+    try {
+      const music = await getMusicByPersonality(personality);
+      
+      const comments = [
+        '单曲循环ing🎵',
+        '这首歌听了无数遍还是喜欢',
+        '分享一首最近在听的歌~',
+        '推荐给你们，真的很好听！',
+        '旋律太美了💫'
+      ];
+      
+      return {
+        content: comments[Math.floor(Math.random() * comments.length)],
+        shareData: {
+          contentType: 'music',
+          musicInfo: {
+            title: music.title,
+            artist: music.artist,
+            coverUrl: music.coverUrl
+          }
+        }
+      };
+    } catch (error) {
+      console.error('获取真实音乐失败，使用降级方案:', error);
+      return this.generateMusicShare();
+    }
   }
   
   /**
@@ -348,6 +404,68 @@ export class SimplifiedMomentsGenerator {
         }
       }
     };
+  }
+  
+  /**
+   * 生成文章分享（异步版本，使用AI生成的内容池）
+   */
+  static async generateArticleShareAsync(
+    apiConfig: ApiConfig
+  ): Promise<{ content: string; shareData: MomentsShareData }> {
+    try {
+      // 60%概率使用AI生成的公众号文章，40%使用新闻
+      const useArticle = Math.random() < 0.6;
+      
+      if (useArticle) {
+        const article = await getRandomArticle(apiConfig);
+        
+        const comments = [
+          '这篇文章写得不错，推荐阅读👍',
+          '分享一篇好文~',
+          '看完很有感触',
+          '值得一读！',
+          '转发收藏✨'
+        ];
+        
+        return {
+          content: comments[Math.floor(Math.random() * comments.length)],
+          shareData: {
+            contentType: 'link',
+            linkInfo: {
+              title: article.title,
+              description: article.summary,
+              coverUrl: article.coverUrl,
+              url: '#'
+            }
+          }
+        };
+      } else {
+        const news = await getRandomNews(apiConfig);
+        
+        const comments = [
+          '关注这个话题很久了',
+          '分享一条新闻',
+          '这个值得一看',
+          '转发！'
+        ];
+        
+        return {
+          content: comments[Math.floor(Math.random() * comments.length)],
+          shareData: {
+            contentType: 'link',
+            linkInfo: {
+              title: news.title,
+              description: news.summary,
+              coverUrl: news.coverUrl,
+              url: '#'
+            }
+          }
+        };
+      }
+    } catch (error) {
+      console.error('获取AI生成内容失败，使用降级方案:', error);
+      return this.generateArticleShare();
+    }
   }
   
   /**
