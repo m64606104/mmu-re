@@ -192,12 +192,21 @@ const CustomPenPalCreator: React.FC<CustomPenPalCreatorProps> = ({
             <label className="block text-sm font-medium text-gray-700 mb-2">
               <MapPin size={16} className="inline mr-1" />
               背景设定
-              <span className="text-xs text-gray-500 ml-2">（可选）</span>
+              <span className="text-xs text-gray-500 ml-2">（可选，用于补充当前状态）</span>
             </label>
+            <div className="bg-blue-50 border-l-4 border-blue-400 p-3 mb-2 rounded-r-lg">
+              <div className="text-xs text-blue-800">
+                <div className="font-medium mb-1">📝 作用说明</div>
+                <div>• 补充角色当前的时间、地点、状态等背景信息</div>
+                <div>• 让AI回信时更符合角色的当前处境</div>
+                <div>• 例如：工作地点、生活状态、近期事件等</div>
+                <div>• 留空时AI会自动生成自我介绍</div>
+              </div>
+            </div>
             <textarea
               value={background}
               onChange={(e) => setBackground(e.target.value)}
-              placeholder="补充角色背景信息，例如：&#10;&#10;你现在正在华锐集团处理公司事务，日常工作繁忙。偶尔会思念远方的笔友。&#10;&#10;或者留空也可以。"
+              placeholder="补充角色背景信息，例如：&#10;&#10;你现在正在华锐集团处理公司事务，日常工作繁忙。偶尔会思念远方的笔友。&#10;&#10;或者：&#10;&#10;你在华盛顿特区的FBI总部，日常处理案件。和朋友有定期的往来通信。&#10;&#10;留空也可以。"
               className="w-full h-32 px-4 py-3 border border-gray-300 rounded-xl resize-none focus:outline-none focus:ring-2 focus:ring-purple-400"
               maxLength={500}
             />
