@@ -125,7 +125,13 @@ export default function AIChildChat({ childId, onBack, apiConfig }: AIChildChatP
       }
 
       const data = await response.json();
-      const aiReply = data.choices[0]?.message?.content || '...(没听懂)';
+      let aiReply = data.choices[0]?.message?.content || '...(没听懂)';
+      
+      // 清理AI回复中的格式标记
+      aiReply = aiReply
+        .replace(/\[回复[^\]]*\]\s*/g, '') // 移除[回复 xxx]格式
+        .replace(/\[引用[^\]]*\]\s*/g, '') // 移除[引用 xxx]格式
+        .trim();
 
       const aiMessage: Message = {
         id: `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,

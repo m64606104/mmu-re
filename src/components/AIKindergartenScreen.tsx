@@ -19,7 +19,7 @@ import {
 } from '../utils/aiKindergartenManager';
 import { WordCard } from '../utils/wordCardLibrary';
 import { TopicCard, getRandomTopics, getRecommendedTopicDifficulty } from '../utils/topicCardLibrary';
-import { generateDailyCards, getCurrentRoundCards, nextRound, nextPhase, getProgress, markWordSelected, DailyCardPool } from '../utils/smartCardGenerator';
+import { generateDailyCards, getNextRound, markWordSelected, DailyCardPool } from '../utils/smartCardGenerator';
 import { getMaxChildren, canCreateNewChild, shouldShowSwitchButton, UpgradeMessages } from '../config/kindergartenConfig';
 
 interface AIKindergartenScreenProps {
@@ -43,6 +43,8 @@ export default function AIKindergartenScreen({ onBack, onOpenChat, apiConfig }: 
   
   // 词卡系统
   const [currentCards, setCurrentCards] = useState<WordCard[]>([]);
+  const [dailyRounds, setDailyRounds] = useState(0); // 当天已学单词数
+  const [currentRoundNumber, setCurrentRoundNumber] = useState(1); // 当前是第几轮（1-3）
   const [teachResult, setTeachResult] = useState('');
   const [selectedCard, setSelectedCard] = useState<WordCard | null>(null);
   const [userDefinition, setUserDefinition] = useState('');
@@ -52,13 +54,38 @@ export default function AIKindergartenScreen({ onBack, onOpenChat, apiConfig }: 
   const [cardPool, setCardPool] = useState<DailyCardPool | null>(null);
   const [isLoadingCards, setIsLoadingCards] = useState(false);
   const [showChildrenList, setShowChildrenList] = useState(false);
-  
-  // 阶段完成和继续学习
-  const [showPhaseComplete, setShowPhaseComplete] = useState(false);
-  const [showAllComplete, setShowAllComplete] = useState(false);
+  const [showRoundComplete, setShowRoundComplete] = useState(false); // 显示轮次完成提示
 
   useEffect(() => {
     loadChildren();
+  }, []);
+
+  // 加载今日学习轮数
+  useEffect(() => {
+    const today = new Date().toDateString();
+    const savedData = localStorage.getItem('dailyTeachingData');
+    if (savedData) {
+      const data = JSON.parse(savedData);
+      if (data.date === today) {
+        setDailyRounds(data.rounds || 0);
+        setCurrentRoundNumber(data.currentRound || 1);
+      } else {
+        // 新的一天，重置
+        localStorage.setItem('dailyTeachingData', JSON.stringify({ 
+          date: today, 
+          rounds: 0,
+          currentRound: 1
+        }));
+        setDailyRounds(0);
+        setCurrentRoundNumber(1);
+      }
+    } else {
+      localStorage.setItem('dailyTeachingData', JSON.stringify({ 
+        date: today, 
+        rounds: 0,
+        currentRound: 1
+      }));
+    }
   }, []);
 
   // 初始化每日词卡池
@@ -77,8 +104,10 @@ export default function AIKindergartenScreen({ onBack, onOpenChat, apiConfig }: 
       setCardPool(pool);
       
       // 加载当前轮次的词卡
-      const cards = getCurrentRoundCards(pool);
-      setCurrentCards(cards);
+      const nextCards = getNextRound(pool, dailyRounds);
+      if (nextCards.length > 0) {
+        setCurrentCards(nextCards);
+      }
     } catch (error) {
       console.error('生成词卡失败:', error);
     } finally {
@@ -86,32 +115,45 @@ export default function AIKindergartenScreen({ onBack, onOpenChat, apiConfig }: 
     }
   };
 
-  // 刷新词卡（获取当前轮次的词卡）
-  const refreshCards = () => {
+  // 开始新一轮
+  const startNewRound = () => {
+    if (currentRoundNumber >= 3) {
+      alert('已经完成今日所有轮次！');
+      return;
+    }
+    
+    const newRoundNumber = currentRoundNumber + 1;
+    setCurrentRoundNumber(newRoundNumber);
+    setShowRoundComplete(false);
+    
+    // 更新本地存储
+    const today = new Date().toDateString();
+    localStorage.setItem('dailyTeachingData', JSON.stringify({ 
+      date: today, 
+      rounds: dailyRounds,
+      currentRound: newRoundNumber
+    }));
+    
+    // 刷新词卡
+    refreshCards();
+  };
+
+  // 刷新词卡（切换到下一轮）
+  const refreshCards = async () => {
     if (!cardPool) return;
     
-    const cards = getCurrentRoundCards(cardPool);
-    setCurrentCards(cards);
+    const nextCards = getNextRound(cardPool, dailyRounds);
+    if (nextCards.length > 0) {
+      setCurrentCards(nextCards);
+    } else {
+      // 如果当前轮次没有可用的词，尝试下一轮
+      const nextRoundCards = getNextRound(cardPool, dailyRounds + 1);
+      if (nextRoundCards.length > 0) {
+        setCurrentCards(nextRoundCards);
+      }
+    }
     setSelectedCard(null);
     setTeachResult('');
-  };
-  
-  // 继续学习（开启新阶段）
-  const handleContinueLearning = () => {
-    if (!cardPool) return;
-    
-    const result = nextPhase(cardPool);
-    if (result.success) {
-      setCardPool({...cardPool});  // 触发重新渲染
-      refreshCards();
-      setShowPhaseComplete(false);
-      
-      if (result.isLastPhase) {
-        setTeachResult('⚠️ 这是最后一次新增轮次，珍惜学习机会哦！');
-      }
-    } else {
-      setShowAllComplete(true);
-    }
   };
 
   // 打开教学模式时初始化词卡池
@@ -168,11 +210,8 @@ export default function AIKindergartenScreen({ onBack, onOpenChat, apiConfig }: 
 
   // 选择词卡（不立即教学）
   const handleSelectCard = (card: WordCard) => {
-    if (!cardPool) return;
-    
-    const progress = getProgress(cardPool);
-    if (progress.allCompleted) {
-      setTeachResult('� 今天的所有学习机会已用完，明天再来吧～');
+    if (dailyRounds >= 60) {
+      setTeachResult('🌙 今天已经学了60个词啦，已达上限！');
       return;
     }
     
@@ -183,7 +222,7 @@ export default function AIKindergartenScreen({ onBack, onOpenChat, apiConfig }: 
 
   // 确认教学
   const handleConfirmTeach = async () => {
-    if (!selectedChild || !selectedChild.aiChildData || !selectedCard || !cardPool) return;
+    if (!selectedChild || !selectedChild.aiChildData || !selectedCard) return;
     
     if (!userDefinition.trim()) {
       setTeachResult('⚠️ 请输入你对这个词的理解');
@@ -191,23 +230,42 @@ export default function AIKindergartenScreen({ onBack, onOpenChat, apiConfig }: 
     }
 
     try {
-      const progress = getProgress(cardPool);
-      
+      const isFirstRound = currentRoundNumber === 1;
       // 教学这个词（使用用户的理解）
       const result = await teachWord(
         selectedChild.id,
         selectedCard.word,
         userDefinition.trim(),
         selectedCard.examples,
-        progress.canAddExp  // 只有首轮增加经验
+        isFirstRound // 只有首轮增加经验值
       );
 
       if (result.success) {
-        const expMessage = progress.canAddExp ? '获得了10点经验值' : '（不增加经验值）';
-        setTeachResult(`✨ 成功学会了“${selectedCard.word}”！${expMessage}`);
+        const expMessage = isFirstRound ? '获得了10点经验值' : '不增加经验值（额外学习）';
+        setTeachResult(`✨ 成功学会了"${selectedCard.word}"！${expMessage}`);
         
         // 标记词已被选择
         markWordSelected(selectedCard.word);
+        
+        // 更新每日轮数
+        const today = new Date().toDateString();
+        const newRounds = dailyRounds + 1;
+        const wordsInCurrentRound = (newRounds - 1) % 20 + 1;
+        setDailyRounds(newRounds);
+        
+        // 检查是否完成一轮
+        const roundCompleted = wordsInCurrentRound === 20;
+        
+        localStorage.setItem('dailyTeachingData', JSON.stringify({ 
+          date: today, 
+          rounds: newRounds,
+          currentRound: currentRoundNumber
+        }));
+        
+        // 如果完成一轮，显示提示
+        if (roundCompleted && newRounds < 60) {
+          setShowRoundComplete(true);
+        }
         
         // 刷新数据和卡片
         setTimeout(async () => {
@@ -219,27 +277,17 @@ export default function AIKindergartenScreen({ onBack, onOpenChat, apiConfig }: 
             setSelectedChild(updatedChild);
           }
           
-          // 移除已学的词卡
+          // 刷新词卡
           const remainingCards = currentCards.filter(c => c.id !== selectedCard.id);
-          setCurrentCards(remainingCards);
-          
-          // 检查是否完成当前轮次
-          if (remainingCards.length === 0) {
-            const hasNext = nextRound(cardPool);
-            if (hasNext) {
-              // 进入下一轮
-              refreshCards();
+          if (remainingCards.length === 0 && cardPool) {
+            const nextCards = getNextRound(cardPool, newRounds);
+            if (nextCards.length > 0) {
+              setCurrentCards(nextCards);
             } else {
-              // 当前阶段完成
-              const newProgress = getProgress(cardPool);
-              if (newProgress.phaseCompleted && !newProgress.allCompleted) {
-                // 显示阶段完成提示
-                setShowPhaseComplete(true);
-              } else if (newProgress.allCompleted) {
-                // 所有阶段完成
-                setShowAllComplete(true);
-              }
+              setCurrentCards([]);
             }
+          } else {
+            setCurrentCards(remainingCards);
           }
           
           setSelectedCard(null);
@@ -798,6 +846,62 @@ export default function AIKindergartenScreen({ onBack, onOpenChat, apiConfig }: 
                       : 'bg-orange-50 border border-orange-200 text-orange-700'
                   }`}>
                     {teachResult}
+                  </div>
+                )}
+
+                {/* 轮次完成提示 */}
+                {showRoundComplete && (
+                  <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
+                    <div className="bg-white rounded-2xl p-6 w-full max-w-md">
+                      <div className="text-center mb-4">
+                        <div className="text-6xl mb-3">🎉</div>
+                        <h2 className="text-2xl font-bold text-gray-800 mb-2">
+                          {currentRoundNumber === 1 ? '恭喜完成首轮学习！' : currentRoundNumber === 2 ? '第二轮学习完成！' : '所有轮次完成！'}
+                        </h2>
+                        <p className="text-gray-600 mb-4">
+                          今天已学习 <span className="font-bold text-blue-600">{dailyRounds}</span> 个单词
+                        </p>
+                      </div>
+
+                      {currentRoundNumber === 1 && (
+                        <div className="bg-blue-50 rounded-xl p-4 mb-4">
+                          <p className="text-sm text-gray-700 mb-3">
+                            ✨ 去找 <span className="font-semibold text-blue-600">{selectedChild.aiChildData?.nickname || selectedChild.name}</span> 聊聊天吧！
+                          </p>
+                          <p className="text-xs text-gray-600">
+                            你也可以继续学习，但额外轮次不增加经验值
+                          </p>
+                        </div>
+                      )}
+
+                      {currentRoundNumber === 2 && (
+                        <div className="bg-orange-50 rounded-xl p-4 mb-4">
+                          <p className="text-sm text-orange-700 mb-2">
+                            ⚠️ 这是最后一次新增轮次
+                          </p>
+                          <p className="text-xs text-gray-600">
+                            第三轮后将无法继续学习
+                          </p>
+                        </div>
+                      )}
+
+                      <div className="space-y-3">
+                        {currentRoundNumber < 3 && (
+                          <button
+                            onClick={startNewRound}
+                            className="w-full py-3 bg-gradient-to-r from-blue-500 to-purple-500 text-white rounded-xl font-medium hover:shadow-lg"
+                          >
+                            📚 继续学习（第{currentRoundNumber + 1}轮）
+                          </button>
+                        )}
+                        <button
+                          onClick={() => setShowRoundComplete(false)}
+                          className="w-full py-3 bg-gray-100 text-gray-700 rounded-xl font-medium hover:bg-gray-200"
+                        >
+                          {currentRoundNumber < 3 ? '稍后再学' : '关闭'}
+                        </button>
+                      </div>
+                    </div>
                   </div>
                 )}
 
