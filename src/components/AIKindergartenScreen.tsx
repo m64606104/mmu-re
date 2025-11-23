@@ -21,6 +21,10 @@ import { WordCard } from '../utils/wordCardLibrary';
 import { TopicCard, getRandomTopics, getRecommendedTopicDifficulty } from '../utils/topicCardLibrary';
 import { generateDailyCards, getNextRound, markWordSelected, DailyCardPool } from '../utils/smartCardGenerator';
 import { getMaxChildren, canCreateNewChild, shouldShowSwitchButton, UpgradeMessages } from '../config/kindergartenConfig';
+import { 
+  getTeachingStageConfig,
+  generateBabyRepetitionResponse
+} from '../utils/teachingStageHelper';
 
 interface AIKindergartenScreenProps {
   onBack: () => void;
@@ -194,6 +198,9 @@ export default function AIKindergartenScreen({ onBack, apiConfig }: AIKindergart
       return;
     }
 
+    // 获取当前阶段配置
+    const stageConfig = getTeachingStageConfig(selectedChild.aiChildData.vocabulary.length);
+    
     // 教学这个词（使用用户的理解）
     const result = await teachWord(
       selectedChild.id,
@@ -202,25 +209,55 @@ export default function AIKindergartenScreen({ onBack, apiConfig }: AIKindergart
       selectedCard.examples
     );
 
-    if (result) {
-      setTeachResult(`✨ 成功学会了"${selectedCard.word}"！获得了10点经验值`);
+    if (result.success) {
+      // 刷新数据以获取最新的重复计数
+      await loadChildren();
+      const updatedChild = children.find(c => c.id === selectedChild.id);
+      const learnedWord = updatedChild?.aiChildData?.vocabulary.find(w => w.word === selectedCard.word);
       
-      // 标记词已被选择
-      markWordSelected(selectedCard.word);
+      // 生成AI反应
+      let aiResponse = '';
+      if (stageConfig.stage === 'baby' && learnedWord) {
+        const repetitionCount = learnedWord.repetitionCount || 0;
+        aiResponse = generateBabyRepetitionResponse(repetitionCount, selectedCard.word);
+      }
       
-      // 更新每日轮数
-      const newRounds = dailyRounds + 1;
-      setDailyRounds(newRounds);
-      const today = new Date().toDateString();
-      localStorage.setItem('dailyTeachingData', JSON.stringify({ date: today, rounds: newRounds }));
+      // 显示教学结果（包含AI反应）
+      const displayMessage = aiResponse 
+        ? `${aiResponse}\n\n${result.message}`
+        : result.message;
       
-      // 刷新数据和卡片
-      setTimeout(() => {
-        loadChildren();
-        refreshCards();
-        setSelectedCard(null);
-        setUserDefinition('');
-      }, 1500);
+      setTeachResult(displayMessage);
+      
+      // 检查是否完全学会（Baby期需要多次，其他阶段一次就学会）
+      const isFullyLearned = learnedWord?.fullyLearned !== false;
+      
+      if (isFullyLearned) {
+        // 标记词已被选择
+        markWordSelected(selectedCard.word);
+        
+        // 更新每日轮数
+        const newRounds = dailyRounds + 1;
+        setDailyRounds(newRounds);
+        const today = new Date().toDateString();
+        localStorage.setItem('dailyTeachingData', JSON.stringify({ date: today, rounds: newRounds }));
+        
+        // 刷新数据和卡片
+        setTimeout(() => {
+          loadChildren();
+          refreshCards();
+          setSelectedCard(null);
+          setUserDefinition('');
+          setTeachResult('');
+        }, 2000);
+      } else {
+        // Baby期未完全学会，保持选中状态，允许继续教
+        setTimeout(() => {
+          setUserDefinition(''); // 清空输入
+          setTeachResult(''); // 清空结果，准备下一次
+          loadChildren(); // 刷新数据
+        }, 1500);
+      }
     } else {
       setTeachResult('❌ 教学失败，请重试');
     }

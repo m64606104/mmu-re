@@ -13,6 +13,7 @@ import {
 } from '../types';
 import { smartLoad, smartSave } from './storage';
 import { recordWordLearning } from './aiMemorySystem';
+import { getTeachingStageConfig, isBabyWordLearned } from './teachingStageHelper';
 
 /**
  * 创建新的AI儿童
@@ -172,17 +173,45 @@ export const teachWord = async (
       return { success: false, message: '未找到AI儿童' };
     }
     
+    // 获取当前教学阶段配置
+    const stageConfig = getTeachingStageConfig(child.aiChildData.vocabulary.length);
     const existingWord = child.aiChildData.vocabulary.find(w => w.word === word);
     
     if (existingWord) {
-      // 复习旧词，提升熟悉度
+      // Baby期特殊处理：重复教学
+      if (stageConfig.stage === 'baby' && !existingWord.fullyLearned) {
+        const repetitionCount = (existingWord.repetitionCount || 0) + 1;
+        existingWord.repetitionCount = repetitionCount;
+        
+        // 检查是否达到学会标准
+        if (isBabyWordLearned(repetitionCount, stageConfig)) {
+          existingWord.fullyLearned = true;
+          existingWord.familiarity = 50; // Baby期学会后设为50%
+        }
+        
+        existingWord.lastReview = Date.now();
+        existingWord.definition = definition;
+        
+        await smartSave('conversations', conversations);
+        
+        return {
+          success: true,
+          message: existingWord.fullyLearned 
+            ? `终于学会了"${word}"！✨` 
+            : `正在学习"${word}"...（${repetitionCount}/${stageConfig.minRepetitions}）`
+        };
+      }
+      
+      // 其他阶段或已学会的词：复习提升熟悉度
       existingWord.familiarity = Math.min(100, existingWord.familiarity + 15);
       existingWord.reviewCount++;
       existingWord.lastReview = Date.now();
-      existingWord.definition = definition; // 更新定义
+      existingWord.definition = definition;
       if (examples.length > 0) {
         existingWord.examples = [...existingWord.examples, ...examples];
       }
+      
+      await smartSave('conversations', conversations);
       
       return { 
         success: true, 
@@ -192,12 +221,15 @@ export const teachWord = async (
       // 学习新词
       const newWord: WordKnowledge = {
         word,
-        familiarity: 30, // 首次学习30%熟悉度
+        familiarity: stageConfig.stage === 'baby' ? 0 : 30, // Baby期从0开始
         learnedAt: Date.now(),
         reviewCount: 0,
         lastReview: Date.now(),
         definition,
-        examples
+        examples,
+        // Baby期特殊字段
+        repetitionCount: stageConfig.stage === 'baby' ? 1 : 0,
+        fullyLearned: stageConfig.stage !== 'baby' // 非Baby期直接标记为已学会
       };
       
       child.aiChildData.vocabulary.push(newWord);
@@ -228,7 +260,9 @@ export const teachWord = async (
       
       return { 
         success: true, 
-        message: `学会了新词"${word}"！获得10点经验` 
+        message: stageConfig.stage === 'baby'
+          ? `正在学习"${word}"...（1/${stageConfig.minRepetitions}）`
+          : `学会了新词"${word}"！获得10点经验`
       };
     }
   } catch (error) {
