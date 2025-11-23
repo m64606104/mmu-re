@@ -593,6 +593,9 @@ export default function CharacterSettingsScreen({
     }
   };
 
+  // 检测是否为AI儿童
+  const isAIChild = !!conversation.aiChildData;
+
   return (
     <div className="h-full bg-gray-50 flex flex-col">
       {/* Header */}
@@ -601,7 +604,7 @@ export default function CharacterSettingsScreen({
           <button onClick={onBack} className="p-2 -ml-2">
             <ChevronLeft className="w-6 h-6" />
           </button>
-          <h1 className="text-lg font-semibold ml-2">角色设置</h1>
+          <h1 className="text-lg font-semibold ml-2">{isAIChild ? 'AI儿童设置' : '角色设置'}</h1>
         </div>
         <button
           onClick={handleSave}
@@ -674,6 +677,9 @@ export default function CharacterSettingsScreen({
           <p className="text-xs text-gray-500 mt-1">在群聊中显示的网名</p>
         </div>
 
+        {/* 高级设置 - 仅普通角色显示 */}
+        {!isAIChild && (
+          <>
         {/* System Prompt */}
         <div className="bg-white rounded-lg shadow-sm p-4">
           <div className="flex justify-between items-center mb-2">
@@ -821,8 +827,10 @@ export default function CharacterSettingsScreen({
             👥 管理角色的社交网络和关系
           </p>
         </div>
+          </>
+        )}
 
-        {/* AI主动发消息 */}
+        {/* AI主动发消息 - 所有角色都显示 */}
         <div className="bg-white rounded-lg shadow-sm p-4">
           <div className="flex items-center justify-between mb-3">
             <div className="flex items-center gap-2">
@@ -943,7 +951,8 @@ export default function CharacterSettingsScreen({
           )}
         </div>
 
-        {/* 🧠 记忆系统配置 */}
+        {/* 🧠 记忆系统配置 - 仅普通角色显示 */}
+        {!isAIChild && (
         <div className="bg-white rounded-lg shadow-sm p-4">
           <div className="flex items-center justify-between mb-3">
             <div className="flex items-center gap-2">
@@ -974,8 +983,10 @@ export default function CharacterSettingsScreen({
             </p>
           </div>
         </div>
+        )}
 
-        {/* 📸 朋友圈记忆配置 */}
+        {/* 📸 朋友圈记忆配置 - 仅普通角色显示 */}
+        {!isAIChild && (
         <div className="bg-white rounded-lg shadow-sm p-4">
           <div className="flex items-center justify-between mb-3">
             <div className="flex items-center gap-2">
@@ -1006,8 +1017,10 @@ export default function CharacterSettingsScreen({
             </p>
           </div>
         </div>
+        )}
 
-        {/* 📸 朋友圈发布频率设置 */}
+        {/* 📸 朋友圈发布频率设置 - 仅普通角色显示 */}
+        {!isAIChild && (
         <div className="bg-white rounded-lg shadow-sm p-4">
           <div className="flex items-center gap-2 mb-3">
             <RefreshCw className="w-5 h-5 text-indigo-500" />
@@ -1095,8 +1108,10 @@ export default function CharacterSettingsScreen({
             </div>
           </div>
         </div>
+        )}
 
-        {/* 📝 自定义上下文配置 */}
+        {/* 📝 自定义上下文配置 - 仅普通角色显示 */}
+        {!isAIChild && (
         <div className="bg-white rounded-lg shadow-sm p-4">
           <div className="flex items-center justify-between mb-3">
             <div className="flex items-center gap-2">
@@ -1154,8 +1169,10 @@ export default function CharacterSettingsScreen({
             </div>
           )}
         </div>
+        )}
 
-        {/* 📚 资料库 */}
+        {/* 📚 资料库 - 仅普通角色显示 */}
+        {!isAIChild && (
         <div className="bg-white rounded-lg shadow-sm p-4">
           <div className="flex items-center justify-between mb-3">
             <div className="flex items-center gap-2">
@@ -1217,15 +1234,17 @@ export default function CharacterSettingsScreen({
             </div>
           )}
         </div>
+        )}
 
-        {/* 提示信息 */}
+        {/* 提示信息 - 仅普通角色显示 */}
+        {!isAIChild && (
         <div className="bg-blue-50 border border-blue-100 rounded-lg p-4">
           <p className="text-sm text-blue-700 leading-relaxed">
             💡 这些设置将影响AI生成回复时的风格和内容，帮助创建更真实的对话体验
           </p>
         </div>
 
-        {/* 角色迁移 */}
+        {/* 角色迁移 - 仅普通角色显示 */}
         <div className="bg-white rounded-lg shadow-sm p-4">
           <h3 className="text-sm font-medium text-gray-700 mb-3">角色迁移</h3>
           <button
@@ -1240,7 +1259,7 @@ export default function CharacterSettingsScreen({
           </p>
         </div>
 
-        {/* 朋友圈测试 */}
+        {/* 朋友圈测试 - 仅普通角色显示 */}
         <div className="bg-white rounded-lg shadow-sm p-4">
           <h3 className="text-sm font-medium text-gray-700 mb-3">朋友圈测试</h3>
           <button
@@ -1255,7 +1274,7 @@ export default function CharacterSettingsScreen({
           </p>
         </div>
 
-        {/* 聊天记录导入导出 */}
+        {/* 聊天记录导入导出 - 仅普通角色显示 */}
         <div className="bg-white rounded-lg shadow-sm p-4">
           <h3 className="text-sm font-medium text-gray-700 mb-3">聊天记录管理</h3>
           <div className="grid grid-cols-2 gap-3">
@@ -1285,15 +1304,10 @@ export default function CharacterSettingsScreen({
             💾 导出后可在其他设备导入，保留所有聊天记录
           </p>
         </div>
-
-        {/* 提示信息 */}
-        <div className="bg-blue-50 border border-blue-100 rounded-lg p-4">
-          <p className="text-sm text-blue-700 leading-relaxed">
-            💡 这些设置将影响AI生成回复时的风格和内容，帮助创建更真实的对话体验
-          </p>
-        </div>
+        )}
 
         {/* Delete Contact Button */}
+        {!isAIChild && (
         <button
           onClick={handleDelete}
           className="w-full bg-red-500 text-white py-3 rounded-lg font-medium hover:bg-red-600 active:bg-red-700 transition-colors flex items-center justify-center gap-2"
@@ -1301,6 +1315,7 @@ export default function CharacterSettingsScreen({
           <Trash2 className="w-5 h-5" />
           删除联系人
         </button>
+        )}
       </div>
 
       {/* 记忆管理器 */}

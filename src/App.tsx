@@ -1091,6 +1091,10 @@ function App() {
         return (
           <AIKindergartenScreen
             onBack={() => navigateTo('home')}
+            onOpenChat={(childId) => {
+              setCurrentConversationId(childId);
+              navigateTo('chat');
+            }}
             apiConfig={apiConfig}
           />
         );

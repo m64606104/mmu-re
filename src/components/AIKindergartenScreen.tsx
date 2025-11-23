@@ -6,7 +6,6 @@
 import { useState, useEffect } from 'react';
 import { ChevronLeft, Book, MessageCircle, TrendingUp, Award, MessageSquare, Settings } from 'lucide-react';
 import { Conversation, ApiConfig } from '../types';
-import AIChildChat from './AIChildChat';
 import ReadingScreen from './ReadingScreen';
 import GrowthReportScreen from './GrowthReportScreen';
 import TopicDiscussionScreen from './TopicDiscussionScreen';
@@ -25,16 +24,16 @@ import { getMaxChildren, canCreateNewChild, shouldShowSwitchButton, UpgradeMessa
 
 interface AIKindergartenScreenProps {
   onBack: () => void;
+  onOpenChat?: (childId: string) => void; // 打开与AI儿童的聊天
   apiConfig: ApiConfig;
 }
 
-export default function AIKindergartenScreen({ onBack, apiConfig }: AIKindergartenScreenProps) {
+export default function AIKindergartenScreen({ onBack, onOpenChat, apiConfig }: AIKindergartenScreenProps) {
   const [children, setChildren] = useState<Conversation[]>([]);
   const [selectedChild, setSelectedChild] = useState<Conversation | null>(null);
   const [showCreateChild, setShowCreateChild] = useState(false);
   const [newChildName, setNewChildName] = useState('');
   const [teachingMode, setTeachingMode] = useState(false);
-  const [chatMode, setChatMode] = useState(false);
   const [readingMode, setReadingMode] = useState(false);
   const [reportMode, setReportMode] = useState(false);
   const [topicMode, setTopicMode] = useState(false);
@@ -403,20 +402,6 @@ export default function AIKindergartenScreen({ onBack, apiConfig }: AIKindergart
     return names[stage] || '婴儿期';
   };
 
-  // 如果在聊天模式，显示聊天组件
-  if (chatMode && selectedChild) {
-    return (
-      <AIChildChat
-        childId={selectedChild.id}
-        onBack={() => {
-          setChatMode(false);
-          loadChildren(); // 刷新数据
-        }}
-        apiConfig={apiConfig}
-      />
-    );
-  }
-
   // 如果在阅读模式，显示阅读组件
   if (readingMode && selectedChild) {
     return (
@@ -679,7 +664,11 @@ export default function AIKindergartenScreen({ onBack, apiConfig }: AIKindergart
               </button>
 
               <button
-                onClick={() => setChatMode(true)}
+                onClick={() => {
+                  if (onOpenChat && selectedChild) {
+                    onOpenChat(selectedChild.id);
+                  }
+                }}
                 className="bg-white p-4 rounded-xl text-gray-700 font-medium hover:bg-gray-50 transition-all"
               >
                 <MessageCircle className="w-6 h-6 mx-auto mb-2" />
