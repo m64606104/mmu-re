@@ -4,12 +4,13 @@
  */
 
 import { useState, useEffect } from 'react';
-import { ChevronLeft, Book, MessageCircle, TrendingUp, Award, MessageSquare, Settings } from 'lucide-react';
+import { ChevronLeft, Book, MessageCircle, TrendingUp, Award, MessageSquare, Settings, Users } from 'lucide-react';
 import { Conversation, ApiConfig } from '../types';
 import ReadingScreen from './ReadingScreen';
 import GrowthReportScreen from './GrowthReportScreen';
 import TopicDiscussionScreen from './TopicDiscussionScreen';
 import AIChildSettings from './AIChildSettings';
+import AIInteractionModal from './AIInteractionModal';
 // import WordTeachingChat, { TeachingDialogue } from './WordTeachingChat'; // 已改为简单输入式教学
 import { 
   createAIChild, 
@@ -55,6 +56,7 @@ export default function AIKindergartenScreen({ onBack, onOpenChat, apiConfig }: 
   const [isLoadingCards, setIsLoadingCards] = useState(false);
   const [showChildrenList, setShowChildrenList] = useState(false);
   const [showRoundComplete, setShowRoundComplete] = useState(false); // 显示轮次完成提示
+  const [showInteraction, setShowInteraction] = useState(false); // 显示AI互动界面
 
   useEffect(() => {
     loadChildren();
@@ -706,10 +708,27 @@ export default function AIKindergartenScreen({ onBack, onOpenChat, apiConfig }: 
 
               <button
                 onClick={() => setReportMode(true)}
-                className="bg-white p-4 rounded-xl text-gray-700 font-medium hover:bg-gray-50 transition-all col-span-2"
+                className="bg-white p-4 rounded-xl text-gray-700 font-medium hover:bg-gray-50 transition-all"
               >
                 <TrendingUp className="w-6 h-6 mx-auto mb-2" />
                 成长报告
+              </button>
+
+              {/* AI互动按钮 - 需要至少2个AI */}
+              <button
+                onClick={() => setShowInteraction(true)}
+                disabled={children.length < 2}
+                className={`p-4 rounded-xl font-medium transition-all ${
+                  children.length >= 2
+                    ? 'bg-gradient-to-r from-pink-500 to-purple-500 text-white hover:shadow-lg'
+                    : 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                }`}
+              >
+                <Users className="w-6 h-6 mx-auto mb-2" />
+                AI互动
+                {children.length < 2 && (
+                  <div className="text-xs mt-1">需要2个AI</div>
+                )}
               </button>
             </div>
 
@@ -1170,6 +1189,19 @@ export default function AIKindergartenScreen({ onBack, onOpenChat, apiConfig }: 
             </button>
           </div>
         </div>
+      )}
+
+      {/* AI Interaction Modal - AI互动界面 */}
+      {showInteraction && children.length >= 2 && (
+        <AIInteractionModal
+          children={children}
+          apiConfig={apiConfig}
+          onClose={() => setShowInteraction(false)}
+          onInteractionComplete={() => {
+            // 互动完成后重新加载children数据
+            loadChildren();
+          }}
+        />
       )}
 
       {/* 聊天式教学已改为简单输入式教学 */}
