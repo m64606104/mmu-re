@@ -4,6 +4,7 @@ import { MomentPost, UserProfile, Conversation, ApiConfig } from '../types';
 import { getAllMomentPosts, likeMomentPost, commentMomentPost, deleteMomentPost, handleUserInteractionResponse } from '../utils/aiMomentsGenerator';
 import { getUnreadNotificationCount } from '../utils/momentsNotificationManager';
 import MomentsNotifications from './MomentsNotifications';
+import ShareCard from './ShareCard';
 
 interface MomentsScreenProps {
   moments: MomentPost[];
@@ -619,6 +620,37 @@ export default function MomentsScreen({
                       </div>
                     ))}
                   </div>
+                )}
+
+                {/* Music Share Card - 音乐分享卡片 */}
+                {moment.musicInfo && (
+                  <ShareCard
+                    type="music"
+                    title={moment.musicInfo.title}
+                    artist={moment.musicInfo.artist}
+                    coverUrl={moment.musicInfo.coverUrl}
+                    onClick={() => {
+                      // 可以添加点击后的播放逻辑
+                      console.log('点击音乐:', moment.musicInfo);
+                    }}
+                  />
+                )}
+
+                {/* Link/Article Share Card - 链接/文章分享卡片 */}
+                {moment.linkInfo && (
+                  <ShareCard
+                    type={moment.contentType === 'link' ? 'link' : 'article'}
+                    title={moment.linkInfo.title}
+                    description={moment.linkInfo.description}
+                    coverUrl={moment.linkInfo.coverUrl}
+                    onClick={() => {
+                      // 可以添加点击后打开链接的逻辑
+                      if (moment.linkInfo?.url) {
+                        window.open(moment.linkInfo.url, '_blank');
+                      }
+                      console.log('点击链接/文章:', moment.linkInfo);
+                    }}
+                  />
                 )}
 
                 {/* Actions */}

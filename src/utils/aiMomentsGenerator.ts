@@ -15,6 +15,77 @@ import { addMomentsNotification } from './momentsNotificationManager';
 const MOMENTS_STORAGE_KEY = 'moments_data';
 
 /**
+ * 生成随机音乐信息（用于分享卡片）
+ */
+function generateRandomMusicInfo() {
+  const musicLibrary = [
+    { title: '晴天', artist: '周杰伦', cover: 'https://picsum.photos/200?random=music1' },
+    { title: '青花瓷', artist: '周杰伦', cover: 'https://picsum.photos/200?random=music2' },
+    { title: '红豆', artist: '王菲', cover: 'https://picsum.photos/200?random=music3' },
+    { title: '匆匆那年', artist: '王菲', cover: 'https://picsum.photos/200?random=music4' },
+    { title: '演员', artist: '薛之谦', cover: 'https://picsum.photos/200?random=music5' },
+    { title: '说好不哭', artist: '周杰伦', cover: 'https://picsum.photos/200?random=music6' },
+    { title: '年轮', artist: '张碧晨', cover: 'https://picsum.photos/200?random=music7' },
+    { title: '光年之外', artist: 'G.E.M.邓紫棋', cover: 'https://picsum.photos/200?random=music8' },
+    { title: '稻香', artist: '周杰伦', cover: 'https://picsum.photos/200?random=music9' },
+    { title: '七里香', artist: '周杰伦', cover: 'https://picsum.photos/200?random=music10' }
+  ];
+  
+  const music = musicLibrary[Math.floor(Math.random() * musicLibrary.length)];
+  return {
+    title: music.title,
+    artist: music.artist,
+    coverUrl: music.cover
+  };
+}
+
+/**
+ * 生成随机文章信息（用于分享卡片）
+ */
+function generateRandomArticleInfo() {
+  const articles = [
+    {
+      title: '如何提升个人效率：时间管理的10个技巧',
+      desc: '分享一些实用的时间管理方法，帮助你更高效地工作和生活',
+      cover: 'https://picsum.photos/400/300?random=article1'
+    },
+    {
+      title: '深度思考：什么是真正的成长？',
+      desc: '成长不仅仅是年龄的增长，更是思维和认知的提升',
+      cover: 'https://picsum.photos/400/300?random=article2'
+    },
+    {
+      title: '旅行见闻：那些改变我人生的瞬间',
+      desc: '每一次旅行都是一次全新的体验，记录那些难忘的时刻',
+      cover: 'https://picsum.photos/400/300?random=article3'
+    },
+    {
+      title: '美食探店：这家店的招牌菜绝了！',
+      desc: '分享最近发现的一家宝藏餐厅，强烈推荐给吃货们',
+      cover: 'https://picsum.photos/400/300?random=article4'
+    },
+    {
+      title: '读书笔记：好书推荐与生活感悟',
+      desc: '这本书让我对生活有了新的理解，值得细细品读',
+      cover: 'https://picsum.photos/400/300?random=article5'
+    },
+    {
+      title: '生活方式：如何打造理想的居住空间',
+      desc: '家是心灵的港湾，用心布置每一个角落',
+      cover: 'https://picsum.photos/400/300?random=article6'
+    }
+  ];
+  
+  const article = articles[Math.floor(Math.random() * articles.length)];
+  return {
+    title: article.title,
+    description: article.desc,
+    coverUrl: article.cover,
+    url: '#'
+  };
+}
+
+/**
  * 获取所有朋友圈数据
  */
 export const getAllMomentsData = async (): Promise<MomentsData[]> => {
@@ -681,6 +752,22 @@ export const generateAIMoment = async (
     console.log('✅ 清理后的朋友圈内容:', cleanedContent || '(无文字)');
     console.log('🖼️ 提取的图片描述:', imageDescriptions);
     
+    // 🎵 智能检测并补充分享卡片数据
+    let contentType: 'text' | 'images' | 'music' | 'link' = imageDescriptions.length > 0 ? 'images' : 'text';
+    let musicInfo: MomentPost['musicInfo'] | undefined;
+    let linkInfo: MomentPost['linkInfo'] | undefined;
+    
+    // 检测音乐分享关键词
+    if (cleanedContent.match(/单曲循环|在听|分享.*歌|推荐.*歌|音乐|旋律/)) {
+      contentType = 'music';
+      musicInfo = generateRandomMusicInfo();
+    }
+    // 检测文章/链接分享关键词  
+    else if (cleanedContent.match(/推荐.*文章|分享.*文|好文|值得一读|转发/)) {
+      contentType = 'link';
+      linkInfo = generateRandomArticleInfo();
+    }
+    
     // 创建朋友圈帖子
     const post: MomentPost = {
       id: `moment_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
@@ -689,7 +776,9 @@ export const generateAIMoment = async (
       authorAvatar: conversation.characterSettings?.avatar || conversation.avatar,
       content: cleanedContent,
       imageDescriptions: imageDescriptions.length > 0 ? imageDescriptions : undefined,
-      contentType: imageDescriptions.length > 0 ? 'images' : 'text',
+      contentType,
+      musicInfo,
+      linkInfo,
       timestamp: scheduledTime,
       likes: [],
       comments: [],
