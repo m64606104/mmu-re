@@ -10,7 +10,10 @@ interface SocialScreenProps {
 }
 
 export default function SocialScreen({ conversations, onNavigate, onImportCharacter }: SocialScreenProps) {
-  const sortedConversations = [...conversations].sort((a, b) => b.lastMessageTime - a.lastMessageTime);
+  // 过滤掉AI儿童会话，只显示普通会话
+  const sortedConversations = [...conversations]
+    .filter(conv => !conv.aiChildData)
+    .sort((a, b) => b.lastMessageTime - a.lastMessageTime);
   const [isDarkMode, setIsDarkMode] = useState(true);
   const [showMenu, setShowMenu] = useState(false);
   const [showStatusSelector, setShowStatusSelector] = useState(false);

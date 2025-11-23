@@ -11,8 +11,10 @@ interface ContactsScreenProps {
 export default function ContactsScreen({ conversations, onNavigate, onBack }: ContactsScreenProps) {
   const [searchQuery, setSearchQuery] = useState('');
 
-  // 获取所有联系人（私聊对话）
-  const contacts = conversations.filter(conv => conv.type === 'private');
+  // 获取所有联系人（私聊对话，但排除AI儿童）
+  const contacts = conversations.filter(conv => 
+    conv.type === 'private' && !conv.aiChildData
+  );
 
   // 搜索过滤
   const filteredContacts = contacts.filter(contact =>
