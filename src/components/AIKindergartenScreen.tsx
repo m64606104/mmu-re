@@ -236,7 +236,7 @@ export default function AIKindergartenScreen({ onBack, apiConfig }: AIKindergart
     setIsGenerating(true);
 
     try {
-      const response = await fetch(`${apiConfig.baseUrl}/chat/completions`, {
+      const response = await fetch(`${apiConfig.baseUrl}/v1/chat/completions`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -266,7 +266,18 @@ export default function AIKindergartenScreen({ onBack, apiConfig }: AIKindergart
         })
       });
 
-      if (!response.ok) throw new Error('生成失败');
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('API响应错误:', response.status, errorText);
+        throw new Error(`API调用失败 (${response.status})`);
+      }
+
+      const contentType = response.headers.get('content-type');
+      if (!contentType || !contentType.includes('application/json')) {
+        const text = await response.text();
+        console.error('API返回非JSON:', text.substring(0, 200));
+        throw new Error('API返回了HTML页面而不是JSON，请检查API配置');
+      }
 
       const data = await response.json();
       const content = data.choices[0]?.message?.content || '';

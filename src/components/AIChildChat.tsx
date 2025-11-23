@@ -91,7 +91,7 @@ export default function AIChildChat({ childId, onBack, apiConfig }: AIChildChatP
       const systemPrompt = buildChildSystemPrompt(child);
       const conversationHistory = [...messages, userMessage].slice(-10); // 最近10条
 
-      const response = await fetch(`${apiConfig.baseUrl}/chat/completions`, {
+      const response = await fetch(`${apiConfig.baseUrl}/v1/chat/completions`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -111,7 +111,18 @@ export default function AIChildChat({ childId, onBack, apiConfig }: AIChildChatP
         })
       });
 
-      if (!response.ok) throw new Error('AI回复失败');
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('API响应错误:', response.status, errorText);
+        throw new Error(`API调用失败 (${response.status})`);
+      }
+
+      const contentType = response.headers.get('content-type');
+      if (!contentType || !contentType.includes('application/json')) {
+        const text = await response.text();
+        console.error('API返回非JSON:', text.substring(0, 200));
+        throw new Error('API返回了HTML，请检查baseUrl是否正确');
+      }
 
       const data = await response.json();
       const aiReply = data.choices[0]?.message?.content || '...(没听懂)';
