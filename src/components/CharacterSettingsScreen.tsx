@@ -24,6 +24,9 @@ export default function CharacterSettingsScreen({
   onDeleteConversation,
   onBack,
 }: CharacterSettingsScreenProps) {
+  // 检查是否是AI儿童
+  const isAIChild = !!conversation.aiChildData;
+  
   const settings = conversation.characterSettings || {
     nickname: '',
     systemPrompt: '',
@@ -593,9 +596,6 @@ export default function CharacterSettingsScreen({
     }
   };
 
-  // 检测是否为AI儿童
-  const isAIChild = !!conversation.aiChildData;
-
   return (
     <div className="h-full bg-gray-50 flex flex-col">
       {/* Header */}
@@ -604,7 +604,7 @@ export default function CharacterSettingsScreen({
           <button onClick={onBack} className="p-2 -ml-2">
             <ChevronLeft className="w-6 h-6" />
           </button>
-          <h1 className="text-lg font-semibold ml-2">{isAIChild ? 'AI儿童设置' : '角色设置'}</h1>
+          <h1 className="text-lg font-semibold ml-2">角色设置</h1>
         </div>
         <button
           onClick={handleSave}
@@ -677,166 +677,176 @@ export default function CharacterSettingsScreen({
           <p className="text-xs text-gray-500 mt-1">在群聊中显示的网名</p>
         </div>
 
-        {/* 高级设置 - 仅普通角色显示 */}
+        {/* System Prompt - 仅非AI儿童显示 */}
         {!isAIChild && (
-          <>
-        {/* System Prompt */}
-        <div className="bg-white rounded-lg shadow-sm p-4">
-          <div className="flex justify-between items-center mb-2">
-            <label className="block text-sm font-medium text-gray-700">
-              人物设定
-            </label>
-            <span className={`text-xs ${systemPrompt.length > 200 ? 'text-orange-600 font-medium' : 'text-gray-500'}`}>
-              {systemPrompt.length} / 200字
-            </span>
+          <div className="bg-white rounded-lg shadow-sm p-4">
+            <div className="flex justify-between items-center mb-2">
+              <label className="block text-sm font-medium text-gray-700">
+                人物设定
+              </label>
+              <span className={`text-xs ${systemPrompt.length > 200 ? 'text-orange-600 font-medium' : 'text-gray-500'}`}>
+                {systemPrompt.length} / 200字
+              </span>
+            </div>
+            <textarea
+              value={systemPrompt}
+              onChange={(e) => setSystemPrompt(e.target.value)}
+              placeholder="描述角色的背景、身份、职业等"
+              rows={3}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+            />
+            {systemPrompt.length > 200 && (
+              <p className="text-xs text-orange-600 mt-1">
+                ⚠️ 内容过长可能导致AI回复变慢，建议精简描述
+              </p>
+            )}
           </div>
-          <textarea
-            value={systemPrompt}
-            onChange={(e) => setSystemPrompt(e.target.value)}
-            placeholder="描述角色的背景、身份、职业等"
-            rows={3}
-            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
-          />
-          {systemPrompt.length > 200 && (
-            <p className="text-xs text-orange-600 mt-1">
-              ⚠️ 内容过长可能导致AI回复变慢，建议精简描述
-            </p>
-          )}
-        </div>
-
-        {/* Personality */}
-        <div className="bg-white rounded-lg shadow-sm p-4">
-          <div className="flex justify-between items-center mb-2">
-            <label className="block text-sm font-medium text-gray-700">
-              性格特征
-            </label>
-            <span className={`text-xs ${personality.length > 150 ? 'text-orange-600 font-medium' : 'text-gray-500'}`}>
-              {personality.length} / 150字
-            </span>
-          </div>
-          <textarea
-            value={personality}
-            onChange={(e) => setPersonality(e.target.value)}
-            placeholder="描述角色的性格特点"
-            rows={3}
-            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
-          />
-          {personality.length > 150 && (
-            <p className="text-xs text-orange-600 mt-1">
-              ⚠️ 内容过长可能导致AI回复变慢，建议精简描述
-            </p>
-          )}
-        </div>
-
-        {/* Language Style */}
-        <div className="bg-white rounded-lg shadow-sm p-4">
-          <div className="flex justify-between items-center mb-2">
-            <label className="block text-sm font-medium text-gray-700">
-              语言风格
-            </label>
-            <span className={`text-xs ${languageStyle.length > 150 ? 'text-orange-600 font-medium' : 'text-gray-500'}`}>
-              {languageStyle.length} / 150字
-            </span>
-          </div>
-          <textarea
-            value={languageStyle}
-            onChange={(e) => setLanguageStyle(e.target.value)}
-            placeholder="描述角色的说话方式和语言习惯"
-            rows={3}
-            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
-          />
-          {languageStyle.length > 150 && (
-            <p className="text-xs text-orange-600 mt-1">
-              ⚠️ 内容过长可能导致AI回复变慢，建议精简描述
-            </p>
-          )}
-        </div>
-
-        {/* Language Example */}
-        <div className="bg-white rounded-lg shadow-sm p-4">
-          <div className="flex justify-between items-center mb-2">
-            <label className="block text-sm font-medium text-gray-700">
-              语言示例
-            </label>
-            <span className={`text-xs ${languageExample.length > 300 ? 'text-orange-600 font-medium' : 'text-gray-500'}`}>
-              {languageExample.length} / 300字
-            </span>
-          </div>
-          <textarea
-            value={languageExample}
-            onChange={(e) => setLanguageExample(e.target.value)}
-            placeholder="提供一些角色的典型对话示例"
-            rows={3}
-            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
-          />
-          {languageExample.length > 300 && (
-            <p className="text-xs text-orange-600 mt-1">
-              ⚠️ 内容过长可能导致AI回复变慢，建议提供2-3个简短示例
-            </p>
-          )}
-        </div>
-
-        {/* Memory Events */}
-        <div className="bg-white rounded-lg shadow-sm p-4">
-          <div className="flex justify-between items-center mb-2">
-            <label className="block text-sm font-medium text-gray-700">
-              记忆事件
-            </label>
-            <span className={`text-xs ${memoryEvents.length > 200 ? 'text-orange-600 font-medium' : 'text-gray-500'}`}>
-              {memoryEvents.length} / 200字
-            </span>
-          </div>
-          <textarea
-            value={memoryEvents}
-            onChange={(e) => setMemoryEvents(e.target.value)}
-            placeholder="记录与角色相关的重要事件和记忆"
-            rows={3}
-            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
-          />
-          {memoryEvents.length > 200 && (
-            <p className="text-xs text-orange-600 mt-1">
-              ⚠️ 内容过长可能导致AI回复变慢，建议使用长期记忆库功能代替
-            </p>
-          )}
-        </div>
-
-        {/* 长期记忆库按钮 */}
-        <div className="bg-white rounded-lg shadow-sm p-4">
-          <button
-            onClick={() => setShowMemoryManager(true)}
-            className="w-full py-3 border-2 border-purple-200 hover:border-purple-400 hover:bg-purple-50 rounded-lg transition-colors flex items-center justify-center gap-2 text-purple-700"
-          >
-            <Brain className="w-5 h-5" />
-            <span className="font-medium">查看长期记忆库</span>
-          </button>
-          <p className="text-xs text-gray-500 mt-2 text-center">
-            💡 AI会自动记住对话中的重要信息
-          </p>
-        </div>
-
-        {/* 人际关系管理按钮 */}
-        <div className="bg-white rounded-lg shadow-sm p-4">
-          <button
-            onClick={() => setShowRelationshipManager(true)}
-            className="w-full py-3 border-2 border-blue-200 hover:border-blue-400 hover:bg-blue-50 rounded-lg transition-colors flex items-center justify-center gap-2 text-blue-700"
-          >
-            <Users className="w-5 h-5" />
-            <span className="font-medium">人际关系管理</span>
-          </button>
-          <p className="text-xs text-gray-500 mt-2 text-center">
-            👥 管理角色的社交网络和关系
-          </p>
-        </div>
-          </>
         )}
 
-        {/* AI主动发消息 - 所有角色都显示 */}
-        <div className="bg-white rounded-lg shadow-sm p-4">
-          <div className="flex items-center justify-between mb-3">
-            <div className="flex items-center gap-2">
-              <Zap className="w-5 h-5 text-orange-500" />
-              <h3 className="text-sm font-medium text-gray-900">AI主动发消息</h3>
+        {/* Personality - 仅非AI儿童显示 */}
+        {!isAIChild && (
+          <div className="bg-white rounded-lg shadow-sm p-4">
+            <div className="flex justify-between items-center mb-2">
+              <label className="block text-sm font-medium text-gray-700">
+                性格特征
+              </label>
+              <span className={`text-xs ${personality.length > 150 ? 'text-orange-600 font-medium' : 'text-gray-500'}`}>
+                {personality.length} / 150字
+              </span>
             </div>
+            <textarea
+              value={personality}
+              onChange={(e) => setPersonality(e.target.value)}
+              placeholder="描述角色的性格特点"
+              rows={3}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+            />
+            {personality.length > 150 && (
+              <p className="text-xs text-orange-600 mt-1">
+                ⚠️ 内容过长可能导致AI回复变慢，建议精简描述
+              </p>
+            )}
+          </div>
+        )}
+
+        {/* Language Style - 仅非AI儿童显示 */}
+        {!isAIChild && (
+          <div className="bg-white rounded-lg shadow-sm p-4">
+            <div className="flex justify-between items-center mb-2">
+              <label className="block text-sm font-medium text-gray-700">
+                语言风格
+              </label>
+              <span className={`text-xs ${languageStyle.length > 150 ? 'text-orange-600 font-medium' : 'text-gray-500'}`}>
+                {languageStyle.length} / 150字
+              </span>
+            </div>
+            <textarea
+              value={languageStyle}
+              onChange={(e) => setLanguageStyle(e.target.value)}
+              placeholder="描述角色的说话方式和语言习惯"
+              rows={3}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+            />
+            {languageStyle.length > 150 && (
+              <p className="text-xs text-orange-600 mt-1">
+                ⚠️ 内容过长可能导致AI回复变慢，建议精简描述
+              </p>
+            )}
+          </div>
+        )}
+
+        {/* Language Example - 仅非AI儿童显示 */}
+        {!isAIChild && (
+          <div className="bg-white rounded-lg shadow-sm p-4">
+            <div className="flex justify-between items-center mb-2">
+              <label className="block text-sm font-medium text-gray-700">
+                语言示例
+              </label>
+              <span className={`text-xs ${languageExample.length > 300 ? 'text-orange-600 font-medium' : 'text-gray-500'}`}>
+                {languageExample.length} / 300字
+              </span>
+            </div>
+            <textarea
+              value={languageExample}
+              onChange={(e) => setLanguageExample(e.target.value)}
+              placeholder="提供一些角色的典型对话示例"
+              rows={3}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+            />
+            {languageExample.length > 300 && (
+              <p className="text-xs text-orange-600 mt-1">
+                ⚠️ 内容过长可能导致AI回复变慢，建议提供2-3个简短示例
+              </p>
+            )}
+          </div>
+        )}
+
+        {/* Memory Events - 仅非AI儿童显示 */}
+        {!isAIChild && (
+          <div className="bg-white rounded-lg shadow-sm p-4">
+            <div className="flex justify-between items-center mb-2">
+              <label className="block text-sm font-medium text-gray-700">
+                记忆事件
+              </label>
+              <span className={`text-xs ${memoryEvents.length > 200 ? 'text-orange-600 font-medium' : 'text-gray-500'}`}>
+                {memoryEvents.length} / 200字
+              </span>
+            </div>
+            <textarea
+              value={memoryEvents}
+              onChange={(e) => setMemoryEvents(e.target.value)}
+              placeholder="记录与角色相关的重要事件和记忆"
+              rows={3}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+            />
+            {memoryEvents.length > 200 && (
+              <p className="text-xs text-orange-600 mt-1">
+                ⚠️ 内容过长可能导致AI回复变慢，建议使用长期记忆库功能代替
+              </p>
+            )}
+          </div>
+        )}
+
+        {/* 长期记忆库按钮 - 仅非AI儿童显示 */}
+        {!isAIChild && (
+          <div className="bg-white rounded-lg shadow-sm p-4">
+            <button
+              onClick={() => setShowMemoryManager(true)}
+              className="w-full py-3 border-2 border-purple-200 hover:border-purple-400 hover:bg-purple-50 rounded-lg transition-colors flex items-center justify-center gap-2 text-purple-700"
+            >
+              <Brain className="w-5 h-5" />
+              <span className="font-medium">查看长期记忆库</span>
+            </button>
+            <p className="text-xs text-gray-500 mt-2 text-center">
+              💡 AI会自动记住对话中的重要信息
+            </p>
+          </div>
+        )}
+
+        {/* 人际关系管理按钮 - 仅非AI儿童显示 */}
+        {!isAIChild && (
+          <div className="bg-white rounded-lg shadow-sm p-4">
+            <button
+              onClick={() => setShowRelationshipManager(true)}
+              className="w-full py-3 border-2 border-blue-200 hover:border-blue-400 hover:bg-blue-50 rounded-lg transition-colors flex items-center justify-center gap-2 text-blue-700"
+            >
+              <Users className="w-5 h-5" />
+              <span className="font-medium">人际关系管理</span>
+            </button>
+            <p className="text-xs text-gray-500 mt-2 text-center">
+              👥 管理角色的社交网络和关系
+            </p>
+          </div>
+        )}
+
+        {/* AI主动发消息 - 仅非AI儿童显示 */}
+        {!isAIChild && (
+          <div className="bg-white rounded-lg shadow-sm p-4">
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center gap-2">
+                <Zap className="w-5 h-5 text-orange-500" />
+                <h3 className="text-sm font-medium text-gray-900">AI主动发消息</h3>
+              </div>
             <label className="relative inline-flex items-center cursor-pointer">
               <input
                 type="checkbox"
@@ -949,9 +959,10 @@ export default function CharacterSettingsScreen({
               </div>
             </div>
           )}
-        </div>
+          </div>
+        )}
 
-        {/* 🧠 记忆系统配置 - 仅普通角色显示 */}
+        {/* 🧠 记忆系统配置 - 仅非AI儿童显示 */}
         {!isAIChild && (
         <div className="bg-white rounded-lg shadow-sm p-4">
           <div className="flex items-center justify-between mb-3">
@@ -985,7 +996,7 @@ export default function CharacterSettingsScreen({
         </div>
         )}
 
-        {/* 📸 朋友圈记忆配置 - 仅普通角色显示 */}
+        {/* 📸 朋友圈记忆配置 - 仅非AI儿童显示 */}
         {!isAIChild && (
         <div className="bg-white rounded-lg shadow-sm p-4">
           <div className="flex items-center justify-between mb-3">
@@ -1019,7 +1030,7 @@ export default function CharacterSettingsScreen({
         </div>
         )}
 
-        {/* 📸 朋友圈发布频率设置 - 仅普通角色显示 */}
+        {/* 📸 朋友圈发布频率设置 - 仅非AI儿童显示 */}
         {!isAIChild && (
         <div className="bg-white rounded-lg shadow-sm p-4">
           <div className="flex items-center gap-2 mb-3">
@@ -1110,7 +1121,7 @@ export default function CharacterSettingsScreen({
         </div>
         )}
 
-        {/* 📝 自定义上下文配置 - 仅普通角色显示 */}
+        {/* 📝 自定义上下文配置 - 仅非AI儿童显示 */}
         {!isAIChild && (
         <div className="bg-white rounded-lg shadow-sm p-4">
           <div className="flex items-center justify-between mb-3">
@@ -1171,7 +1182,7 @@ export default function CharacterSettingsScreen({
         </div>
         )}
 
-        {/* 📚 资料库 - 仅普通角色显示 */}
+        {/* 📚 资料库 - 仅非AI儿童显示 */}
         {!isAIChild && (
         <div className="bg-white rounded-lg shadow-sm p-4">
           <div className="flex items-center justify-between mb-3">
@@ -1236,16 +1247,17 @@ export default function CharacterSettingsScreen({
         </div>
         )}
 
-        {/* 提示信息 - 仅普通角色显示 */}
+        {/* 提示信息 - 仅非AI儿童显示 */}
         {!isAIChild && (
-        <>
         <div className="bg-blue-50 border border-blue-100 rounded-lg p-4">
           <p className="text-sm text-blue-700 leading-relaxed">
             💡 这些设置将影响AI生成回复时的风格和内容，帮助创建更真实的对话体验
           </p>
         </div>
+        )}
 
-        {/* 角色迁移 - 仅普通角色显示 */}
+        {/* 角色迁移 - 仅非AI儿童显示 */}
+        {!isAIChild && (
         <div className="bg-white rounded-lg shadow-sm p-4">
           <h3 className="text-sm font-medium text-gray-700 mb-3">角色迁移</h3>
           <button
@@ -1259,8 +1271,10 @@ export default function CharacterSettingsScreen({
             📦 导出/导入角色设置、记忆库和聊天记录
           </p>
         </div>
+        )}
 
-        {/* 朋友圈测试 - 仅普通角色显示 */}
+        {/* 朋友圈测试 - 仅非AI儿童显示 */}
+        {!isAIChild && (
         <div className="bg-white rounded-lg shadow-sm p-4">
           <h3 className="text-sm font-medium text-gray-700 mb-3">朋友圈测试</h3>
           <button
@@ -1274,8 +1288,10 @@ export default function CharacterSettingsScreen({
             🧪 测试不同类型的朋友圈样式
           </p>
         </div>
+        )}
 
-        {/* 聊天记录导入导出 - 仅普通角色显示 */}
+        {/* 聊天记录导入导出 - 仅非AI儿童显示 */}
+        {!isAIChild && (
         <div className="bg-white rounded-lg shadow-sm p-4">
           <h3 className="text-sm font-medium text-gray-700 mb-3">聊天记录管理</h3>
           <div className="grid grid-cols-2 gap-3">
@@ -1305,11 +1321,9 @@ export default function CharacterSettingsScreen({
             💾 导出后可在其他设备导入，保留所有聊天记录
           </p>
         </div>
-        </>
         )}
 
         {/* Delete Contact Button */}
-        {!isAIChild && (
         <button
           onClick={handleDelete}
           className="w-full bg-red-500 text-white py-3 rounded-lg font-medium hover:bg-red-600 active:bg-red-700 transition-colors flex items-center justify-center gap-2"
@@ -1317,7 +1331,6 @@ export default function CharacterSettingsScreen({
           <Trash2 className="w-5 h-5" />
           删除联系人
         </button>
-        )}
       </div>
 
       {/* 记忆管理器 */}
