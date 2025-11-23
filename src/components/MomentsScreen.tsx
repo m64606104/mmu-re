@@ -431,7 +431,7 @@ export default function MomentsScreen({
   };
 
   return (
-    <div className="h-full bg-[#EDEDED] flex flex-col">
+    <div className="h-full bg-[#EDEDED] flex flex-col overflow-x-hidden">
       {/* Header with Cover */}
       <div className="relative h-64">
         <div className="absolute inset-0 bg-gradient-to-br from-purple-400 via-pink-400 to-blue-400">
@@ -489,7 +489,7 @@ export default function MomentsScreen({
       </div>
 
       {/* Moments List */}
-      <div className="flex-1 overflow-y-auto">
+      <div className="flex-1 overflow-y-auto overflow-x-hidden">
         {allMoments.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-64 text-gray-400">
             <Camera className="w-16 h-16 mb-4" />
@@ -497,7 +497,7 @@ export default function MomentsScreen({
             <p className="text-sm mt-2">点击右上角相机发布第一条动态吧</p>
           </div>
         ) : (
-          <div className="space-y-4 p-4">
+          <div className="space-y-4 p-4 max-w-full">
             {allMoments.map((moment) => {
               // 动态获取最新的角色信息
               const authorInfo = getLatestAuthorInfo(moment);
@@ -505,7 +505,7 @@ export default function MomentsScreen({
               const userAvatar = authorInfo.avatar;
               
               return (
-              <div key={moment.id} className="bg-white rounded-xl p-4 shadow-sm">
+              <div key={moment.id} className="bg-white rounded-xl p-4 shadow-sm max-w-full overflow-hidden">
                 {/* User Info */}
                 <div className="flex items-center gap-3 mb-3">
                   <div className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-400 to-purple-500 flex items-center justify-center overflow-hidden flex-shrink-0">
@@ -557,7 +557,7 @@ export default function MomentsScreen({
 
                 {/* Content */}
                 {moment.content && (
-                  <p className="text-gray-800 mb-3 leading-relaxed">{moment.content}</p>
+                  <p className="text-gray-800 mb-3 leading-relaxed break-words whitespace-pre-wrap">{moment.content}</p>
                 )}
 
                 {/* Images (真实图片) */}

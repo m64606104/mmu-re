@@ -535,10 +535,12 @@ ${todayPosts.length > 0 ? todayPosts.map((p, i) => {
 - 不要每次都发满9张，根据实际内容决定合适的图片数量
 
 【图片描述要求 - 非常重要】
-⚠️ 图片描述必须详细、生动、具体，禁止简略！
+⚠️ 只在需要发布带图片的朋友圈时才写图片描述！
 
-- 每个描述控制在30-80字，要足够详细
+- 如果要发纯文字朋友圈，不要写任何[图片]标记
+- 如果要发带图片的朋友圈，每个描述控制在30-80字，要足够详细
 - 必须包含：具体场景、细节元素、色彩搭配、光影效果、环境氛围
+- 不要在文字内容中描述图片场景，而是用[图片]标记
 - 用丰富的形容词和细节描写，让人如临其境、能在脑海中清晰浮现画面
 - 描述要贴合你的身份、性格和当时的情境
 - 可以描写：环境、物品、人物外观、动作、光线、色调、质感等
@@ -747,6 +749,13 @@ export const generateAIMoment = async (
     if (!cleanedContent && imageDescriptions.length > 0) {
       cleanedContent = '';
       console.log('📸 纯图片朋友圈，没有文字内容');
+    }
+    
+    // ⚠️ 最后检查：如果内容中包含"图片描述"、"画面中"等关键词，说明AI误将描述写在了文字里
+    const hasImageDescKeywords = /图片描述|画面中|照片中|图中|画面|场景描述/i.test(cleanedContent);
+    if (hasImageDescKeywords && imageDescriptions.length === 0) {
+      console.warn('⚠️ 检测到内容中有图片描述关键词但没有图片标记，可能是AI误将描述写在了文字里，忽略此朋友圈');
+      return null;
     }
     
     console.log('✅ 清理后的朋友圈内容:', cleanedContent || '(无文字)');
