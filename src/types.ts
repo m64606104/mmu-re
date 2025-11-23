@@ -647,6 +647,7 @@ export interface AIChildData {
   gender?: 'male' | 'female' | 'neutral';  // 性别
   userTitle?: string;            // 对用户的称呼（如：妈妈、老师、哥哥）
   userName?: string;             // 用户的名字
+  avatar?: string;               // 自定义头像（base64）
   
   // 认知能力
   vocabulary: WordKnowledge[];     // 词汇库

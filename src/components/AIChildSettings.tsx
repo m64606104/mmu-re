@@ -22,6 +22,7 @@ export default function AIChildSettings({ child, onBack, onUpdate, apiConfig }: 
   const [gender, setGender] = useState<'male' | 'female' | 'neutral'>('neutral');
   const [userTitle, setUserTitle] = useState('');
   const [userName, setUserName] = useState('');
+  const [avatar, setAvatar] = useState<string>('');
   const [showGraduateConfirm, setShowGraduateConfirm] = useState(false);
   const [showFarewellLetter, setShowFarewellLetter] = useState(false);
   const [farewellLetter, setFarewellLetter] = useState('');
@@ -34,8 +35,40 @@ export default function AIChildSettings({ child, onBack, onUpdate, apiConfig }: 
       setGender(child.aiChildData.gender || 'neutral');
       setUserTitle(child.aiChildData.userTitle || '妈妈');
       setUserName(child.aiChildData.userName || '');
+      setAvatar(child.aiChildData.avatar || '');
     }
   }, [child]);
+
+  // 处理头像上传
+  const handleAvatarUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    // 检查文件类型
+    if (!file.type.startsWith('image/')) {
+      alert('请选择图片文件！');
+      return;
+    }
+
+    // 检查文件大小（1MB）
+    if (file.size > 1024 * 1024) {
+      alert('图片大小不能超过1MB！');
+      return;
+    }
+
+    // 读取文件为base64
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const base64 = e.target?.result as string;
+      setAvatar(base64);
+    };
+    reader.readAsDataURL(file);
+  };
+
+  // 删除头像
+  const handleRemoveAvatar = () => {
+    setAvatar('');
+  };
 
   // 处理一键成年
   const handleGraduate = async () => {
@@ -77,6 +110,7 @@ export default function AIChildSettings({ child, onBack, onUpdate, apiConfig }: 
         conversations[index].aiChildData!.gender = gender;
         conversations[index].aiChildData!.userTitle = userTitle.trim() || '妈妈';
         conversations[index].aiChildData!.userName = userName.trim();
+        conversations[index].aiChildData!.avatar = avatar;
         
         // 同时更新conversation的name
         if (nickname.trim()) {
@@ -124,6 +158,54 @@ export default function AIChildSettings({ child, onBack, onUpdate, apiConfig }: 
 
       {/* Content */}
       <div className="flex-1 overflow-y-auto p-4 space-y-4">
+        {/* 头像设置 */}
+        <div className="bg-white rounded-xl p-4 shadow-sm">
+          <div className="flex items-center gap-2 mb-3">
+            <User className="w-5 h-5 text-purple-500" />
+            <h3 className="font-semibold text-gray-800">头像设置</h3>
+          </div>
+
+          <div className="flex flex-col items-center gap-3">
+            {/* 头像预览 */}
+            <div className="relative">
+              {avatar ? (
+                <div className="relative">
+                  <img
+                    src={avatar}
+                    alt="AI头像"
+                    className="w-24 h-24 rounded-full object-cover border-4 border-purple-200"
+                  />
+                  <button
+                    onClick={handleRemoveAvatar}
+                    className="absolute -top-1 -right-1 w-7 h-7 bg-red-500 text-white rounded-full flex items-center justify-center hover:bg-red-600 transition-colors shadow-lg"
+                  >
+                    ✕
+                  </button>
+                </div>
+              ) : (
+                <div className="w-24 h-24 rounded-full bg-gradient-to-br from-purple-400 to-pink-400 flex items-center justify-center text-4xl border-4 border-purple-200">
+                  {getGenderEmoji(gender)}
+                </div>
+              )}
+            </div>
+
+            {/* 上传按钮 */}
+            <label className="cursor-pointer px-6 py-2.5 bg-gradient-to-r from-purple-500 to-pink-500 text-white rounded-xl hover:shadow-lg transition-all font-medium">
+              <input
+                type="file"
+                accept="image/*"
+                onChange={handleAvatarUpload}
+                className="hidden"
+              />
+              {avatar ? '更换头像' : '上传头像'}
+            </label>
+            
+            <p className="text-xs text-gray-500 text-center">
+              💡 支持JPG、PNG等格式，大小不超过1MB
+            </p>
+          </div>
+        </div>
+
         {/* 名字设置 */}
         <div className="bg-white rounded-xl p-4 shadow-sm">
           <div className="flex items-center gap-2 mb-3">

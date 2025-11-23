@@ -142,7 +142,7 @@ export default function AIChildChat({ childId, onBack, apiConfig }: AIChildChatP
       // 保存对话历史
       await saveMessages([...messages, userMessage, aiMessage]);
 
-    } catch (error) {
+    } catch (error: any) {
       console.error('AI对话失败:', error);
       console.error('API配置:', {
         baseUrl: apiConfig.baseUrl,
@@ -150,16 +150,23 @@ export default function AIChildChat({ childId, onBack, apiConfig }: AIChildChatP
         hasApiKey: !!apiConfig.apiKey
       });
       
+      // 更友好的错误提示
+      let errorMsg = '抱歉，我有点累了...';
+      if (error.message?.includes('fetch')) {
+        errorMsg = '网络连接似乎有问题，请检查网络后重试';
+      } else if (error.message?.includes('401') || error.message?.includes('403')) {
+        errorMsg = 'API密钥可能有问题，请检查设置';
+      } else if (error.message?.includes('429')) {
+        errorMsg = 'API调用太频繁了，请稍后再试';
+      }
+      
       const errorMessage: Message = {
         id: `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
         role: 'assistant',
-        content: '...(宝宝有点累了，可能是网络问题)',
+        content: errorMsg,
         timestamp: Date.now()
       };
       setMessages(prev => [...prev, errorMessage]);
-      
-      // 显示错误提示
-      alert(`AI回复失败，请检查：\n1. API配置是否正确\n2. 网络连接是否正常\n3. API额度是否充足\n\n错误详情：${error}`);
     } finally {
       setIsLoading(false);
     }
@@ -497,16 +504,34 @@ ${userTitle}：说得很好
         {messages.map((msg) => (
           <div
             key={msg.id}
-            className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
+            className={`flex gap-2 ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
           >
+            {/* AI头像 */}
+            {msg.role === 'assistant' && (
+              <div className="flex-shrink-0">
+                {child.aiChildData?.avatar ? (
+                  <img
+                    src={child.aiChildData.avatar}
+                    alt={child.name}
+                    className="w-8 h-8 rounded-full object-cover border-2 border-purple-200"
+                  />
+                ) : (
+                  <div className="w-8 h-8 rounded-full bg-gradient-to-br from-purple-400 to-pink-400 flex items-center justify-center text-lg">
+                    {child.aiChildData?.gender === 'male' ? '👦' : child.aiChildData?.gender === 'female' ? '👧' : '🧒'}
+                  </div>
+                )}
+              </div>
+            )}
+            
+            {/* 消息气泡 */}
             <div
-              className={`max-w-[70%] rounded-2xl px-4 py-2 ${
+              className={`max-w-[70%] rounded-2xl px-4 py-2.5 ${
                 msg.role === 'user'
-                  ? 'bg-blue-500 text-white'
-                  : 'bg-white text-gray-800 shadow-sm'
+                  ? 'bg-gradient-to-r from-blue-500 to-blue-600 text-white shadow-md'
+                  : 'bg-white text-gray-800 shadow-md border border-gray-100'
               }`}
             >
-              <p className="text-sm whitespace-pre-wrap">{msg.content}</p>
+              <p className="text-sm whitespace-pre-wrap leading-relaxed">{msg.content}</p>
             </div>
           </div>
         ))}
