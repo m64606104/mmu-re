@@ -30,6 +30,8 @@ const INDEXED_DB_KEYS = [
   'moments',            // 朋友圈数据
   'chat_memory_banks',  // 记忆库
   'ai_memory_banks',    // AI儿童词汇记忆库（专用）⭐ 新增
+  'daily_card_pools',   // AI儿童每日词卡池（按childId分开）⭐ 新增
+  'daily_teaching_data', // AI儿童每日学习数据（按childId分开）⭐ 新增
   'ai_finance_data',    // AI财务
   'relationships',      // 关系网络  
   'documents_library',  // 文档库

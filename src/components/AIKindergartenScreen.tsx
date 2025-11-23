@@ -60,33 +60,28 @@ export default function AIKindergartenScreen({ onBack, onOpenChat, apiConfig }: 
     loadChildren();
   }, []);
 
-  // 加载今日学习轮数
+  // 加载今日学习轮数（按AI分开存储）
   useEffect(() => {
-    const today = new Date().toDateString();
-    const savedData = localStorage.getItem('dailyTeachingData');
-    if (savedData) {
-      const data = JSON.parse(savedData);
-      if (data.date === today) {
-        setDailyRounds(data.rounds || 0);
-        setCurrentRoundNumber(data.currentRound || 1);
+    if (!selectedChild) return;
+    
+    const loadDailyData = async () => {
+      const { smartLoad } = await import('../utils/storage');
+      const today = new Date().toDateString();
+      const allData = await smartLoad('daily_teaching_data') as Record<string, any> || {};
+      const savedData = allData[selectedChild.id];
+      
+      if (savedData && savedData.date === today) {
+        setDailyRounds(savedData.rounds || 0);
+        setCurrentRoundNumber(savedData.currentRound || 1);
       } else {
         // 新的一天，重置
-        localStorage.setItem('dailyTeachingData', JSON.stringify({ 
-          date: today, 
-          rounds: 0,
-          currentRound: 1
-        }));
         setDailyRounds(0);
         setCurrentRoundNumber(1);
       }
-    } else {
-      localStorage.setItem('dailyTeachingData', JSON.stringify({ 
-        date: today, 
-        rounds: 0,
-        currentRound: 1
-      }));
-    }
-  }, []);
+    };
+    
+    loadDailyData();
+  }, [selectedChild]);
 
   // 初始化每日词卡池
   const initDailyCardPool = async () => {
@@ -96,6 +91,7 @@ export default function AIKindergartenScreen({ onBack, onOpenChat, apiConfig }: 
     try {
       const learnedWords = selectedChild.aiChildData.vocabulary.map(w => w.word);
       const pool = await generateDailyCards(
+        selectedChild.id, // childId
         selectedChild.aiChildData.vocabulary.length,
         learnedWords,
         selectedChild.aiChildData.stage,
@@ -126,13 +122,19 @@ export default function AIKindergartenScreen({ onBack, onOpenChat, apiConfig }: 
     setCurrentRoundNumber(newRoundNumber);
     setShowRoundComplete(false);
     
-    // 更新本地存储
-    const today = new Date().toDateString();
-    localStorage.setItem('dailyTeachingData', JSON.stringify({ 
-      date: today, 
-      rounds: dailyRounds,
-      currentRound: newRoundNumber
-    }));
+    // 更新IndexedDB存储
+    const saveDailyData = async () => {
+      const { smartLoad, smartSave } = await import('../utils/storage');
+      const today = new Date().toDateString();
+      const allData = await smartLoad('daily_teaching_data') as Record<string, any> || {};
+      allData[selectedChild!.id] = {
+        date: today,
+        rounds: dailyRounds,
+        currentRound: newRoundNumber
+      };
+      await smartSave('daily_teaching_data', allData);
+    };
+    saveDailyData();
     
     // 刷新词卡
     refreshCards();
@@ -245,7 +247,7 @@ export default function AIKindergartenScreen({ onBack, onOpenChat, apiConfig }: 
         setTeachResult(`✨ 成功学会了"${selectedCard.word}"！${expMessage}`);
         
         // 标记词已被选择
-        markWordSelected(selectedCard.word);
+        await markWordSelected(selectedChild.id, selectedCard.word);
         
         // 更新每日轮数
         const today = new Date().toDateString();
@@ -256,11 +258,18 @@ export default function AIKindergartenScreen({ onBack, onOpenChat, apiConfig }: 
         // 检查是否完成一轮
         const roundCompleted = wordsInCurrentRound === 20;
         
-        localStorage.setItem('dailyTeachingData', JSON.stringify({ 
-          date: today, 
-          rounds: newRounds,
-          currentRound: currentRoundNumber
-        }));
+        // 保存到IndexedDB
+        const saveDailyData = async () => {
+          const { smartLoad, smartSave } = await import('../utils/storage');
+          const allData = await smartLoad('daily_teaching_data') as Record<string, any> || {};
+          allData[selectedChild.id] = {
+            date: today,
+            rounds: newRounds,
+            currentRound: currentRoundNumber
+          };
+          await smartSave('daily_teaching_data', allData);
+        };
+        saveDailyData();
         
         // 如果完成一轮，显示提示
         if (roundCompleted && newRounds < 60) {

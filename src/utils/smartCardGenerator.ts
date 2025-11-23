@@ -5,6 +5,7 @@
 
 import { WordCard } from './wordCardLibrary';
 import { ApiConfig } from '../types';
+import { smartLoad, smartSave } from './storage';
 
 export interface DailyCardPool {
   date: string;
@@ -16,6 +17,7 @@ export interface DailyCardPool {
  * 为当天生成15轮词卡（共60个词，支持3个学习轮次每轮20词）
  */
 export async function generateDailyCards(
+  childId: string,
   vocabularyCount: number,
   learnedWords: string[],
   stage: string,
@@ -23,13 +25,12 @@ export async function generateDailyCards(
 ): Promise<DailyCardPool> {
   const today = new Date().toDateString();
   
-  // 检查是否已经生成过今天的词卡
-  const cached = localStorage.getItem('dailyCardPool');
-  if (cached) {
-    const pool: DailyCardPool = JSON.parse(cached);
-    if (pool.date === today) {
-      return pool;
-    }
+  // 从 IndexedDB 获取所有AI的词卡池
+  const allPools = await smartLoad('daily_card_pools') as Record<string, DailyCardPool> || {};
+  const cached = allPools[childId];
+  
+  if (cached && cached.date === today) {
+    return cached;
   }
 
   // 使用AI生成60个适合的词（15轮×4词）
@@ -47,7 +48,9 @@ export async function generateDailyCards(
     selectedWords: []
   };
 
-  localStorage.setItem('dailyCardPool', JSON.stringify(pool));
+  // 保存到 IndexedDB
+  allPools[childId] = pool;
+  await smartSave('daily_card_pools', allPools);
   return pool;
 }
 
@@ -269,6 +272,9 @@ function getFallbackWords(_vocabularyCount: number, learnedWords: string[]): Wor
  * 获取下一轮词卡（排除已选的词）
  */
 export function getNextRound(pool: DailyCardPool, currentRound: number): WordCard[] {
+  if (!pool || !pool.rounds) {
+    return [];
+  }
   if (currentRound >= pool.rounds.length) {
     return [];
   }
@@ -283,20 +289,22 @@ export function getNextRound(pool: DailyCardPool, currentRound: number): WordCar
 /**
  * 标记词已被选择
  */
-export function markWordSelected(word: string): void {
-  const cached = localStorage.getItem('dailyCardPool');
-  if (cached) {
-    const pool: DailyCardPool = JSON.parse(cached);
-    if (!pool.selectedWords.includes(word)) {
-      pool.selectedWords.push(word);
-      localStorage.setItem('dailyCardPool', JSON.stringify(pool));
-    }
+export async function markWordSelected(childId: string, word: string): Promise<void> {
+  const allPools = await smartLoad('daily_card_pools') as Record<string, DailyCardPool> || {};
+  const pool = allPools[childId];
+  
+  if (pool && !pool.selectedWords.includes(word)) {
+    pool.selectedWords.push(word);
+    allPools[childId] = pool;
+    await smartSave('daily_card_pools', allPools);
   }
 }
 
 /**
  * 重置每日词卡池（新的一天）
  */
-export function resetDailyPool(): void {
-  localStorage.removeItem('dailyCardPool');
+export async function resetDailyPool(childId: string): Promise<void> {
+  const allPools = await smartLoad('daily_card_pools') as Record<string, DailyCardPool> || {};
+  delete allPools[childId];
+  await smartSave('daily_card_pools', allPools);
 }

@@ -11,14 +11,14 @@ export const KindergartenLimits = {
   /**
    * 用户可以创建的最大AI数量
    * 
-   * 当前版本：1个
+   * 当前版本：3个
    * 未来扩展计划：
    * - 免费版：1个
    * - 基础版：3个
    * - 高级版：5个
    * - 无限版：10个或更多
    */
-  MAX_CHILDREN: 1,
+  MAX_CHILDREN: 3,
 
   /**
    * 每天最大教学词汇数
