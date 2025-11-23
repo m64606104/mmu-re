@@ -10,7 +10,7 @@ import ReadingScreen from './ReadingScreen';
 import GrowthReportScreen from './GrowthReportScreen';
 import TopicDiscussionScreen from './TopicDiscussionScreen';
 import AIChildSettings from './AIChildSettings';
-import WordTeachingChat, { TeachingDialogue } from './WordTeachingChat';
+// import WordTeachingChat, { TeachingDialogue } from './WordTeachingChat'; // 已改为简单输入式教学
 import { 
   createAIChild, 
   getAllAIChildren,
@@ -53,7 +53,6 @@ export default function AIKindergartenScreen({ onBack, onOpenChat, apiConfig }: 
   const [cardPool, setCardPool] = useState<DailyCardPool | null>(null);
   const [isLoadingCards, setIsLoadingCards] = useState(false);
   const [showChildrenList, setShowChildrenList] = useState(false);
-  const [showChatTeaching, setShowChatTeaching] = useState(false); // 聊天式教学模式
 
   useEffect(() => {
     loadChildren();
@@ -174,7 +173,7 @@ export default function AIKindergartenScreen({ onBack, onOpenChat, apiConfig }: 
     saveChild();
   };
 
-  // 选择词卡 → 打开聊天式教学
+  // 选择词卡（不立即教学）
   const handleSelectCard = (card: WordCard) => {
     if (dailyRounds >= 20) {
       setTeachResult('🌙 今天已经学了20个词啦，明天再来吧～');
@@ -182,72 +181,8 @@ export default function AIKindergartenScreen({ onBack, onOpenChat, apiConfig }: 
     }
     
     setSelectedCard(card);
-    setShowChatTeaching(true); // 打开聊天式教学
     setUserDefinition(''); // 清空之前的输入
     setTeachResult('');
-  };
-
-  // 聊天式教学完成
-  const handleChatTeachingComplete = async (definition: string, dialogue: TeachingDialogue[]) => {
-    if (!selectedChild || !selectedChild.aiChildData || !selectedCard) return;
-
-    try {
-      // 保存词汇学习记录
-      await teachWord(
-        selectedChild.id,
-        selectedCard.word,
-        definition,
-        [] // 例句暂时为空，可以从对话中提取
-      );
-
-      // 标记词卡已选
-      markWordSelected(selectedCard.word);
-
-      // 更新学习次数
-      const today = new Date().toDateString();
-      const newRounds = dailyRounds + 1;
-      setDailyRounds(newRounds);
-      localStorage.setItem('dailyTeachingData', JSON.stringify({ date: today, rounds: newRounds }));
-
-      // 更新每日互动
-      await updateDailyInteraction(selectedChild.id);
-
-      // 重新加载children以获取最新数据
-      const updatedChildren = await getAllAIChildren();
-      setChildren(updatedChildren);
-      const updatedChild = updatedChildren.find(c => c.id === selectedChild.id);
-      if (updatedChild) {
-        setSelectedChild(updatedChild);
-      }
-
-      // 显示成功消息
-      setTeachResult(`✨ 太棒了！${selectedChild.name}通过${dialogue.length}轮对话学会了"${selectedCard.word}"！`);
-
-      // 关闭聊天式教学，清除选中
-      setShowChatTeaching(false);
-      setSelectedCard(null);
-
-      // 3秒后清除结果
-      setTimeout(() => {
-        setTeachResult('');
-      }, 3000);
-
-      // 如果当前轮次的词卡都学完了，加载下一轮
-      const remainingCards = currentCards.filter(c => c.id !== selectedCard.id);
-      if (remainingCards.length === 0 && cardPool) {
-        const nextCards = getNextRound(cardPool, newRounds);
-        if (nextCards.length > 0) {
-          setCurrentCards(nextCards);
-        } else {
-          setCurrentCards([]);
-        }
-      } else {
-        setCurrentCards(remainingCards);
-      }
-    } catch (error) {
-      console.error('教学记录保存失败:', error);
-      setTeachResult('❌ 保存失败，请重试');
-    }
   };
 
   // 确认教学
@@ -259,35 +194,60 @@ export default function AIKindergartenScreen({ onBack, onOpenChat, apiConfig }: 
       return;
     }
 
-    // 教学这个词（使用用户的理解）
-    const result = await teachWord(
-      selectedChild.id,
-      selectedCard.word,
-      userDefinition.trim(),
-      selectedCard.examples
-    );
+    try {
+      // 教学这个词（使用用户的理解）
+      const result = await teachWord(
+        selectedChild.id,
+        selectedCard.word,
+        userDefinition.trim(),
+        selectedCard.examples
+      );
 
-    if (result) {
-      setTeachResult(`✨ 成功学会了"${selectedCard.word}"！获得了10点经验值`);
-      
-      // 标记词已被选择
-      markWordSelected(selectedCard.word);
-      
-      // 更新每日轮数
-      const newRounds = dailyRounds + 1;
-      setDailyRounds(newRounds);
-      const today = new Date().toDateString();
-      localStorage.setItem('dailyTeachingData', JSON.stringify({ date: today, rounds: newRounds }));
-      
-      // 刷新数据和卡片
-      setTimeout(() => {
-        loadChildren();
-        refreshCards();
-        setSelectedCard(null);
-        setUserDefinition('');
-      }, 1500);
-    } else {
-      setTeachResult('❌ 教学失败，请重试');
+      if (result.success) {
+        setTeachResult(`✨ 成功学会了"${selectedCard.word}"！获得了10点经验值`);
+        
+        // 标记词已被选择
+        markWordSelected(selectedCard.word);
+        
+        // 更新每日轮数
+        const today = new Date().toDateString();
+        const newRounds = dailyRounds + 1;
+        setDailyRounds(newRounds);
+        localStorage.setItem('dailyTeachingData', JSON.stringify({ date: today, rounds: newRounds }));
+        
+        // 刷新数据和卡片
+        setTimeout(async () => {
+          // 重新加载children以获取最新数据
+          const updatedChildren = await getAllAIChildren();
+          setChildren(updatedChildren);
+          const updatedChild = updatedChildren.find(c => c.id === selectedChild.id);
+          if (updatedChild) {
+            setSelectedChild(updatedChild);
+          }
+          
+          // 刷新词卡
+          const remainingCards = currentCards.filter(c => c.id !== selectedCard.id);
+          if (remainingCards.length === 0 && cardPool) {
+            const nextCards = getNextRound(cardPool, newRounds);
+            if (nextCards.length > 0) {
+              setCurrentCards(nextCards);
+            } else {
+              setCurrentCards([]);
+            }
+          } else {
+            setCurrentCards(remainingCards);
+          }
+          
+          setSelectedCard(null);
+          setUserDefinition('');
+          setTeachResult('');
+        }, 1500);
+      } else {
+        setTeachResult('❌ 教学失败，请重试');
+      }
+    } catch (error) {
+      console.error('教学记录保存失败:', error);
+      setTeachResult('❌ 保存失败，请重试');
     }
   };
 
@@ -1065,19 +1025,7 @@ export default function AIKindergartenScreen({ onBack, onOpenChat, apiConfig }: 
         </div>
       )}
 
-      {/* 聊天式教学 */}
-      {showChatTeaching && selectedCard && selectedChild && (
-        <WordTeachingChat
-          word={selectedCard}
-          aiChild={selectedChild}
-          apiConfig={apiConfig}
-          onComplete={handleChatTeachingComplete}
-          onCancel={() => {
-            setShowChatTeaching(false);
-            setSelectedCard(null);
-          }}
-        />
-      )}
+      {/* 聊天式教学已改为简单输入式教学 */}
     </div>
   );
 }
