@@ -1238,6 +1238,7 @@ export default function CharacterSettingsScreen({
 
         {/* 提示信息 - 仅普通角色显示 */}
         {!isAIChild && (
+        <>
         <div className="bg-blue-50 border border-blue-100 rounded-lg p-4">
           <p className="text-sm text-blue-700 leading-relaxed">
             💡 这些设置将影响AI生成回复时的风格和内容，帮助创建更真实的对话体验
@@ -1304,6 +1305,7 @@ export default function CharacterSettingsScreen({
             💾 导出后可在其他设备导入，保留所有聊天记录
           </p>
         </div>
+        </>
         )}
 
         {/* Delete Contact Button */}
