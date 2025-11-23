@@ -701,9 +701,35 @@ export default function AIKindergartenScreen({ onBack, apiConfig }: AIKindergart
                     <div className="bg-gradient-to-r from-blue-50 to-purple-50 rounded-xl p-4">
                       <div className="flex items-center gap-3 mb-3">
                         <div className="text-3xl">{selectedCard.emoji}</div>
-                        <div>
+                        <div className="flex-1">
                           <div className="font-semibold text-gray-800">{selectedCard.word}</div>
                           <div className="text-xs text-gray-500">Level {selectedCard.difficulty}</div>
+                          
+                          {/* Baby期学习进度显示 */}
+                          {(() => {
+                            const stageConfig = getTeachingStageConfig(selectedChild.aiChildData.vocabulary.length);
+                            const existingWord = selectedChild.aiChildData.vocabulary.find(w => w.word === selectedCard.word);
+                            const repetitionCount = existingWord?.repetitionCount || 0;
+                            
+                            if (stageConfig.stage === 'baby' && existingWord && !existingWord.fullyLearned) {
+                              return (
+                                <div className="mt-2">
+                                  <div className="flex items-center gap-2 mb-1">
+                                    <span className="text-xs text-orange-600 font-medium">
+                                      👶 学习中 {repetitionCount}/{stageConfig.minRepetitions}
+                                    </span>
+                                  </div>
+                                  <div className="w-full bg-gray-200 rounded-full h-1.5">
+                                    <div 
+                                      className="bg-gradient-to-r from-orange-400 to-pink-500 h-1.5 rounded-full transition-all duration-500"
+                                      style={{ width: `${(repetitionCount / stageConfig.minRepetitions) * 100}%` }}
+                                    ></div>
+                                  </div>
+                                </div>
+                              );
+                            }
+                            return null;
+                          })()}
                         </div>
                       </div>
                       
@@ -748,7 +774,16 @@ export default function AIKindergartenScreen({ onBack, apiConfig }: AIKindergart
                         disabled={!userDefinition.trim()}
                         className="flex-1 py-3 bg-gradient-to-r from-blue-500 to-purple-500 text-white rounded-xl font-medium hover:shadow-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                       >
-                        确定教学
+                        {(() => {
+                          const stageConfig = getTeachingStageConfig(selectedChild.aiChildData.vocabulary.length);
+                          const existingWord = selectedChild.aiChildData.vocabulary.find(w => w.word === selectedCard.word);
+                          const isLearning = existingWord && !existingWord.fullyLearned;
+                          
+                          if (stageConfig.stage === 'baby' && isLearning) {
+                            return '📢 再教一次';
+                          }
+                          return '✨ 确定教学';
+                        })()}
                       </button>
                     </div>
                   </div>
@@ -761,12 +796,60 @@ export default function AIKindergartenScreen({ onBack, apiConfig }: AIKindergart
 
                 {/* 教学结果 */}
                 {teachResult && (
-                  <div className={`mt-3 p-3 rounded-xl text-sm text-center ${
-                    teachResult.includes('成功') 
-                      ? 'bg-green-50 border border-green-200 text-green-700'
-                      : 'bg-orange-50 border border-orange-200 text-orange-700'
-                  }`}>
-                    {teachResult}
+                  <div className="mt-3 space-y-2">
+                    {(() => {
+                      // 检查是否包含AI反应（用引号包裹的部分）
+                      const parts = teachResult.split('\n\n');
+                      const hasAIResponse = parts.length > 1;
+                      
+                      if (hasAIResponse) {
+                        const aiResponse = parts[0];
+                        const systemMessage = parts[1];
+                        
+                        return (
+                          <>
+                            {/* AI反应气泡 */}
+                            <div className="bg-white border-2 border-blue-200 rounded-2xl p-3 relative animate-bounce-in">
+                              <div className="flex items-start gap-2">
+                                <div className="text-2xl">👶</div>
+                                <div className="flex-1">
+                                  <div className="text-sm font-medium text-gray-800">
+                                    {selectedChild.name}的反应：
+                                  </div>
+                                  <div className="text-base text-gray-700 mt-1">
+                                    {aiResponse}
+                                  </div>
+                                </div>
+                              </div>
+                              {/* 小三角 */}
+                              <div className="absolute -bottom-2 left-8 w-4 h-4 bg-white border-b-2 border-r-2 border-blue-200 transform rotate-45"></div>
+                            </div>
+                            
+                            {/* 系统消息 */}
+                            <div className={`p-3 rounded-xl text-sm text-center ${
+                              systemMessage.includes('终于学会') || systemMessage.includes('成功')
+                                ? 'bg-gradient-to-r from-green-50 to-emerald-50 border border-green-200 text-green-700'
+                                : 'bg-gradient-to-r from-orange-50 to-amber-50 border border-orange-200 text-orange-700'
+                            }`}>
+                              {systemMessage}
+                            </div>
+                          </>
+                        );
+                      }
+                      
+                      // 没有AI反应，只显示系统消息
+                      return (
+                        <div className={`p-3 rounded-xl text-sm text-center ${
+                          teachResult.includes('成功') || teachResult.includes('学会')
+                            ? 'bg-green-50 border border-green-200 text-green-700'
+                            : teachResult.includes('失败')
+                            ? 'bg-red-50 border border-red-200 text-red-700'
+                            : 'bg-orange-50 border border-orange-200 text-orange-700'
+                        }`}>
+                          {teachResult}
+                        </div>
+                      );
+                    })()}
                   </div>
                 )}
 
