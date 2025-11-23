@@ -57,8 +57,8 @@ export default function WordTeachingChat({
     let initialMessage = '';
     
     if (vocabularyCount < 100) {
-      // Baby阶段：不会说话，只会发音
-      initialMessage = `"啊...啊...？"\n（看着"${word.word}"，不知道怎么说）`;
+      // Baby阶段：听到词语，尝试理解但不明白
+      initialMessage = `"${word.word[0]}...${word.word[0]}${word.word[1] || ''}...？"\n"${word.word}...？"\n（听到这个词，但不理解是什么意思）`;
     } else if (vocabularyCount < 500) {
       // Toddler阶段：简单提问
       initialMessage = `"${word.emoji}"\n"这是什么意思？"\n（好奇地看着你）`;
@@ -202,27 +202,29 @@ export default function WordTeachingChat({
     
     if (vocabularyCount < 100) {
       // Baby阶段
-      return `你是${childName}，一个刚刚开始学习语言的AI宝宝（识字量：${vocabularyCount}）。
+      return `你是${childName}，一个刚刚开始学习理解世界的AI宝宝（识字量：${vocabularyCount}）。
 
 **当前状态**：
-- 你只会发简单的音："啊啊"、"嗯嗯"
-- 你不认识"${word.word}"这个词
-- 你需要用户重复教你很多次才能学会
-- 你只能模仿，不能理解含义
+- 你能听懂词语，但不理解含义
+- 用户告诉你"${word.word}"这个词，你很困惑
+- 你需要用户解释，才能慢慢理解
+- 你会尝试追问，但理解能力有限
 
-**对话规则**：
-1. 第1次听到解释：只会说"啊...？"或"嗯...？"（困惑）
-2. 第2次听到解释：尝试模仿发音："${word.word[0]}...？"
-3. 第3次听到解释：能完整说出："${word.word}？"（不确定）
-4. 第4次以后：能确定地说："${word.word}！"（记住了）
+**对话风格**：
+1. 第1次听到词语：重复词语但表示困惑 "${word.word}...？"（不理解）
+2. 听到解释后：问非常简单的问题 "是...什么？"、"为什么...？"
+3. 继续解释：尝试理解 "哦...${word.word}..."（似懂非懂）
+4. 理解后：表示明白了 "${word.word}！"、"我知道了！"
 
-**重要**：
-- 不要理解词义，只能重复
-- 不要提问为什么
-- 不要说完整的句子
-- 回复要非常短，1-2句话
+**重要规则**：
+- 你能说完整的词，但理解很浅显
+- 只问最简单的问题
+- 不要深入追问
+- 2-3轮对话后就能基本理解
+- 回复保持简短，用简单的话
+- 表现出宝宝的天真和困惑
 
-现在用户要教你"${word.word}"这个词。`;
+用户现在要教你"${word.word}"（${word.emoji}）这个词的意思。`;
     } else if (vocabularyCount < 500) {
       // Toddler阶段
       return `你是${childName}，一个好奇的AI幼儿（识字量：${vocabularyCount}）。
@@ -315,23 +317,23 @@ ${generateDeepThought(word)}
   // 评估理解度
   const evaluateUnderstanding = (dialogueLength: number): number => {
     if (vocabularyCount < 100) {
-      // Baby阶段：需要3-5轮
-      return Math.min(100, (dialogueLength / 8) * 100);
+      // Baby阶段：2-3轮对话基本理解
+      return Math.min(100, (dialogueLength / 6) * 100);
     } else if (vocabularyCount < 500) {
-      // Toddler阶段：需要2-3轮
+      // Toddler阶段：2-3轮
       return Math.min(100, (dialogueLength / 6) * 100);
     } else if (vocabularyCount < 1500) {
-      // Child阶段：需要3-4轮
+      // Child阶段：3-4轮
       return Math.min(100, (dialogueLength / 8) * 100);
     } else {
-      // Teen阶段：需要4-5轮深度对话
+      // Teen阶段：4-5轮深度对话
       return Math.min(100, (dialogueLength / 10) * 100);
     }
   };
 
   // 获取阶段名称
   const getStageName = (): string => {
-    if (vocabularyCount < 100) return 'Baby期 - 咿呀学语';
+    if (vocabularyCount < 100) return 'Baby期 - 学习理解';
     if (vocabularyCount < 500) return 'Toddler期 - 好奇宝宝';
     if (vocabularyCount < 1500) return 'Child期 - 开始思考';
     return 'Teen期 - 深度思考';

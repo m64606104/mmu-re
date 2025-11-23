@@ -10,6 +10,7 @@ import ReadingScreen from './ReadingScreen';
 import GrowthReportScreen from './GrowthReportScreen';
 import TopicDiscussionScreen from './TopicDiscussionScreen';
 import AIChildSettings from './AIChildSettings';
+import WordTeachingChat, { TeachingDialogue } from './WordTeachingChat';
 import { 
   createAIChild, 
   getAllAIChildren,
@@ -52,7 +53,7 @@ export default function AIKindergartenScreen({ onBack, onOpenChat, apiConfig }: 
   const [cardPool, setCardPool] = useState<DailyCardPool | null>(null);
   const [isLoadingCards, setIsLoadingCards] = useState(false);
   const [showChildrenList, setShowChildrenList] = useState(false);
-  const [uploadingAvatar, setUploadingAvatar] = useState(false);
+  const [showChatTeaching, setShowChatTeaching] = useState(false); // 聊天式教学模式
 
   useEffect(() => {
     loadChildren();
@@ -103,16 +104,20 @@ export default function AIKindergartenScreen({ onBack, onOpenChat, apiConfig }: 
     }
   };
 
-  // 教学后补充新词卡（保持4张）
+  // 刷新词卡（切换到下一轮）
   const refreshCards = () => {
     if (!cardPool) return;
     
-    // 获取当前轮次的所有可用词卡
-    const allAvailableCards = getNextRound(cardPool, dailyRounds);
-    
-    // 从可用词卡中随机选择4张
-    const shuffled = [...allAvailableCards].sort(() => Math.random() - 0.5);
-    setCurrentCards(shuffled.slice(0, 4));
+    const nextCards = getNextRound(cardPool, dailyRounds);
+    if (nextCards.length > 0) {
+      setCurrentCards(nextCards);
+    } else {
+      // 如果当前轮次没有可用的词，尝试下一轮
+      const nextRoundCards = getNextRound(cardPool, dailyRounds + 1);
+      if (nextRoundCards.length > 0) {
+        setCurrentCards(nextRoundCards);
+      }
+    }
     setSelectedCard(null);
     setTeachResult('');
   };
@@ -169,7 +174,7 @@ export default function AIKindergartenScreen({ onBack, onOpenChat, apiConfig }: 
     saveChild();
   };
 
-  // 选择词卡（不立即教学）
+  // 选择词卡 → 打开聊天式教学
   const handleSelectCard = (card: WordCard) => {
     if (dailyRounds >= 20) {
       setTeachResult('🌙 今天已经学了20个词啦，明天再来吧～');
@@ -177,10 +182,73 @@ export default function AIKindergartenScreen({ onBack, onOpenChat, apiConfig }: 
     }
     
     setSelectedCard(card);
+    setShowChatTeaching(true); // 打开聊天式教学
     setUserDefinition(''); // 清空之前的输入
     setTeachResult('');
   };
 
+  // 聊天式教学完成
+  const handleChatTeachingComplete = async (definition: string, dialogue: TeachingDialogue[]) => {
+    if (!selectedChild || !selectedChild.aiChildData || !selectedCard) return;
+
+    try {
+      // 保存词汇学习记录
+      await teachWord(
+        selectedChild.id,
+        selectedCard.word,
+        definition,
+        [] // 例句暂时为空，可以从对话中提取
+      );
+
+      // 标记词卡已选
+      markWordSelected(selectedCard.word);
+
+      // 更新学习次数
+      const today = new Date().toDateString();
+      const newRounds = dailyRounds + 1;
+      setDailyRounds(newRounds);
+      localStorage.setItem('dailyTeachingData', JSON.stringify({ date: today, rounds: newRounds }));
+
+      // 更新每日互动
+      await updateDailyInteraction(selectedChild.id);
+
+      // 重新加载children以获取最新数据
+      const updatedChildren = await getAllAIChildren();
+      setChildren(updatedChildren);
+      const updatedChild = updatedChildren.find(c => c.id === selectedChild.id);
+      if (updatedChild) {
+        setSelectedChild(updatedChild);
+      }
+
+      // 显示成功消息
+      setTeachResult(`✨ 太棒了！${selectedChild.name}通过${dialogue.length}轮对话学会了"${selectedCard.word}"！`);
+
+      // 关闭聊天式教学，清除选中
+      setShowChatTeaching(false);
+      setSelectedCard(null);
+
+      // 3秒后清除结果
+      setTimeout(() => {
+        setTeachResult('');
+      }, 3000);
+
+      // 如果当前轮次的词卡都学完了，加载下一轮
+      const remainingCards = currentCards.filter(c => c.id !== selectedCard.id);
+      if (remainingCards.length === 0 && cardPool) {
+        const nextCards = getNextRound(cardPool, newRounds);
+        if (nextCards.length > 0) {
+          setCurrentCards(nextCards);
+        } else {
+          setCurrentCards([]);
+        }
+      } else {
+        setCurrentCards(remainingCards);
+      }
+    } catch (error) {
+      console.error('教学记录保存失败:', error);
+      setTeachResult('❌ 保存失败，请重试');
+    }
+  };
 
   // 确认教学
   const handleConfirmTeach = async () => {
@@ -211,13 +279,10 @@ export default function AIKindergartenScreen({ onBack, onOpenChat, apiConfig }: 
       const today = new Date().toDateString();
       localStorage.setItem('dailyTeachingData', JSON.stringify({ date: today, rounds: newRounds }));
       
-      // 更新每日互动
-      await updateDailyInteraction(selectedChild.id);
-      
       // 刷新数据和卡片
       setTimeout(() => {
         loadChildren();
-        refreshCards(); // 立即补充新词卡
+        refreshCards();
         setSelectedCard(null);
         setUserDefinition('');
       }, 1500);
@@ -457,76 +522,58 @@ export default function AIKindergartenScreen({ onBack, onOpenChat, apiConfig }: 
             {/* Child Info Card */}
             <div className="bg-white rounded-2xl p-6 shadow-sm">
               <div className="flex items-center gap-4 mb-4">
-                <div 
-                  className="relative w-20 h-20 bg-gradient-to-br from-blue-400 to-purple-500 rounded-full flex items-center justify-center text-4xl cursor-pointer hover:scale-105 transition-transform group"
-                  onClick={() => document.getElementById('avatar-upload')?.click()}
-                >
-                  {uploadingAvatar ? (
-                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                  ) : selectedChild.aiChildData.avatar ? (
-                    <img 
-                      src={selectedChild.aiChildData.avatar} 
-                      alt="头像" 
-                      className="w-full h-full rounded-full object-cover"
-                    />
-                  ) : (
-                    getStageEmoji(selectedChild.aiChildData.stage)
-                  )}
-                  {!uploadingAvatar && (
-                    <div className="absolute inset-0 bg-black/40 rounded-full opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-                      <span className="text-white text-xs">上传</span>
-                    </div>
-                  )}
-                </div>
-                <input
-                  id="avatar-upload"
-                  type="file"
-                  accept="image/*"
-                  className="hidden"
-                  onChange={async (e) => {
-                    const file = e.target.files?.[0];
-                    if (!file) return;
-                    
-                    if (!file.type.startsWith('image/')) {
-                      alert('请选择图片文件！');
-                      return;
-                    }
-                    
-                    if (file.size > 2 * 1024 * 1024) {
-                      alert('图片大小不能超过2MB！');
-                      return;
-                    }
-                    
-                    setUploadingAvatar(true);
-                    
-                    const reader = new FileReader();
-                    reader.onload = async (event) => {
-                      const base64 = event.target?.result as string;
+                <label className="relative cursor-pointer group">
+                  <input
+                    type="file"
+                    accept="image/*"
+                    onChange={async (e) => {
+                      const file = e.target.files?.[0];
+                      if (!file) return;
                       
-                      // 更新AI儿童的头像
-                      const { smartLoad, smartSave } = await import('../utils/storage');
-                      const conversations = await smartLoad('conversations') as Conversation[] || [];
-                      const updatedConversations = conversations.map(conv => {
-                        if (conv.id === selectedChild.id && conv.aiChildData) {
-                          return {
-                            ...conv,
-                            aiChildData: {
-                              ...conv.aiChildData,
-                              avatar: base64
-                            }
-                          };
+                      if (!file.type.startsWith('image/')) {
+                        alert('请选择图片文件！');
+                        return;
+                      }
+                      
+                      if (file.size > 2 * 1024 * 1024) {
+                        alert('图片大小不能超过2MB！');
+                        return;
+                      }
+                      
+                      const reader = new FileReader();
+                      reader.onload = async (event) => {
+                        const base64 = event.target?.result as string;
+                        if (selectedChild.aiChildData) {
+                          selectedChild.aiChildData.avatar = base64;
+                          await loadChildren();
+                          const { smartLoad, smartSave } = await import('../utils/storage');
+                          const conversations = await smartLoad('conversations') as Conversation[] || [];
+                          const index = conversations.findIndex(c => c.id === selectedChild.id);
+                          if (index !== -1) {
+                            conversations[index] = selectedChild;
+                            await smartSave('conversations', conversations);
+                          }
                         }
-                        return conv;
-                      });
-                      
-                      await smartSave('conversations', updatedConversations);
-                      await loadChildren();
-                      setUploadingAvatar(false);
-                    };
-                    
-                    reader.readAsDataURL(file);
-                  }}
-                />
+                      };
+                      reader.readAsDataURL(file);
+                    }}
+                    className="hidden"
+                  />
+                  <div className="w-20 h-20 rounded-full flex items-center justify-center text-4xl overflow-hidden bg-gradient-to-br from-blue-400 to-purple-500 relative">
+                    {selectedChild.aiChildData?.avatar ? (
+                      <img 
+                        src={selectedChild.aiChildData.avatar} 
+                        alt={selectedChild.name}
+                        className="w-full h-full object-cover"
+                      />
+                    ) : (
+                      getStageEmoji(selectedChild.aiChildData.stage)
+                    )}
+                    <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-white text-xs">
+                      点击上传
+                    </div>
+                  </div>
+                </label>
                 <div className="flex-1">
                   <div className="flex items-center justify-between">
                     <h2 className="text-2xl font-bold text-gray-800">{selectedChild.name}</h2>
@@ -1016,6 +1063,20 @@ export default function AIKindergartenScreen({ onBack, onOpenChat, apiConfig }: 
             </button>
           </div>
         </div>
+      )}
+
+      {/* 聊天式教学 */}
+      {showChatTeaching && selectedCard && selectedChild && (
+        <WordTeachingChat
+          word={selectedCard}
+          aiChild={selectedChild}
+          apiConfig={apiConfig}
+          onComplete={handleChatTeachingComplete}
+          onCancel={() => {
+            setShowChatTeaching(false);
+            setSelectedCard(null);
+          }}
+        />
       )}
     </div>
   );
