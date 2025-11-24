@@ -295,10 +295,14 @@ export function updateChildComprehension(
   // 转换旧格式到新格式
   const abilities: Record<string, ComprehensionAbility> = {};
   for (const [key, oldAbility] of Object.entries(childData.comprehension.abilities)) {
+    const level = oldAbility.level || 1;
+    const progress = oldAbility.progress || 0;
+    const totalExp = (oldAbility as any).totalExperience;
+    
     abilities[key] = {
-      level: oldAbility.level || 1,
-      experience: oldAbility.progress || 0,
-      totalExperience: ((oldAbility.level || 1) - 1) * 100 + (oldAbility.progress || 0)
+      level,
+      experience: progress, // 现在progress就是当前等级的经验(0-99)
+      totalExperience: totalExp || ((level - 1) * 100 + progress) // 如果有totalExp就用，否则计算
     };
   }
   
@@ -322,7 +326,9 @@ export function updateChildComprehension(
   for (const [key, ability] of Object.entries(abilities)) {
     if (childData.comprehension.abilities[key as keyof typeof childData.comprehension.abilities]) {
       (childData.comprehension.abilities[key as keyof typeof childData.comprehension.abilities] as any).level = ability.level;
-      (childData.comprehension.abilities[key as keyof typeof childData.comprehension.abilities] as any).progress = ability.experience;
+      (childData.comprehension.abilities[key as keyof typeof childData.comprehension.abilities] as any).progress = ability.experience; // 0-99经验值
+      // 为了兼容，也存储totalExperience用于后续计算
+      (childData.comprehension.abilities[key as keyof typeof childData.comprehension.abilities] as any).totalExperience = ability.totalExperience;
     }
   }
   

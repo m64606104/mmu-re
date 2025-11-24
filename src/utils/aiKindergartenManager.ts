@@ -427,8 +427,8 @@ const addExp = async (child: Conversation, exp: number): Promise<void> => {
     // 检查成长阶段升级
     checkStageUpgrade(child.aiChildData);
     
-    // 更新理解力（升级时也要更新）
-    updateComprehension(child.aiChildData);
+    // 注意：不再调用updateComprehension，因为新词学习时已经使用了updateChildComprehension
+    // 理解力现在是基于每个词的经验累积，而不是重新计算
   }
 };
 
