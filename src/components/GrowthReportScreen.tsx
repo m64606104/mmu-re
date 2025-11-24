@@ -6,6 +6,7 @@
 import { useState } from 'react';
 import { ArrowLeft, TrendingUp, BookOpen, MessageCircle, Award, Calendar, Target, Zap } from 'lucide-react';
 import { Conversation } from '../types';
+import { COMPREHENSION_CONFIG, fixAbilityData, getAbilityLevelDescription } from '../utils/comprehensionDisplayOptimizer';
 
 interface GrowthReportScreenProps {
   child: Conversation;
@@ -284,8 +285,6 @@ export default function GrowthReportScreen({ child, onBack }: GrowthReportScreen
               
               <div className="space-y-4">
                 {Object.entries(childData.comprehension.abilities).map(([key, abilityData]) => {
-                  // 导入优化器修复数据
-                  const { COMPREHENSION_CONFIG, fixAbilityData, getAbilityLevelDescription } = require('../utils/comprehensionDisplayOptimizer');
                   const config = COMPREHENSION_CONFIG[key];
                   const ability = fixAbilityData(abilityData);
                   const levelDesc = getAbilityLevelDescription(ability.level);

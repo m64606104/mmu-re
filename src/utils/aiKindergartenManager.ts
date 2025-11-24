@@ -401,58 +401,68 @@ const checkStageUpgrade = (childData: AIChildData): void => {
 export const updateComprehension = (childData: AIChildData): void => {
   const wordCount = childData.vocabulary.length;
   
-  // === 总理解力等级 ===
-  // 每10个词提升1%进度，100%后升级
-  const totalProgress = (wordCount * 10) % 100;
-  const totalLevel = Math.floor(wordCount / 10) + 1; // 每10词升1级
-  childData.comprehension.level = Math.min(50, totalLevel); // 最高50级
-  childData.comprehension.progress = totalProgress;
+  // === 使用正确的经验计算系统 ===
+  // 基于之前设计的经验分配方案
+  const abilities = childData.comprehension.abilities;
   
-  // === 各项细分能力 ===
-  // 每项能力有不同的成长速度和升级要求
+  // 确保所有能力都有合理的初始值
+  if (!abilities.literal) abilities.literal = { level: 1, progress: 0 };
+  if (!abilities.context) abilities.context = { level: 1, progress: 0 };
+  if (!abilities.abstract) abilities.abstract = { level: 1, progress: 0 };
+  if (!abilities.emotion) abilities.emotion = { level: 1, progress: 0 };
+  if (!abilities.logic) abilities.logic = { level: 1, progress: 0 };
   
-  // 1️⃣ 字面理解：最基础，成长最快（每5词升1级）
-  updateAbility(childData.comprehension.abilities.literal, wordCount, 5, 0);
+  // 📊 按照之前设计的经验分配系统
+  // 字面理解：每个词1.0经验
+  const literalExp = Math.min(wordCount * 1.0, 2000);
+  abilities.literal.progress = Math.floor(literalExp % 100);
+  abilities.literal.level = Math.min(Math.floor(literalExp / 100) + 1, 20);
   
-  // 2️⃣ 上下文理解：需要词汇积累（每15词升1级，50词后开始）
-  updateAbility(childData.comprehension.abilities.context, Math.max(0, wordCount - 50), 15, 1);
-  
-  // 3️⃣ 抽象理解：中等难度（每20词升1级，100词后开始）
-  updateAbility(childData.comprehension.abilities.abstract, Math.max(0, wordCount - 100), 20, 1);
-  
-  // 4️⃣ 情感理解：需要较高词汇（每25词升1级，200词后开始）
-  updateAbility(childData.comprehension.abilities.emotion, Math.max(0, wordCount - 200), 25, 1);
-  
-  // 5️⃣ 逻辑推理：最高级（每30词升1级，500词后开始）
-  updateAbility(childData.comprehension.abilities.logic, Math.max(0, wordCount - 500), 30, 1);
-};
-
-/**
- * 更新单项能力
- * @param ability 能力对象
- * @param effectiveWords 有效词汇数（减去门槛后的）
- * @param wordsPerLevel 每级需要的词数
- * @param minLevel 最低等级
- */
-const updateAbility = (
-  ability: { level: number; progress: number },
-  effectiveWords: number,
-  wordsPerLevel: number,
-  minLevel: number
-): void => {
-  if (effectiveWords <= 0) {
-    ability.level = minLevel;
-    ability.progress = 0;
-    return;
+  // 上下文理解：每个词0.2经验，50词后开始
+  if (wordCount >= 50) {
+    const contextExp = Math.min((wordCount - 50) * 0.2 + wordCount * 0.2, 1000);
+    abilities.context.progress = Math.floor(contextExp % 100);
+    abilities.context.level = Math.min(Math.floor(contextExp / 100) + 1, 20);
   }
   
-  const progressPerWord = 100 / wordsPerLevel; // 每个词增加的进度
-  const totalProgress = effectiveWords * progressPerWord;
-  const level = Math.floor(totalProgress / 100) + minLevel;
-  const progress = totalProgress % 100;
+  // 抽象理解：普通词0经验，特殊词+0.3经验，100词后开始
+  if (wordCount >= 100) {
+    const abstractExp = Math.min((wordCount - 100) * 0.1, 800); // 估算10%词汇是抽象词
+    abilities.abstract.progress = Math.floor(abstractExp % 100);
+    abilities.abstract.level = Math.min(Math.floor(abstractExp / 100) + 1, 20);
+  }
   
-  ability.level = Math.min(10, level); // 最高10级
-  ability.progress = ability.level >= 10 ? 100 : progress;
+  // 情感理解：每个词0.1经验，情感词+0.5经验，200词后开始
+  if (wordCount >= 200) {
+    const emotionExp = Math.min((wordCount - 200) * 0.15, 600); // 基础0.1 + 估算5%情感词
+    abilities.emotion.progress = Math.floor(emotionExp % 100);
+    abilities.emotion.level = Math.min(Math.floor(emotionExp / 100) + 1, 20);
+  }
+  
+  // 逻辑推理：逻辑词+0.2经验，500词后开始
+  if (wordCount >= 500) {
+    const logicExp = Math.min((wordCount - 500) * 0.05, 400); // 估算2-3%逻辑词
+    abilities.logic.progress = Math.floor(logicExp % 100);
+    abilities.logic.level = Math.min(Math.floor(logicExp / 100) + 1, 20);
+  }
+  
+  // 🎯 计算总体理解力（加权平均）
+  const weights = { literal: 0.3, context: 0.25, abstract: 0.2, emotion: 0.15, logic: 0.1 };
+  let totalWeightedPoints = 0;
+  let totalWeight = 0;
+  
+  for (const [abilityName, ability] of Object.entries(abilities)) {
+    const weight = weights[abilityName as keyof typeof weights];
+    if (weight) {
+      const abilityPoints = ability.level + (ability.progress / 100);
+      totalWeightedPoints += abilityPoints * weight;
+      totalWeight += weight;
+    }
+  }
+  
+  const averagePoints = totalWeightedPoints / totalWeight;
+  childData.comprehension.level = Math.floor(averagePoints);
+  childData.comprehension.progress = Math.floor((averagePoints % 1) * 100);
 };
 
 /**
