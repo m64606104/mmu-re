@@ -4,9 +4,10 @@
  */
 
 import { useState } from 'react';
-import { ArrowLeft, TrendingUp, BookOpen, MessageCircle, Award, Calendar, Target, Zap } from 'lucide-react';
+import { ArrowLeft, TrendingUp, BookOpen, MessageCircle, Award, Calendar, Target, Zap, Lock } from 'lucide-react';
 import { Conversation } from '../types';
 import { COMPREHENSION_CONFIG, fixAbilityData, getAbilityLevelDescription } from '../utils/comprehensionDisplayOptimizer';
+import { getAbilityDisplay, COMPREHENSION_CONFIG as NEW_CONFIG } from '../utils/correctComprehensionSystem';
 
 interface GrowthReportScreenProps {
   child: Conversation;
@@ -289,6 +290,14 @@ export default function GrowthReportScreen({ child, onBack }: GrowthReportScreen
                   const ability = fixAbilityData(abilityData);
                   const levelDesc = getAbilityLevelDescription(ability.level);
                   
+                  // 使用新系统检查解锁状态
+                  const wordCount = childData.vocabulary.length;
+                  const abilityDisplay = getAbilityDisplay(
+                    key as keyof typeof NEW_CONFIG.thresholds,
+                    { level: ability.level, experience: ability.progress, totalExperience: 0 },
+                    wordCount
+                  );
+                  
                   return (
                     <div key={key} className="bg-white/80 backdrop-blur-sm rounded-xl p-4 border border-white/50">
                       {/* 能力标题行 */}
@@ -305,32 +314,49 @@ export default function GrowthReportScreen({ child, onBack }: GrowthReportScreen
                           </div>
                         </div>
                         <div className="text-right">
-                          <div className="text-sm font-bold text-gray-800">
-                            Lv.{ability.level}
-                          </div>
+                          {!abilityDisplay.isUnlocked ? (
+                            <div className="flex items-center gap-1">
+                              <Lock className="w-3 h-3 text-gray-400" />
+                              <div className="text-sm text-gray-500">
+                                {abilityDisplay.display}
+                              </div>
+                            </div>
+                          ) : (
+                            <div className="text-sm font-bold text-gray-800">
+                              Lv.{ability.level}
+                            </div>
+                          )}
                           <div className="text-xs text-gray-500">
-                            {levelDesc}
+                            {!abilityDisplay.isUnlocked ? abilityDisplay.hint : levelDesc}
                           </div>
                         </div>
                       </div>
                       
                       {/* 进度条 */}
                       <div className="relative">
-                        <div className="flex justify-between items-center mb-2">
-                          <span className="text-xs text-gray-600">当前等级进度</span>
-                          <span className="text-xs font-semibold text-gray-800">{ability.progress}%</span>
-                        </div>
-                        <div className="bg-gray-200/70 rounded-full h-3 overflow-hidden">
-                          <div
-                            className={`bg-gradient-to-r ${config?.gradientFrom || 'from-blue-400'} ${config?.gradientTo || 'to-blue-600'} h-3 rounded-full transition-all duration-500 shadow-sm`}
-                            style={{ width: `${ability.progress}%` }}
-                          />
-                        </div>
-                        {/* 经验值显示 */}
-                        <div className="flex justify-between text-xs text-gray-500 mt-1">
-                          <span>Lv.{ability.level}</span>
-                          <span>{100 - ability.progress} exp 到下一级</span>
-                        </div>
+                        {!abilityDisplay.isUnlocked ? (
+                          <div className="bg-gray-100 rounded-full h-3 overflow-hidden">
+                            <div className="bg-gray-300 h-3 rounded-full w-0" />
+                          </div>
+                        ) : (
+                          <>
+                            <div className="flex justify-between items-center mb-2">
+                              <span className="text-xs text-gray-600">当前等级进度</span>
+                              <span className="text-xs font-semibold text-gray-800">{abilityDisplay.progress}%</span>
+                            </div>
+                            <div className="bg-gray-200/70 rounded-full h-3 overflow-hidden">
+                              <div
+                                className={`bg-gradient-to-r ${config?.gradientFrom || 'from-blue-400'} ${config?.gradientTo || 'to-blue-600'} h-3 rounded-full transition-all duration-500 shadow-sm`}
+                                style={{ width: `${abilityDisplay.progress}%` }}
+                              />
+                            </div>
+                            {/* 经验值显示 */}
+                            <div className="flex justify-between text-xs text-gray-500 mt-1">
+                              <span>Lv.{abilityDisplay.level}</span>
+                              <span>{100 - abilityDisplay.progress} exp 到下一级</span>
+                            </div>
+                          </>
+                        )}
                       </div>
                     </div>
                   );

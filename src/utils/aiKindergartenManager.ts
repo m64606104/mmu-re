@@ -394,75 +394,13 @@ const checkStageUpgrade = (childData: AIChildData): void => {
 };
 
 /**
- * 更新理解力（分级制）
- * 每个能力有10个等级，每级需要更多词汇才能升级
- * 并且会影响AI的对话能力
+ * 更新理解力 - 使用正确的经验系统
+ * 基于门槛+经验+质量影响的完整设计
  */
 export const updateComprehension = (childData: AIChildData): void => {
-  const wordCount = childData.vocabulary.length;
-  
-  // === 使用正确的经验计算系统 ===
-  // 基于之前设计的经验分配方案
-  const abilities = childData.comprehension.abilities;
-  
-  // 确保所有能力都有合理的初始值
-  if (!abilities.literal) abilities.literal = { level: 1, progress: 0 };
-  if (!abilities.context) abilities.context = { level: 1, progress: 0 };
-  if (!abilities.abstract) abilities.abstract = { level: 1, progress: 0 };
-  if (!abilities.emotion) abilities.emotion = { level: 1, progress: 0 };
-  if (!abilities.logic) abilities.logic = { level: 1, progress: 0 };
-  
-  // 📊 按照之前设计的经验分配系统
-  // 字面理解：每个词1.0经验
-  const literalExp = Math.min(wordCount * 1.0, 2000);
-  abilities.literal.progress = Math.floor(literalExp % 100);
-  abilities.literal.level = Math.min(Math.floor(literalExp / 100) + 1, 20);
-  
-  // 上下文理解：每个词0.2经验，50词后开始
-  if (wordCount >= 50) {
-    const contextExp = Math.min((wordCount - 50) * 0.2 + wordCount * 0.2, 1000);
-    abilities.context.progress = Math.floor(contextExp % 100);
-    abilities.context.level = Math.min(Math.floor(contextExp / 100) + 1, 20);
-  }
-  
-  // 抽象理解：普通词0经验，特殊词+0.3经验，100词后开始
-  if (wordCount >= 100) {
-    const abstractExp = Math.min((wordCount - 100) * 0.1, 800); // 估算10%词汇是抽象词
-    abilities.abstract.progress = Math.floor(abstractExp % 100);
-    abilities.abstract.level = Math.min(Math.floor(abstractExp / 100) + 1, 20);
-  }
-  
-  // 情感理解：每个词0.1经验，情感词+0.5经验，200词后开始
-  if (wordCount >= 200) {
-    const emotionExp = Math.min((wordCount - 200) * 0.15, 600); // 基础0.1 + 估算5%情感词
-    abilities.emotion.progress = Math.floor(emotionExp % 100);
-    abilities.emotion.level = Math.min(Math.floor(emotionExp / 100) + 1, 20);
-  }
-  
-  // 逻辑推理：逻辑词+0.2经验，500词后开始
-  if (wordCount >= 500) {
-    const logicExp = Math.min((wordCount - 500) * 0.05, 400); // 估算2-3%逻辑词
-    abilities.logic.progress = Math.floor(logicExp % 100);
-    abilities.logic.level = Math.min(Math.floor(logicExp / 100) + 1, 20);
-  }
-  
-  // 🎯 计算总体理解力（加权平均）
-  const weights = { literal: 0.3, context: 0.25, abstract: 0.2, emotion: 0.15, logic: 0.1 };
-  let totalWeightedPoints = 0;
-  let totalWeight = 0;
-  
-  for (const [abilityName, ability] of Object.entries(abilities)) {
-    const weight = weights[abilityName as keyof typeof weights];
-    if (weight) {
-      const abilityPoints = ability.level + (ability.progress / 100);
-      totalWeightedPoints += abilityPoints * weight;
-      totalWeight += weight;
-    }
-  }
-  
-  const averagePoints = totalWeightedPoints / totalWeight;
-  childData.comprehension.level = Math.floor(averagePoints);
-  childData.comprehension.progress = Math.floor((averagePoints % 1) * 100);
+  // 重新计算所有词汇的累计经验（兼容旧数据）
+  const { recalculateComprehensionFromVocabulary } = require('./correctComprehensionSystem');
+  recalculateComprehensionFromVocabulary(childData);
 };
 
 /**
