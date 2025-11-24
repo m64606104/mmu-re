@@ -398,7 +398,7 @@ const checkStageUpgrade = (childData: AIChildData): void => {
  * 每个能力有10个等级，每级需要更多词汇才能升级
  * 并且会影响AI的对话能力
  */
-const updateComprehension = (childData: AIChildData): void => {
+export const updateComprehension = (childData: AIChildData): void => {
   const wordCount = childData.vocabulary.length;
   
   // === 总理解力等级 ===

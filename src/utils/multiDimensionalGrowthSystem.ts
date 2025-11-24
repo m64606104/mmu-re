@@ -271,13 +271,13 @@ const updateOverallComprehensionLevel = (childData: AIChildData): void => {
  * 记录学习活动（新接口）
  */
 export const recordLearningActivity = async (
-  childId: string,
+  _childId: string,
   activityType: keyof typeof ACTIVITY_CONTRIBUTIONS,
   content: string,
-  duration: number,
-  quality: number = 5,
-  complexity: number = 5,
-  wordsUsed: string[] = []
+  _duration: number,
+  _quality: number = 5,
+  _complexity: number = 5,
+  _wordsUsed: string[] = []
 ): Promise<void> => {
   // 这里需要实现活动记录的存储逻辑
   console.log(`记录学习活动: ${activityType} - ${content}`);

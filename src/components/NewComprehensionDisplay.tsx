@@ -10,8 +10,7 @@
  */
 
 import React, { useState, useEffect } from 'react';
-import { getComprehensiveChildStatus, type ComprehensiveChildStatus } from '../utils/comprehensionSystemManager';
-import { checkWordTeachingStatus } from '../utils/newWordTeachingManager';
+import { getComprehensiveChildStatus, checkWordTeachingStatus, type ComprehensiveChildStatus } from '../utils/comprehensionSystemManager';
 
 interface NewComprehensionDisplayProps {
   childId: string;

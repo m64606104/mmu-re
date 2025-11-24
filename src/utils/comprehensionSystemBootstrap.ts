@@ -295,7 +295,7 @@ export function showSystemConfiguration(): void {
   console.log(COMPREHENSION_CONFIG.dailyExpLimits);
   
   console.log('\n📖 故事分级系统：');
-  for (const [level, config] of Object.entries(STORY_LEVELS)) {
+  for (const [_level, config] of Object.entries(STORY_LEVELS)) {
     console.log(`${config.icon} ${config.name}：`);
     console.log(`  词汇门槛：${config.vocabularyRequirement}`);
     console.log(`  经验系数：`, config.experienceMultipliers);

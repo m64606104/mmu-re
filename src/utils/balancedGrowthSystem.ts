@@ -205,7 +205,7 @@ export const calculateStoryExperience = (
   storyLevel: StoryLevel,
   readingDuration: number,        // 阅读时长（分钟）
   comprehensionQuality: number,   // 理解质量评分 (1-10)
-  childData: AIChildData
+  _childData: AIChildData
 ): { experience: Record<string, number>; message: string } => {
   const config = STORY_LEVEL_CONFIG[storyLevel];
   

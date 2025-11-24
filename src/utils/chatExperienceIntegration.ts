@@ -61,8 +61,6 @@ export function analyzeChatSession(
   
   // 分析消息内容
   const messageCount = recentMessages.length;
-  const userMessages = recentMessages.filter(msg => msg.role === 'user');
-  const aiMessages = recentMessages.filter(msg => msg.role === 'assistant');
   
   // 计算各项评分
   const emotionalDepth = calculateEmotionalDepth(recentMessages);
@@ -471,7 +469,7 @@ export class ChatSessionManager {
  */
 export async function handleChatExperienceUpdate(
   conversation: Conversation,
-  newMessage: Message
+  _newMessage: Message
 ): Promise<string | null> {
   try {
     // 添加消息到会话管理器

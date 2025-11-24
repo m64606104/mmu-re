@@ -11,7 +11,7 @@
  * - 统一的经验应用和升级处理
  */
 
-import { AIChildData, Conversation } from '../types';
+import { Conversation } from '../types';
 import { smartLoad, smartSave } from './storage';
 
 // 核心系统导入
@@ -31,8 +31,6 @@ import {
 import {
   checkActivityExperienceLimit,
   recordActivityExperience,
-  checkWordTeachingAvailability,
-  completeWordTeachingRound,
   getTodayLearningOverview,
   getRemainingExperienceQuota,
   type ActivityType,
@@ -41,16 +39,16 @@ import {
 } from './dailyExperienceManager';
 
 import {
-  checkWordTeachingStatus,
-  teachWordNew,
   completeTeachingRound,
   getVocabularyStats
 } from './newWordTeachingManager';
 
+// 导出其他组件需要的函数
+export { checkWordTeachingStatus } from './newWordTeachingManager';
+
 import {
   autoMigrateIfNeeded,
-  needsMigration,
-  migrateChildData
+  needsMigration
 } from './comprehensionSystemMigration';
 
 // =================== 统一接口定义 ===================
