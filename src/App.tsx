@@ -243,13 +243,13 @@ function App() {
               console.log(`✅ 用户称呼优化完成: 更新了${titleResult.updatedAI}个AI，现在会使用个性化称呼！`);
             }
             
-            // 📊 修复理解力进度条显示问题
-            const { checkNeedsComprehensionFix, fixAllComprehensionProgress } = await import('./utils/fixComprehensionProgress');
-            const needsProgressFix = await checkNeedsComprehensionFix();
-            if (needsProgressFix) {
-              console.log('📊 检测到理解力进度条显示异常，开始修复...');
-              const progressResult = await fixAllComprehensionProgress();
-              console.log(`✅ 理解力进度条修复完成: 修复了${progressResult.fixedAI}个AI，现在显示正确的等级和百分比！`);
+            // 📊 修复理解力数据显示问题
+            const { checkNeedsComprehensionFix, fixAllComprehensionData } = await import('./utils/fixComprehensionData');
+            const needsComprehensionFix = await checkNeedsComprehensionFix();
+            if (needsComprehensionFix) {
+              console.log('📊 检测到AI儿童理解力数据格式需要修复，开始优化显示...');
+              const comprehensionResult = await fixAllComprehensionData();
+              console.log(`✅ 理解力显示优化完成: 修复了${comprehensionResult.fixedAI}个AI，进度条现在显示正确！`);
             }
           }, 3000); // 延迟3秒执行，避免阻塞初始化
         } catch (error) {

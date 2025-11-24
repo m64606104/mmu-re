@@ -194,9 +194,7 @@ export default function GrowthReportScreen({ child, onBack }: GrowthReportScreen
                     style={{ width: `${childData.comprehension.progress}%` }}
                   />
                 </div>
-                <div className="text-xs text-gray-500 mt-1">
-                  {Math.floor((childData.comprehension.progress / 100) * (childData.comprehension.level * 10))}/{childData.comprehension.level * 10} 到下一级
-                </div>
+                <div className="text-xs text-gray-500 mt-1">{childData.comprehension.progress}% 到下一级</div>
               </div>
 
               <div className="bg-white rounded-xl p-4 shadow-sm">
@@ -272,48 +270,82 @@ export default function GrowthReportScreen({ child, onBack }: GrowthReportScreen
 
         {activeTab === 'progress' && (
           <div className="space-y-4">
-            {/* Comprehension Breakdown */}
-            <div className="bg-white rounded-xl p-4 shadow-sm">
-              <h4 className="font-semibold text-gray-800 mb-4">理解力详情</h4>
-              <div className="space-y-3">
+            {/* Comprehension Breakdown - 优化版 */}
+            <div className="bg-gradient-to-br from-blue-50 to-purple-50 rounded-2xl p-5 shadow-lg border border-blue-100">
+              <div className="flex items-center gap-2 mb-5">
+                <div className="w-8 h-8 bg-gradient-to-r from-blue-500 to-purple-500 rounded-lg flex items-center justify-center">
+                  <span className="text-white text-sm">🧠</span>
+                </div>
+                <h4 className="font-bold text-gray-800 text-lg">理解力成长</h4>
+                <div className="ml-auto text-xs text-gray-500">
+                  {Object.keys(childData.comprehension.abilities).length}项能力
+                </div>
+              </div>
+              
+              <div className="space-y-4">
                 {Object.entries(childData.comprehension.abilities).map(([key, abilityData]) => {
-                  const names: Record<string, string> = {
-                    literal: '字面理解',
-                    context: '上下文理解',
-                    abstract: '抽象理解',
-                    emotion: '情感理解',
-                    logic: '逻辑推理'
-                  };
-                  
-                  const colors: Record<string, string> = {
-                    literal: 'bg-blue-500',
-                    context: 'bg-green-500',
-                    abstract: 'bg-purple-500',
-                    emotion: 'bg-pink-500',
-                    logic: 'bg-orange-500'
-                  };
-                  
-                  const ability = abilityData as { level: number; progress: number };
-                  
-                  // 计算线性升级系统的显示格式：Lv.2 (7/20)
-                  const expNeededForThisLevel = ability.level * 10;
-                  const currentExp = Math.floor((ability.progress / 100) * expNeededForThisLevel);
+                  // 导入优化器修复数据
+                  const { COMPREHENSION_CONFIG, fixAbilityData, getAbilityLevelDescription } = require('../utils/comprehensionDisplayOptimizer');
+                  const config = COMPREHENSION_CONFIG[key];
+                  const ability = fixAbilityData(abilityData);
+                  const levelDesc = getAbilityLevelDescription(ability.level);
                   
                   return (
-                    <div key={key}>
-                      <div className="flex justify-between items-center mb-1">
-                        <span className="text-sm text-gray-600">{names[key]}</span>
-                        <span className="text-sm font-semibold text-gray-800">Lv.{ability.level} ({currentExp}/{expNeededForThisLevel})</span>
+                    <div key={key} className="bg-white/80 backdrop-blur-sm rounded-xl p-4 border border-white/50">
+                      {/* 能力标题行 */}
+                      <div className="flex items-center justify-between mb-3">
+                        <div className="flex items-center gap-2">
+                          <span className="text-lg">{config?.icon || '📊'}</span>
+                          <div>
+                            <div className="font-semibold text-gray-800 text-sm">
+                              {config?.displayName || key}
+                            </div>
+                            <div className="text-xs text-gray-500">
+                              {config?.description || ''}
+                            </div>
+                          </div>
+                        </div>
+                        <div className="text-right">
+                          <div className="text-sm font-bold text-gray-800">
+                            Lv.{ability.level}
+                          </div>
+                          <div className="text-xs text-gray-500">
+                            {levelDesc}
+                          </div>
+                        </div>
                       </div>
-                      <div className="bg-gray-200 rounded-full h-2">
-                        <div
-                          className={`${colors[key]} h-2 rounded-full transition-all`}
-                          style={{ width: `${ability.progress}%` }}
-                        />
+                      
+                      {/* 进度条 */}
+                      <div className="relative">
+                        <div className="flex justify-between items-center mb-2">
+                          <span className="text-xs text-gray-600">当前等级进度</span>
+                          <span className="text-xs font-semibold text-gray-800">{ability.progress}%</span>
+                        </div>
+                        <div className="bg-gray-200/70 rounded-full h-3 overflow-hidden">
+                          <div
+                            className={`bg-gradient-to-r ${config?.gradientFrom || 'from-blue-400'} ${config?.gradientTo || 'to-blue-600'} h-3 rounded-full transition-all duration-500 shadow-sm`}
+                            style={{ width: `${ability.progress}%` }}
+                          />
+                        </div>
+                        {/* 经验值显示 */}
+                        <div className="flex justify-between text-xs text-gray-500 mt-1">
+                          <span>Lv.{ability.level}</span>
+                          <span>{100 - ability.progress} exp 到下一级</span>
+                        </div>
                       </div>
                     </div>
                   );
                 })}
+              </div>
+              
+              {/* 总体理解力概览 */}
+              <div className="mt-5 pt-4 border-t border-blue-200/50">
+                <div className="flex items-center justify-between text-sm">
+                  <span className="text-gray-600">总体理解力</span>
+                  <span className="font-bold text-gray-800">
+                    Lv.{childData.comprehension.level} ({childData.comprehension.progress}%)
+                  </span>
+                </div>
               </div>
             </div>
 

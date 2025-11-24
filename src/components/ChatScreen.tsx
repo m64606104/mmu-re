@@ -45,6 +45,9 @@ import SubChatManager from './SubChatManager';
 import SubChatSuggestionModal from './SubChatSuggestionModal';
 import { createSubChat, addSubChatToConversation, updateSubChatInConversation } from '../utils/subChatManager';
 import { SubChatSuggestion } from '../utils/aiSubChatInitiator';
+// AI理解力经验系统集成
+import { ChatSessionManager, handleChatExperienceUpdate } from '../utils/chatExperienceIntegration';
+import { bootstrapComprehensionSystem } from '../utils/comprehensionSystemBootstrap';
 // 消息转发和多选相关导入
 import MessageSelectionToolbar from './MessageSelectionToolbar';
 import ForwardTargetSelector from './ForwardTargetSelector';
@@ -1072,6 +1075,43 @@ ${recentMessages}
     }
   }, [conversation.id]); // 切换对话时重新滚动到底部
   
+  // 🎯 AI理解力系统初始化（仅对AI儿童有效）
+  useEffect(() => {
+    let isInitialized = false;
+    
+    const initializeComprehensionSystem = async () => {
+      if (isInitialized || !conversation.aiChildData) return;
+      isInitialized = true;
+      
+      try {
+        console.log('🎯 为AI儿童初始化理解力系统：', conversation.id);
+        
+        // 初始化理解力系统
+        const result = await bootstrapComprehensionSystem();
+        if (result.success) {
+          console.log('✅ 理解力系统初始化成功');
+          
+          // 启动聊天会话管理
+          ChatSessionManager.startSession(conversation.id);
+        } else {
+          console.warn('⚠️ 理解力系统初始化失败：', result.message);
+        }
+      } catch (error) {
+        console.error('❌ 理解力系统初始化出错：', error);
+      }
+    };
+    
+    initializeComprehensionSystem();
+    
+    // 清理函数
+    return () => {
+      if (conversation.aiChildData && ChatSessionManager.getSession(conversation.id)) {
+        console.log('🎯 清理AI儿童聊天会话：', conversation.id);
+        ChatSessionManager.endSession(conversation, conversation.messages);
+      }
+    };
+  }, [conversation.id, conversation.aiChildData]); // 当对话ID或AI儿童数据变化时重新初始化
+  
   // 🚚 定期更新配送状态（每5分钟）
   useEffect(() => {
     const interval = setInterval(() => {
@@ -1928,6 +1968,22 @@ ${characterInfo?.languageStyle ? `语言风格：${characterInfo.languageStyle}`
     if (inputRef.current) {
       (inputRef.current as unknown as HTMLTextAreaElement).style.height = '24px';
     }
+    
+    // 🎯 AI理解力经验计算（仅对AI儿童有效）
+    if (conversation.aiChildData) {
+      handleChatExperienceUpdate(conversation, newMessage)
+        .then(experienceMessage => {
+          if (experienceMessage) {
+            console.log('🎉 AI儿童理解力经验获得：', experienceMessage);
+            // 可以选择在界面上显示经验获得的提示
+            // 例如：showToast(experienceMessage);
+          }
+        })
+        .catch(error => {
+          console.error('❌ 处理AI儿童经验失败：', error);
+        });
+    }
+    
     inputRef.current?.focus();
   };
 

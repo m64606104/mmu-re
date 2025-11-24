@@ -674,7 +674,13 @@ export default function AIKindergartenScreen({ onBack, onOpenChat, apiConfig }: 
                   <div className="text-xs text-purple-600/70 mt-1">识字量</div>
                   <div className="mt-2">
                     <div className="text-sm font-medium text-purple-600">
-                      理解力 Lv.{selectedChild.aiChildData.comprehension.level}
+                      理解力 Lv.{selectedChild.aiChildData.comprehension.level} ({selectedChild.aiChildData.comprehension.progress}%)
+                    </div>
+                    <div className="w-full bg-purple-200 rounded-full h-1.5 mt-1">
+                      <div 
+                        className="bg-purple-500 h-1.5 rounded-full transition-all duration-300"
+                        style={{ width: `${selectedChild.aiChildData.comprehension.progress}%` }}
+                      />
                     </div>
                   </div>
                 </div>

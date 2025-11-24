@@ -649,6 +649,34 @@ export interface ReadingMaterial {
 // AI儿童成长阶段
 export type GrowthStage = 'baby' | 'toddler' | 'child' | 'teen';
 
+// 每日学习经验记录
+export interface DailyLearningRecord {
+  date: string;  // YYYY-MM-DD格式
+  
+  // 词卡教学记录
+  wordTeaching: {
+    roundsCompleted: number;    // 已完成轮次 (0-3)
+    totalWordsLearned: number;  // 今日总学词数
+    expGained: number;          // 获得的经验值
+    canGainExp: boolean;        // 是否还能获得经验
+  };
+  
+  // 各活动获得的经验值
+  experienceGained: {
+    wordTeaching: number;       // 词卡教学经验
+    freeChat: number;           // 自由聊天经验
+    topicDiscussion: number;    // 话题讨论经验
+    storyReading: number;       // 故事阅读经验
+  };
+  
+  // 活动次数统计
+  activityCount: {
+    chatSessions: number;       // 聊天会话数
+    topicDiscussions: number;   // 话题讨论数
+    storiesRead: number;        // 阅读故事数
+  };
+}
+
 // AI儿童数据（基于Conversation扩展）
 export interface AIChildData {
   stage: GrowthStage;
@@ -674,6 +702,7 @@ export interface AIChildData {
   booksRead: string[];             // 读过的书ID列表
   lessons: Lesson[];               // 课程记录
   questions: Question[];           // 提问记录
+  dailyLearningRecord?: DailyLearningRecord; // 每日学习经验记录
   
   // 性格养成
   values: string[];                // 学到的价值观
