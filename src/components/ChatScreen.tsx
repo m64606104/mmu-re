@@ -50,6 +50,8 @@ import { ChatSessionManager, handleChatExperienceUpdate } from '../utils/chatExp
 import { bootstrapComprehensionSystem } from '../utils/comprehensionSystemBootstrap';
 // 测试模式处理
 import { detectTestModeCommand, executeTestModeCommand, getTestModePersona } from '../utils/testModeHandler';
+// 人类属性设定
+import { getHumanAttributesPrompt } from '../prompts/humanAttributesPrompt';
 // 消息转发和多选相关导入
 import MessageSelectionToolbar from './MessageSelectionToolbar';
 import ForwardTargetSelector from './ForwardTargetSelector';
@@ -3218,6 +3220,15 @@ ${characterInfo?.languageStyle ? `语言风格：${characterInfo.languageStyle}`
       // 🧪 检查是否启用测试模式（仅针对AI儿童）
       const testModePersona = conversation.aiChildData ? getTestModePersona(conversation.aiChildData) : null;
       
+      // 👤 获取人类属性描述（仅针对AI儿童）
+      const humanAttributes = conversation.aiChildData 
+        ? getHumanAttributesPrompt(
+            conversation.aiChildData.stage,
+            conversation.aiChildData.gender,
+            conversation.aiChildData.testAge
+          )
+        : '';
+      
       let systemPrompt = conversation.characterSettings
         ? `你是${conversation.characterSettings.nickname}。
 ${testModePersona ? `\n🧪 【测试模式】：${testModePersona}\n` : ''}
@@ -3226,6 +3237,7 @@ ${conversation.characterSettings.personality ? `性格特征：${conversation.ch
 ${conversation.characterSettings.languageStyle ? `语言风格：${conversation.characterSettings.languageStyle}` : ''}
 ${conversation.characterSettings.languageExample ? `语言示例：${conversation.characterSettings.languageExample}` : ''}
 ${conversation.characterSettings.memoryEvents ? `记忆事件：${conversation.characterSettings.memoryEvents}` : ''}${knowledgeBaseContent}
+${humanAttributes ? `\n${humanAttributes}\n` : ''}
 
 【重要表达规范】：
 - 使用真人自然口语表达，不要使用斜杠（/）来表示"或"，例如：
