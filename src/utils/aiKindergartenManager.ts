@@ -296,6 +296,13 @@ export const teachWord = async (
         existingWord.examples = [...existingWord.examples, ...examples];
       }
       
+      // 复习也会给少量理解力经验
+      if (addExperience) {
+        const { updateChildComprehension } = require('./correctComprehensionSystem');
+        const learningQuality = Math.max(5, calculateLearningQuality(word, definition, examples) - 3); // 复习质量稍低
+        updateChildComprehension(child.aiChildData, word, learningQuality);
+      }
+      
       return { 
         success: true, 
         message: `${word}的熟悉度提升到${existingWord.familiarity}%！` 
@@ -320,8 +327,26 @@ export const teachWord = async (
         await addExp(child, 10);
       }
       
-      // 更新理解力（每学一个词都提升）
-      updateComprehension(child.aiChildData);
+      // 更新理解力 - 使用新的经验系统
+      const { updateChildComprehension } = require('./correctComprehensionSystem');
+      
+      // 计算学习质量（基于定义完整性）
+      const learningQuality = calculateLearningQuality(word, definition, examples);
+      
+      console.log(`📚 "${word}" 学习质量评分: ${learningQuality}/10`);
+      
+      // 使用新的经验系统更新理解力
+      const result = updateChildComprehension(child.aiChildData, word, learningQuality);
+      
+      // 记录升级情况
+      const levelUps = Object.entries(result.levelUps)
+        .filter(([_, up]: [string, any]) => up.leveledUp)
+        .map(([ability, up]: [string, any]) => `${ability}: Lv.${up.oldLevel} → Lv.${up.newLevel}`)
+        .join(', ');
+      
+      if (levelUps) {
+        console.log(`🎉 理解力升级: ${levelUps}`);
+      }
       
       // 更新系统提示词
       if (child.characterSettings) {
@@ -355,7 +380,39 @@ export const teachWord = async (
 };
 
 /**
- * 增加经验值
+ * 计算学习质量评分（1-10分）
+ * 基于定义的完整性、示例数量等因素
+ */
+function calculateLearningQuality(
+  word: string,
+  definition: string,
+  examples: string[] = []
+): number {
+  let score = 5; // 基础分5分
+  
+  // 定义质量加分
+  if (definition.length >= 10) score += 1; // 定义足够详细
+  if (definition.length >= 20) score += 1; // 定义很详细
+  if (definition.includes('是') || definition.includes('指') || definition.includes('表示')) {
+    score += 1; // 定义结构完整
+  }
+  
+  // 示例加分
+  if (examples.length >= 1) score += 1; // 有示例
+  if (examples.length >= 2) score += 1; // 多个示例
+  
+  // 词汇长度调整
+  if (word.length <= 2) {
+    score += 1; // 短词容易理解
+  } else if (word.length >= 4) {
+    score -= 1; // 长词相对困难
+  }
+  
+  return Math.max(1, Math.min(10, score));
+}
+
+/**
+ * 增加经验值并检查升级
  */
 const addExp = async (child: Conversation, exp: number): Promise<void> => {
   if (!child.aiChildData) return;
