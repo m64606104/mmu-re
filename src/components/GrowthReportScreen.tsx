@@ -194,7 +194,9 @@ export default function GrowthReportScreen({ child, onBack }: GrowthReportScreen
                     style={{ width: `${childData.comprehension.progress}%` }}
                   />
                 </div>
-                <div className="text-xs text-gray-500 mt-1">{childData.comprehension.progress}% 到下一级</div>
+                <div className="text-xs text-gray-500 mt-1">
+                  {Math.floor((childData.comprehension.progress / 100) * (childData.comprehension.level * 10))}/{childData.comprehension.level * 10} 到下一级
+                </div>
               </div>
 
               <div className="bg-white rounded-xl p-4 shadow-sm">
@@ -293,11 +295,15 @@ export default function GrowthReportScreen({ child, onBack }: GrowthReportScreen
                   
                   const ability = abilityData as { level: number; progress: number };
                   
+                  // 计算线性升级系统的显示格式：Lv.2 (7/20)
+                  const expNeededForThisLevel = ability.level * 10;
+                  const currentExp = Math.floor((ability.progress / 100) * expNeededForThisLevel);
+                  
                   return (
                     <div key={key}>
                       <div className="flex justify-between items-center mb-1">
                         <span className="text-sm text-gray-600">{names[key]}</span>
-                        <span className="text-sm font-semibold text-gray-800">Lv.{ability.level} ({ability.progress}%)</span>
+                        <span className="text-sm font-semibold text-gray-800">Lv.{ability.level} ({currentExp}/{expNeededForThisLevel})</span>
                       </div>
                       <div className="bg-gray-200 rounded-full h-2">
                         <div
