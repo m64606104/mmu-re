@@ -719,4 +719,9 @@ export interface AIChildData {
   lastInteraction: number;         // 上次互动时间
   lastLessonTime?: number;         // 上次上课时间
   lastReadingTime?: number;        // 上次阅读时间
+  
+  // 测试模式（用于测试不同年龄段的AI表现）
+  testMode?: boolean;              // 是否开启测试模式
+  testAge?: number;                // 测试模式下的年龄（岁）
+  originalStage?: GrowthStage;     // 测试前的原始阶段（用于还原）
 }

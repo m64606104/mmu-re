@@ -13,6 +13,7 @@ export interface DailyCardPool {
   selectedWords: string[];  // 当天已选择的词
   lastRoundWords: string[];  // 上一轮显示的词（用于限制重复）
   allWords: WordCard[];  // 所有可用的词
+  isEmergencyMode?: boolean;  // 是否使用了应急词库（API失败时）
 }
 
 /**
