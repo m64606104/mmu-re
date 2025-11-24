@@ -20,7 +20,7 @@ import {
 } from '../utils/aiKindergartenManager';
 import { WordCard } from '../utils/wordCardLibrary';
 import { TopicCard, getRandomTopics, getRecommendedTopicDifficulty } from '../utils/topicCardLibrary';
-import { generateDailyCards, getNextRound, markWordSelected, updateLastRound, DailyCardPool } from '../utils/smartCardGenerator';
+import { generateDailyCards, getNextRound, markWordSelected, updateLastRound, DailyCardPool, forceRegenerateCards } from '../utils/smartCardGenerator';
 import { getMaxChildren, canCreateNewChild, shouldShowSwitchButton, UpgradeMessages } from '../config/kindergartenConfig';
 
 interface AIKindergartenScreenProps {
@@ -365,14 +365,20 @@ export default function AIKindergartenScreen({ onBack, onOpenChat, apiConfig }: 
           messages: [
             {
               role: 'user',
-              content: `请为"${customWord.trim()}"这个词生成简单易懂的定义和例句，适合教给AI儿童学习。
+              content: `请为"${customWord.trim()}"这个词生成通俗易懂、小孩子能理解的定义和例句。
+
+重要说明：
+- 无论这个词是什么类型（日常词汇、成人词汇、专业术语、网络用语等），都要给出解释
+- 用简单、直白、小孩子能听懂的语言解释
+- 不要回避任何词汇，不要说"这个词不适合"
+- 像大人给小孩解释复杂概念一样，用通俗的比喻和例子
 
 要求：
-1. 定义：10-20字，简单直接，不要有多余的话
-2. 例句1：10-15字的简单例句
-3. 例句2：10-15字的简单例句
+1. 定义：15-30字，通俗易懂，用小孩能理解的方式解释
+2. 例句1：10-20字，日常生活中的简单例子
+3. 例句2：10-20字，另一个简单例子
 
-格式（严格按照这个格式，不要有多余的话）：
+格式（严格按照这个格式，不要有任何多余的话）：
 定义：xxx
 例句1：xxx
 例句2：xxx`
@@ -789,6 +795,50 @@ export default function AIKindergartenScreen({ onBack, onOpenChat, apiConfig }: 
                   </div>
                 ) : !selectedCard && (currentCards.length > 0 || dailyRounds < 20) ? (
                   <>
+                    {/* API失败提示 */}
+                    {cardPool?.isEmergencyMode && (
+                      <div className="mb-4 p-4 bg-orange-50 border-2 border-orange-200 rounded-xl">
+                        <div className="flex items-start gap-3">
+                          <div className="text-2xl">⚠️</div>
+                          <div className="flex-1">
+                            <h4 className="font-semibold text-orange-800 mb-1">AI词卡生成失败</h4>
+                            <p className="text-sm text-orange-700 mb-3">
+                              API连接失败，目前使用的是60个基础应急词汇。您可以重试让AI生成更适合的词卡。
+                            </p>
+                            <button
+                              onClick={async () => {
+                                if (!selectedChild.aiChildData) return;
+                                setIsLoadingCards(true);
+                                try {
+                                  await forceRegenerateCards(selectedChild.id);
+                                  // 重新加载词卡
+                                  const newPool = await generateDailyCards(
+                                    selectedChild.id,
+                                    selectedChild.aiChildData.vocabulary.length,
+                                    selectedChild.aiChildData.vocabulary.map(v => v.word),
+                                    selectedChild.aiChildData.stage,
+                                    apiConfig
+                                  );
+                                  setCardPool(newPool);
+                                  const nextCards = getNextRound(newPool);
+                                  setCurrentCards(nextCards);
+                                  setCurrentRoundNumber(1);
+                                } catch (error) {
+                                  console.error('重新生成失败:', error);
+                                  alert('重新生成失败，请检查API配置后再试');
+                                } finally {
+                                  setIsLoadingCards(false);
+                                }
+                              }}
+                              className="px-4 py-2 bg-orange-500 text-white rounded-lg hover:bg-orange-600 transition-colors text-sm font-medium"
+                            >
+                              🔄 重试生成词卡
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                    
                     {currentCards.length > 0 ? (
                       <>
                         <div className="grid grid-cols-2 gap-3 mb-4">
