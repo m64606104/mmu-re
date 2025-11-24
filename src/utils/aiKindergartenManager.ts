@@ -324,7 +324,7 @@ export const teachWord = async (
       
       // 增加经验值（仅首轮）
       if (addExperience) {
-        await addExp(child, 10);
+        await addExp(child, 10, true); // 跳过理解力更新，因为下面有新的经验系统
       }
       
       // 更新理解力 - 使用新的经验系统
@@ -414,7 +414,7 @@ function calculateLearningQuality(
 /**
  * 增加经验值并检查升级
  */
-const addExp = async (child: Conversation, exp: number): Promise<void> => {
+const addExp = async (child: Conversation, exp: number, skipComprehensionUpdate: boolean = false): Promise<void> => {
   if (!child.aiChildData) return;
   
   // 使用新的简化升级系统
@@ -427,8 +427,10 @@ const addExp = async (child: Conversation, exp: number): Promise<void> => {
     // 检查成长阶段升级
     checkStageUpgrade(child.aiChildData);
     
-    // 注意：不再调用updateComprehension，因为新词学习时已经使用了updateChildComprehension
-    // 理解力现在是基于每个词的经验累积，而不是重新计算
+    // 只有在非词汇学习时才调用旧的updateComprehension（用于其他功能如回答问题）
+    if (!skipComprehensionUpdate) {
+      updateComprehension(child.aiChildData);
+    }
   }
 };
 
