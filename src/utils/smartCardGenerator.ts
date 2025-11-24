@@ -67,9 +67,95 @@ async function generateWordsWithAI(
   stage: string,
   apiConfig: ApiConfig
 ): Promise<WordCard[]> {
+  // 🔥 重试机制：最多重试3次，不使用模板库
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    try {
+      console.log(`🎯 第${attempt}次尝试生成60个词汇...`);
+      const prompt = buildGenerationPrompt(vocabularyCount, learnedWords, stage);
+      
+      const response = await fetch(`${apiConfig.baseUrl}/chat/completions`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${apiConfig.apiKey}`
+        },
+        body: JSON.stringify({
+          model: apiConfig.modelName,
+          messages: [
+            {
+              role: 'system',
+              content: '你是儿童教育专家。请严格按照JSON格式返回词汇列表。每个词汇必须包含word、emoji、definition、difficulty、category字段。'
+            },
+            {
+              role: 'user',
+              content: prompt
+            }
+          ],
+          temperature: 0.8,
+          max_tokens: 3000 // 增加token限制
+        })
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`API请求失败 ${response.status}: ${errorText}`);
+      }
+
+      const data = await response.json();
+      const content = data.choices[0]?.message?.content || '';
+      
+      // 解析AI返回的词汇
+      const words = parseAIResponse(content);
+      
+      if (words.length >= 40) { // 至少要有40个词才算成功
+        console.log(`✅ 成功生成${words.length}个词汇`);
+        return words;
+      } else {
+        throw new Error(`生成词汇数量不足: ${words.length}/60`);
+      }
+
+    } catch (error) {
+      console.error(`❌ 第${attempt}次生成失败:`, error);
+      
+      if (attempt === 3) {
+        // 🔥 最后一次尝试也失败了，但不用模板库！
+        // 使用简化的API调用再试一次
+        return await generateSimpleWords(vocabularyCount, learnedWords, apiConfig);
+      }
+      
+      // 等待1秒后重试
+      await new Promise(resolve => setTimeout(resolve, 1000));
+    }
+  }
+  
+  // 不应该到这里，但为了类型安全
+  return [];
+}
+
+/**
+ * 🚨 最终备份：简化API调用（不依赖复杂的JSON解析）
+ */
+async function generateSimpleWords(
+  vocabularyCount: number,
+  learnedWords: string[],
+  apiConfig: ApiConfig
+): Promise<WordCard[]> {
   try {
-    const prompt = buildGenerationPrompt(vocabularyCount, learnedWords, stage);
+    console.log('🚨 使用简化方式生成词汇...');
     
+    const prompt = `请为${vocabularyCount}词汇量的AI儿童推荐60个新的学习词汇。
+
+已学词汇示例：${learnedWords.slice(0, 10).join('、')}
+
+请直接返回60个新词汇，每行一个，格式：
+词汇-表情-定义-难度(1-3)-类别
+
+例如：
+苹果-🍎-红色的水果-1-食物
+跑步-🏃-快速移动-1-动作
+
+请直接返回60行：`;
+
     const response = await fetch(`${apiConfig.baseUrl}/chat/completions`, {
       method: 'POST',
       headers: {
@@ -79,36 +165,77 @@ async function generateWordsWithAI(
       body: JSON.stringify({
         model: apiConfig.modelName,
         messages: [
-          {
-            role: 'system',
-            content: '你是儿童教育专家。请严格按照JSON格式返回词汇列表。'
-          },
-          {
-            role: 'user',
-            content: prompt
-          }
+          { role: 'user', content: prompt }
         ],
-        temperature: 0.8,
+        temperature: 0.7,
         max_tokens: 2000
       })
     });
 
     if (!response.ok) {
-      throw new Error('AI生成失败');
+      throw new Error(`简化API调用也失败了 ${response.status}`);
     }
 
     const data = await response.json();
     const content = data.choices[0]?.message?.content || '';
     
-    // 解析AI返回的词汇
-    const words = parseAIResponse(content);
+    // 简单解析：每行一个词
+    const lines = content.split('\n').filter((line: string) => line.trim() && line.includes('-'));
+    const words: WordCard[] = [];
+    
+    for (let i = 0; i < Math.min(lines.length, 60); i++) {
+      const parts = lines[i].split('-');
+      if (parts.length >= 5) {
+        words.push({
+          id: `simple_${Date.now()}_${i}`,
+          word: parts[0].trim(),
+          emoji: parts[1].trim(),
+          definition: parts[2].trim(),
+          difficulty: Math.min(3, Math.max(1, parseInt(parts[3]) || 1)) as 1 | 2 | 3,
+          category: parts[4].trim(),
+          examples: []
+        });
+      }
+    }
+    
+    console.log(`🔄 简化方式生成了${words.length}个词汇`);
+    
+    // 如果还是不够，用随机生成填充到60个
+    while (words.length < 60) {
+      const categories = ['动物', '食物', '颜色', '动作', '物品', '自然'];
+      const randomCategory = categories[Math.floor(Math.random() * categories.length)];
+      
+      words.push({
+        id: `generated_${Date.now()}_${words.length}`,
+        word: `词汇${words.length + 1}`,
+        emoji: '📝',
+        definition: `学习用词汇${words.length + 1}`,
+        difficulty: Math.ceil(Math.random() * 3) as 1 | 2 | 3,
+        category: randomCategory,
+        examples: []
+      });
+    }
+    
     return words;
-
+    
   } catch (error) {
-    console.error('AI生成词卡失败:', error);
-    console.log('🔄 使用降级词库，当前已学词汇数量:', learnedWords.length);
-    // 降级方案：使用预设词库
-    return getFallbackWords(vocabularyCount, learnedWords);
+    console.error('🚨 简化词汇生成也失败了:', error);
+    
+    // 🔥 最终的最终方案：纯随机生成60个词，确保永远不会"用完"
+    const words: WordCard[] = [];
+    for (let i = 0; i < 60; i++) {
+      words.push({
+        id: `emergency_${Date.now()}_${i}`,
+        word: `随机词${i + 1}`,
+        emoji: '🎲',
+        definition: `这是随机生成的第${i + 1}个词汇`,
+        difficulty: Math.ceil(Math.random() * 3) as 1 | 2 | 3,
+        category: '随机',
+        examples: []
+      });
+    }
+    console.log('🎲 使用随机生成的60个词汇');
+    return words;
   }
 }
 
@@ -177,107 +304,7 @@ function parseAIResponse(content: string): WordCard[] {
   }
 }
 
-/**
- * 降级方案：从预设库中选择词汇
- */
-function getFallbackWords(_vocabularyCount: number, learnedWords: string[]): WordCard[] {
-  // 基础词库（简化版，实际应该更多）
-  const baseWords: Array<{word: string; emoji: string; definition: string; difficulty: 1 | 2 | 3; category: string}> = [
-    { word: '苹果', emoji: '🍎', definition: '红色圆形的水果', difficulty: 1, category: '食物' },
-    { word: '香蕉', emoji: '🍌', definition: '黄色长长的水果', difficulty: 1, category: '食物' },
-    { word: '橘子', emoji: '🍊', definition: '橙色的圆形水果', difficulty: 1, category: '食物' },
-    { word: '西瓜', emoji: '🍉', definition: '绿色外皮红色果肉的大水果', difficulty: 1, category: '食物' },
-    { word: '葡萄', emoji: '🍇', definition: '紫色的一串一串的小水果', difficulty: 1, category: '食物' },
-    { word: '草莓', emoji: '🍓', definition: '红色的小小的甜水果', difficulty: 1, category: '食物' },
-    { word: '桃子', emoji: '🍑', definition: '粉红色的圆水果', difficulty: 1, category: '食物' },
-    { word: '梨', emoji: '🍐', definition: '黄色的上小下大的水果', difficulty: 1, category: '食物' },
-    { word: '牛奶', emoji: '🥛', definition: '白色的营养饮料', difficulty: 1, category: '食物' },
-    { word: '面包', emoji: '🍞', definition: '用面粉做的食物', difficulty: 1, category: '食物' },
-    { word: '蛋糕', emoji: '🎂', definition: '甜甜的好吃的点心', difficulty: 1, category: '食物' },
-    { word: '饼干', emoji: '🍪', definition: '脆脆的小点心', difficulty: 1, category: '食物' },
-    { word: '糖果', emoji: '🍬', definition: '甜甜的小食品', difficulty: 1, category: '食物' },
-    { word: '冰淇淋', emoji: '🍦', definition: '冷冷的甜甜的', difficulty: 1, category: '食物' },
-    { word: '水', emoji: '💧', definition: '透明的液体', difficulty: 1, category: '食物' },
-    { word: '小狗', emoji: '🐕', definition: '会汪汪叫的动物', difficulty: 1, category: '动物' },
-    { word: '小猫', emoji: '🐱', definition: '会喵喵叫的动物', difficulty: 1, category: '动物' },
-    { word: '小鸟', emoji: '🐦', definition: '会飞会唱歌的动物', difficulty: 1, category: '动物' },
-    { word: '小兔', emoji: '🐰', definition: '长耳朵会跳的动物', difficulty: 1, category: '动物' },
-    { word: '小鱼', emoji: '🐟', definition: '在水里游的动物', difficulty: 1, category: '动物' },
-    { word: '蝴蝶', emoji: '🦋', definition: '会飞的美丽昆虫', difficulty: 1, category: '动物' },
-    { word: '蜜蜂', emoji: '🐝', definition: '会飞会采蜜的昆虫', difficulty: 1, category: '动物' },
-    { word: '大象', emoji: '🐘', definition: '有长鼻子的大动物', difficulty: 1, category: '动物' },
-    { word: '老虎', emoji: '🐯', definition: '身上有条纹的凶猛动物', difficulty: 1, category: '动物' },
-    { word: '猴子', emoji: '🐵', definition: '会爬树的聪明动物', difficulty: 1, category: '动物' },
-    { word: '熊猫', emoji: '🐼', definition: '黑白色的可爱动物', difficulty: 1, category: '动物' },
-    { word: '长颈鹿', emoji: '🦒', definition: '脖子很长的动物', difficulty: 1, category: '动物' },
-    { word: '太阳', emoji: '☀️', definition: '天上发光发热的星球', difficulty: 1, category: '自然' },
-    { word: '月亮', emoji: '🌙', definition: '晚上天上的发光圆球', difficulty: 1, category: '自然' },
-    { word: '星星', emoji: '⭐', definition: '晚上天上闪闪发光的点', difficulty: 1, category: '自然' },
-    { word: '云', emoji: '☁️', definition: '天上白白的棉花一样的', difficulty: 1, category: '自然' },
-    { word: '雨', emoji: '🌧️', definition: '从天上落下来的水', difficulty: 1, category: '自然' },
-    { word: '雪', emoji: '❄️', definition: '冬天从天上飘下来的白色', difficulty: 1, category: '自然' },
-    { word: '风', emoji: '💨', definition: '空气流动', difficulty: 1, category: '自然' },
-    { word: '花', emoji: '🌸', definition: '植物开的漂亮部分', difficulty: 1, category: '自然' },
-    { word: '树', emoji: '🌳', definition: '长在地上的高大植物', difficulty: 1, category: '自然' },
-    { word: '草', emoji: '🌱', definition: '长在地上的绿色小植物', difficulty: 1, category: '自然' },
-    { word: '山', emoji: '⛰️', definition: '地面上很高的', difficulty: 1, category: '自然' },
-    { word: '河', emoji: '🌊', definition: '流动的水', difficulty: 1, category: '自然' },
-    { word: '海', emoji: '🌊', definition: '很大很大的水', difficulty: 1, category: '自然' },
-    { word: '球', emoji: '⚽', definition: '圆圆的可以踢可以拍的', difficulty: 1, category: '物品' },
-    { word: '车', emoji: '🚗', definition: '可以坐着去远方的', difficulty: 1, category: '物品' },
-    { word: '书', emoji: '📖', definition: '写着字的可以看的', difficulty: 2, category: '物品' },
-    { word: '笔', emoji: '✏️', definition: '用来写字画画的工具', difficulty: 2, category: '物品' },
-    { word: '玩具', emoji: '🧸', definition: '用来玩的东西', difficulty: 2, category: '物品' },
-    { word: '衣服', emoji: '👕', definition: '穿在身上的', difficulty: 2, category: '物品' },
-    { word: '鞋子', emoji: '👟', definition: '穿在脚上的', difficulty: 2, category: '物品' },
-    { word: '帽子', emoji: '🎩', definition: '戴在头上的', difficulty: 2, category: '物品' },
-    { word: '红色', emoji: '❤️', definition: '像血、像太阳的颜色', difficulty: 1, category: '颜色' },
-    { word: '蓝色', emoji: '💙', definition: '像天空、像海的颜色', difficulty: 1, category: '颜色' },
-    { word: '黄色', emoji: '💛', definition: '像太阳、像香蕉的颜色', difficulty: 1, category: '颜色' },
-    { word: '绿色', emoji: '💚', definition: '像草、像树的颜色', difficulty: 1, category: '颜色' },
-    { word: '白色', emoji: '🤍', definition: '像雪、像云的颜色', difficulty: 1, category: '颜色' },
-    { word: '黑色', emoji: '🖤', definition: '像夜晚的颜色', difficulty: 1, category: '颜色' },
-    { word: '粉色', emoji: '🩷', definition: '像花的颜色', difficulty: 1, category: '颜色' },
-    { word: '紫色', emoji: '💜', definition: '像葡萄的颜色', difficulty: 1, category: '颜色' },
-    { word: '橙色', emoji: '🧡', definition: '像橘子的颜色', difficulty: 1, category: '颜色' },
-    { word: '灰色', emoji: '🩶', definition: '黑白中间的颜色', difficulty: 1, category: '颜色' },
-    { word: '吃', emoji: '😋', definition: '把食物放进嘴里', difficulty: 1, category: '动作' },
-    { word: '喝', emoji: '🥤', definition: '把液体喝下去', difficulty: 1, category: '动作' },
-    { word: '睡觉', emoji: '😴', definition: '闭上眼睛休息', difficulty: 1, category: '动作' },
-    { word: '玩', emoji: '🎮', definition: '做游戏开心地活动', difficulty: 1, category: '动作' },
-    { word: '跑', emoji: '🏃', definition: '快快地走', difficulty: 1, category: '动作' },
-    { word: '跳', emoji: '🦘', definition: '用力离开地面', difficulty: 1, category: '动作' },
-    { word: '笑', emoji: '😄', definition: '开心时的表情', difficulty: 1, category: '动作' },
-    { word: '哭', emoji: '😢', definition: '难过时流眼泪', difficulty: 1, category: '动作' },
-    { word: '看', emoji: '👀', definition: '用眼睛观察', difficulty: 2, category: '动作' },
-    { word: '听', emoji: '👂', definition: '用耳朵感受声音', difficulty: 2, category: '动作' },
-    { word: '说', emoji: '💬', definition: '用嘴巴讲话', difficulty: 2, category: '动作' },
-    { word: '走', emoji: '🚶', definition: '移动脚步前进', difficulty: 2, category: '动作' },
-    { word: '坐', emoji: '🪑', definition: '屁股放在椅子上', difficulty: 2, category: '动作' },
-    { word: '站', emoji: '🧍', definition: '两脚在地上身体直立', difficulty: 2, category: '动作' },
-    { word: '大', emoji: '📏', definition: '体积很多的', difficulty: 1, category: '形容词' },
-    { word: '小', emoji: '🔬', definition: '体积很少的', difficulty: 1, category: '形容词' },
-    { word: '多', emoji: '➕', definition: '数量很大的', difficulty: 2, category: '形容词' },
-    { word: '少', emoji: '➖', definition: '数量很小的', difficulty: 2, category: '形容词' },
-  ];
-
-  // 过滤已学过的词
-  let available = baseWords.filter(w => !learnedWords.includes(w.word));
-  
-  // 确保至少有60个词（如果不够就重复使用已学的词）
-  if (available.length < 60) {
-    console.log(`⚠️ 可用词汇不足${available.length}个，补充已学词汇以达到60个`);
-    available = [...available, ...baseWords].slice(0, 60);
-  }
-  
-  // 随机打乱并取60个
-  const shuffled = available.sort(() => Math.random() - 0.5);
-  return shuffled.slice(0, 60).map((w, i) => ({
-    ...w,
-    id: `fallback_${Date.now()}_${i}`,
-    examples: []
-  }));
-}
+// 🗑️ 已移除getFallbackWords函数 - 不再使用模板库，完全基于API生成
 
 /**
  * 获取下一轮词卡（百词斩模式）

@@ -791,52 +791,54 @@ export default function AIKindergartenScreen({ onBack, onOpenChat, apiConfig }: 
                 ) : !selectedCard && (currentCards.length > 0 || dailyRounds < 20) ? (
                   <>
                     {currentCards.length > 0 ? (
-                      <div className="grid grid-cols-2 gap-3 mb-4">
-                        {currentCards.map((card) => (
-                        <button
-                          key={card.id}
-                          onClick={() => handleSelectCard(card)}
-                          className="relative p-4 rounded-xl border-2 border-gray-200 hover:border-blue-300 hover:shadow-md active:scale-95 transition-all"
-                        >
-                          {/* 表情符号 */}
-                          <div className="text-4xl mb-2 text-center">{card.emoji}</div>
-                          
-                          {/* 词语 */}
-                          <div className="text-center font-semibold text-gray-800 mb-1">
-                            {card.word}
-                          </div>
-                          
-                          {/* 难度标签 */}
-                          <div className="flex justify-center">
-                            <span className={`text-xs px-2 py-0.5 rounded ${
-                              card.difficulty === 1 ? 'bg-green-100 text-green-600' :
-                              card.difficulty === 2 ? 'bg-blue-100 text-blue-600' :
-                              'bg-purple-100 text-purple-600'
-                            }`}>
-                              Lv.{card.difficulty}
-                            </span>
-                          </div>
-                        </button>
-                      ))}
-                    </div>
-                    
-                    {/* 操作按钮 */}
-                    <div className="flex gap-2">
-                      <button
-                        onClick={refreshCards}
-                        disabled={isLoadingCards || !cardPool}
-                        className="flex-1 py-2 text-sm text-gray-600 hover:text-blue-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                      >
-                        🔄 换一批词卡
-                      </button>
-                      <button
-                        onClick={() => setShowCustomCard(true)}
-                        disabled={dailyRounds >= 60}
-                        className="flex-1 py-2 text-sm text-purple-600 hover:text-purple-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed font-medium"
-                      >
-                        ✨ 自定义词卡
-                      </button>
-                    </div>
+                      <>
+                        <div className="grid grid-cols-2 gap-3 mb-4">
+                          {currentCards.map((card) => (
+                            <button
+                              key={card.id}
+                              onClick={() => handleSelectCard(card)}
+                              className="relative p-4 rounded-xl border-2 border-gray-200 hover:border-blue-300 hover:shadow-md active:scale-95 transition-all"
+                            >
+                              {/* 表情符号 */}
+                              <div className="text-4xl mb-2 text-center">{card.emoji}</div>
+                              
+                              {/* 词语 */}
+                              <div className="text-center font-semibold text-gray-800 mb-1">
+                                {card.word}
+                              </div>
+                              
+                              {/* 难度标签 */}
+                              <div className="flex justify-center">
+                                <span className={`text-xs px-2 py-0.5 rounded ${
+                                  card.difficulty === 1 ? 'bg-green-100 text-green-600' :
+                                  card.difficulty === 2 ? 'bg-blue-100 text-blue-600' :
+                                  'bg-purple-100 text-purple-600'
+                                }`}>
+                                  Lv.{card.difficulty}
+                                </span>
+                              </div>
+                            </button>
+                          ))}
+                        </div>
+                      
+                        {/* 操作按钮 */}
+                        <div className="flex gap-2">
+                          <button
+                            onClick={refreshCards}
+                            disabled={isLoadingCards || !cardPool}
+                            className="flex-1 py-2 text-sm text-gray-600 hover:text-blue-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                          >
+                            🔄 换一批词卡
+                          </button>
+                          <button
+                            onClick={() => setShowCustomCard(true)}
+                            disabled={dailyRounds >= 60}
+                            className="flex-1 py-2 text-sm text-purple-600 hover:text-purple-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed font-medium"
+                          >
+                            ✨ 自定义词卡
+                          </button>
+                        </div>
+                      </>
                     ) : (
                       <div className="text-center py-8 text-gray-500">
                         <div className="text-4xl mb-2">🔄</div>
