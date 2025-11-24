@@ -48,6 +48,8 @@ import { SubChatSuggestion } from '../utils/aiSubChatInitiator';
 // AI理解力经验系统集成
 import { ChatSessionManager, handleChatExperienceUpdate } from '../utils/chatExperienceIntegration';
 import { bootstrapComprehensionSystem } from '../utils/comprehensionSystemBootstrap';
+// 测试模式处理
+import { detectTestModeCommand, executeTestModeCommand, getTestModePersona } from '../utils/testModeHandler';
 // 消息转发和多选相关导入
 import MessageSelectionToolbar from './MessageSelectionToolbar';
 import ForwardTargetSelector from './ForwardTargetSelector';
@@ -1858,8 +1860,44 @@ ${characterInfo?.languageStyle ? `语言风格：${characterInfo.languageStyle}`
     setSubChatSuggestion(null);
   };
 
-  const handleSendMessage = () => {
+  const handleSendMessage = async () => {
     if (!currentInput.trim()) return;
+
+    // 🧪 检测测试模式指令（仅针对AI儿童）
+    if (conversation.aiChildData?.testMode) {
+      const testCommand = detectTestModeCommand(currentInput.trim());
+      if (testCommand) {
+        // 执行测试模式指令
+        const result = await executeTestModeCommand(conversation.id, testCommand);
+        
+        if (result.success) {
+          // 添加用户消息
+          const userMsg: Message = {
+            id: Date.now().toString(),
+            role: 'user',
+            content: currentInput.trim(),
+            timestamp: Date.now()
+          };
+          
+          // 添加AI反馈消息
+          const aiMsg: Message = {
+            id: (Date.now() + 1).toString(),
+            role: 'assistant',
+            content: result.message,
+            timestamp: Date.now() + 1
+          };
+          
+          const updatedMessages = [...conversation.messages, userMsg, aiMsg];
+          onUpdateConversation(conversation.id, { messages: updatedMessages });
+          
+          setCurrentInput('');
+          if (inputRef.current) {
+            (inputRef.current as unknown as HTMLTextAreaElement).style.height = '24px';
+          }
+          return; // 执行完测试指令后直接返回
+        }
+      }
+    }
 
     // 如果是编辑模式,保存编辑
     if (messageBeingEdited) {
@@ -3177,8 +3215,12 @@ ${characterInfo?.languageStyle ? `语言风格：${characterInfo.languageStyle}`
         });
       }
       
+      // 🧪 检查是否启用测试模式（仅针对AI儿童）
+      const testModePersona = conversation.aiChildData ? getTestModePersona(conversation.aiChildData) : null;
+      
       let systemPrompt = conversation.characterSettings
         ? `你是${conversation.characterSettings.nickname}。
+${testModePersona ? `\n🧪 【测试模式】：${testModePersona}\n` : ''}
 ${conversation.characterSettings.systemPrompt ? `人物设定：${conversation.characterSettings.systemPrompt}` : ''}
 ${conversation.characterSettings.personality ? `性格特征：${conversation.characterSettings.personality}` : ''}
 ${conversation.characterSettings.languageStyle ? `语言风格：${conversation.characterSettings.languageStyle}` : ''}
