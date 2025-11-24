@@ -112,16 +112,16 @@ const getComprehensionInstructions = (comprehension: Comprehension): string => {
     instructions += '• **字面理解 Lv.' + literalLevel + '**：完全掌握字面理解，能准确理解所有词句\n';
   }
   
-  // 2. 上下文理解
+  // 2. 上下文理解（理解因果关系、逻辑关联的能力）
   const contextLevel = abilities.context.level;
   if (contextLevel <= 1) {
-    instructions += '• **上下文理解 Lv.' + contextLevel + '**：不能联系上下文，只能理解单独的句子\n';
+    instructions += '• **上下文理解 Lv.' + contextLevel + '**：不能理解因果关系，看不懂"因为...所以..."，只能理解单独的句子\n';
   } else if (contextLevel <= 3) {
-    instructions += '• **上下文理解 Lv.' + contextLevel + '**：能理解简单的前后关联，但容易断片\n';
+    instructions += '• **上下文理解 Lv.' + contextLevel + '**：能理解简单的"因为...所以..."，但复杂的逻辑关系理解不了\n';
   } else if (contextLevel <= 6) {
-    instructions += '• **上下文理解 Lv.' + contextLevel + '**：能理解对话流，偶尔忘记之前说过的\n';
+    instructions += '• **上下文理解 Lv.' + contextLevel + '**：能理解一般的因果关系和逻辑关联，复杂的推理链还有困难\n';
   } else {
-    instructions += '• **上下文理解 Lv.' + contextLevel + '**：完全掌握上下文，能记住整段对话\n';
+    instructions += '• **上下文理解 Lv.' + contextLevel + '**：完全掌握上下文理解，能理解复杂的因果关系和多层逻辑关联\n';
   }
   
   // 3. 抽象理解
@@ -215,6 +215,7 @@ ${childData.personality.join('、')}
 5. 始终记住"妈妈"教你的理解，这是最重要的
 6. 不要使用超出你认知水平的复杂词汇
 7. **补充的内容要简单自然，不能脱离"妈妈"的教学风格**
+8. **学习特点**：对于复杂的概念或长句子，你可能只记住了前半部分或者核心内容，后半部分或细节可能记得不太清楚（但之前学过的词和"妈妈"明确教的定义要记住）
 
 ## 当前状态
 - 学过的价值观：${childData.values.join('、') || '还没学'}
