@@ -172,7 +172,7 @@ export default function TopicDiscussionScreen({
     if (!child.aiChildData) return '';
 
     const childData = child.aiChildData;
-    const userTitle = childData.userTitle || '妈妈';
+    const userTitle = childData.userTitle || '家长';
     
     // 构建用户教的词汇和定义列表
     const userTaughtWords = childData.vocabulary.slice(0, 30).map(w => {

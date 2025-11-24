@@ -1,4 +1,6 @@
 import { Conversation, Message, ApiConfig, CharacterSettings } from '../types';
+import { analyzeConversationContinuation, selectNextRoundParticipants } from './groupChatContinuationAnalyzer';
+import { generateGroupChatSummary, evaluateConversationNaturalness } from './groupChatEnhancer';
 import { splitMessages } from './messageFormatter';
 import { buildTimeAwarePrompt } from './timeAwareness';
 
@@ -664,31 +666,7 @@ export async function generateGroupChatReplies(
   return allReplies;
 }
 
-/**
- * 检测对话是否自然结束
- */
-function detectConversationEnd(replies: GroupAIReply[]): boolean {
-  if (replies.length === 0) return true;
-  
-  // 检查最后一轮回复的内容
-  const lastRoundContent = replies
-    .map(r => r.messages.map(m => m.content).join(' '))
-    .join(' ')
-    .toLowerCase();
-  
-  // 结束信号关键词
-  const endSignals = [
-    '再见', 'bye', '拜拜', '88',
-    '好的，就这样', '好了', '就这样吧',
-    '先这样', '先忙了', '去忙了',
-    '有事先走了', '改天聊',
-    '明白了', '知道了', '了解',
-    '没事了', '没问题了'
-  ];
-  
-  // 如果包含结束信号，判定为结束
-  return endSignals.some(signal => lastRoundContent.includes(signal));
-}
+// 注意：原有的 detectConversationEnd 函数已被智能分析器替代
 
 /**
  * 单轮生成函数
@@ -698,21 +676,34 @@ async function generateSingleRound(
   groupConversation: Conversation,
   apiConfig: ApiConfig,
   allConversations: Conversation[],
-  callbacks?: GroupChatCallback
+  callbacks?: GroupChatCallback,
+  suggestedParticipants?: number,
+  previousRoundReplies?: GroupAIReply[]
 ): Promise<GroupAIReply[]> {
-  // 随机选择回复的AI数量 (0 到 全部)
-  const replyCount = Math.floor(Math.random() * (aiMembers.length + 1));
+  let selectedAIs: Conversation[];
   
-  // 如果没有AI回复，返回空数组
-  if (replyCount === 0) {
+  if (suggestedParticipants !== undefined && previousRoundReplies) {
+    // 🧠 使用智能参与者选择
+    selectedAIs = selectNextRoundParticipants(aiMembers, suggestedParticipants, previousRoundReplies);
+    console.log(`🧠 智能选择AI (建议${suggestedParticipants}个): ${selectedAIs.map(ai => ai.characterSettings?.nickname || ai.name).join('、')}`);
+  } else {
+    // 传统随机选择
+    const replyCount = Math.floor(Math.random() * (aiMembers.length + 1));
+    
+    if (replyCount === 0) {
+      console.log('💤 本轮无AI回复');
+      return [];
+    }
+    
+    const shuffled = [...aiMembers].sort(() => Math.random() - 0.5);
+    selectedAIs = shuffled.slice(0, replyCount);
+    console.log(`🎲 随机选择AI: ${selectedAIs.map(ai => ai.characterSettings?.nickname || ai.name).join('、')}`);
+  }
+  
+  if (selectedAIs.length === 0) {
     console.log('💤 本轮无AI回复');
     return [];
   }
-  
-  // 随机选择AI
-  const shuffled = [...aiMembers].sort(() => Math.random() - 0.5);
-  const selectedAIs = shuffled.slice(0, replyCount);
-  console.log(`✅ 选中的AI: ${selectedAIs.map(ai => ai.characterSettings?.nickname || ai.name).join('、')}`);
   
   const roundReplies: GroupAIReply[] = [];
   
@@ -819,9 +810,17 @@ export async function generateGroupChatRepliesFreeMode(
   
   console.log(`🔄 自由模式：开始多轮回复，最多${MAX_ROUNDS}轮`);
   
+  let previousAnalysis: any = null;
+  
   while (currentRound < MAX_ROUNDS) {
     currentRound++;
     console.log(`\n📍 第${currentRound}轮回复开始...`);
+    
+    // 智能参与者选择（从第2轮开始）
+    const suggestedParticipants = previousAnalysis?.suggestedParticipants;
+    const previousRoundReplies = allReplies.length > 0 ? 
+      allReplies.slice(-Math.min(3, allReplies.length)) : // 最近3个回复
+      undefined;
     
     // 生成本轮回复
     const roundReplies = await generateSingleRound(
@@ -829,7 +828,9 @@ export async function generateGroupChatRepliesFreeMode(
       groupConversation,
       apiConfig,
       allConversations,
-      callbacks
+      callbacks,
+      suggestedParticipants,
+      previousRoundReplies
     );
     
     // 收集所有回复
@@ -841,9 +842,21 @@ export async function generateGroupChatRepliesFreeMode(
       break;
     }
     
-    // 检测对话是否自然结束
-    if (detectConversationEnd(roundReplies)) {
-      console.log('✋ 检测到对话自然结束');
+    // 🧠 智能检测对话是否应该继续
+    previousAnalysis = analyzeConversationContinuation(
+      roundReplies,
+      currentRound,
+      MAX_ROUNDS,
+      aiMembers
+    );
+    
+    console.log(`🧠 对话分析: ${previousAnalysis.reason} (置信度: ${(previousAnalysis.confidence * 100).toFixed(0)}%)`);
+    if (previousAnalysis.suggestedParticipants !== undefined) {
+      console.log(`   📊 下轮建议参与者: ${previousAnalysis.suggestedParticipants}人`);
+    }
+    
+    if (!previousAnalysis.shouldContinue) {
+      console.log('✋ 智能分析：对话应该结束');
       break;
     }
     
@@ -855,6 +868,16 @@ export async function generateGroupChatRepliesFreeMode(
   }
   
   console.log(`\n✅ 自由模式完成，共${currentRound}轮，${allReplies.length}个AI回复`);
+  
+  // 📊 生成智能总结
+  if (allReplies.length > 0) {
+    const summary = generateGroupChatSummary(allReplies, currentRound);
+    const naturalness = evaluateConversationNaturalness(allReplies);
+    
+    console.log('\n📊 群聊质量分析:');
+    console.log(summary);
+    console.log(`🌟 自然度评分: ${naturalness.score}分 - ${naturalness.feedback}`);
+  }
   
   // 所有轮次完成
   callbacks?.onAllComplete?.(allReplies);

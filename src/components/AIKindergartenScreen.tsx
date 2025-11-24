@@ -6,7 +6,7 @@
 import { useState, useEffect } from 'react';
 import { ChevronLeft, Book, MessageCircle, TrendingUp, Award, MessageSquare, Settings, Users } from 'lucide-react';
 import { Conversation, ApiConfig } from '../types';
-import ReadingScreen from './ReadingScreen';
+import EnhancedReadingScreen from './EnhancedReadingScreen';
 import GrowthReportScreen from './GrowthReportScreen';
 import TopicDiscussionScreen from './TopicDiscussionScreen';
 import AIChildSettings from './AIChildSettings';
@@ -458,7 +458,7 @@ export default function AIKindergartenScreen({ onBack, onOpenChat, apiConfig }: 
   // 如果在阅读模式，显示阅读组件
   if (readingMode && selectedChild) {
     return (
-      <ReadingScreen
+      <EnhancedReadingScreen
         child={selectedChild}
         onBack={() => {
           setReadingMode(false);

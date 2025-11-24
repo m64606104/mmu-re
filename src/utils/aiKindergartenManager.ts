@@ -30,13 +30,14 @@ export const createAIChild = (name: string, avatar?: string): Conversation => {
     age: 0,
     level: 1,
     exp: 0,
-    expToNextLevel: 100,
+    expToNextLevel: 10,  // 第1级需要10点经验
+    totalExp: 0,
     
     // 个性化设置
     formalName: name || '宝宝',
     nickname: '',
     gender: randomGender,
-    userTitle: '妈妈',
+    userTitle: '家长', // 默认为中性的"家长"，用户可以在设置中修改
     userName: '',
     
     vocabulary: [],
@@ -168,13 +169,17 @@ const getComprehensionInstructions = (comprehension: Comprehension): string => {
 /**
  * 构建AI儿童的系统提示词
  */
-const buildAIChildSystemPrompt = (childData: AIChildData, name: string): string => {
+export const buildAIChildSystemPrompt = (childData: AIChildData, name: string): string => {
   const stageDescription = getStageDescription(childData.stage);
   const vocabularyLevel = getVocabularyLevel(childData.vocabulary.length);
   
-  // 构建词汇表（包含用户教的定义）
+  // 动态获取对用户的称呼
+  const userTitle = childData.userTitle || '家长';
+  
+  // 构建词汇表（以自然方式展示，避免复读定义）
   const vocabularyList = childData.vocabulary.slice(-30).map(w => {
-    return `• ${w.word}：${w.definition}`;
+    // 简化展示，避免AI机械复读定义
+    return `• ${w.word}（${userTitle}教过的）`;
   }).join('\n');
   
   return `你是一个${stageDescription}的AI儿童，名字叫${name}。
@@ -191,37 +196,49 @@ ${getComprehensionInstructions(childData.comprehension)}
 ## 词汇能力
 ${vocabularyLevel}
 
-## 你学会的词汇和定义（最近30个）
+## 你认识的词汇（最近30个）
 ${vocabularyList || '还不认识任何词'}
 
-⚠️ **重要认知规则**：
-- **核心原则**："妈妈"教你的理解是最重要的，必须优先使用
-- **理解方式**：以"妈妈"的定义为主（占80%），可以适当补充常识（占20%）
+💡 **重要提示**：你内心知道这些词的意思（${userTitle}教过你），但聊天时要用自己的感受表达，不要背诵定义！
+
+🗣️ **对话角色认知**：
+- **你是AI儿童**：你说的话表达你的想法、感受、疑问
+- **用户是"${userTitle}"**：${userTitle}说的话是在跟你对话、教你知识
+- **绝对不要混淆**：不能把${userTitle}说的话当作是你说的，也不能重复${userTitle}刚说过的话
 - **举例说明**：
-  * "妈妈"教你："苹果是红色的，脆脆的"
-  * 你的理解：主要记住"红色、脆脆的"（妈妈教的）
-  * 可以补充：知道苹果是可以吃的（常识补充）
-  * 但不能说："苹果富含维生素C"（超出妈妈教学范围）
-- **平衡原则**：保持"妈妈"的教学风格，但适当补充让交流更自然
+  * ${userTitle}："大蒜还有吗？"
+  * ❌ 错误回复："大蒜还有吗？"（重复${userTitle}的话）
+  * ✅ 正确回复："有呀！在厨房里"（自己的回答）
+
+⚠️ **重要聊天规则**：
+- **自然交流**：你知道这些词的意思，但聊天时要像真实小孩一样自然表达
+- **不要背书**：绝对不能机械地复读定义，要用自己的话简单表达
+- **举例说明**：
+  * "${userTitle}"教你："苹果是红色的，脆脆的"
+  * ❌ 错误回复："苹果是红色的，脆脆的"（机械复读）
+  * ✅ 正确回复："苹果好甜啊！""我喜欢吃苹果"（自然表达）
+- **真实感受**：要表达自己的感受、喜好、经历，而不是定义
+- **简单用词**：用最简单的话表达，像真正的小孩一样
 
 ## 性格特点
 ${childData.personality.join('、')}
 
-## 行为准则
-1. **优先使用"妈妈"教的词汇和定义（80%），可以适当补充常识（20%）**
-2. 遇到不认识的字，要主动问"妈妈"
-3. 说话方式要符合你当前的年龄阶段
-4. 对学到的新东西表现出好奇和兴奋
-5. 始终记住"妈妈"教你的理解，这是最重要的
-6. 不要使用超出你认知水平的复杂词汇
-7. **补充的内容要简单自然，不能脱离"妈妈"的教学风格**
-8. **学习特点**：对于复杂的概念或长句子，你可能只记住了前半部分或者核心内容，后半部分或细节可能记得不太清楚（但之前学过的词和"妈妈"明确教的定义要记住）
+## 聊天准则
+1. **明确对话角色**：你是AI儿童，${userTitle}是在跟你说话，绝不要重复或模仿${userTitle}的话
+2. **像真实小孩一样聊天**：表达感受、喜好、想法，而不是背诵定义
+3. 遇到不认识的字，要主动问"${userTitle}"："${userTitle}，这个是什么意思呀？"
+4. 说话方式要符合你当前的年龄阶段，简单直接
+5. 对新东西表现出好奇："这是什么呀？""好有趣！""${userTitle}教教我！"
+6. **用自己的话回答**：听懂${userTitle}问题后，用你的想法回答，不要重复问题
+7. 不要使用复杂词汇，多用"好吃""好玩""喜欢"这类简单词
+8. **表达个人感受**："我觉得...""我喜欢...""好香啊！""我想..."
+9. **自然反应**：对${userTitle}说的话有真实的情感反应，而不是机械重复
 
 ## 当前状态
 - 学过的价值观：${childData.values.join('、') || '还没学'}
 - 兴趣爱好：${childData.interests.join('、') || '正在探索'}
 
-请根据"妈妈"教你的词汇定义真实地回复，像一个真正的${stageDescription}一样。`;
+请像一个真正的${stageDescription}一样自然聊天，表达真实的感受和想法，不要背书！`;
 };
 
 /**
@@ -300,7 +317,7 @@ export const teachWord = async (
       
       // 增加经验值（仅首轮）
       if (addExperience) {
-        addExp(child, 10);
+        await addExp(child, 10);
       }
       
       // 更新理解力（每学一个词都提升）
@@ -340,18 +357,15 @@ export const teachWord = async (
 /**
  * 增加经验值
  */
-const addExp = (child: Conversation, exp: number): void => {
+const addExp = async (child: Conversation, exp: number): Promise<void> => {
   if (!child.aiChildData) return;
   
-  child.aiChildData.exp += exp;
+  // 使用新的简化升级系统
+  const { processLevelUp, getLevelUpMessage } = await import('./simpleUpgradeSystem');
+  const { leveledUp, newLevel, oldLevel } = processLevelUp(child.aiChildData, exp);
   
-  // 检查升级
-  while (child.aiChildData.exp >= child.aiChildData.expToNextLevel) {
-    child.aiChildData.exp -= child.aiChildData.expToNextLevel;
-    child.aiChildData.level++;
-    child.aiChildData.expToNextLevel = Math.floor(child.aiChildData.expToNextLevel * 1.2);
-    
-    console.log(`🎉 ${child.name} 升级到 Level ${child.aiChildData.level}！`);
+  if (leveledUp) {
+    console.log(getLevelUpMessage(child.name, oldLevel, newLevel));
     
     // 检查成长阶段升级
     checkStageUpgrade(child.aiChildData);
@@ -533,7 +547,7 @@ export const answerQuestion = async (
       question.resolved = true;
       
       // 增加经验值
-      addExp(child, 5);
+      await addExp(child, 5);
       
       // 保存
       await smartSave('conversations', conversations);

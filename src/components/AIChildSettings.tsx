@@ -35,7 +35,7 @@ export default function AIChildSettings({ child, onBack, onUpdate, apiConfig }: 
       setFormalName(child.aiChildData.formalName || child.name);
       setNickname(child.aiChildData.nickname || '');
       setGender(child.aiChildData.gender || 'neutral');
-      setUserTitle(child.aiChildData.userTitle || '妈妈');
+      setUserTitle(child.aiChildData.userTitle || '家长');
       setUserName(child.aiChildData.userName || '');
       setAvatar(child.aiChildData.avatar || '');
     }
@@ -124,7 +124,7 @@ export default function AIChildSettings({ child, onBack, onUpdate, apiConfig }: 
         conversations[index].aiChildData!.formalName = formalName.trim() || child.name;
         conversations[index].aiChildData!.nickname = nickname.trim();
         conversations[index].aiChildData!.gender = gender;
-        conversations[index].aiChildData!.userTitle = userTitle.trim() || '妈妈';
+        conversations[index].aiChildData!.userTitle = userTitle.trim() || '家长';
         conversations[index].aiChildData!.userName = userName.trim();
         conversations[index].aiChildData!.avatar = avatar;
         
@@ -357,7 +357,7 @@ export default function AIChildSettings({ child, onBack, onUpdate, apiConfig }: 
             <div className="bg-white/70 rounded-lg p-3">
               <div className="text-xs text-gray-600 mb-1">AI会说</div>
               <div className="text-sm text-gray-800">
-                "{userTitle || '妈妈'}{userName ? ` ${userName}` : ''}，我学会这个词啦～"
+                "{userTitle || '家长'}{userName ? ` ${userName}` : ''}，我学会这个词啦～"
               </div>
             </div>
             <div className="bg-white/70 rounded-lg p-3">

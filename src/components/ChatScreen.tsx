@@ -34,6 +34,8 @@ import { SmartHTMLGenerator } from '../utils/smartHTMLGenerator';
 import { SavedDocument } from '../utils/documentLibrary';
 import { sendMoney, receiveMoney, getBalance, aiPayForUser, refundGift } from '../utils/wallet';
 import { addTransaction as addAIFinanceTransaction, getAIFinanceData } from '../utils/aiFinance';
+import { detectExpenseFromMessage, recordAIExpense } from '../utils/aiExpenseDetector';
+import { detectIncomeFromMessage, recordAIIncome } from '../utils/aiIncomeDetector';
 import { backgroundGenerationService, GenerationTask } from '../utils/backgroundGenerationService';
 import { handleAIGroupRedPacketClaiming } from '../utils/aiGroupRedPacketDecision';
 import { processExpiredRedPacketRefund } from '../utils/groupRedPacket';
@@ -556,6 +558,30 @@ ${summary}`;
       
       // 添加所有额外的特殊消息（红包、转账、文档）
       messages.push(...allExtraMessages);
+      
+      // 💰 AI智能财务：检测并记录消费和收入行为
+      if (messages.length > 0) {
+        const lastMessage = messages[messages.length - 1];
+        if (lastMessage.role === 'assistant') {
+          // 检测消费行为
+          const expense = detectExpenseFromMessage(lastMessage.content);
+          if (expense.hasExpense) {
+            console.log(`💰 检测到AI消费行为: ${expense.description}`);
+            recordAIExpense(conversation.id, expense, lastMessage.content).catch(error => {
+              console.error('❌ 记录AI消费失败:', error);
+            });
+          }
+          
+          // 检测收入行为
+          const income = detectIncomeFromMessage(lastMessage.content);
+          if (income.hasIncome) {
+            console.log(`💰 检测到AI收入行为: ${income.description}`);
+            recordAIIncome(conversation.id, income, lastMessage.content).catch(error => {
+              console.error('❌ 记录AI收入失败:', error);
+            });
+          }
+        }
+      }
       
       callback(messages, conversation.id);
       return "task_" + Date.now();
@@ -2704,6 +2730,75 @@ ${characterInfo?.languageStyle ? `语言风格：${characterInfo.languageStyle}`
     }
   };
 
+  // AI自动领取群红包函数
+  const handleAIAutoClaimRedPacket = async (redPacket: any, senderAiId: string) => {
+    if (conversation.type !== 'group' || !conversation.members) return;
+    
+    console.log(`🎁 开始AI自动领取红包流程，发送者: ${senderAiId}`);
+    
+    // 获取群中的AI成员（排除发送者和用户）
+    const aiMembers = conversation.members
+      .filter(memberId => memberId !== senderAiId && memberId !== 'user')
+      .map(memberId => conversations.find(c => c.id === memberId))
+      .filter(Boolean) as Conversation[];
+    
+    if (aiMembers.length === 0) {
+      console.log('🎁 没有其他AI成员可以领取红包');
+      return;
+    }
+    
+    console.log(`🎁 可领取红包的AI成员: ${aiMembers.map(ai => ai.name).join('、')}`);
+    
+    // 使用AI红包决策系统
+    const { handleAIGroupRedPacketClaiming } = await import('../utils/aiGroupRedPacketDecision');
+    
+    // 创建红包消息对象（用于决策系统）
+    const redPacketMessage = {
+      id: `redpacket_${Date.now()}`,
+      role: 'assistant' as const,
+      content: '[群红包]',
+      timestamp: Date.now(),
+      moneyTransfer: {
+        type: 'groupRedPacket' as const,
+        amount: redPacket.totalAmount,
+        message: redPacket.message,
+        status: 'pending' as const,
+        groupRedPacket: redPacket
+      }
+    };
+    
+    try {
+      await handleAIGroupRedPacketClaiming(
+        redPacketMessage,
+        aiMembers,
+        conversation,
+        conversation.messages.slice(-10), // 最近10条消息作为上下文
+        apiConfig,
+        (aiId: string, aiName: string, amount: number) => {
+          console.log(`🎁 ${aiName} 领取了红包 ¥${amount.toFixed(2)}`);
+          
+          // 添加AI领取红包的系统消息
+          const claimMessage = {
+            id: `claim_${Date.now()}_${aiId}`,
+            role: 'system' as const,
+            content: `${aiName} 领取了红包 ¥${amount.toFixed(2)}`,
+            timestamp: Date.now(),
+            systemMessageType: 'redPacketClaim' as const
+          };
+          
+          // 更新对话，添加领取消息
+          const updatedMessages = [...conversation.messages, claimMessage];
+          onUpdateConversation(conversation.id, {
+            messages: updatedMessages,
+            lastMessageTime: Date.now()
+          });
+        }
+      );
+    } catch (error) {
+      console.error('AI自动领取红包失败:', error);
+    }
+  };
+
   // 群聊生成函数
   const handleGroupChatGenerate = async () => {
     // 🚀 启动后台生成任务
@@ -2759,6 +2854,17 @@ ${characterInfo?.languageStyle ? `语言风格：${characterInfo.languageStyle}`
             
             // 1️⃣ 累积AI消息到快照
             currentMessages = [...currentMessages, message];
+            
+            // 🎁 检测AI发送的群红包，触发其他AI自动领取
+            if (message.moneyTransfer?.type === 'groupRedPacket' && message.moneyTransfer.groupRedPacket) {
+              const redPacket = message.moneyTransfer.groupRedPacket;
+              console.log(`🎁 检测到AI发送的群红包: ${redPacket.message} (¥${redPacket.totalAmount})`);
+              
+              // 延迟1-5秒，让其他AI陆续尝试领取红包
+              setTimeout(() => {
+                handleAIAutoClaimRedPacket(redPacket, _aiId);
+              }, Math.random() * 4000 + 1000);
+            }
             
             // 2️⃣ 提取用户在生成期间发送的新消息
             const currentConversationMessages = conversation.messages;

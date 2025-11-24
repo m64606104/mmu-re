@@ -201,25 +201,50 @@ function App() {
         }
       }
 
-      // 💰 智能财务系统：自动配置AI收入
+      // 💰 智能财务系统：批量激活所有AI
       if (loadedConversations.length > 0 && apiConfig) {
         try {
-          const { autoConfigureAllIncome } = await import('./utils/smartFinanceSystem');
-          const { processAllAutoIncome, upgradeAllExistingAIFinance } = await import('./utils/aiFinance');
+          const { batchActivateAIFinanceSystems } = await import('./utils/aiFinanceActivator');
+          const { processAllAutoIncome } = await import('./utils/aiFinance');
           
-          // 为所有AI配置收入（仅首次，已配置的会跳过）
+          // 批量激活所有AI的财务系统
           setTimeout(async () => {
-            // 🔄 首先升级已存在AI的智能财务系统
-            await upgradeAllExistingAIFinance(loadedConversations);
-            
-            // 为所有AI配置收入
-            await autoConfigureAllIncome(loadedConversations, apiConfig);
+            console.log('🚀 开始批量激活AI智能财务系统...');
+            const result = await batchActivateAIFinanceSystems(loadedConversations, apiConfig);
+            console.log(`✅ 财务系统激活完成: 成功${result.success}个, 失败${result.failed}个`);
             
             // 处理一次自动收入
             await processAllAutoIncome();
+            
+            // 🎯 初始化简化升级系统（修复理解力进度条）
+            const { checkUpgradeSystemNeedsInit, initializeAllAIUpgradeSystem } = await import('./utils/initializeUpgradeSystem');
+            const needsInit = await checkUpgradeSystemNeedsInit();
+            if (needsInit) {
+              console.log('🔧 检测到旧的升级系统，开始初始化...');
+              const result = await initializeAllAIUpgradeSystem();
+              console.log(`✅ 升级系统初始化完成: 更新了${result.updatedAI}个AI，修复了理解力进度条显示`);
+            }
+            
+            // 💬 修复AI儿童聊天机械复读问题
+            const { checkAIChildNeedsPromptUpdate, updateAllAIChildPrompts } = await import('./utils/updateAIChildPrompts');
+            const needsPromptUpdate = await checkAIChildNeedsPromptUpdate();
+            if (needsPromptUpdate) {
+              console.log('🤖 检测到AI儿童需要更新聊天规则，开始修复机械复读问题...');
+              const promptResult = await updateAllAIChildPrompts();
+              console.log(`✅ AI儿童聊天优化完成: 更新了${promptResult.updatedAI}个AI，聊天现在更自然了！`);
+            }
+            
+            // 👨‍👩‍👧‍👦 修复用户称呼硬编码问题
+            const { checkNeedsUserTitleUpdate, updateAllUserTitleReferences } = await import('./utils/updateUserTitleReferences');
+            const needsTitleUpdate = await checkNeedsUserTitleUpdate();
+            if (needsTitleUpdate) {
+              console.log('👨‍👩‍👧‍👦 检测到AI儿童需要更新用户称呼设置，开始修复硬编码"妈妈"问题...');
+              const titleResult = await updateAllUserTitleReferences();
+              console.log(`✅ 用户称呼优化完成: 更新了${titleResult.updatedAI}个AI，现在会使用个性化称呼！`);
+            }
           }, 3000); // 延迟3秒执行，避免阻塞初始化
         } catch (error) {
-          console.error('初始化财务系统失败:', error);
+          console.error('激活AI智能财务系统失败:', error);
         }
       }
     };

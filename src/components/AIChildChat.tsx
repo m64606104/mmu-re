@@ -325,7 +325,7 @@ export default function AIChildChat({ childId, onBack, apiConfig }: AIChildChatP
 
     const childData = child.aiChildData;
     const wordCount = childData.vocabulary.length;
-    const userTitle = childData.userTitle || '妈妈';
+    const userTitle = childData.userTitle || '家长';
     
     // 构建用户教的词汇和定义列表
     const userTaughtWords = childData.vocabulary.slice(0, 30).map(w => {
@@ -391,7 +391,7 @@ ${userTitle}教你："苹果是红色的水果，脆脆的"
   };
 
   const getStageLanguageRules = (stage: string, wordCount: number) => {
-    const userTitle = child?.aiChildData?.userTitle || '妈妈';
+    const userTitle = child?.aiChildData?.userTitle || '家长';
     
     if (stage === 'baby') {
       // 婴儿期：0-50词

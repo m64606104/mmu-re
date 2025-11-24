@@ -638,7 +638,7 @@ export interface ReadingMaterial {
   level: 1 | 2 | 3 | 4 | 5;  // 难度等级
   wordCount: number;
   coverImage?: string;
-  category: 'picture_book' | 'story' | 'article' | 'knowledge' | 'custom';
+  category: 'picture_book' | 'story' | 'article' | 'knowledge' | 'custom' | 'basic_knowledge' | 'conversation' | 'food' | 'social' | 'safety' | 'science' | 'math';
   author?: string;
   addedAt: number;
   readCount: number;       // 阅读次数
@@ -654,8 +654,9 @@ export interface AIChildData {
   stage: GrowthStage;
   age: number;             // 成长天数
   level: number;           // 等级
-  exp: number;             // 经验值
+  exp: number;             // 当前级别经验值
   expToNextLevel: number;  // 升级所需经验
+  totalExp?: number;       // 总累积经验值（用于简化升级计算）
   
   // 个性化设置
   formalName?: string;           // 大名（正式名称）
