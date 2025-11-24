@@ -106,6 +106,7 @@ async function generateWordsWithAI(
 
   } catch (error) {
     console.error('AI生成词卡失败:', error);
+    console.log('🔄 使用降级词库，当前已学词汇数量:', learnedWords.length);
     // 降级方案：使用预设词库
     return getFallbackWords(vocabularyCount, learnedWords);
   }
@@ -261,11 +262,17 @@ function getFallbackWords(_vocabularyCount: number, learnedWords: string[]): Wor
   ];
 
   // 过滤已学过的词
-  const available = baseWords.filter(w => !learnedWords.includes(w.word));
+  let available = baseWords.filter(w => !learnedWords.includes(w.word));
   
-  // 随机打乱并取80个
+  // 确保至少有60个词（如果不够就重复使用已学的词）
+  if (available.length < 60) {
+    console.log(`⚠️ 可用词汇不足${available.length}个，补充已学词汇以达到60个`);
+    available = [...available, ...baseWords].slice(0, 60);
+  }
+  
+  // 随机打乱并取60个
   const shuffled = available.sort(() => Math.random() - 0.5);
-  return shuffled.slice(0, 80).map((w, i) => ({
+  return shuffled.slice(0, 60).map((w, i) => ({
     ...w,
     id: `fallback_${Date.now()}_${i}`,
     examples: []
@@ -284,10 +291,18 @@ export function getNextRound(pool: DailyCardPool): WordCard[] {
   }
 
   // 获取所有未选过的词
-  const availableWords = pool.allWords.filter(card => !pool.selectedWords.includes(card.word));
+  let availableWords = pool.allWords.filter(card => !pool.selectedWords.includes(card.word));
   
-  if (availableWords.length === 0) {
-    return [];
+  // 🔄 如果可用词汇不足4个，重置选择状态（无限轮次支持）
+  if (availableWords.length < 4) {
+    console.log('🔄 词汇池即将用完，重置部分选择状态以支持无限轮次');
+    
+    // 保留最近选择的词汇，重置较早的选择（保持新鲜度）
+    const recentSelected = pool.selectedWords.slice(-20); // 保留最近20个
+    pool.selectedWords = recentSelected;
+    
+    // 重新计算可用词汇
+    availableWords = pool.allWords.filter(card => !recentSelected.includes(card.word));
   }
 
   // 百词斩模式：构造新一轮4张卡

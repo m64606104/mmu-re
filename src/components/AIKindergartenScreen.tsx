@@ -788,10 +788,11 @@ export default function AIKindergartenScreen({ onBack, onOpenChat, apiConfig }: 
                     <p className="text-gray-600">🎯 AI正在生成今日词卡...</p>
                     <p className="text-xs text-gray-500 mt-2">基于{selectedChild.name}的识字量和理解力</p>
                   </div>
-                ) : !selectedCard && currentCards.length > 0 ? (
+                ) : !selectedCard && (currentCards.length > 0 || dailyRounds < 20) ? (
                   <>
-                    <div className="grid grid-cols-2 gap-3 mb-4">
-                      {currentCards.map((card) => (
+                    {currentCards.length > 0 ? (
+                      <div className="grid grid-cols-2 gap-3 mb-4">
+                        {currentCards.map((card) => (
                         <button
                           key={card.id}
                           onClick={() => handleSelectCard(card)}
@@ -830,12 +831,24 @@ export default function AIKindergartenScreen({ onBack, onOpenChat, apiConfig }: 
                       </button>
                       <button
                         onClick={() => setShowCustomCard(true)}
-                        disabled={dailyRounds >= 20}
+                        disabled={dailyRounds >= 60}
                         className="flex-1 py-2 text-sm text-purple-600 hover:text-purple-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed font-medium"
                       >
                         ✨ 自定义词卡
                       </button>
                     </div>
+                    ) : (
+                      <div className="text-center py-8 text-gray-500">
+                        <div className="text-4xl mb-2">🔄</div>
+                        <p className="text-sm">词卡准备中...</p>
+                        <button
+                          onClick={refreshCards}
+                          className="mt-3 px-4 py-2 text-sm text-blue-600 hover:text-blue-700 transition-colors bg-blue-50 rounded-lg"
+                        >
+                          🎯 获取新一轮词卡
+                        </button>
+                      </div>
+                    )}
                   </>
                 ) : selectedCard ? (
                   /* 编辑区域 */
@@ -895,10 +908,51 @@ export default function AIKindergartenScreen({ onBack, onOpenChat, apiConfig }: 
                       </button>
                     </div>
                   </div>
-                ) : (
+                ) : dailyRounds < 20 ? (
                   <div className="text-center py-8 text-gray-500">
-                    <div className="text-4xl mb-2">🎉</div>
-                    <p className="text-sm">太棒了！所有词卡都学完啦</p>
+                    <div className="text-4xl mb-2">⏳</div>
+                    <p className="text-sm">词卡正在准备中...</p>
+                    <button
+                      onClick={refreshCards}
+                      className="mt-2 px-4 py-2 text-sm text-blue-600 hover:text-blue-700 transition-colors"
+                    >
+                      🔄 刷新获取更多词卡
+                    </button>
+                  </div>
+                ) : dailyRounds >= 60 ? (
+                  <div className="text-center py-8 text-gray-500">
+                    <div className="text-4xl mb-2">🌙</div>
+                    <p className="text-sm">今天已经学了60个词啦，已达上限！</p>
+                    <div className="mt-2 text-xs text-gray-400">
+                      明天再来继续学习吧～
+                    </div>
+                  </div>
+                ) : (
+                  <div className="text-center py-8">
+                    <div className="text-4xl mb-3">🎉</div>
+                    <p className="text-lg font-semibold text-gray-800 mb-2">
+                      恭喜！已完成当日教学任务
+                    </p>
+                    <div className="bg-green-50 border border-green-200 rounded-lg p-3 mb-4">
+                      <p className="text-sm text-green-700">
+                        ✨ 首轮20个词已学完，获得经验奖励！
+                      </p>
+                    </div>
+                    
+                    <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
+                      <p className="text-sm text-gray-700 mb-3">
+                        🎯 想要继续学习吗？
+                      </p>
+                      <button
+                        onClick={refreshCards}
+                        className="w-full py-3 bg-gradient-to-r from-blue-500 to-purple-500 text-white rounded-lg font-medium hover:shadow-lg transition-all"
+                      >
+                        开始新的一轮
+                      </button>
+                      <p className="text-xs text-gray-500 mt-2">
+                        💡 继续学习不会获得经验，但会记入学习记忆中
+                      </p>
+                    </div>
                   </div>
                 )}
 
