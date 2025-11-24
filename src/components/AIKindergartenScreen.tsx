@@ -364,16 +364,15 @@ export default function AIKindergartenScreen({ onBack, onOpenChat, apiConfig }: 
           model: apiConfig.modelName,
           messages: [
             {
-              role: 'system',
-              content: '你是一个儿童教育专家。请为词语生成简单易懂的定义和例句，适合教给AI儿童。'
-            },
-            {
               role: 'user',
-              content: `请为"${customWord.trim()}"这个词生成：
-1. 简单的定义（10-20字）
-2. 2个简单的例句（每句10-15字）
+              content: `请为"${customWord.trim()}"这个词生成简单易懂的定义和例句，适合教给AI儿童学习。
 
-格式：
+要求：
+1. 定义：10-20字，简单直接，不要有多余的话
+2. 例句1：10-15字的简单例句
+3. 例句2：10-15字的简单例句
+
+格式（严格按照这个格式，不要有多余的话）：
 定义：xxx
 例句1：xxx
 例句2：xxx`

@@ -221,20 +221,28 @@ async function generateSimpleWords(
   } catch (error) {
     console.error('🚨 简化词汇生成也失败了:', error);
     
-    // 🔥 最终的最终方案：纯随机生成60个词，确保永远不会"用完"
-    const words: WordCard[] = [];
-    for (let i = 0; i < 60; i++) {
-      words.push({
-        id: `emergency_${Date.now()}_${i}`,
-        word: `随机词${i + 1}`,
-        emoji: '🎲',
-        definition: `这是随机生成的第${i + 1}个词汇`,
-        difficulty: Math.ceil(Math.random() * 3) as 1 | 2 | 3,
-        category: '随机',
-        examples: []
-      });
-    }
-    console.log('🎲 使用随机生成的60个词汇');
+    // 🔥 最终应急方案：使用预设的基础词汇库
+    console.error('⚠️ API生成失败，使用应急词汇库');
+    const emergencyWords = [
+      '苹果', '香蕉', '橙子', '西瓜', '草莓', '葡萄', '梨', '桃子', '柠檬', '芒果',
+      '狗', '猫', '鸟', '鱼', '兔子', '熊', '猴子', '老虎', '狮子', '大象',
+      '红色', '蓝色', '黄色', '绿色', '黑色', '白色', '粉色', '紫色', '橙色', '灰色',
+      '妈妈', '爸爸', '哥哥', '姐姐', '弟弟', '妹妹', '爷爷', '奶奶', '叔叔', '阿姨',
+      '吃', '喝', '睡', '玩', '跑', '跳', '笑', '哭', '唱', '跳舞',
+      '大', '小', '高', '矮', '快', '慢', '多', '少', '好', '坏'
+    ];
+    
+    const words: WordCard[] = emergencyWords.map((word, i) => ({
+      id: `emergency_${Date.now()}_${i}`,
+      word,
+      emoji: '📚',
+      definition: `请用户自己定义"${word}"的含义`,
+      difficulty: 1 as 1 | 2 | 3,
+      category: '基础',
+      examples: []
+    }));
+    
+    console.log('📚 使用应急基础词汇库');
     return words;
   }
 }
