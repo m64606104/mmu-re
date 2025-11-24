@@ -25,7 +25,7 @@ import { getMaxChildren, canCreateNewChild, shouldShowSwitchButton, UpgradeMessa
 
 interface AIKindergartenScreenProps {
   onBack: () => void;
-  onOpenChat?: (childId: string) => void; // 打开与AI儿童的聊天
+  onOpenChat?: (childId: string, returnToKindergarten?: boolean) => void; // 打开与AI儿童的聊天，可指定返回路径
   apiConfig: ApiConfig;
 }
 
@@ -61,6 +61,17 @@ export default function AIKindergartenScreen({ onBack, onOpenChat, apiConfig }: 
   useEffect(() => {
     loadChildren();
   }, []);
+  
+  // 保存当前选择的AI
+  useEffect(() => {
+    if (selectedChild) {
+      const saveSelection = async () => {
+        const { smartSave } = await import('../utils/storage');
+        await smartSave('last_selected_child_id', selectedChild.id);
+      };
+      saveSelection();
+    }
+  }, [selectedChild]);
 
   // 加载今日学习轮数（按AI分开存储）
   useEffect(() => {
@@ -177,17 +188,26 @@ export default function AIKindergartenScreen({ onBack, onOpenChat, apiConfig }: 
     const allChildren = await getAllAIChildren();
     setChildren(allChildren);
     
-    // 如果有选中的child，更新其最新数据
-    if (selectedChild && allChildren.length > 0) {
-      const updatedChild = allChildren.find(c => c.id === selectedChild.id);
-      if (updatedChild) {
-        setSelectedChild(updatedChild);
-      }
-    } else if (allChildren.length > 0 && !selectedChild) {
-      // 如果没有选中的child，选中第一个
-      setSelectedChild(allChildren[0]);
-      await updateDailyInteraction(allChildren[0].id);
+    if (allChildren.length === 0) return;
+    
+    // 尝试加载上次选择的AI
+    const { smartLoad } = await import('../utils/storage');
+    const lastSelectedId = await smartLoad('last_selected_child_id') as string;
+    
+    let childToSelect: typeof allChildren[0] | null = null;
+    
+    if (lastSelectedId) {
+      // 找到上次选择的AI
+      childToSelect = allChildren.find(c => c.id === lastSelectedId) || null;
     }
+    
+    // 如果没找到或者没有上次选择，选择第一个
+    if (!childToSelect) {
+      childToSelect = allChildren[0];
+    }
+    
+    setSelectedChild(childToSelect);
+    await updateDailyInteraction(childToSelect.id);
   };
 
   const handleCreateChild = () => {
@@ -654,7 +674,7 @@ export default function AIKindergartenScreen({ onBack, onOpenChat, apiConfig }: 
                   <div className="text-xs text-purple-600/70 mt-1">识字量</div>
                   <div className="mt-2">
                     <div className="text-sm font-medium text-purple-600">
-                      理解力 {selectedChild.aiChildData.comprehension.level}/10
+                      理解力 Lv.{selectedChild.aiChildData.comprehension.level}
                     </div>
                   </div>
                 </div>
@@ -699,7 +719,7 @@ export default function AIKindergartenScreen({ onBack, onOpenChat, apiConfig }: 
               <button
                 onClick={() => {
                   if (onOpenChat && selectedChild) {
-                    onOpenChat(selectedChild.id);
+                    onOpenChat(selectedChild.id, true); // 传递true表示需要返回幼儿园
                   }
                 }}
                 className="bg-white p-4 rounded-xl text-gray-700 font-medium hover:bg-gray-50 transition-all"

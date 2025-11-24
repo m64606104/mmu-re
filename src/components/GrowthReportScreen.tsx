@@ -187,16 +187,14 @@ export default function GrowthReportScreen({ child, onBack }: GrowthReportScreen
                   <Award className="w-5 h-5 text-orange-500" />
                   <span className="text-sm text-gray-600">理解力</span>
                 </div>
-                <div className="text-2xl font-bold text-gray-800">{childData.comprehension.level}/10</div>
-                <div className="text-xs text-gray-500 mt-1">
-                  综合能力 {Math.floor((
-                    childData.comprehension.abilities.literal +
-                    childData.comprehension.abilities.context +
-                    childData.comprehension.abilities.abstract +
-                    childData.comprehension.abilities.emotion +
-                    childData.comprehension.abilities.logic
-                  ) / 5)}%
+                <div className="text-2xl font-bold text-gray-800">Lv.{childData.comprehension.level}</div>
+                <div className="w-full bg-gray-200 rounded-full h-2 mt-2">
+                  <div 
+                    className="bg-orange-500 h-2 rounded-full transition-all duration-300" 
+                    style={{ width: `${childData.comprehension.progress}%` }}
+                  />
                 </div>
+                <div className="text-xs text-gray-500 mt-1">{childData.comprehension.progress}% 到下一级</div>
               </div>
 
               <div className="bg-white rounded-xl p-4 shadow-sm">
@@ -276,7 +274,7 @@ export default function GrowthReportScreen({ child, onBack }: GrowthReportScreen
             <div className="bg-white rounded-xl p-4 shadow-sm">
               <h4 className="font-semibold text-gray-800 mb-4">理解力详情</h4>
               <div className="space-y-3">
-                {Object.entries(childData.comprehension.abilities).map(([key, value]) => {
+                {Object.entries(childData.comprehension.abilities).map(([key, abilityData]) => {
                   const names: Record<string, string> = {
                     literal: '字面理解',
                     context: '上下文理解',
@@ -284,16 +282,27 @@ export default function GrowthReportScreen({ child, onBack }: GrowthReportScreen
                     emotion: '情感理解',
                     logic: '逻辑推理'
                   };
+                  
+                  const colors: Record<string, string> = {
+                    literal: 'bg-blue-500',
+                    context: 'bg-green-500',
+                    abstract: 'bg-purple-500',
+                    emotion: 'bg-pink-500',
+                    logic: 'bg-orange-500'
+                  };
+                  
+                  const ability = abilityData as { level: number; progress: number };
+                  
                   return (
                     <div key={key}>
                       <div className="flex justify-between items-center mb-1">
                         <span className="text-sm text-gray-600">{names[key]}</span>
-                        <span className="text-sm font-semibold text-gray-800">{value}%</span>
+                        <span className="text-sm font-semibold text-gray-800">Lv.{ability.level} ({ability.progress}%)</span>
                       </div>
                       <div className="bg-gray-200 rounded-full h-2">
                         <div
-                          className="bg-gradient-to-r from-blue-500 to-purple-500 h-2 rounded-full transition-all"
-                          style={{ width: `${value}%` }}
+                          className={`${colors[key]} h-2 rounded-full transition-all`}
+                          style={{ width: `${ability.progress}%` }}
                         />
                       </div>
                     </div>

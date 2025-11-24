@@ -581,15 +581,31 @@ export interface WordKnowledge {
   category?: string;      // 词汇分类（动物、颜色、情感等）
 }
 
-// 理解力系统
+// 理解力系统（分级制）
 export interface Comprehension {
-  level: number;          // 理解等级 (1-10)
+  level: number;          // 理解等级 (1, 2, 3, 4...)
+  progress: number;       // 当前等级进度 (0-100)
   abilities: {
-    literal: number;      // 字面理解 (0-100)
-    context: number;      // 上下文理解 (0-100)
-    abstract: number;     // 抽象理解 (0-100)
-    emotion: number;      // 情感理解 (0-100)
-    logic: number;        // 逻辑推理 (0-100)
+    literal: {
+      level: number;      // 字面理解等级 (1-10)
+      progress: number;   // 字面理解进度 (0-100)
+    };
+    context: {
+      level: number;      // 上下文理解等级 (1-10)
+      progress: number;   // 上下文理解进度 (0-100)
+    };
+    abstract: {
+      level: number;      // 抽象理解等级 (1-10)
+      progress: number;   // 抽象理解进度 (0-100)
+    };
+    emotion: {
+      level: number;      // 情感理解等级 (1-10)
+      progress: number;   // 情感理解进度 (0-100)
+    };
+    logic: {
+      level: number;      // 逻辑推理等级 (1-10)
+      progress: number;   // 逻辑推理进度 (0-100)
+    };
   };
 }
 

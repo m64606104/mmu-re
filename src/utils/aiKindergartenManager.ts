@@ -9,6 +9,7 @@ import {
   WordKnowledge, 
   Lesson,
   Question,
+  Comprehension,
   GrowthStage 
 } from '../types';
 import { smartLoad, smartSave } from './storage';
@@ -41,12 +42,13 @@ export const createAIChild = (name: string, avatar?: string): Conversation => {
     vocabulary: [],
     comprehension: {
       level: 1,
+      progress: 0,
       abilities: {
-        literal: 10,
-        context: 5,
-        abstract: 0,
-        emotion: 5,
-        logic: 0
+        literal: { level: 1, progress: 0 },
+        context: { level: 1, progress: 0 },
+        abstract: { level: 1, progress: 0 },
+        emotion: { level: 1, progress: 0 },
+        logic: { level: 1, progress: 0 }
       }
     },
     
@@ -92,6 +94,78 @@ export const createAIChild = (name: string, avatar?: string): Conversation => {
 };
 
 /**
+ * 根据理解力生成对话能力说明
+ */
+const getComprehensionInstructions = (comprehension: Comprehension): string => {
+  const { abilities } = comprehension;
+  let instructions = '';
+  
+  // 1. 字面理解
+  const literalLevel = abilities.literal.level;
+  if (literalLevel <= 2) {
+    instructions += '• **字面理解 Lv.' + literalLevel + '**：只能理解简单直白的词语，复杂的句子会困惑\n';
+  } else if (literalLevel <= 5) {
+    instructions += '• **字面理解 Lv.' + literalLevel + '**：能理解基本句子，但长句子可能需要拆分\n';
+  } else if (literalLevel <= 8) {
+    instructions += '• **字面理解 Lv.' + literalLevel + '**：能理解大部分句子，偶尔需要解释生词\n';
+  } else {
+    instructions += '• **字面理解 Lv.' + literalLevel + '**：完全掌握字面理解，能准确理解所有词句\n';
+  }
+  
+  // 2. 上下文理解
+  const contextLevel = abilities.context.level;
+  if (contextLevel <= 1) {
+    instructions += '• **上下文理解 Lv.' + contextLevel + '**：不能联系上下文，只能理解单独的句子\n';
+  } else if (contextLevel <= 3) {
+    instructions += '• **上下文理解 Lv.' + contextLevel + '**：能理解简单的前后关联，但容易断片\n';
+  } else if (contextLevel <= 6) {
+    instructions += '• **上下文理解 Lv.' + contextLevel + '**：能理解对话流，偶尔忘记之前说过的\n';
+  } else {
+    instructions += '• **上下文理解 Lv.' + contextLevel + '**：完全掌握上下文，能记住整段对话\n';
+  }
+  
+  // 3. 抽象理解
+  const abstractLevel = abilities.abstract.level;
+  if (abstractLevel <= 1) {
+    instructions += '• **抽象理解 Lv.' + abstractLevel + '**：不能理解比喻、暗示，只能理解具体事物\n';
+  } else if (abstractLevel <= 3) {
+    instructions += '• **抽象理解 Lv.' + abstractLevel + '**：能理解简单比喻，复杂抽象概念需要解释\n';
+  } else if (abstractLevel <= 6) {
+    instructions += '• **抽象理解 Lv.' + abstractLevel + '**：能理解大部分抽象概念，偶尔需要举例\n';
+  } else {
+    instructions += '• **抽象理解 Lv.' + abstractLevel + '**：完全掌握抽象思维，能理解隐喻和深层含义\n';
+  }
+  
+  // 4. 情感理解
+  const emotionLevel = abilities.emotion.level;
+  if (emotionLevel <= 1) {
+    instructions += '• **情感理解 Lv.' + emotionLevel + '**：不能识别情绪，只能理解表面意思\n';
+  } else if (emotionLevel <= 3) {
+    instructions += '• **情感理解 Lv.' + emotionLevel + '**：能识别明显情绪（高兴、难过），细微情绪识别不了\n';
+  } else if (emotionLevel <= 6) {
+    instructions += '• **情感理解 Lv.' + emotionLevel + '**：能理解大部分情绪，偶尔误判复杂情感\n';
+  } else {
+    instructions += '• **情感理解 Lv.' + emotionLevel + '**：完全掌握情感识别，能敏锐察觉他人情绪\n';
+  }
+  
+  // 5. 逻辑推理
+  const logicLevel = abilities.logic.level;
+  if (logicLevel <= 1) {
+    instructions += '• **逻辑推理 Lv.' + logicLevel + '**：不能进行推理，只能回答直接问题\n';
+  } else if (logicLevel <= 3) {
+    instructions += '• **逻辑推理 Lv.' + logicLevel + '**：能进行简单推理（因果关系），复杂逻辑会混乱\n';
+  } else if (logicLevel <= 6) {
+    instructions += '• **逻辑推理 Lv.' + logicLevel + '**：能理解一般逻辑，偶尔推理错误\n';
+  } else {
+    instructions += '• **逻辑推理 Lv.' + logicLevel + '**：完全掌握逻辑思维，能进行复杂推理和分析\n';
+  }
+  
+  instructions += '\n⚠️ **重要**：你必须严格按照自己的理解力等级来对话，不要表现出超出能力的理解！';
+  
+  return instructions;
+};
+
+/**
  * 构建AI儿童的系统提示词
  */
 const buildAIChildSystemPrompt = (childData: AIChildData, name: string): string => {
@@ -109,7 +183,10 @@ const buildAIChildSystemPrompt = (childData: AIChildData, name: string): string 
 - 成长阶段：${childData.stage}（${childData.age}天）
 - 等级：Level ${childData.level}
 - 识字量：${childData.vocabulary.length}个词
-- 理解力：${childData.comprehension.level}/10
+- 总理解力：Lv.${childData.comprehension.level} (${childData.comprehension.progress}%)
+
+## 理解力详情（影响你的对话能力）
+${getComprehensionInstructions(childData.comprehension)}
 
 ## 词汇能力
 ${vocabularyLevel}
@@ -302,50 +379,65 @@ const checkStageUpgrade = (childData: AIChildData): void => {
 };
 
 /**
- * 更新理解力（每学一个词都提升）
- * 理解力随词汇量逐渐增长，不是阶段性的跳变
+ * 更新理解力（分级制）
+ * 每个能力有10个等级，每级需要更多词汇才能升级
+ * 并且会影响AI的对话能力
  */
 const updateComprehension = (childData: AIChildData): void => {
   const wordCount = childData.vocabulary.length;
   
-  // 理解力总等级（0-10）基于词汇量的对数曲线
-  // 0词: 1, 10词: 1.5, 50词: 3, 200词: 5, 500词: 7, 1000词: 8, 2000词: 9, 5000词: 10
-  let comprehensionLevel = 1;
-  if (wordCount >= 5000) {
-    comprehensionLevel = 10;
-  } else if (wordCount >= 2000) {
-    comprehensionLevel = 9;
-  } else if (wordCount >= 1000) {
-    comprehensionLevel = 8;
-  } else if (wordCount >= 500) {
-    comprehensionLevel = 7;
-  } else if (wordCount >= 200) {
-    comprehensionLevel = 5 + Math.min(2, Math.floor((wordCount - 200) / 150)); // 200-500词：5-7
-  } else if (wordCount >= 50) {
-    comprehensionLevel = 3 + Math.min(2, Math.floor((wordCount - 50) / 75)); // 50-200词：3-5
-  } else if (wordCount >= 10) {
-    comprehensionLevel = 1 + Math.min(2, Math.floor((wordCount - 10) / 20)); // 10-50词：1-3
+  // === 总理解力等级 ===
+  // 每10个词提升1%进度，100%后升级
+  const totalProgress = (wordCount * 10) % 100;
+  const totalLevel = Math.floor(wordCount / 10) + 1; // 每10词升1级
+  childData.comprehension.level = Math.min(50, totalLevel); // 最高50级
+  childData.comprehension.progress = totalProgress;
+  
+  // === 各项细分能力 ===
+  // 每项能力有不同的成长速度和升级要求
+  
+  // 1️⃣ 字面理解：最基础，成长最快（每5词升1级）
+  updateAbility(childData.comprehension.abilities.literal, wordCount, 5, 0);
+  
+  // 2️⃣ 上下文理解：需要词汇积累（每15词升1级，50词后开始）
+  updateAbility(childData.comprehension.abilities.context, Math.max(0, wordCount - 50), 15, 1);
+  
+  // 3️⃣ 抽象理解：中等难度（每20词升1级，100词后开始）
+  updateAbility(childData.comprehension.abilities.abstract, Math.max(0, wordCount - 100), 20, 1);
+  
+  // 4️⃣ 情感理解：需要较高词汇（每25词升1级，200词后开始）
+  updateAbility(childData.comprehension.abilities.emotion, Math.max(0, wordCount - 200), 25, 1);
+  
+  // 5️⃣ 逻辑推理：最高级（每30词升1级，500词后开始）
+  updateAbility(childData.comprehension.abilities.logic, Math.max(0, wordCount - 500), 30, 1);
+};
+
+/**
+ * 更新单项能力
+ * @param ability 能力对象
+ * @param effectiveWords 有效词汇数（减去门槛后的）
+ * @param wordsPerLevel 每级需要的词数
+ * @param minLevel 最低等级
+ */
+const updateAbility = (
+  ability: { level: number; progress: number },
+  effectiveWords: number,
+  wordsPerLevel: number,
+  minLevel: number
+): void => {
+  if (effectiveWords <= 0) {
+    ability.level = minLevel;
+    ability.progress = 0;
+    return;
   }
   
-  childData.comprehension.level = comprehensionLevel;
+  const progressPerWord = 100 / wordsPerLevel; // 每个词增加的进度
+  const totalProgress = effectiveWords * progressPerWord;
+  const level = Math.floor(totalProgress / 100) + minLevel;
+  const progress = totalProgress % 100;
   
-  // 更新细分能力（每项基于总等级和随机波动）
-  const baseLevel = comprehensionLevel * 10; // 转换为0-100的百分比
-  
-  // 字面理解：最基础，成长最快
-  childData.comprehension.abilities.literal = Math.min(100, baseLevel + Math.floor(Math.random() * 10));
-  
-  // 上下文理解：需要一定词汇量
-  childData.comprehension.abilities.context = Math.min(100, Math.max(0, baseLevel - 20 + Math.floor(Math.random() * 15)));
-  
-  // 抽象理解：中等难度
-  childData.comprehension.abilities.abstract = Math.min(100, Math.max(0, baseLevel - 10 + Math.floor(Math.random() * 10)));
-  
-  // 情感理解：需要较高词汇量
-  childData.comprehension.abilities.emotion = Math.min(100, Math.max(0, baseLevel - 30 + Math.floor(Math.random() * 20)));
-  
-  // 逻辑推理：最高级，需要很多词汇
-  childData.comprehension.abilities.logic = Math.min(100, Math.max(0, baseLevel - 40 + Math.floor(Math.random() * 15)));
+  ability.level = Math.min(10, level); // 最高10级
+  ability.progress = ability.level >= 10 ? 100 : progress;
 };
 
 /**
