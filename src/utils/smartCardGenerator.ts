@@ -11,6 +11,8 @@ export interface DailyCardPool {
   date: string;
   rounds: WordCard[][];  // 15轮，每轮4个词（总60词，3个学习轮次）
   selectedWords: string[];  // 当天已选择的词
+  lastRoundWords: string[];  // 上一轮显示的词（用于限制重复）
+  allWords: WordCard[];  // 所有可用的词
 }
 
 /**
@@ -45,7 +47,9 @@ export async function generateDailyCards(
   const pool: DailyCardPool = {
     date: today,
     rounds,
-    selectedWords: []
+    selectedWords: [],
+    lastRoundWords: [],
+    allWords: words
   };
 
   // 保存到 IndexedDB
@@ -269,21 +273,56 @@ function getFallbackWords(_vocabularyCount: number, learnedWords: string[]): Wor
 }
 
 /**
- * 获取下一轮词卡（排除已选的词）
+ * 获取下一轮词卡（百词斩模式）
+ * - 一轮固定4张卡
+ * - 不包含已选过的词
+ * - 可以包含上一轮没选的词，但最多重复1个
  */
-export function getNextRound(pool: DailyCardPool, currentRound: number): WordCard[] {
-  if (!pool || !pool.rounds) {
-    return [];
-  }
-  if (currentRound >= pool.rounds.length) {
+export function getNextRound(pool: DailyCardPool): WordCard[] {
+  if (!pool || !pool.allWords) {
     return [];
   }
 
-  // 获取这一轮的词
-  const round = pool.rounds[currentRound];
+  // 获取所有未选过的词
+  const availableWords = pool.allWords.filter(card => !pool.selectedWords.includes(card.word));
   
-  // 过滤掉已经选择过的词
-  return round.filter(card => !pool.selectedWords.includes(card.word));
+  if (availableWords.length === 0) {
+    return [];
+  }
+
+  // 百词斩模式：构造新一轮4张卡
+  const newRound: WordCard[] = [];
+  const lastRound = pool.lastRoundWords || [];
+  
+  // 1. 从上一轮中最多选1个没被选的词（增加连续性）
+  const repeatableWords = availableWords.filter(card => lastRound.includes(card.word));
+  if (repeatableWords.length > 0 && Math.random() < 0.5) {
+    const repeatCard = repeatableWords[Math.floor(Math.random() * repeatableWords.length)];
+    newRound.push(repeatCard);
+  }
+  
+  // 2. 填充剩余的词（从未在上一轮出现的）
+  const freshWords = availableWords.filter(card => 
+    !newRound.includes(card) && !lastRound.includes(card.word)
+  );
+  
+  // 打乱顺序
+  const shuffled = freshWords.sort(() => Math.random() - 0.5);
+  
+  // 填充到4张
+  while (newRound.length < 4 && shuffled.length > 0) {
+    newRound.push(shuffled.shift()!);
+  }
+  
+  // 如果还不够4张，从availableWords中补充
+  if (newRound.length < 4) {
+    const remaining = availableWords.filter(card => !newRound.includes(card));
+    while (newRound.length < 4 && remaining.length > 0) {
+      newRound.push(remaining.shift()!);
+    }
+  }
+  
+  return newRound;
 }
 
 /**
@@ -295,6 +334,20 @@ export async function markWordSelected(childId: string, word: string): Promise<v
   
   if (pool && !pool.selectedWords.includes(word)) {
     pool.selectedWords.push(word);
+    allPools[childId] = pool;
+    await smartSave('daily_card_pools', allPools);
+  }
+}
+
+/**
+ * 更新上一轮的词（用于百词斩模式）
+ */
+export async function updateLastRound(childId: string, words: string[]): Promise<void> {
+  const allPools = await smartLoad('daily_card_pools') as Record<string, DailyCardPool> || {};
+  const pool = allPools[childId];
+  
+  if (pool) {
+    pool.lastRoundWords = words;
     allPools[childId] = pool;
     await smartSave('daily_card_pools', allPools);
   }

@@ -225,6 +225,9 @@ export const teachWord = async (
         addExp(child, 10);
       }
       
+      // 更新理解力（每学一个词都提升）
+      updateComprehension(child.aiChildData);
+      
       // 更新系统提示词
       if (child.characterSettings) {
         child.characterSettings.systemPrompt = buildAIChildSystemPrompt(
@@ -274,6 +277,9 @@ const addExp = (child: Conversation, exp: number): void => {
     
     // 检查成长阶段升级
     checkStageUpgrade(child.aiChildData);
+    
+    // 更新理解力（升级时也要更新）
+    updateComprehension(child.aiChildData);
   }
 };
 
@@ -285,17 +291,61 @@ const checkStageUpgrade = (childData: AIChildData): void => {
   
   if (childData.stage === 'baby' && wordCount >= 50) {
     childData.stage = 'toddler';
-    childData.comprehension.level = 3;
     console.log('🌟 成长阶段：婴儿 → 幼儿');
   } else if (childData.stage === 'toddler' && wordCount >= 200) {
     childData.stage = 'child';
-    childData.comprehension.level = 5;
     console.log('🌟 成长阶段：幼儿 → 儿童');
   } else if (childData.stage === 'child' && wordCount >= 1000) {
     childData.stage = 'teen';
-    childData.comprehension.level = 8;
     console.log('🌟 成长阶段：儿童 → 少年');
   }
+};
+
+/**
+ * 更新理解力（每学一个词都提升）
+ * 理解力随词汇量逐渐增长，不是阶段性的跳变
+ */
+const updateComprehension = (childData: AIChildData): void => {
+  const wordCount = childData.vocabulary.length;
+  
+  // 理解力总等级（0-10）基于词汇量的对数曲线
+  // 0词: 1, 10词: 1.5, 50词: 3, 200词: 5, 500词: 7, 1000词: 8, 2000词: 9, 5000词: 10
+  let comprehensionLevel = 1;
+  if (wordCount >= 5000) {
+    comprehensionLevel = 10;
+  } else if (wordCount >= 2000) {
+    comprehensionLevel = 9;
+  } else if (wordCount >= 1000) {
+    comprehensionLevel = 8;
+  } else if (wordCount >= 500) {
+    comprehensionLevel = 7;
+  } else if (wordCount >= 200) {
+    comprehensionLevel = 5 + Math.min(2, Math.floor((wordCount - 200) / 150)); // 200-500词：5-7
+  } else if (wordCount >= 50) {
+    comprehensionLevel = 3 + Math.min(2, Math.floor((wordCount - 50) / 75)); // 50-200词：3-5
+  } else if (wordCount >= 10) {
+    comprehensionLevel = 1 + Math.min(2, Math.floor((wordCount - 10) / 20)); // 10-50词：1-3
+  }
+  
+  childData.comprehension.level = comprehensionLevel;
+  
+  // 更新细分能力（每项基于总等级和随机波动）
+  const baseLevel = comprehensionLevel * 10; // 转换为0-100的百分比
+  
+  // 字面理解：最基础，成长最快
+  childData.comprehension.abilities.literal = Math.min(100, baseLevel + Math.floor(Math.random() * 10));
+  
+  // 上下文理解：需要一定词汇量
+  childData.comprehension.abilities.context = Math.min(100, Math.max(0, baseLevel - 20 + Math.floor(Math.random() * 15)));
+  
+  // 抽象理解：中等难度
+  childData.comprehension.abilities.abstract = Math.min(100, Math.max(0, baseLevel - 10 + Math.floor(Math.random() * 10)));
+  
+  // 情感理解：需要较高词汇量
+  childData.comprehension.abilities.emotion = Math.min(100, Math.max(0, baseLevel - 30 + Math.floor(Math.random() * 20)));
+  
+  // 逻辑推理：最高级，需要很多词汇
+  childData.comprehension.abilities.logic = Math.min(100, Math.max(0, baseLevel - 40 + Math.floor(Math.random() * 15)));
 };
 
 /**

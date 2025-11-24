@@ -20,7 +20,7 @@ import {
 } from '../utils/aiKindergartenManager';
 import { WordCard } from '../utils/wordCardLibrary';
 import { TopicCard, getRandomTopics, getRecommendedTopicDifficulty } from '../utils/topicCardLibrary';
-import { generateDailyCards, getNextRound, markWordSelected, DailyCardPool } from '../utils/smartCardGenerator';
+import { generateDailyCards, getNextRound, markWordSelected, updateLastRound, DailyCardPool } from '../utils/smartCardGenerator';
 import { getMaxChildren, canCreateNewChild, shouldShowSwitchButton, UpgradeMessages } from '../config/kindergartenConfig';
 
 interface AIKindergartenScreenProps {
@@ -102,9 +102,11 @@ export default function AIKindergartenScreen({ onBack, onOpenChat, apiConfig }: 
       setCardPool(pool);
       
       // 加载当前轮次的词卡
-      const nextCards = getNextRound(pool, dailyRounds);
+      const nextCards = getNextRound(pool);
       if (nextCards.length > 0) {
         setCurrentCards(nextCards);
+        // 更新上一轮的词
+        await updateLastRound(selectedChild.id, nextCards.map(c => c.word));
       }
     } catch (error) {
       console.error('生成词卡失败:', error);
@@ -142,19 +144,23 @@ export default function AIKindergartenScreen({ onBack, onOpenChat, apiConfig }: 
     refreshCards();
   };
 
-  // 刷新词卡（切换到下一轮）
+  // 刷新词卡（百词斩模式：刷新整轮4张卡）
   const refreshCards = async () => {
-    if (!cardPool) return;
+    if (!cardPool || !selectedChild) return;
     
-    const nextCards = getNextRound(cardPool, dailyRounds);
+    // 重新加载词卡池（确保获取最新的selectedWords）
+    const { smartLoad } = await import('../utils/storage');
+    const allPools = await smartLoad('daily_card_pools') as Record<string, DailyCardPool> || {};
+    const freshPool = allPools[selectedChild.id];
+    
+    if (!freshPool) return;
+    
+    const nextCards = getNextRound(freshPool);
     if (nextCards.length > 0) {
       setCurrentCards(nextCards);
-    } else {
-      // 如果当前轮次没有可用的词，尝试下一轮
-      const nextRoundCards = getNextRound(cardPool, dailyRounds + 1);
-      if (nextRoundCards.length > 0) {
-        setCurrentCards(nextRoundCards);
-      }
+      // 更新上一轮的词
+      await updateLastRound(selectedChild.id, nextCards.map(c => c.word));
+      setCardPool(freshPool); // 更新本地pool
     }
     setSelectedCard(null);
     setTeachResult('');
@@ -278,7 +284,7 @@ export default function AIKindergartenScreen({ onBack, onOpenChat, apiConfig }: 
           setShowRoundComplete(true);
         }
         
-        // 刷新数据和卡片
+        // 刷新数据和卡片（百词斩模式）
         setTimeout(async () => {
           // 重新加载children以获取最新数据
           const updatedChildren = await getAllAIChildren();
@@ -288,17 +294,21 @@ export default function AIKindergartenScreen({ onBack, onOpenChat, apiConfig }: 
             setSelectedChild(updatedChild);
           }
           
-          // 刷新词卡
-          const remainingCards = currentCards.filter(c => c.id !== selectedCard.id);
-          if (remainingCards.length === 0 && cardPool) {
-            const nextCards = getNextRound(cardPool, newRounds);
+          // 百词斩模式：教学后刷新整轮4张卡
+          const { smartLoad } = await import('../utils/storage');
+          const allPools = await smartLoad('daily_card_pools') as Record<string, DailyCardPool> || {};
+          const freshPool = allPools[selectedChild.id];
+          
+          if (freshPool) {
+            const nextCards = getNextRound(freshPool);
             if (nextCards.length > 0) {
               setCurrentCards(nextCards);
+              // 更新上一轮的词
+              await updateLastRound(selectedChild.id, nextCards.map(c => c.word));
+              setCardPool(freshPool); // 更新本地pool
             } else {
               setCurrentCards([]);
             }
-          } else {
-            setCurrentCards(remainingCards);
           }
           
           setSelectedCard(null);
@@ -787,7 +797,7 @@ export default function AIKindergartenScreen({ onBack, onOpenChat, apiConfig }: 
                     <div className="flex gap-2">
                       <button
                         onClick={refreshCards}
-                        disabled={dailyRounds >= 20}
+                        disabled={isLoadingCards || !cardPool}
                         className="flex-1 py-2 text-sm text-gray-600 hover:text-blue-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                       >
                         🔄 换一批词卡
