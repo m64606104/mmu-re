@@ -324,7 +324,7 @@ export const teachWord = async (
       
       // 增加经验值（仅首轮）
       if (addExperience) {
-        await addExp(child, 10, true); // 跳过理解力更新，因为下面有新的经验系统
+        await addExp(child, 10); // 传统等级经验，理解力由下面的新系统处理
       }
       
       // 更新理解力 - 使用新的经验系统
@@ -413,8 +413,9 @@ function calculateLearningQuality(
 
 /**
  * 增加经验值并检查升级
+ * 注意：不更新理解力，理解力由词卡学习的新经验系统专门处理
  */
-const addExp = async (child: Conversation, exp: number, skipComprehensionUpdate: boolean = false): Promise<void> => {
+const addExp = async (child: Conversation, exp: number): Promise<void> => {
   if (!child.aiChildData) return;
   
   // 使用新的简化升级系统
@@ -427,10 +428,8 @@ const addExp = async (child: Conversation, exp: number, skipComprehensionUpdate:
     // 检查成长阶段升级
     checkStageUpgrade(child.aiChildData);
     
-    // 只有在非词汇学习时才调用旧的updateComprehension（用于其他功能如回答问题）
-    if (!skipComprehensionUpdate) {
-      updateComprehension(child.aiChildData);
-    }
+    // 注意：不再更新理解力
+    // 理解力现在由词卡学习时的updateChildComprehension专门处理
   }
 };
 
@@ -534,35 +533,6 @@ export const askQuestion = async (
   }
 };
 
-/**
- * 回答问题
- */
-export const answerQuestion = async (
-  childId: string,
-  questionId: string,
-  answer: string
-): Promise<void> => {
-  try {
-    const conversations = await smartLoad('conversations') as Conversation[] || [];
-    const child = conversations.find(c => c.id === childId);
-    
-    if (!child || !child.aiChildData) return;
-    
-    const question = child.aiChildData.questions.find(q => q.id === questionId);
-    if (question) {
-      question.answer = answer;
-      question.resolved = true;
-      
-      // 增加经验值
-      await addExp(child, 5);
-      
-      // 保存
-      await smartSave('conversations', conversations);
-    }
-  } catch (error) {
-    console.error('回答问题失败:', error);
-  }
-};
 
 /**
  * 获取AI儿童数据
