@@ -20,7 +20,7 @@ import {
 } from '../utils/aiKindergartenManager';
 import { WordCard } from '../utils/wordCardLibrary';
 import { TopicCard, getRandomTopics, getRecommendedTopicDifficulty } from '../utils/topicCardLibrary';
-import { generateDailyCards, getNextRound, markWordSelected, updateLastRound, DailyCardPool, forceRegenerateCards } from '../utils/smartCardGenerator';
+import { generateDailyCards, getNextRound, markWordSelected, updateLastRound, resetDailyPool, DailyCardPool } from '../utils/smartCardGenerator';
 import { getMaxChildren, canCreateNewChild, shouldShowSwitchButton, UpgradeMessages } from '../config/kindergartenConfig';
 
 interface AIKindergartenScreenProps {
@@ -113,14 +113,7 @@ export default function AIKindergartenScreen({ onBack, onOpenChat, apiConfig }: 
       setCardPool(pool);
       
       // 加载当前轮次的词卡
-      const nextCards = await getNextRound(
-        pool,
-        selectedChild.id,
-        selectedChild.aiChildData.vocabulary.length,
-        learnedWords,
-        selectedChild.aiChildData.stage,
-        apiConfig
-      );
+      const nextCards = getNextRound(pool);
       if (nextCards.length > 0) {
         setCurrentCards(nextCards);
         // 更新上一轮的词
@@ -164,48 +157,33 @@ export default function AIKindergartenScreen({ onBack, onOpenChat, apiConfig }: 
 
   // 刷新词卡（百词斩模式：刷新整轮4张卡）
   const refreshCards = async () => {
-    if (!selectedChild || !selectedChild.aiChildData) {
-      console.error('❌ 刷新词卡失败：缺少AI儿童数据');
-      return;
+    if (!cardPool || !selectedChild) return;
+    
+    // 重新加载词卡池（确保获取最新的selectedWords）
+    const { smartLoad } = await import('../utils/storage');
+    const allPools = await smartLoad('daily_card_pools') as Record<string, DailyCardPool> || {};
+    const freshPool = allPools[selectedChild.id];
+    
+    if (!freshPool) return;
+    
+    const nextCards = getNextRound(freshPool);
+    if (nextCards.length > 0) {
+      setCurrentCards(nextCards);
+      // 更新上一轮的词
+      await updateLastRound(selectedChild.id, nextCards.map(c => c.word));
+      setCardPool(freshPool); // 更新本地pool
     }
-    
-    console.log('🔄 开始刷新词卡...');
+    setSelectedCard(null);
+    setTeachResult('');
+  };
+
+  // 手动重试API生成（清空当天缓存后重新生成）
+  const retryApiGenerate = async () => {
+    if (!selectedChild) return;
     setIsLoadingCards(true);
-    
     try {
-      // 重新加载或生成词卡池
-      const learnedWords = selectedChild.aiChildData.vocabulary.map(w => w.word);
-      const freshPool = await generateDailyCards(
-        selectedChild.id,
-        selectedChild.aiChildData.vocabulary.length,
-        learnedWords,
-        selectedChild.aiChildData.stage,
-        apiConfig
-      );
-      
-      // 获取下一批词卡
-      const nextCards = await getNextRound(
-        freshPool,
-        selectedChild.id,
-        selectedChild.aiChildData.vocabulary.length,
-        learnedWords,
-        selectedChild.aiChildData.stage,
-        apiConfig
-      );
-      
-      if (nextCards.length > 0) {
-        setCurrentCards(nextCards);
-        setCardPool(freshPool);
-        await updateLastRound(selectedChild.id, nextCards.map(c => c.word));
-        console.log(`✅ 刷新成功，获得${nextCards.length}个新词卡`);
-      } else {
-        console.warn('⚠️ 没有获得新词卡');
-      }
-      
-      setSelectedCard(null);
-      setTeachResult('');
-    } catch (error) {
-      console.error('❌ 刷新词卡失败:', error);
+      await resetDailyPool(selectedChild.id);
+      await initDailyCardPool();
     } finally {
       setIsLoadingCards(false);
     }
@@ -353,16 +331,8 @@ export default function AIKindergartenScreen({ onBack, onOpenChat, apiConfig }: 
           const allPools = await smartLoad('daily_card_pools') as Record<string, DailyCardPool> || {};
           const freshPool = allPools[selectedChild.id];
           
-          if (freshPool && selectedChild.aiChildData) {
-            const learnedWords = selectedChild.aiChildData.vocabulary.map(w => w.word);
-            const nextCards = await getNextRound(
-              freshPool,
-              selectedChild.id,
-              selectedChild.aiChildData.vocabulary.length,
-              learnedWords,
-              selectedChild.aiChildData.stage,
-              apiConfig
-            );
+          if (freshPool) {
+            const nextCards = getNextRound(freshPool);
             if (nextCards.length > 0) {
               setCurrentCards(nextCards);
               // 更新上一轮的词
@@ -406,28 +376,17 @@ export default function AIKindergartenScreen({ onBack, onOpenChat, apiConfig }: 
           model: apiConfig.modelName,
           messages: [
             {
+              role: 'system',
+              content: '你是儿童教育专家。只输出JSON，不要任何额外文字或解释，不要说“好的”、不要角色扮演。严格返回：{"definition":"10-20字简明定义","examples":["例句1 10-15字","例句2 10-15字"]}，严禁使用代码块标记。'
+            },
+            {
               role: 'user',
-              content: `请为"${customWord.trim()}"这个词生成通俗易懂、小孩子能理解的定义和例句。
-
-重要说明：
-- 无论这个词是什么类型（日常词汇、成人词汇、专业术语、网络用语等），都要给出解释
-- 用简单、直白、小孩子能听懂的语言解释
-- 不要回避任何词汇，不要说"这个词不适合"
-- 像大人给小孩解释复杂概念一样，用通俗的比喻和例子
-
-要求：
-1. 定义：15-30字，通俗易懂，用小孩能理解的方式解释
-2. 例句1：10-20字，日常生活中的简单例子
-3. 例句2：10-20字，另一个简单例子
-
-格式（严格按照这个格式，不要有任何多余的话）：
-定义：xxx
-例句1：xxx
-例句2：xxx`
+              content: `目标词："${customWord.trim()}"。请仅返回JSON：{"definition":"(10-20字)","examples":["(10-15字)","(10-15字)"]}`
             }
           ],
           temperature: 0.7,
-          max_tokens: 200
+          max_tokens: 200,
+          response_format: { type: 'json_object' }
         })
       });
 
@@ -441,22 +400,35 @@ export default function AIKindergartenScreen({ onBack, onOpenChat, apiConfig }: 
       if (!contentType || !contentType.includes('application/json')) {
         const text = await response.text();
         console.error('API返回非JSON:', text.substring(0, 200));
-        throw new Error('API返回了HTML页面而不是JSON，请检查API配置');
+        throw new Error('API返回了非JSON内容，请检查API配置');
       }
 
       const data = await response.json();
       const content = data.choices[0]?.message?.content || '';
 
-      // 解析AI返回的内容
-      const definitionMatch = content.match(/定义[：:](.*?)(?=例句|$)/s);
-      const example1Match = content.match(/例句1[：:](.*?)(?=例句2|$)/s);
-      const example2Match = content.match(/例句2[：:](.*?)$/s);
+      // 严格JSON解析
+      let parsed: { definition?: string; examples?: string[] } | null = null;
+      try {
+        parsed = JSON.parse(content);
+      } catch (e) {
+        console.error('自定义词定义JSON解析失败:', content);
+        throw new Error('生成结果格式不正确，请重试');
+      }
+      // 清洗口头前缀，避免“好的、作为一名…”等角色扮演语句
+      const stripPreface = (s: string) => s
+        .replace(/^(好的[，,。\s]*)+/g, '')
+        .replace(/^作为一名[^，,。]*[，,。\s]*/g, '')
+        .replace(/^作为[^，,。]*[，,。\s]*/g, '')
+        .replace(/^请注意[：:]?/g, '')
+        .trim();
 
-      const definition = definitionMatch?.[1]?.trim() || content;
-      const examples = [
-        example1Match?.[1]?.trim() || '',
-        example2Match?.[1]?.trim() || ''
-      ].filter(e => e);
+      const definition = stripPreface((parsed?.definition || '').trim());
+      const examples = (parsed?.examples || [])
+        .map(e => stripPreface((e || '').trim()))
+        .filter(Boolean);
+      if (!definition) {
+        throw new Error('未生成有效的定义，请重试');
+      }
 
       // 创建自定义词卡
       const customCard: WordCard = {
@@ -476,7 +448,7 @@ export default function AIKindergartenScreen({ onBack, onOpenChat, apiConfig }: 
 
     } catch (error) {
       console.error('生成定义失败:', error);
-      alert('生成失败，请检查API配置或手动输入定义');
+      alert('生成失败：' + (error as Error).message + '\n可手动输入定义后直接教学');
     } finally {
       setIsGenerating(false);
     }
@@ -837,60 +809,18 @@ export default function AIKindergartenScreen({ onBack, onOpenChat, apiConfig }: 
                   </div>
                 ) : !selectedCard && (currentCards.length > 0 || dailyRounds < 20) ? (
                   <>
-                    {/* API失败提示 */}
-                    {cardPool?.isEmergencyMode && (
-                      <div className="mb-4 p-4 bg-orange-50 border-2 border-orange-200 rounded-xl">
-                        <div className="flex items-start gap-3">
-                          <div className="text-2xl">⚠️</div>
-                          <div className="flex-1">
-                            <h4 className="font-semibold text-orange-800 mb-1">AI词卡生成失败</h4>
-                            <p className="text-sm text-orange-700 mb-3">
-                              API连接失败，目前使用的是60个基础应急词汇。您可以重试让AI生成更适合的词卡。
-                            </p>
-                            <button
-                              onClick={async () => {
-                                if (!selectedChild.aiChildData) return;
-                                setIsLoadingCards(true);
-                                try {
-                                  await forceRegenerateCards(selectedChild.id);
-                                  // 重新加载词卡
-                                  const newPool = await generateDailyCards(
-                                    selectedChild.id,
-                                    selectedChild.aiChildData.vocabulary.length,
-                                    selectedChild.aiChildData.vocabulary.map(v => v.word),
-                                    selectedChild.aiChildData.stage,
-                                    apiConfig
-                                  );
-                                  setCardPool(newPool);
-                                  const learnedWords = selectedChild.aiChildData.vocabulary.map(w => w.word);
-                                  const nextCards = await getNextRound(
-                                    newPool,
-                                    selectedChild.id,
-                                    selectedChild.aiChildData.vocabulary.length,
-                                    learnedWords,
-                                    selectedChild.aiChildData.stage,
-                                    apiConfig
-                                  );
-                                  setCurrentCards(nextCards);
-                                  setCurrentRoundNumber(1);
-                                } catch (error) {
-                                  console.error('重新生成失败:', error);
-                                  alert('重新生成失败，请检查API配置后再试');
-                                } finally {
-                                  setIsLoadingCards(false);
-                                }
-                              }}
-                              className="px-4 py-2 bg-orange-500 text-white rounded-lg hover:bg-orange-600 transition-colors text-sm font-medium"
-                            >
-                              🔄 重试生成词卡
-                            </button>
-                          </div>
-                        </div>
-                      </div>
-                    )}
-                    
                     {currentCards.length > 0 ? (
                       <>
+                        {/* Fallback 提示：API失败时展示基础词库并提供重试 */}
+                        {cardPool && (cardPool.source === 'static' || cardPool.source === 'simple') && (
+                          <div className="mb-3 p-3 rounded-lg border border-amber-200 bg-amber-50 text-amber-700 text-sm flex items-center justify-between">
+                            <span>⚠️ 当前显示的是基础词卡（API生成失败）。你可以继续使用，或手动重试。</span>
+                            <button
+                              onClick={retryApiGenerate}
+                              className="ml-3 px-2 py-1 text-xs rounded bg-amber-100 hover:bg-amber-200"
+                            >重试API生成</button>
+                          </div>
+                        )}
                         <div className="grid grid-cols-2 gap-3 mb-4">
                           {currentCards.map((card) => (
                             <button
@@ -927,7 +857,7 @@ export default function AIKindergartenScreen({ onBack, onOpenChat, apiConfig }: 
                             disabled={isLoadingCards || !cardPool}
                             className="flex-1 py-2 text-sm text-gray-600 hover:text-blue-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                           >
-                            🔄 换一批词卡
+                            🔄 换一轮
                           </button>
                           <button
                             onClick={() => setShowCustomCard(true)}
@@ -946,7 +876,7 @@ export default function AIKindergartenScreen({ onBack, onOpenChat, apiConfig }: 
                           onClick={refreshCards}
                           className="mt-3 px-4 py-2 text-sm text-blue-600 hover:text-blue-700 transition-colors bg-blue-50 rounded-lg"
                         >
-                          🎯 获取新一轮词卡
+                          🎯 换一轮
                         </button>
                       </div>
                     )}

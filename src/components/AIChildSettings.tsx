@@ -29,7 +29,6 @@ export default function AIChildSettings({ child, onBack, onUpdate, apiConfig }: 
   const [farewellLetter, setFarewellLetter] = useState('');
   const [confirmName, setConfirmName] = useState('');
   const [letterOpened, setLetterOpened] = useState(false); // 信件是否已打开
-  const [testMode, setTestMode] = useState(false); // 测试模式开关
 
   useEffect(() => {
     if (child.aiChildData) {
@@ -39,7 +38,6 @@ export default function AIChildSettings({ child, onBack, onUpdate, apiConfig }: 
       setUserTitle(child.aiChildData.userTitle || '家长');
       setUserName(child.aiChildData.userName || '');
       setAvatar(child.aiChildData.avatar || '');
-      setTestMode(child.aiChildData.testMode || false);
     }
   }, [child]);
 
@@ -114,37 +112,6 @@ export default function AIChildSettings({ child, onBack, onUpdate, apiConfig }: 
     setShowFarewellLetter(false);
     setLetterOpened(false);
     onBack(); // 返回上一页
-  };
-
-  // 处理测试模式切换
-  const handleTestModeToggle = async (enabled: boolean) => {
-    setTestMode(enabled);
-    
-    try {
-      const conversations = await smartLoad('conversations') as Conversation[] || [];
-      const index = conversations.findIndex(c => c.id === child.id);
-      
-      if (index !== -1 && conversations[index].aiChildData) {
-        const childData = conversations[index].aiChildData!;
-        
-        if (enabled) {
-          // 开启测试模式：保存原始阶段
-          childData.testMode = true;
-          childData.originalStage = childData.stage;
-          childData.testAge = undefined; // 清空测试年龄，等待用户指令
-        } else {
-          // 关闭测试模式：清空所有测试数据
-          childData.testMode = false;
-          childData.testAge = undefined;
-          childData.originalStage = undefined;
-        }
-        
-        await smartSave('conversations', conversations);
-        onUpdate();
-      }
-    } catch (error) {
-      console.error('切换测试模式失败:', error);
-    }
   };
 
   const handleSave = async () => {
@@ -400,43 +367,6 @@ export default function AIChildSettings({ child, onBack, onUpdate, apiConfig }: 
               </div>
             </div>
           </div>
-        </div>
-
-        {/* 测试模式 */}
-        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-          <div className="flex items-center justify-between mb-3">
-            <div>
-              <h3 className="font-semibold text-gray-800 flex items-center gap-2">
-                🧪 测试模式
-              </h3>
-              <p className="text-xs text-gray-500 mt-1">
-                在自由聊天中测试不同年龄段的AI表现
-              </p>
-            </div>
-            <label className="relative inline-flex items-center cursor-pointer">
-              <input
-                type="checkbox"
-                checked={testMode}
-                onChange={(e) => handleTestModeToggle(e.target.checked)}
-                className="sr-only peer"
-              />
-              <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
-            </label>
-          </div>
-          
-          {testMode && (
-            <div className="bg-blue-50 rounded-lg p-3 border border-blue-200">
-              <p className="text-xs text-blue-700 mb-2">
-                📝 <strong>测试模式已开启</strong>
-              </p>
-              <p className="text-xs text-blue-600">
-                • 在自由聊天中对AI说"现在进入7岁阶段"或"现在13岁"<br/>
-                • AI会根据你指定的年龄调整对话风格<br/>
-                • 说"还原原来状态"可以恢复正常<br/>
-                • 关闭测试模式后，所有测试数据将被清除
-              </p>
-            </div>
-          )}
         </div>
       </div>
 

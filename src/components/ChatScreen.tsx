@@ -48,10 +48,6 @@ import { SubChatSuggestion } from '../utils/aiSubChatInitiator';
 // AI理解力经验系统集成
 import { ChatSessionManager, handleChatExperienceUpdate } from '../utils/chatExperienceIntegration';
 import { bootstrapComprehensionSystem } from '../utils/comprehensionSystemBootstrap';
-// 测试模式处理
-import { detectTestModeCommand, executeTestModeCommand, getTestModePersona } from '../utils/testModeHandler';
-// 人类属性设定
-import { getHumanAttributesPrompt } from '../prompts/humanAttributesPrompt';
 // 消息转发和多选相关导入
 import MessageSelectionToolbar from './MessageSelectionToolbar';
 import ForwardTargetSelector from './ForwardTargetSelector';
@@ -1862,44 +1858,8 @@ ${characterInfo?.languageStyle ? `语言风格：${characterInfo.languageStyle}`
     setSubChatSuggestion(null);
   };
 
-  const handleSendMessage = async () => {
+  const handleSendMessage = () => {
     if (!currentInput.trim()) return;
-
-    // 🧪 检测测试模式指令（仅针对AI儿童）
-    if (conversation.aiChildData?.testMode) {
-      const testCommand = detectTestModeCommand(currentInput.trim());
-      if (testCommand) {
-        // 执行测试模式指令
-        const result = await executeTestModeCommand(conversation.id, testCommand);
-        
-        if (result.success) {
-          // 添加用户消息
-          const userMsg: Message = {
-            id: Date.now().toString(),
-            role: 'user',
-            content: currentInput.trim(),
-            timestamp: Date.now()
-          };
-          
-          // 添加AI反馈消息
-          const aiMsg: Message = {
-            id: (Date.now() + 1).toString(),
-            role: 'assistant',
-            content: result.message,
-            timestamp: Date.now() + 1
-          };
-          
-          const updatedMessages = [...conversation.messages, userMsg, aiMsg];
-          onUpdateConversation(conversation.id, { messages: updatedMessages });
-          
-          setCurrentInput('');
-          if (inputRef.current) {
-            (inputRef.current as unknown as HTMLTextAreaElement).style.height = '24px';
-          }
-          return; // 执行完测试指令后直接返回
-        }
-      }
-    }
 
     // 如果是编辑模式,保存编辑
     if (messageBeingEdited) {
@@ -3217,27 +3177,13 @@ ${characterInfo?.languageStyle ? `语言风格：${characterInfo.languageStyle}`
         });
       }
       
-      // 🧪 检查是否启用测试模式（仅针对AI儿童）
-      const testModePersona = conversation.aiChildData ? getTestModePersona(conversation.aiChildData) : null;
-      
-      // 👤 获取人类属性描述（仅针对AI儿童）
-      const humanAttributes = conversation.aiChildData 
-        ? getHumanAttributesPrompt(
-            conversation.aiChildData.stage,
-            conversation.aiChildData.gender,
-            conversation.aiChildData.testAge
-          )
-        : '';
-      
       let systemPrompt = conversation.characterSettings
         ? `你是${conversation.characterSettings.nickname}。
-${testModePersona ? `\n🧪 【测试模式】：${testModePersona}\n` : ''}
 ${conversation.characterSettings.systemPrompt ? `人物设定：${conversation.characterSettings.systemPrompt}` : ''}
 ${conversation.characterSettings.personality ? `性格特征：${conversation.characterSettings.personality}` : ''}
 ${conversation.characterSettings.languageStyle ? `语言风格：${conversation.characterSettings.languageStyle}` : ''}
 ${conversation.characterSettings.languageExample ? `语言示例：${conversation.characterSettings.languageExample}` : ''}
 ${conversation.characterSettings.memoryEvents ? `记忆事件：${conversation.characterSettings.memoryEvents}` : ''}${knowledgeBaseContent}
-${humanAttributes ? `\n${humanAttributes}\n` : ''}
 
 【重要表达规范】：
 - 使用真人自然口语表达，不要使用斜杠（/）来表示"或"，例如：
