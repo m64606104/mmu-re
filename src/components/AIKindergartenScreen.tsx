@@ -113,7 +113,14 @@ export default function AIKindergartenScreen({ onBack, onOpenChat, apiConfig }: 
       setCardPool(pool);
       
       // 加载当前轮次的词卡
-      const nextCards = getNextRound(pool);
+      const nextCards = await getNextRound(
+        pool,
+        selectedChild.id,
+        selectedChild.aiChildData.vocabulary.length,
+        learnedWords,
+        selectedChild.aiChildData.stage,
+        apiConfig
+      );
       if (nextCards.length > 0) {
         setCurrentCards(nextCards);
         // 更新上一轮的词
@@ -164,9 +171,17 @@ export default function AIKindergartenScreen({ onBack, onOpenChat, apiConfig }: 
     const allPools = await smartLoad('daily_card_pools') as Record<string, DailyCardPool> || {};
     const freshPool = allPools[selectedChild.id];
     
-    if (!freshPool) return;
+    if (!freshPool || !selectedChild.aiChildData) return;
     
-    const nextCards = getNextRound(freshPool);
+    const learnedWords = selectedChild.aiChildData.vocabulary.map(w => w.word);
+    const nextCards = await getNextRound(
+      freshPool,
+      selectedChild.id,
+      selectedChild.aiChildData.vocabulary.length,
+      learnedWords,
+      selectedChild.aiChildData.stage,
+      apiConfig
+    );
     if (nextCards.length > 0) {
       setCurrentCards(nextCards);
       // 更新上一轮的词
@@ -319,8 +334,16 @@ export default function AIKindergartenScreen({ onBack, onOpenChat, apiConfig }: 
           const allPools = await smartLoad('daily_card_pools') as Record<string, DailyCardPool> || {};
           const freshPool = allPools[selectedChild.id];
           
-          if (freshPool) {
-            const nextCards = getNextRound(freshPool);
+          if (freshPool && selectedChild.aiChildData) {
+            const learnedWords = selectedChild.aiChildData.vocabulary.map(w => w.word);
+            const nextCards = await getNextRound(
+              freshPool,
+              selectedChild.id,
+              selectedChild.aiChildData.vocabulary.length,
+              learnedWords,
+              selectedChild.aiChildData.stage,
+              apiConfig
+            );
             if (nextCards.length > 0) {
               setCurrentCards(nextCards);
               // 更新上一轮的词
@@ -820,7 +843,15 @@ export default function AIKindergartenScreen({ onBack, onOpenChat, apiConfig }: 
                                     apiConfig
                                   );
                                   setCardPool(newPool);
-                                  const nextCards = getNextRound(newPool);
+                                  const learnedWords = selectedChild.aiChildData.vocabulary.map(w => w.word);
+                                  const nextCards = await getNextRound(
+                                    newPool,
+                                    selectedChild.id,
+                                    selectedChild.aiChildData.vocabulary.length,
+                                    learnedWords,
+                                    selectedChild.aiChildData.stage,
+                                    apiConfig
+                                  );
                                   setCurrentCards(nextCards);
                                   setCurrentRoundNumber(1);
                                 } catch (error) {
