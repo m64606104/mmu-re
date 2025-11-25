@@ -118,7 +118,7 @@ async function generateWordsWithAI(
       console.log(`🎯 第${attempt}次尝试生成60个词汇...`);
       const prompt = buildGenerationPrompt(vocabularyCount, learnedWords, stage);
       
-      const response = await fetch(`${apiConfig.baseUrl}/chat/completions`, {
+      const response = await fetch(`${apiConfig.baseUrl}/v1/chat/completions`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -201,7 +201,7 @@ async function generateSimpleWords(
 
 请直接返回60行：`;
 
-    const response = await fetch(`${apiConfig.baseUrl}/chat/completions`, {
+    const response = await fetch(`${apiConfig.baseUrl}/v1/chat/completions`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
