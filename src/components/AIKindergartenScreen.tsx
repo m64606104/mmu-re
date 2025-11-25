@@ -164,32 +164,51 @@ export default function AIKindergartenScreen({ onBack, onOpenChat, apiConfig }: 
 
   // 刷新词卡（百词斩模式：刷新整轮4张卡）
   const refreshCards = async () => {
-    if (!cardPool || !selectedChild) return;
-    
-    // 重新加载词卡池（确保获取最新的selectedWords）
-    const { smartLoad } = await import('../utils/storage');
-    const allPools = await smartLoad('daily_card_pools') as Record<string, DailyCardPool> || {};
-    const freshPool = allPools[selectedChild.id];
-    
-    if (!freshPool || !selectedChild.aiChildData) return;
-    
-    const learnedWords = selectedChild.aiChildData.vocabulary.map(w => w.word);
-    const nextCards = await getNextRound(
-      freshPool,
-      selectedChild.id,
-      selectedChild.aiChildData.vocabulary.length,
-      learnedWords,
-      selectedChild.aiChildData.stage,
-      apiConfig
-    );
-    if (nextCards.length > 0) {
-      setCurrentCards(nextCards);
-      // 更新上一轮的词
-      await updateLastRound(selectedChild.id, nextCards.map(c => c.word));
-      setCardPool(freshPool); // 更新本地pool
+    if (!selectedChild || !selectedChild.aiChildData) {
+      console.error('❌ 刷新词卡失败：缺少AI儿童数据');
+      return;
     }
-    setSelectedCard(null);
-    setTeachResult('');
+    
+    console.log('🔄 开始刷新词卡...');
+    setIsLoadingCards(true);
+    
+    try {
+      // 重新加载或生成词卡池
+      const learnedWords = selectedChild.aiChildData.vocabulary.map(w => w.word);
+      const freshPool = await generateDailyCards(
+        selectedChild.id,
+        selectedChild.aiChildData.vocabulary.length,
+        learnedWords,
+        selectedChild.aiChildData.stage,
+        apiConfig
+      );
+      
+      // 获取下一批词卡
+      const nextCards = await getNextRound(
+        freshPool,
+        selectedChild.id,
+        selectedChild.aiChildData.vocabulary.length,
+        learnedWords,
+        selectedChild.aiChildData.stage,
+        apiConfig
+      );
+      
+      if (nextCards.length > 0) {
+        setCurrentCards(nextCards);
+        setCardPool(freshPool);
+        await updateLastRound(selectedChild.id, nextCards.map(c => c.word));
+        console.log(`✅ 刷新成功，获得${nextCards.length}个新词卡`);
+      } else {
+        console.warn('⚠️ 没有获得新词卡');
+      }
+      
+      setSelectedCard(null);
+      setTeachResult('');
+    } catch (error) {
+      console.error('❌ 刷新词卡失败:', error);
+    } finally {
+      setIsLoadingCards(false);
+    }
   };
 
   // 打开教学模式时初始化词卡池
