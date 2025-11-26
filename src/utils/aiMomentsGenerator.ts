@@ -641,7 +641,7 @@ export const generateAIMoment = async (
     console.log('📝 AI原始返回内容:', content);
     
     // 解析AI返回的时间和内容
-    const timeMatch = content.match(/时间[：:]\s*(\d{1,2}):(\d{2})/);
+    const timeMatch = content.match(/^(?:时间[：:]\s*)?(\d{1,2}):(\d{2})/);
     let scheduledTime = Date.now();
     
     if (timeMatch) {
@@ -651,6 +651,9 @@ export const generateAIMoment = async (
       const scheduled = new Date(now.getFullYear(), now.getMonth(), now.getDate(), hours, minutes);
       scheduledTime = scheduled.getTime();
       console.log(`⏰ AI决定的发布时间: ${hours}:${minutes}`);
+      
+      // 🔥 移除开头的时间行（支持“时间：13:09”或“13:09”两种格式）
+      content = content.replace(/^(?:时间[：:]\s*)?\d{1,2}:\d{2}\s*/m, '').trim();
     }
     
     // 兼容处理：先尝试抽取“图片描述：<大段文字>”段落（非[图片]格式）
@@ -1958,15 +1961,21 @@ ${post.imageDescriptions ? `配图: ${post.imageDescriptions.join('、')}` : ''}
       const decisions = JSON.parse(jsonMatch[0]);
       
       // 转换为BatchInteractionDecision格式
-      return decisions.map((d: any, index: number) => ({
-        postId: visiblePosts[d.postIndex - 1]?.post.id || visiblePosts[index]?.post.id,
-        shouldInteract: d.shouldInteract,
-        action: d.action,
-        commentContent: d.commentContent,
-        reason: d.reason
-      }));
+      return decisions.map((d: any, index: number) => {
+        // 🔥 容错：如果AI返回的postIndex超出范围，使用当前索引
+        const postIndex = typeof d.postIndex === 'number' && d.postIndex >= 1 && d.postIndex <= visiblePosts.length 
+          ? d.postIndex - 1 
+          : index;
+        return {
+          postId: visiblePosts[postIndex]?.post.id || visiblePosts[index]?.post.id,
+          shouldInteract: Boolean(d.shouldInteract),
+          action: d.action || null,
+          commentContent: d.commentContent || null,
+          reason: d.reason || ''
+        };
+      });
     } catch (parseError) {
-      console.error('批量决策JSON解析失败:', parseError, content);
+      console.error('批量决策JSON解析失败:', parseError, '原始内容:', content);
       return [];
     }
   } catch (error) {

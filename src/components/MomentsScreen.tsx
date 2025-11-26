@@ -616,11 +616,32 @@ export default function MomentsScreen({
     const hours = Math.floor(diff / 3600000);
     const days = Math.floor(diff / 86400000);
 
+    // 🔥 微信风格：1分钟内显示“刚刚”
     if (minutes < 1) return '刚刚';
     if (minutes < 60) return `${minutes}分钟前`;
     if (hours < 24) return `${hours}小时前`;
-    if (days < 7) return `${days}天前`;
-    return new Date(timestamp).toLocaleDateString('zh-CN');
+    
+    // 🔥 今天：显示具体时间（如“13:09”）
+    const today = new Date();
+    const postDate = new Date(timestamp);
+    if (postDate.toDateString() === today.toDateString()) {
+      return postDate.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', hour12: false });
+    }
+    
+    // 🔥 昨天：显示“昨天”
+    const yesterday = new Date(today);
+    yesterday.setDate(yesterday.getDate() - 1);
+    if (postDate.toDateString() === yesterday.toDateString()) {
+      return '昨天';
+    }
+    
+    // 🔥 更早：显示月日（如“11月25日”）
+    if (days < 7) {
+      return postDate.toLocaleDateString('zh-CN', { month: 'numeric', day: 'numeric' });
+    }
+    
+    // 🔥 超过一周：显示完整日期
+    return postDate.toLocaleDateString('zh-CN');
   };
 
   return (
