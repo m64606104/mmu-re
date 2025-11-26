@@ -48,7 +48,6 @@ import { SubChatSuggestion } from '../utils/aiSubChatInitiator';
 // AI理解力经验系统集成
 import { ChatSessionManager, handleChatExperienceUpdate } from '../utils/chatExperienceIntegration';
 import { bootstrapComprehensionSystem } from '../utils/comprehensionSystemBootstrap';
-import { notifyAIMessageObserved } from '../utils/aiMessageObserver';
 // 消息转发和多选相关导入
 import MessageSelectionToolbar from './MessageSelectionToolbar';
 import ForwardTargetSelector from './ForwardTargetSelector';
@@ -79,6 +78,7 @@ import {
   addGroupMemory
 } from '../utils/memorySystem';
 // import { detectMemes } from '../utils/memeSystem'; // 已删除热梗系统
+import { messagePerceptionService } from '../utils/messagePerceptionService';
 import { buildTimeAwarePrompt, UnrepliedMessageInfo } from '../utils/timeAwareness';
 import { getMomentsData } from '../utils/aiMomentsGenerator';
 import { getAIStatus } from '../utils/aiStatusManager';
@@ -1949,23 +1949,13 @@ ${characterInfo?.languageStyle ? `语言风格：${characterInfo.languageStyle}`
       };
     }
 
-    const updatedMessages = [...conversation.messages, newMessage];
-    const now = Date.now();
-
     onUpdateConversation(conversation.id, {
-      messages: updatedMessages,
-      lastMessageTime: now,
+      messages: [...conversation.messages, newMessage],
+      lastMessageTime: Date.now(),
     });
 
-    // 🤖 AI 观察用户消息 - 记录轻量统计数据
-    notifyAIMessageObserved(
-      {
-        ...conversation,
-        messages: updatedMessages,
-        lastMessageTime: now,
-      },
-      newMessage
-    );
+    // 🧠 [消息感知] 用户发送消息后，AI立即感知到消息内容（后台处理）
+    messagePerceptionService.perceiveMessage(conversation, newMessage);
 
     // 如果AI正在生成，将用户消息添加到待处理队列
     if (isGenerating && conversation.type === 'group') {
