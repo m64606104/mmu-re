@@ -42,8 +42,6 @@ export default function MomentsScreen({
   const [replyToComment, setReplyToComment] = useState<{ id: string; authorName: string } | null>(null);
   const [showNotifications, setShowNotifications] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
-  // 朋友圈图片描述占位渲染开关（默认关闭）：纯文本就是文本，图片就显示真实图片
-  const SHOW_IMAGE_DESCRIPTION_PLACEHOLDERS = false;
 
   // —— 按需(on-view)生图：最小接入 ——
   const momentRefs = useRef<Map<string, HTMLElement>>(new Map());
@@ -811,30 +809,25 @@ export default function MomentsScreen({
                   </div>
                 )}
 
-                {/* Image Descriptions (AI生成的图片描述 - 半透明灰色占位符) */}
-                {SHOW_IMAGE_DESCRIPTION_PLACEHOLDERS && moment.imageDescriptions && moment.imageDescriptions.length > 0 && !(moment.images && moment.images.length > 0) && (
+                {/* Image Descriptions (AI生成的图片描述 - 始终显示) */}
+                {moment.imageDescriptions && moment.imageDescriptions.length > 0 && !(moment.images && moment.images.length > 0) && (
                   <div className={`grid mb-3 ${getImageGridClass(moment.imageDescriptions.length)}`}>
                     {moment.imageDescriptions.map((desc, index) => (
                       <div 
                         key={index} 
                         onClick={() => setViewingImageDesc({ desc, index })}
-                        className={`rounded-lg overflow-hidden bg-gray-400/30 backdrop-blur-sm cursor-pointer hover:bg-gray-400/40 transition-colors relative ${getImageItemClass(moment.imageDescriptions!.length)}`}
+                        className={`rounded-lg overflow-hidden bg-gray-100 cursor-pointer hover:opacity-90 transition-opacity relative ${getImageItemClass(moment.imageDescriptions!.length)}`}
                       >
-                        {/* 半透明遮罩效果 */}
-                        <div className="absolute inset-0 bg-gradient-to-br from-gray-300/20 to-gray-400/20" />
-                        
-                        {/* 中心的图片图标 */}
-                        <div className="absolute inset-0 flex items-center justify-center">
-                          <div className="text-center space-y-1">
-                            <ImageIcon className="w-10 h-10 text-white/80 mx-auto drop-shadow-md" strokeWidth={1.5} />
-                            <p className="text-xs text-white/70 font-medium drop-shadow px-2 line-clamp-2">
-                              {desc.length > 20 ? desc.substring(0, 20) + '...' : desc}
+                        {/* 显示图片描述内容 */}
+                        <div className="w-full h-full flex items-center justify-center p-2 bg-gradient-to-br from-gray-50 to-gray-100">
+                          <div className="text-center text-gray-600">
+                            <ImageIcon className="w-8 h-8 mx-auto mb-1 opacity-60" />
+                            <p className="text-xs leading-relaxed line-clamp-3">
+                              {desc.length > 60 ? desc.substring(0, 60) + '...' : desc}
                             </p>
+                            <p className="text-xs text-gray-400 mt-1">点击查看详情</p>
                           </div>
                         </div>
-                        
-                        {/* 模拟图片质感的噪点纹理 */}
-                        <div className="absolute inset-0 bg-[url('data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIzMDAiIGhlaWdodD0iMzAwIj48ZmlsdGVyIGlkPSJhIiB4PSIwIiB5PSIwIj48ZmVUdXJidWxlbmNlIGJhc2VGcmVxdWVuY3k9Ii43NSIgc3RpdGNoVGlsZXM9InN0aXRjaCIgdHlwZT0iZnJhY3RhbE5vaXNlIi8+PGZlQ29sb3JNYXRyaXggdHlwZT0ic2F0dXJhdGUiIHZhbHVlcz0iMCIvPjwvZmlsdGVyPjxwYXRoIGQ9Ik0wIDBoMzAwdjMwMEgweiIgZmlsdGVyPSJ1cmwoI2EpIiBvcGFjaXR5PSIuMDUiLz48L3N2Zz4=')] opacity-40" />
                       </div>
                     ))}
                   </div>
