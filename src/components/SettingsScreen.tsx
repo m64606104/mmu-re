@@ -27,10 +27,10 @@ export default function SettingsScreen({ apiConfig, onUpdateConfig, onBack }: Se
   const [isLoadingStorage, setIsLoadingStorage] = useState(false);
   
   // 语音转文字配置
-  const [sttEnabled, setSttEnabled] = useState(apiConfig.speechToText?.enabled || false);
-  const [sttApiUrl, setSttApiUrl] = useState(apiConfig.speechToText?.apiUrl || '');
-  const [sttApiKey, setSttApiKey] = useState(apiConfig.speechToText?.apiKey || '');
-  const [sttModel, setSttModel] = useState(apiConfig.speechToText?.model || 'glm-4-flash');
+  const [sttEnabled] = useState(apiConfig.speechToText?.enabled || false);
+  const [sttApiUrl] = useState(apiConfig.speechToText?.apiUrl || '');
+  const [sttApiKey] = useState(apiConfig.speechToText?.apiKey || '');
+  const [sttModel] = useState(apiConfig.speechToText?.model || 'glm-4-flash');
 
   // AI生图全局配置（商城/朋友圈共用）
   const [showImageGenModal, setShowImageGenModal] = useState(false);
