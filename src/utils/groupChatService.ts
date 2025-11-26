@@ -1,4 +1,5 @@
 import { Conversation, Message, ApiConfig, CharacterSettings } from '../types';
+import { cleanAIMessage } from './messageFormatter';
 import { analyzeConversationContinuation, selectNextRoundParticipants } from './groupChatContinuationAnalyzer';
 import { generateGroupChatSummary, evaluateConversationNaturalness } from './groupChatEnhancer';
 import { splitMessages } from './messageFormatter';
@@ -173,18 +174,22 @@ function parseAIResponse(
     return [];
   }
   
+  // 统一清洗，去除引用/回复等泄露格式，但保留媒体/红包等标记
+  const sanitized = cleanAIMessage(content.trim());
+  const sourceText = sanitized;
+  
   // 检测各种媒体类型
-  const imageMatches = [...content.matchAll(/\[图片[:：]([^\]]+)\]/g)];
-  const videoMatches = [...content.matchAll(/\[视频[:：]([^\]]+)\]/g)];
-  const voiceMatches = [...content.matchAll(/\[语音[:：](.+?)(?:[，,]\s*(?:时长)?(\d+)秒?)?\]/g)];
-  const stickerMatches = [...content.matchAll(/\[表情包[:：]([^\]]+)\]/g)];
+  const imageMatches = [...sourceText.matchAll(/\[图片[:：]([^\]]+)\]/g)];
+  const videoMatches = [...sourceText.matchAll(/\[视频[:：]([^\]]+)\]/g)];
+  const voiceMatches = [...sourceText.matchAll(/\[语音[:：](.+?)(?:[，,]\s*(?:时长)?(\d+)秒?)?\]/g)];
+  const stickerMatches = [...sourceText.matchAll(/\[表情包[:：]([^\]]+)\]/g)];
   // 支持两种格式：
   // 1. 标准格式：[发群红包:类型:金额:数量:留言] 例如 [发群红包:random:10:5:大家抢红包啦]
   // 2. 简化格式：[发群红包:描述] 或 [群红包]
-  const redPacketMatches = [...content.matchAll(/\[(?:发)?群红包(?:[:：]([^\]]+))?\]/g)];
+  const redPacketMatches = [...sourceText.matchAll(/\[(?:发)?群红包(?:[:：]([^\]]+))?\]/g)];
   
   // 移除所有媒体标记，得到纯文本内容
-  let cleanText = content
+  let cleanText = sourceText
     .replace(/\[图片[:：][^\]]+\]/g, '')
     .replace(/\[视频[:：][^\]]+\]/g, '')
     .replace(/\[语音[:：].+?\]/g, '')

@@ -1,6 +1,7 @@
 import { useState, useCallback, useEffect } from 'react';
 import { Screen, Conversation, ApiConfig, UserProfile, MomentPost, Message, ThemeSettings, ShopType } from './types';
 import HomeScreen from './components/HomeScreen';
+import TRPGScreen from './components/TRPGScreen';
 import SettingsScreen from './components/SettingsScreen';
 import SocialScreen from './components/SocialScreen';
 import ChatScreen from './components/ChatScreen';
@@ -74,7 +75,7 @@ function App() {
 
   // 桌面布局重置函数
   const resetDesktopLayout = useCallback(() => {
-    const defaultAppLayout = ['settings', 'social', 'theme', 'music', 'phone', 'bell', 'mail'];
+    const defaultAppLayout = ['settings', 'social', 'trpg', 'theme', 'music', 'phone', 'bell', 'mail'];
     const defaultQuickLayout = ['camera', 'social', 'heart', 'settings'];
     const defaultDockLayout = ['phone', 'social', 'music', 'settings'];
     
@@ -841,6 +842,14 @@ function App() {
     switch (currentScreen) {
       case 'home':
         return <HomeScreen onNavigate={navigateTo} theme={theme} />;
+      case 'trpg':
+        return (
+          <TRPGScreen 
+            onBack={() => navigateTo('home')}
+            apiConfig={apiConfig}
+            userName={userProfile.username}
+          />
+        );
       case 'chat':
         return currentConversation ? (
           <ChatScreen 

@@ -373,8 +373,9 @@ const ShoppingScreen: React.FC<ShoppingScreenProps> = ({
     
     setIsSearching(true);
     
-    // 如果配置了AI生图，使用AI生成
-    if (imageGenConfig.apiUrl && imageGenConfig.apiKey) {
+    // 如果配置了AI生图，且商城开关开启，使用AI生成
+    const shopGenEnabled = (localStorage.getItem('image_gen_shop_enabled') ?? 'true') === 'true';
+    if (shopGenEnabled && imageGenConfig.apiUrl && imageGenConfig.apiKey) {
       generateProductImage(searchQuery);
     } else {
       // 否则创建占位商品并显示弹窗

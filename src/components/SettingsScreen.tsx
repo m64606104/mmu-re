@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { ChevronLeft, Check, Loader2, Download, Upload, Database } from 'lucide-react';
 import { ApiConfig } from '../types';
 import { smartLoad, smartSave, checkStorageQuota, saveBatch, getStorageStatus, migrateData, clearAllData, loadBatch } from '../utils/storage';
+import ImageGenConfigModal from './ImageGenConfigModal';
 
 interface SettingsScreenProps {
   apiConfig: ApiConfig;
@@ -31,6 +32,17 @@ export default function SettingsScreen({ apiConfig, onUpdateConfig, onBack }: Se
   const [sttApiKey, setSttApiKey] = useState(apiConfig.speechToText?.apiKey || '');
   const [sttModel, setSttModel] = useState(apiConfig.speechToText?.model || 'glm-4-flash');
 
+  // AI生图全局配置（商城/朋友圈共用）
+  const [showImageGenModal, setShowImageGenModal] = useState(false);
+  const [imageGenConfig, setImageGenConfig] = useState<{ apiUrl: string; apiKey: string; model: string }>({
+    apiUrl: '',
+    apiKey: '',
+    model: ''
+  });
+  const [shopGenEnabled, setShopGenEnabled] = useState<boolean>(true);
+  const [momentsGenEnabled, setMomentsGenEnabled] = useState<boolean>(false);
+  const [momentsDailyLimit, setMomentsDailyLimit] = useState<number>(10);
+
   useEffect(() => {
     // 加载用户头像装饰配置
     try {
@@ -45,6 +57,25 @@ export default function SettingsScreen({ apiConfig, onUpdateConfig, onBack }: Se
     
     // 加载存储状态信息
     loadStorageInfo();
+
+    // 加载AI生图配置（全局）
+    try {
+      const apiUrl = localStorage.getItem('image_gen_api_url') || '';
+      const apiKey = localStorage.getItem('image_gen_api_key') || '';
+      const model = localStorage.getItem('image_gen_model') || '';
+      setImageGenConfig({ apiUrl, apiKey, model });
+
+      // 加载开关（商城默认开，朋友圈默认关）
+      const shopEnabledStr = localStorage.getItem('image_gen_shop_enabled');
+      const momentsEnabledStr = localStorage.getItem('image_gen_moments_enabled');
+      setShopGenEnabled(shopEnabledStr === null ? true : shopEnabledStr === 'true');
+      setMomentsGenEnabled(momentsEnabledStr === 'true');
+      const limitStr = localStorage.getItem('image_gen_moments_daily_limit');
+      const limitVal = limitStr ? parseInt(limitStr, 10) : 10;
+      setMomentsDailyLimit(Number.isFinite(limitVal) && limitVal >= 0 ? limitVal : 10);
+    } catch (e) {
+      console.error('加载AI生图配置失败:', e);
+    }
   }, []);
   
   const loadStorageInfo = async () => {
@@ -172,6 +203,20 @@ export default function SettingsScreen({ apiConfig, onUpdateConfig, onBack }: Se
       }
     });
     alert('配置已保存');
+  };
+
+  // 保存AI生图配置（商城/朋友圈共用）
+  const handleSaveImageGenConfig = (config: { apiUrl: string; apiKey: string; model: string }) => {
+    try {
+      localStorage.setItem('image_gen_api_url', config.apiUrl || '');
+      localStorage.setItem('image_gen_api_key', config.apiKey || '');
+      localStorage.setItem('image_gen_model', config.model || '');
+      setImageGenConfig(config);
+      alert('✅ AI生图配置已保存');
+    } catch (error) {
+      console.error('保存AI生图配置失败:', error);
+      alert('❌ 保存AI生图配置失败，请重试');
+    }
   };
 
   // 导出全部数据
@@ -712,91 +757,121 @@ export default function SettingsScreen({ apiConfig, onUpdateConfig, onBack }: Se
           </button>
         </div>
 
-        {/* 语音转文字设置 */}
+        {/* AI生图（商城/朋友圈） */}
         <div className="bg-white rounded-xl shadow-sm p-5 mt-4">
-          <h2 className="text-base font-semibold text-gray-900 mb-3 flex items-center gap-2">
-            🎤 语音转文字
+          <h2 className="text-base font-semibold text-gray-900 mb-3">
+            🎨 AI生图（商城/朋友圈）
           </h2>
-          
-          {/* 开关 */}
-          <div className="flex items-center justify-between mb-4 p-3 bg-gray-50 rounded-lg">
-            <div className="flex-1">
-              <p className="font-medium text-gray-900">启用语音识别</p>
-              <p className="text-xs text-gray-500 mt-1">关闭后发送语音需手动输入文字</p>
-            </div>
+
+          <div className="bg-gray-50 border border-gray-200 rounded-lg p-3 mb-3 text-sm text-gray-700">
+            <p>用于商城商品与朋友圈图片生成的专用AI配置，独立于对话模型。</p>
+            <p className="mt-1">当前状态：{imageGenConfig.apiUrl && imageGenConfig.apiKey && imageGenConfig.model ? <span className="text-green-600 font-medium">已配置</span> : <span className="text-red-600 font-medium">未配置</span>}</p>
+            {imageGenConfig.model && (
+              <p className="mt-1">当前模型：<span className="font-mono">{imageGenConfig.model}</span></p>
+            )}
+          </div>
+
+          <div className="flex gap-3">
             <button
-              onClick={() => setSttEnabled(!sttEnabled)}
-              className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-                sttEnabled ? 'bg-blue-500' : 'bg-gray-300'
-              }`}
+              onClick={() => setShowImageGenModal(true)}
+              className="flex-1 py-2.5 bg-blue-500 hover:bg-blue-600 text-white rounded-lg font-medium transition-colors"
             >
-              <span
-                className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                  sttEnabled ? 'translate-x-6' : 'translate-x-1'
-                }`}
-              />
+              配置生图AI
+            </button>
+            <button
+              onClick={() => {
+                localStorage.removeItem('image_gen_api_url');
+                localStorage.removeItem('image_gen_api_key');
+                localStorage.removeItem('image_gen_model');
+                setImageGenConfig({ apiUrl: '', apiKey: '', model: '' });
+                alert('已清空AI生图配置');
+              }}
+              className="py-2.5 px-4 border-2 border-gray-200 hover:border-gray-300 hover:bg-gray-50 rounded-lg font-medium text-gray-700 transition-colors"
+            >
+              清空配置
             </button>
           </div>
 
-          {sttEnabled && (
-            <div className="space-y-4">
+          {/* 开关设置 */}
+          <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-3">
+            {/* 商城开关（默认开） */}
+            <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  API 地址
-                </label>
-                <input
-                  type="text"
-                  value={sttApiUrl}
-                  onChange={(e) => setSttApiUrl(e.target.value)}
-                  placeholder="https://open.bigmodel.cn/api/paas/v4"
-                  className="w-full px-3 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
+                <p className="font-medium text-gray-900">商城生图</p>
+                <p className="text-xs text-gray-500 mt-0.5">搜索商品时调用生图API</p>
+              </div>
+              <button
+                onClick={() => {
+                  const next = !shopGenEnabled;
+                  setShopGenEnabled(next);
+                  localStorage.setItem('image_gen_shop_enabled', String(next));
+                }}
+                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                  shopGenEnabled ? 'bg-blue-500' : 'bg-gray-300'
+                }`}
+              >
+                <span
+                  className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                    shopGenEnabled ? 'translate-x-6' : 'translate-x-1'
+                  }`}
                 />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  API Key
-                </label>
-                <input
-                  type="password"
-                  value={sttApiKey}
-                  onChange={(e) => setSttApiKey(e.target.value)}
-                  placeholder="请输入语音识别API Key"
-                  className="w-full px-3 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  识别模型
-                </label>
-                <input
-                  type="text"
-                  value={sttModel}
-                  onChange={(e) => setSttModel(e.target.value)}
-                  placeholder="glm-4-flash"
-                  className="w-full px-3 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
-                />
-              </div>
-
-              {/* 推荐提示 */}
-              <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg">
-                <p className="text-xs text-blue-800 leading-relaxed">
-                  <span className="font-semibold">💡 推荐使用：</span><br />
-                  • <span className="font-medium">智谱清言 glm-4-flash</span><br />
-                  • 免费无限次数，识别准确度高<br />
-                  • 支持60秒语音识别<br />
-                  • API地址: <span className="font-mono text-xs">https://open.bigmodel.cn/api/paas/v4</span><br />
-                  • 在 <a href="https://open.bigmodel.cn" target="_blank" rel="noopener noreferrer" className="text-blue-600 underline">智谱AI开放平台</a> 获取免费API Key
-                </p>
-              </div>
+              </button>
             </div>
-          )}
+
+            {/* 朋友圈开关（默认关） */}
+            <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+              <div>
+                <p className="font-medium text-gray-900">朋友圈生图</p>
+                <p className="text-xs text-gray-500 mt-0.5">仅按需(on-view)生成，受每日限额控制</p>
+              </div>
+              <button
+                onClick={() => {
+                  const next = !momentsGenEnabled;
+                  setMomentsGenEnabled(next);
+                  localStorage.setItem('image_gen_moments_enabled', String(next));
+                }}
+                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                  momentsGenEnabled ? 'bg-blue-500' : 'bg-gray-300'
+                }`}
+              >
+                <span
+                  className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                    momentsGenEnabled ? 'translate-x-6' : 'translate-x-1'
+                  }`}
+                />
+              </button>
+            </div>
+          </div>
+
+          {/* 朋友圈每日上限 */}
+          <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+              <div>
+                <p className="font-medium text-gray-900">朋友圈每日上限</p>
+                <p className="text-xs text-gray-500 mt-0.5">每天最多触发的生图次数</p>
+              </div>
+              <input
+                type="number"
+                min={0}
+                max={50}
+                value={momentsDailyLimit}
+                onChange={(e) => {
+                  const v = parseInt(e.target.value || '0', 10);
+                  setMomentsDailyLimit(Number.isFinite(v) && v >= 0 ? Math.min(v, 50) : 0);
+                }}
+                onBlur={() => {
+                  const v = Number.isFinite(momentsDailyLimit) && momentsDailyLimit >= 0 ? momentsDailyLimit : 10;
+                  localStorage.setItem('image_gen_moments_daily_limit', String(v));
+                }}
+                className="w-24 px-2 py-1 border border-gray-300 rounded-md text-right"
+              />
+            </div>
+          </div>
         </div>
 
         {/* 头像装饰设置 */}
         <div className="bg-white rounded-xl shadow-sm p-5 mt-4">
-          <h2 className="text-base font-semibold text-gray-900 mb-2 flex items-center gap-2">
+          <h2 className="text-base font-semibold text-gray-900 mb-3 flex items-center gap-2">
             ✨ 头像装饰
           </h2>
           <p className="text-sm text-gray-500 mb-4">选择你喜欢的头像装饰图标</p>
@@ -986,6 +1061,13 @@ export default function SettingsScreen({ apiConfig, onUpdateConfig, onBack }: Se
           </div>
         </div>
       </div>
+      {/* AI生图配置弹窗（商城/朋友圈共用） */}
+      <ImageGenConfigModal
+        isOpen={showImageGenModal}
+        onClose={() => setShowImageGenModal(false)}
+        onSave={handleSaveImageGenConfig}
+        initialConfig={imageGenConfig}
+      />
     </div>
   );
 }

@@ -5,6 +5,7 @@
 
 import { Conversation, Message, ApiConfig } from '../types';
 import { getMemoryBank } from './memorySystem';
+import { cleanAIMessage, splitMessages } from './messageFormatter';
 
 const STORAGE_KEY = 'proactive_messaging_state';
 
@@ -172,6 +173,7 @@ const buildProactiveMessagePrompt = (conversation: Conversation): string => {
 - ⛔ 绝对不要只是机械式的打招呼（例如："早！"、"早上好"、"下午好"）
 - ⛔ 不要重复相同的内容或模式
 - ⛔ 不要忽略之前的对话内容
+ - ⛔ 不要输出任何引用/回复模板或来源标记，例如：[回复 …]、【引用 …】、（引用 …）、回复：、引用：、参考资料：、来源：、你说：、User said:、You said:、Quoted:
 
 ✅ 应该做的：
 1. **基于上下文**: 从之前的对话中找到可以继续的话题
@@ -242,16 +244,21 @@ export const sendProactiveMessage = async (
       return;
     }
     
-    // 创建消息对象
-    const newMessage: Message = {
-      id: `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-      role: 'assistant',
-      content: aiMessage.trim(),
-      timestamp: Date.now(),
-    };
+    // 清洗并拆分为多条单条气泡
+    const cleaned = cleanAIMessage(aiMessage.trim());
+    const parts = splitMessages(cleaned);
+    const finalParts = parts.length > 0 ? parts : [cleaned];
     
-    // 添加消息到对话
-    onNewMessage(conversation.id, newMessage);
+    const baseTime = Date.now();
+    finalParts.forEach((content, idx) => {
+      const newMessage: Message = {
+        id: `msg_${baseTime + idx}_${Math.random().toString(36).substr(2, 9)}`,
+        role: 'assistant',
+        content: content,
+        timestamp: baseTime + idx,
+      };
+      onNewMessage(conversation.id, newMessage);
+    });
     
     // 更新最后发送时间
     const now = Date.now();

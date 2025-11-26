@@ -9,6 +9,7 @@ import { Conversation, Message, ApiConfig } from '../types';
 import { smartLoad, smartSave } from '../utils/storage';
 import { recordWordLearning } from '../utils/aiMemorySystem';
 import { getAIChild } from '../utils/aiKindergartenManager';
+import { splitMessages } from '../utils/messageFormatter';
 
 interface AIChildChatProps {
   childId: string;
@@ -70,6 +71,21 @@ export default function AIChildChat({ childId, onBack, apiConfig }: AIChildChatP
     setIsEditingPending(false);
   };
 
+  // 回复清洗：去除“[回复…] / [引用…] / 【回复】 / （引用…）/ 行首“你说：”等格式泄露
+  const sanitizeAIReply = (text: string): string => {
+    let s = text || '';
+    s = s
+      .replace(/\[[\s\u3000]*(回复|回覆|引用|Reply|Quote)[^\]]*\]\s*/gi, '')
+      .replace(/【[\s\u3000]*(回复|回覆|引用|Reply|Quote)[^】]*】\s*/gi, '')
+      .replace(/（[\s\u3000]*(回复|回覆|引用|Reply|Quote)[^）]*）\s*/gi, '')
+      .replace(/^(你说|你:|用户说|对方说|User\s*said|You\s*said|Quoted)[：:].*$/gmi, '')
+      .replace(/^(回复|引用)[：:].*$/gmi, '')
+      .replace(/\s{2,}/g, ' ')
+      .replace(/\n{3,}/g, '\n\n')
+      .trim();
+    return s;
+  };
+
   // 第2步：确认发送，调用AI回复
   const confirmSend = async () => {
     if (!pendingMessage || !child || !child.aiChildData || isLoading) return;
@@ -107,7 +123,14 @@ export default function AIChildChat({ childId, onBack, apiConfig }: AIChildChatP
             }))
           ],
           temperature: 0.8,
-          max_tokens: 200
+          max_tokens: 512,
+          frequency_penalty: 0.3,
+          presence_penalty: 0.1,
+          stop: [
+            "[回复", "[引用", "【回复", "【引用", "（引用",
+            "引用：", "参考资料：", "来源：", "回复：", "回覆：",
+            "User said:", "You said:", "Quoted:"
+          ]
         })
       });
 
@@ -128,22 +151,23 @@ export default function AIChildChat({ childId, onBack, apiConfig }: AIChildChatP
       let aiReply = data.choices[0]?.message?.content || '...(没听懂)';
       
       // 清理AI回复中的格式标记
-      aiReply = aiReply
-        .replace(/\[回复[^\]]*\]\s*/g, '') // 移除[回复 xxx]格式
-        .replace(/\[引用[^\]]*\]\s*/g, '') // 移除[引用 xxx]格式
-        .trim();
+      aiReply = sanitizeAIReply(aiReply);
 
-      const aiMessage: Message = {
-        id: `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+      // 按自然语气拆分为多条消息气泡（更像人类对话）
+      const parts = splitMessages(aiReply);
+      const finalParts = (parts && parts.length > 0) ? parts : [aiReply];
+      const now = Date.now();
+      const aiMessages: Message[] = finalParts.map((content, idx) => ({
+        id: `msg_${now + idx}_${Math.random().toString(36).substr(2, 9)}`,
         role: 'assistant',
-        content: aiReply,
-        timestamp: Date.now()
-      };
+        content,
+        timestamp: now + idx
+      }));
 
-      setMessages(prev => [...prev, aiMessage]);
+      setMessages(prev => [...prev, ...aiMessages]);
 
       // 检测AI是否在提问（自动学习机会）
-      const aiAskedAbout = detectAIQuestion(aiReply);
+      const aiAskedAbout = detectAIQuestion(finalParts.join(' '));
       if (aiAskedAbout) {
         console.log('🤔 AI提问关于:', aiAskedAbout);
         // 标记最后一个问题，等待用户回答
@@ -154,10 +178,10 @@ export default function AIChildChat({ childId, onBack, apiConfig }: AIChildChatP
       }
 
       // 检测用户是否在教新词（聊天中学习）
-      await detectAndLearnFromChat(inputText.trim(), messages);
+      await detectAndLearnFromChat(userMessage.content, messages);
 
       // 保存对话历史
-      await saveMessages([...messages, userMessage, aiMessage]);
+      await saveMessages([...messages, userMessage, ...aiMessages]);
 
     } catch (error: any) {
       console.error('AI对话失败:', error);
@@ -386,6 +410,14 @@ ${userTitle}教你："苹果是红色的水果，脆脆的"
 你说："苹果...红色！脆脆的！"（基于${userTitle}教的）
 你说："苹果...好吃！"（简单补充，符合年龄）
 你问："${userTitle}，'甜'是什么？" ← 正确！不懂就问
+
+【🧠 学习反馈风格策略（仅当本轮用户在教你一个词或给出定义时启用）】
+- 触发条件：用户消息包含“就是”“的意思是”“是指”“表示”等教学措辞，或是在回答你刚刚的“XX是什么？”。
+- 随机选择以下一种风格（等概率 A/B/C）：
+  A. 不复述，做意译确认（不要逐字复述用户原句）。
+  B. 简短复述（≤8字关键片段）+ 意译确认。
+  C. 原样复述一次用户给的定义，然后给出简短回应。
+- 仅在本轮触发时执行；除 C 以外，请避免逐字复诵用户原句。
 
 重要：${userTitle}的教学是主要来源（80%），适当补充要简单自然（20%）！`;
   };

@@ -611,7 +611,13 @@ export const generateAIMoment = async (
         model: apiConfig.modelName,
         messages: [{ role: 'user', content: prompt }],
         temperature: 0.9,
-        max_tokens: 4000  // 🔥 增加到4000，支持多图片朋友圈（9张图×60字=540字，加文字内容）
+        max_tokens: 4000,  // 🔥 增加到4000，支持多图片朋友圈（9张图×60字=540字，加文字内容）
+        frequency_penalty: 0.1,
+        presence_penalty: 0.1,
+        stop: [
+          '朋友圈文字内容', '图片数量：', '图片描述：', '输出格式', '第一行：', '第二行：', '第三行：',
+          '[回复', '[引用', '【引用', '（引用', '引用：', '来源：', '参考资料：', '你说：', 'You said:', 'User said:', 'Quoted:'
+        ]
       })
     });
     
@@ -622,7 +628,7 @@ export const generateAIMoment = async (
     }
     
     const data = await response.json();
-    const content = data.choices?.[0]?.message?.content?.trim();
+    let content = data.choices?.[0]?.message?.content?.trim();
     
     // 📊 记录API调用
     recordApiCall();
@@ -647,6 +653,39 @@ export const generateAIMoment = async (
       console.log(`⏰ AI决定的发布时间: ${hours}:${minutes}`);
     }
     
+    // 兼容处理：先尝试抽取“图片描述：<大段文字>”段落（非[图片]格式）
+    let extractedFromDescSection: string[] = [];
+    if (content) {
+      const descSectionMatch = content.match(/图片描述\s*[：:]\s*([\s\S]*)/i);
+      if (descSectionMatch) {
+        const descBlock = descSectionMatch[1].trim();
+        // 以 “图片1/图1/图片一/图片①/图片:” 等分段，否则作为单图描述
+        const splitPatterns = /(图片\s*\d+|图\s*\d+|图片[一二三四五六七八九十①②③④⑤⑥⑦⑧⑨]|图片\s*[:：])/;
+        const parts: string[] = descBlock.split(/\n+/).map((s: string) => s.trim()).filter(Boolean) as string[];
+        if (parts.length > 0) {
+          // 简单规则：如果包含明显的分段标记，则逐段收集；否则合并为单段
+          if (parts.some((p: string) => splitPatterns.test(p))) {
+            let buffer: string[] = [];
+            for (const p of parts) {
+              if (splitPatterns.test(p)) {
+                if (buffer.length > 0) {
+                  extractedFromDescSection.push(buffer.join(' '));
+                  buffer = [];
+                }
+              } else {
+                buffer.push(p);
+              }
+            }
+            if (buffer.length > 0) extractedFromDescSection.push(buffer.join(' '));
+          } else {
+            extractedFromDescSection.push(parts.join(' '));
+          }
+        }
+        // 从原文中移除整个“图片描述：…”段
+        content = content.replace(/图片描述\s*[：:]\s*[\s\S]*$/i, '').trim();
+      }
+    }
+
     // 清理内容并解析图片描述
     // 按行分割，移除时间行，保留其他所有内容
     const lines = content.split('\n');
@@ -691,14 +730,25 @@ export const generateAIMoment = async (
         .replace(/\[图片\d*[:：][^\[\]]{10,}$/g, '')  // 🔥 不完整标记（行尾截断）
         .trim();
       
-      // 如果不是纯图片行，保留文字内容
-      if (cleanedLine || !hasImage) {
-        contentLines.push(cleanedLine);
+      // 过滤模板行：图片数量/图片描述/示例/输出格式/第X行
+      const isTemplateLine = /^(图片数量|图片描述|示例|输出格式|第[一二三四五六七八九十]\s*行)\s*[:：]?/i.test(cleanedLine);
+      if (!isTemplateLine) {
+        // 如果不是纯图片行，保留文字内容
+        if (cleanedLine || !hasImage) {
+          contentLines.push(cleanedLine);
+        }
       }
     }
     
     // 合并内容行
     let cleanedContent = contentLines.join('\n').trim();
+
+    // 如果未识别出任何[图片]描述，但解析到了“图片描述：”段，则采用该段内容作为图片描述
+    if (imageDescriptions.length === 0 && extractedFromDescSection.length > 0) {
+      // 根据期望图片数量裁剪/取前几条
+      const expectedCount = Math.max(1, Math.min((expectedFormat?.imageCount || 1), extractedFromDescSection.length));
+      imageDescriptions.push(...extractedFromDescSection.slice(0, expectedCount).map(s => s.trim()).filter(Boolean));
+    }
     
     // 最后清理：移除开头的引号和"朋友圈："前缀
     cleanedContent = cleanedContent
@@ -737,6 +787,8 @@ export const generateAIMoment = async (
     cleanedContent = cleanedContent
       .replace(/\[图片\d*[:：][^\]]+\]/g, '')  // 完整标记
       .replace(/\[图片\d*[:：][^\[\]]+/g, '')  // 🔥 任何位置的不完整标记
+      // 再次移除模板行（双保险）
+      .replace(/^\s*(图片数量|图片描述|示例|输出格式|第[一二三四五六七八九十]\s*行)\s*[:：]?.*$/gmi, '')
       .trim();
     
     // 🔥 最终验证：确保内容不是只包含无意义的代码片段（但允许只有图片没有文字）

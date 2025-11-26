@@ -4552,7 +4552,6 @@ ${doc.content}`;
       
       // 清理AI回复中的内部思考内容和引用链接
       if (assistantMessage) {
-        // 移除常见的内部思考模式
         assistantMessage = assistantMessage
           // 移除"silently..."开头的内部思考
           .replace(/^silently\s+.*?(?=\n|$)/gmi, '')
@@ -4571,6 +4570,12 @@ ${doc.content}`;
           .replace(/参考资料[:：]\s*[\s\S]*$/gmi, '')
           .replace(/来源[:：]\s*[\s\S]*$/gmi, '')
           .replace(/资料来源[:：]\s*[\s\S]*$/gmi, '')
+          // 移除方括号/书名号/圆括号中的“回复/引用”类标签
+          .replace(/\[[\s\u3000]*(回复|回覆|引用|Reply|Quote)[^\]]*\]\s*/gi, '')
+          .replace(/【[\s\u3000]*(回复|回覆|引用|Reply|Quote)[^】]*】\s*/gi, '')
+          .replace(/（[\s\u3000]*(回复|回覆|引用|Reply|Quote)[^）]*）\s*/gi, '')
+          // 移除行首的“回复/引用/参考资料/来源/You said/User said/Quoted”等
+          .replace(/^[\t\s]*(回复|回覆|引用|参考资料|来源|User\s*said|You\s*said|Quoted)[:：].*$/gmi, '')
           // 移除 [数字] 格式的引用标记和紧随的链接
           .replace(/\[\d+\]\s*\[.*?\]\s*\(https?:\/\/[^\)]+\)/g, '')
           .replace(/\[\d+\]\s*\(https?:\/\/[^\)]+\)/g, '')

@@ -30,7 +30,12 @@ export const cleanAIMessage = (message: string): string => {
   cleaned = cleaned.replace(/(?:主要)?引用[:：]\s*[\s\S]*$/gmi, '');
   cleaned = cleaned.replace(/参考资料[:：]\s*[\s\S]*$/gmi, '');
   cleaned = cleaned.replace(/来源[:：]\s*[\s\S]*$/gmi, '');
-  cleaned = cleaned.replace(/资料来源[:：]\s*[\s\S]*$/gmi, '');
+  // 移除方括号/书名号/圆括号中的“回复/引用”类标签
+  cleaned = cleaned.replace(/\[[\s\u3000]*(回复|回覆|引用|Reply|Quote)[^\]]*\]\s*/gi, '');
+  cleaned = cleaned.replace(/【[\s\u3000]*(回复|回覆|引用|Reply|Quote)[^】]*】\s*/gi, '');
+  cleaned = cleaned.replace(/（[\s\u3000]*(回复|回覆|引用|Reply|Quote)[^）]*）\s*/gi, '');
+  // 移除行首的“回复: / 引用: / 参考资料: / 来源:”
+  cleaned = cleaned.replace(/^[\t\s]*(回复|回覆|引用|参考资料|来源)[:：].*$/gmi, '');
   
   // 4. 移除Markdown链接格式
   // [链接文字](url) -> 完全移除
@@ -83,7 +88,7 @@ export const splitMessages = (message: string): string[] => {
     /\[退回礼物\]/g,              // 退回礼物
     /\[同意代付\]/g,              // 同意代付
     /\[拒绝代付\]/g,              // 拒绝代付
-    /\[回复\s+(?:我|你)\s+说的"[^"]+"\]/g,  // 引用回复
+    // （移除对“[回复 我/你 说的"…"]”的保护，确保后续 cleanAIMessage 能清理掉该格式）
     /小红书瀑布流\[[\s\S]*?\]/g,   // 小红书
     /\d+\.\d+%/g,  // 🎯 保护百分数（如 3.8%、9.9%）
     /￥?\d+\.\d+[元亿万]?/g  // 🎯 保护金额（如99.9元、3.14亿）

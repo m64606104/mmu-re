@@ -42,6 +42,177 @@ export default function MomentsScreen({
   const [replyToComment, setReplyToComment] = useState<{ id: string; authorName: string } | null>(null);
   const [showNotifications, setShowNotifications] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
+  // 朋友圈图片描述占位渲染开关（默认关闭）：纯文本就是文本，图片就显示真实图片
+  const SHOW_IMAGE_DESCRIPTION_PLACEHOLDERS = false;
+
+  // —— 按需(on-view)生图：最小接入 ——
+  const momentRefs = useRef<Map<string, HTMLElement>>(new Map());
+  const observerRef = useRef<IntersectionObserver | null>(null);
+  const scheduledRef = useRef<Map<string, number>>(new Map());
+  const generatedRef = useRef<Set<string>>(new Set());
+  const isGeneratingRef = useRef<boolean>(false);
+
+  const registerMomentRef = (id: string, el: HTMLElement | null) => {
+    if (el) {
+      momentRefs.current.set(id, el);
+      if (observerRef.current) observerRef.current.observe(el);
+    } else {
+      const prev = momentRefs.current.get(id);
+      if (prev && observerRef.current) observerRef.current.unobserve(prev);
+      momentRefs.current.delete(id);
+    }
+  };
+
+  const getTodayKey = () => {
+    const d = new Date();
+    const mm = `${d.getMonth() + 1}`.padStart(2, '0');
+    const dd = `${d.getDate()}`.padStart(2, '0');
+    return `${d.getFullYear()}-${mm}-${dd}`;
+  };
+
+  const getDailyCount = () => {
+    try {
+      const key = `image_gen_moments_daily_${getTodayKey()}`;
+      return parseInt(localStorage.getItem(key) || '0', 10) || 0;
+    } catch { return 0; }
+  };
+
+  const getDailyLimit = () => {
+    try {
+      const raw = localStorage.getItem('image_gen_moments_daily_limit');
+      const val = raw ? parseInt(raw, 10) : 10;
+      return Number.isFinite(val) && val >= 0 ? val : 10;
+    } catch {
+      return 10;
+    }
+  };
+
+  const incDailyCount = (delta: number = 1) => {
+    try {
+      const key = `image_gen_moments_daily_${getTodayKey()}`;
+      const curr = getDailyCount();
+      localStorage.setItem(key, String(curr + delta));
+    } catch {}
+  };
+
+  const getImageGenConfig = () => ({
+    apiUrl: localStorage.getItem('image_gen_api_url') || '',
+    apiKey: localStorage.getItem('image_gen_api_key') || '',
+    model: localStorage.getItem('image_gen_model') || ''
+  });
+
+  const buildImagesEndpoint = (base: string) => {
+    let apiUrl = base.trim();
+    if (apiUrl.endsWith('/')) apiUrl = apiUrl.slice(0, -1);
+    if (apiUrl.includes('openai.com') || apiUrl.includes('api.openai.com')) {
+      return `${apiUrl}/v1/images/generations`;
+    }
+    if (!apiUrl.includes('/v1/')) return `${apiUrl}/v1/images/generations`;
+    return apiUrl.endsWith('/images/generations') ? apiUrl : `${apiUrl}/images/generations`;
+  };
+
+  const persistMomentImages = async (authorId: string, momentId: string, urls: string[]) => {
+    try {
+      const momentsKey = 'moments_data';
+      const stored = localStorage.getItem(momentsKey);
+      if (!stored) return;
+      const all = JSON.parse(stored);
+      const bucket = all.find((d: any) => d.contactId === authorId);
+      if (!bucket) return;
+      const post = bucket.posts.find((p: any) => p.id === momentId);
+      if (!post) return;
+      post.images = Array.isArray(post.images) ? post.images : [];
+      for (const u of urls) if (!post.images.includes(u)) post.images.push(u);
+      localStorage.setItem(momentsKey, JSON.stringify(all));
+      const updated = await getAllMomentPosts();
+      setAiMoments(updated);
+    } catch (e) {
+      console.error('保存朋友圈图片失败:', e);
+    }
+  };
+
+  const generateImageFromDescription = async (desc: string): Promise<string | null> => {
+    const cfg = getImageGenConfig();
+    if (!cfg.apiUrl || !cfg.apiKey || !cfg.model) return null;
+    try {
+      const endpoint = buildImagesEndpoint(cfg.apiUrl);
+      const requestBody: any = {
+        prompt: `${desc}\nrealistic photography, high quality, detailed lighting, natural colors, social media style`,
+        model: cfg.model,
+        n: 1
+      };
+      if (cfg.model.includes('dall-e')) {
+        requestBody.size = '1024x1024';
+        requestBody.quality = 'standard';
+      } else if (cfg.model.includes('stable-diffusion') || cfg.model.includes('sd')) {
+        requestBody.width = 1024;
+        requestBody.height = 1024;
+        requestBody.steps = 20;
+        requestBody.cfg_scale = 7;
+      } else {
+        requestBody.size = '1024x1024';
+      }
+      const resp = await fetch(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${cfg.apiKey}` },
+        body: JSON.stringify(requestBody)
+      });
+      if (!resp.ok) {
+        console.error('朋友圈生图API失败:', await resp.text());
+        return null;
+      }
+      const data = await resp.json();
+      let imageUrl = '';
+      if (data.data && data.data.length > 0) imageUrl = data.data[0].url || data.data[0].b64_json;
+      else if (data.url) imageUrl = data.url;
+      else if (data.images && data.images.length > 0) imageUrl = data.images[0];
+      else if (data.image) imageUrl = data.image;
+      else if (data.output && data.output.length > 0) imageUrl = data.output[0];
+      if (!imageUrl) return null;
+      if (!imageUrl.startsWith('http') && !imageUrl.startsWith('data:image/')) {
+        const base = cfg.apiUrl.endsWith('/') ? cfg.apiUrl.slice(0, -1) : cfg.apiUrl;
+        imageUrl = imageUrl.startsWith('/') ? `${base}${imageUrl}` : imageUrl;
+      }
+      return imageUrl;
+    } catch (e) {
+      console.error('朋友圈生图异常:', e);
+      return null;
+    }
+  };
+
+  const scheduleGenerateFor = (moment: any) => {
+    const enabled = (localStorage.getItem('image_gen_moments_enabled') || 'false') === 'true';
+    if (!enabled) return;
+    if (!moment || !moment.authorId) return; // 仅AI朋友圈
+    if (Array.isArray(moment.images) && moment.images.length > 0) return;
+    if (!Array.isArray(moment.imageDescriptions) || moment.imageDescriptions.length === 0) return;
+    if (getDailyCount() >= getDailyLimit()) return;
+    if (generatedRef.current.has(moment.id)) return;
+
+    // 去抖：进入视口后延迟1.2s
+    if (!scheduledRef.current.has(moment.id)) {
+      const timer = window.setTimeout(async () => {
+        scheduledRef.current.delete(moment.id);
+        if (isGeneratingRef.current) return; // 简单串行
+        if (getDailyCount() >= getDailyLimit()) return;
+        isGeneratingRef.current = true;
+        try {
+          const desc = String(moment.imageDescriptions[0] || '').slice(0, 500);
+          const url = await generateImageFromDescription(desc);
+          if (url) {
+            incDailyCount(1);
+            await persistMomentImages(moment.authorId, moment.id, [url]);
+            generatedRef.current.add(moment.id);
+          }
+        } finally {
+          isGeneratingRef.current = false;
+        }
+      }, 1200);
+      scheduledRef.current.set(moment.id, timer);
+    }
+  };
+
+  // moved below after allMoments definition
 
   // 加载未读通知数量
   useEffect(() => {
@@ -117,6 +288,28 @@ export default function MomentsScreen({
 
   // 合并用户朋友圈和AI朋友圈
   const allMoments = [...moments, ...aiMoments].sort((a, b) => b.timestamp - a.timestamp);
+
+  // 监听卡片进入视口，按需(on-view)触发生图调度
+  useEffect(() => {
+    const io = new IntersectionObserver((entries) => {
+      entries.forEach((entry) => {
+        if (entry.isIntersecting) {
+          // 查找对应的moment
+          for (const m of allMoments) {
+            const el = momentRefs.current.get(m.id);
+            if (el === entry.target) {
+              scheduleGenerateFor(m);
+              break;
+            }
+          }
+        }
+      });
+    }, { threshold: 0.35 });
+    observerRef.current = io;
+    // 绑定现有元素
+    momentRefs.current.forEach((el) => io.observe(el));
+    return () => io.disconnect();
+  }, [allMoments]);
 
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
@@ -505,7 +698,11 @@ export default function MomentsScreen({
               const userAvatar = authorInfo.avatar;
               
               return (
-              <div key={moment.id} className="bg-white rounded-xl p-4 shadow-sm max-w-full overflow-hidden">
+              <div
+                key={moment.id}
+                ref={(el) => registerMomentRef(moment.id, el)}
+                className="bg-white rounded-xl p-4 shadow-sm max-w-full overflow-hidden"
+              >
                 {/* User Info */}
                 <div className="flex items-center gap-3 mb-3">
                   <div className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-400 to-purple-500 flex items-center justify-center overflow-hidden flex-shrink-0">
@@ -594,7 +791,7 @@ export default function MomentsScreen({
                 )}
 
                 {/* Image Descriptions (AI生成的图片描述 - 半透明灰色占位符) */}
-                {moment.imageDescriptions && moment.imageDescriptions.length > 0 && (
+                {SHOW_IMAGE_DESCRIPTION_PLACEHOLDERS && moment.imageDescriptions && moment.imageDescriptions.length > 0 && !(moment.images && moment.images.length > 0) && (
                   <div className={`grid mb-3 ${getImageGridClass(moment.imageDescriptions.length)}`}>
                     {moment.imageDescriptions.map((desc, index) => (
                       <div 
