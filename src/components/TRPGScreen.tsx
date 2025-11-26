@@ -47,6 +47,45 @@ const SAVES_KEY = 'trpg_saves';
 const CHARACTERS_KEY = 'trpg_characters';
 const CURRENT_CHARACTER_KEY = 'trpg_current_character';
 
+type FetchRetryOptions = {
+  retries?: number;
+  timeoutMs?: number;
+  backoffMs?: number;
+  retryOnStatuses?: number[];
+};
+
+async function fetchWithRetry(url: string, init: RequestInit, opts: FetchRetryOptions = {}): Promise<Response> {
+  const {
+    retries = 2,
+    timeoutMs = 12000,
+    backoffMs = 600,
+    retryOnStatuses = [429, 502, 503, 504]
+  } = opts;
+
+  let lastError: any = null;
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      const resp = await fetch(url, { ...init, signal: controller.signal });
+      clearTimeout(timer);
+      if (resp.ok) return resp;
+      if (retryOnStatuses.includes(resp.status) || resp.status >= 500) {
+        lastError = new Error(`HTTP ${resp.status}`);
+      } else {
+        return resp; // 非重试状态码，直接返回给上层处理
+      }
+    } catch (e: any) {
+      clearTimeout(timer);
+      lastError = e;
+    }
+    if (attempt < retries) {
+      await new Promise(r => setTimeout(r, backoffMs * (attempt + 1)));
+    }
+  }
+  throw lastError || new Error('Network error');
+}
+
 export default function TRPGScreen({ onBack, apiConfig, userName }: TRPGScreenProps) {
   const [session, setSession] = useState<TRPGSession | null>(null);
   const [input, setInput] = useState('');
@@ -171,11 +210,15 @@ export default function TRPGScreen({ onBack, apiConfig, userName }: TRPGScreenPr
     }));
     const messages = [{ role: 'system', content: systemPrompt }, ...history, { role: 'user', content: playerText }];
     try {
-      const resp = await fetch(`${apiConfig.baseUrl}/v1/chat/completions`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiConfig.apiKey}` },
-        body: JSON.stringify({ model: apiConfig.modelName, messages, temperature: 0.8, max_tokens: 300, presence_penalty: 0.1, frequency_penalty: 0.1 })
-      });
+      const resp = await fetchWithRetry(
+        `${apiConfig.baseUrl}/v1/chat/completions`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiConfig.apiKey}` },
+          body: JSON.stringify({ model: apiConfig.modelName, messages, temperature: 0.8, max_tokens: 300, presence_penalty: 0.1, frequency_penalty: 0.1 })
+        },
+        { retries: 2, timeoutMs: 12000, backoffMs: 700 }
+      );
       if (!resp.ok) {
         const t = await resp.text();
         return `（DM生成失败 ${resp.status}）${t.slice(0, 120)}`;
@@ -278,14 +321,18 @@ export default function TRPGScreen({ onBack, apiConfig, userName }: TRPGScreenPr
     const context = dm ? dm.content : '';
     const sys = '你是TRPG掷骰顾问。根据DM文本，给出一个新手友好的骰子表达式（如1d20+2、2d6），尽量简洁。只输出表达式，不要解释。';
     try {
-      const resp = await fetch(`${apiConfig.baseUrl}/v1/chat/completions`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiConfig.apiKey}` },
-        body: JSON.stringify({ model: apiConfig.modelName, messages: [
-          { role: 'system', content: sys },
-          { role: 'user', content: context || '普通行动检定' }
-        ], temperature: 0.2, max_tokens: 20 })
-      });
+      const resp = await fetchWithRetry(
+        `${apiConfig.baseUrl}/v1/chat/completions`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiConfig.apiKey}` },
+          body: JSON.stringify({ model: apiConfig.modelName, messages: [
+            { role: 'system', content: sys },
+            { role: 'user', content: context || '普通行动检定' }
+          ], temperature: 0.2, max_tokens: 20 })
+        },
+        { retries: 2, timeoutMs: 8000, backoffMs: 600 }
+      );
       if (!resp.ok) throw new Error('failed');
       const data = await resp.json();
       const content = data.choices?.[0]?.message?.content?.trim() || '';
