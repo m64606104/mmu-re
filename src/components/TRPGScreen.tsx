@@ -215,7 +215,7 @@ export default function TRPGScreen({ onBack, apiConfig, userName }: TRPGScreenPr
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiConfig.apiKey}` },
-          body: JSON.stringify({ model: apiConfig.modelName, messages, temperature: 0.8, max_tokens: 300, presence_penalty: 0.1, frequency_penalty: 0.1 })
+          body: JSON.stringify({ model: apiConfig.modelName, messages, temperature: 0.8, max_tokens: 800, presence_penalty: 0.1, frequency_penalty: 0.1 })
         },
         { retries: 2, timeoutMs: 12000, backoffMs: 700 }
       );
@@ -329,7 +329,7 @@ export default function TRPGScreen({ onBack, apiConfig, userName }: TRPGScreenPr
           body: JSON.stringify({ model: apiConfig.modelName, messages: [
             { role: 'system', content: sys },
             { role: 'user', content: context || '普通行动检定' }
-          ], temperature: 0.2, max_tokens: 20 })
+          ], temperature: 0.2, max_tokens: 60 })
         },
         { retries: 2, timeoutMs: 8000, backoffMs: 600 }
       );
