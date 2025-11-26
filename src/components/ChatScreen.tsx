@@ -48,6 +48,7 @@ import { SubChatSuggestion } from '../utils/aiSubChatInitiator';
 // AI理解力经验系统集成
 import { ChatSessionManager, handleChatExperienceUpdate } from '../utils/chatExperienceIntegration';
 import { bootstrapComprehensionSystem } from '../utils/comprehensionSystemBootstrap';
+import { notifyMessageObserved } from '../utils/aiMessageObserver';
 // 消息转发和多选相关导入
 import MessageSelectionToolbar from './MessageSelectionToolbar';
 import ForwardTargetSelector from './ForwardTargetSelector';
@@ -1948,10 +1949,22 @@ ${characterInfo?.languageStyle ? `语言风格：${characterInfo.languageStyle}`
       };
     }
 
+    const updatedMessages = [...conversation.messages, newMessage];
+    const now = Date.now();
+
     onUpdateConversation(conversation.id, {
-      messages: [...conversation.messages, newMessage],
-      lastMessageTime: Date.now(),
+      messages: updatedMessages,
+      lastMessageTime: now,
     });
+
+    notifyMessageObserved(
+      {
+        ...conversation,
+        messages: updatedMessages,
+        lastMessageTime: now,
+      },
+      newMessage
+    );
 
     // 如果AI正在生成，将用户消息添加到待处理队列
     if (isGenerating && conversation.type === 'group') {
