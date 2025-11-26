@@ -46,6 +46,8 @@ import { load, save, initializeCache, checkMigrationNeeded, migrateData, getStor
 import { generateAIMoment } from './utils/aiMomentsGenerator';
 import { backgroundGenerationService } from './utils/backgroundGenerationService';
 import { initializeLetters, initializeLetterTimers } from './utils/letterService';
+import { initFootprintStorage } from './utils/footprintStorage';
+import { initializeFootprintScheduler } from './utils/footprintScheduler';
 import { Letter } from './types/letter';
 
 function App() {
@@ -127,6 +129,22 @@ function App() {
         await initializeMemorySystem();
       } catch (error) {
         console.error('❌ 记忆系统初始化失败:', error);
+      }
+      
+      // 🛤️ 初始化轨迹存储服务
+      try {
+        await initFootprintStorage();
+        console.log('✅ 轨迹存储服务初始化成功');
+      } catch (error) {
+        console.error('❌ 轨迹存储服务初始化失败:', error);
+      }
+      
+      // 🕐 初始化轨迹自动刷新调度器
+      try {
+        initializeFootprintScheduler();
+        console.log('✅ 轨迹调度器初始化成功');
+      } catch (error) {
+        console.error('❌ 轨迹调度器初始化失败:', error);
       }
       
       // 🔄 检查并执行数据迁移
