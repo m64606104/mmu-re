@@ -17,9 +17,105 @@ export interface AIPerceptionState {
 
 class MessagePerceptionService {
   private aiPerceptionStates: Map<string, AIPerceptionState> = new Map();
+  private dbName = 'AIPerceptionDB';
+  private dbVersion = 1;
+  private db: IDBDatabase | null = null;
 
   constructor() {
-    // 初始化服务
+    this.initDB().catch(error => {
+      console.error('🧠 [感知服务] 初始化失败:', error);
+    });
+  }
+
+  /**
+   * 初始化IndexedDB
+   */
+  private async initDB(): Promise<void> {
+    return new Promise((resolve, reject) => {
+      const request = indexedDB.open(this.dbName, this.dbVersion);
+      
+      request.onerror = () => {
+        console.error('🧠 [感知服务] IndexedDB初始化失败:', request.error);
+        reject(request.error);
+      };
+      
+      request.onsuccess = () => {
+        this.db = request.result;
+        console.log('🧠 [感知服务] IndexedDB初始化成功');
+        resolve();
+      };
+      
+      request.onupgradeneeded = () => {
+        const db = request.result;
+        
+        // 创建感知状态存储
+        if (!db.objectStoreNames.contains('perceptionStates')) {
+          const store = db.createObjectStore('perceptionStates', {
+            keyPath: 'id'
+          });
+          store.createIndex('conversationId', 'conversationId', { unique: false });
+          store.createIndex('aiId', 'aiId', { unique: false });
+        }
+      };
+    });
+  }
+
+  /**
+   * 保存感知状态到IndexedDB
+   */
+  private async savePerceptionState(state: AIPerceptionState): Promise<void> {
+    if (!this.db) {
+      await this.initDB();
+    }
+    
+    return new Promise((resolve, reject) => {
+      if (!this.db) {
+        reject(new Error('Database not initialized'));
+        return;
+      }
+      
+      const transaction = this.db.transaction(['perceptionStates'], 'readwrite');
+      const store = transaction.objectStore('perceptionStates');
+      const id = `${state.conversationId}_${state.aiId}`;
+      
+      const request = store.put({ ...state, id });
+      
+      request.onsuccess = () => resolve();
+      request.onerror = () => reject(request.error);
+    });
+  }
+
+  /**
+   * 从IndexedDB加载感知状态
+   */
+  private async loadPerceptionState(conversationId: string, aiId: string): Promise<AIPerceptionState | null> {
+    if (!this.db) {
+      await this.initDB();
+    }
+    
+    return new Promise((resolve, reject) => {
+      if (!this.db) {
+        reject(new Error('Database not initialized'));
+        return;
+      }
+      
+      const transaction = this.db.transaction(['perceptionStates'], 'readonly');
+      const store = transaction.objectStore('perceptionStates');
+      const id = `${conversationId}_${aiId}`;
+      
+      const request = store.get(id);
+      
+      request.onsuccess = () => {
+        const result = request.result;
+        if (result) {
+          const { id, ...state } = result;
+          resolve(state as AIPerceptionState);
+        } else {
+          resolve(null);
+        }
+      };
+      request.onerror = () => reject(request.error);
+    });
   }
 
   /**
@@ -77,11 +173,12 @@ class MessagePerceptionService {
           messageType: messageType
         };
         
-        // 保存到内存缓存
+        // 保存到IndexedDB和内存缓存
+        await this.savePerceptionState(perceptionState);
         const stateKey = `${conversation.id}_${aiId}`;
         this.aiPerceptionStates.set(stateKey, perceptionState);
         
-        console.log(`�� [消息感知] AI ${aiId} 已感知消息: "${messageContent.substring(0, 30)}..."`);
+        console.log(`🧠 [消息感知] AI ${aiId} 已感知消息: "${messageContent.substring(0, 30)}..."`);
       }
       
     } catch (error) {
@@ -145,9 +242,25 @@ class MessagePerceptionService {
   /**
    * 获取AI的感知状态
    */
-  getAIPerceptionState(conversationId: string, aiId: string): AIPerceptionState | null {
+  async getAIPerceptionState(conversationId: string, aiId: string): Promise<AIPerceptionState | null> {
     const stateKey = `${conversationId}_${aiId}`;
-    return this.aiPerceptionStates.get(stateKey) || null;
+    
+    // 先从内存缓存获取
+    if (this.aiPerceptionStates.has(stateKey)) {
+      return this.aiPerceptionStates.get(stateKey) || null;
+    }
+    
+    // 从IndexedDB加载
+    try {
+      const state = await this.loadPerceptionState(conversationId, aiId);
+      if (state) {
+        this.aiPerceptionStates.set(stateKey, state);
+      }
+      return state;
+    } catch (error) {
+      console.error('❌ [感知服务] 获取感知状态失败:', error);
+      return null;
+    }
   }
 
   /**

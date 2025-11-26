@@ -54,7 +54,7 @@ export async function testMessagePerception(): Promise<boolean> {
     await new Promise(resolve => setTimeout(resolve, 100));
     
     // 4. 验证AI感知状态
-    const perceptionState = messagePerceptionService.getAIPerceptionState(
+    const perceptionState = await messagePerceptionService.getAIPerceptionState(
       testConversation.id, 
       'test_ai_1'
     );
@@ -125,7 +125,7 @@ export async function testMultipleMessageTypes(): Promise<void> {
   await new Promise(resolve => setTimeout(resolve, 200));
   
   // 验证最后一条音乐消息的感知
-  const perceptionState = messagePerceptionService.getAIPerceptionState(
+  const perceptionState = await messagePerceptionService.getAIPerceptionState(
     testConversation.id,
     'test_ai_1'
   );
@@ -165,7 +165,7 @@ export async function testGroupChatPerception(): Promise<void> {
   let allPerceived = true;
   
   for (const aiId of aiIds) {
-    const perceptionState = messagePerceptionService.getAIPerceptionState(
+    const perceptionState = await messagePerceptionService.getAIPerceptionState(
       groupConversation.id,
       aiId
     );
