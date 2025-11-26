@@ -1,7 +1,7 @@
 // 🎯 人物行动轨迹生成服务
 // 基于现有数据源（聊天、状态、朋友圈等）智能生成轨迹
 
-import { FootprintActivity, DailyFootprint, ActivityType, ActivitySource } from '../types/footprint';
+import { FootprintActivity, DailyFootprint, ActivityType } from '../types/footprint';
 import { AIStatus, Message, Conversation, SubChat } from '../types';
 import { footprintStorage } from './footprintStorage';
 
@@ -255,6 +255,8 @@ class FootprintGeneratorService {
 
   // 获取系统事件
   private async getSystemEvents(conversationId: string) {
+    // 当前暂未使用conversationId，仅预留扩展
+    void conversationId;
     // 这里可以收集各种系统事件：
     // - 文档上传/查看
     // - 财务交易
@@ -292,7 +294,6 @@ class FootprintGeneratorService {
     config: FootprintGenerationConfig
   ): Promise<FootprintActivity[]> {
     const activities: FootprintActivity[] = [];
-    const now = Date.now();
 
     // 1. 基于聊天消息生成活动
     if (sources.chatMessages.length > 0) {
@@ -343,6 +344,8 @@ class FootprintGeneratorService {
     messages: Message[],
     timeContext: any
   ): FootprintActivity | null {
+    // 目前未直接使用timeContext，预留以后按时间段调整文案
+    void timeContext;
     if (messages.length === 0) return null;
 
     const latestMessage = messages[messages.length - 1];
@@ -371,6 +374,8 @@ class FootprintGeneratorService {
     statusData: any,
     timeContext: any
   ): FootprintActivity | null {
+    // 目前未直接使用timeContext，预留以后按时间段调整文案
+    void timeContext;
     if (!statusData.currentActivity) return null;
 
     return {
@@ -393,6 +398,8 @@ class FootprintGeneratorService {
     momentsData: any,
     timeContext: any
   ): FootprintActivity | null {
+    // 目前未直接使用timeContext，预留以后按时间段调整文案
+    void timeContext;
     const recentPost = momentsData.recentPosts[0];
     if (!recentPost) return null;
 
@@ -464,6 +471,8 @@ class FootprintGeneratorService {
     conversationId: string,
     newActivities: FootprintActivity[]
   ) {
+    // 当前实现未区分这次新增活动与历史，只按今日全部活动汇总
+    void newActivities;
     const today = new Date().toISOString().split('T')[0];
     
     // 获取今天的所有活动
@@ -549,6 +558,8 @@ class FootprintGeneratorService {
 
   // 辅助方法：总结聊天话题
   private summarizeChatTopic(messages: Message[]): string {
+    // 当前实现仅随机选择话题，这里显式使用messages以避免未使用参数告警
+    void messages;
     const topics = ['各种话题', '生活近况', '工作学习', '兴趣爱好', '心情想法'];
     return topics[Math.floor(Math.random() * topics.length)];
   }

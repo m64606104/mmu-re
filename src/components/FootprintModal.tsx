@@ -3,7 +3,7 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { X, Clock, MapPin, Activity, Filter, Calendar, BarChart3, RefreshCw } from 'lucide-react';
-import { FootprintActivity, DailyFootprint, FootprintFilters, ActivityType, ActivitySource } from '../types/footprint';
+import { FootprintActivity, FootprintFilters, ActivityType, ActivitySource } from '../types/footprint';
 import { footprintStorage } from '../utils/footprintStorage';
 import { generateFootprintIncremental } from '../utils/footprintGenerator_new';
 import { footprintScheduler } from '../utils/footprintScheduler';
@@ -38,7 +38,6 @@ export const FootprintModal: React.FC<FootprintModalProps> = ({
   onClose
 }) => {
   const [activities, setActivities] = useState<FootprintActivity[]>([]);
-  const [dailyStats, setDailyStats] = useState<DailyFootprint[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<'timeline' | 'stats'>('timeline');
   const [filters, setFilters] = useState<FootprintFilters>({});
@@ -61,13 +60,12 @@ export const FootprintModal: React.FC<FootprintModalProps> = ({
       setLoading(true);
       
       // 加载最近30天的数据
-      const { activities: recentActivities, dailySummaries } = await footprintStorage.getRecentStats(
+      const { activities: recentActivities } = await footprintStorage.getRecentStats(
         conversationId, 
         30
       );
 
       setActivities(recentActivities);
-      setDailyStats(dailySummaries);
     } catch (error) {
       console.error('加载轨迹数据失败:', error);
     } finally {
@@ -373,7 +371,7 @@ export const FootprintModal: React.FC<FootprintModalProps> = ({
 
                         {/* 活动项 */}
                         <div className="space-y-4">
-                          {dayActivities.map((activity, index) => {
+                          {dayActivities.map((activity) => {
                             const config = ACTIVITY_CONFIG[activity.activityType];
                             return (
                               <div key={activity.id} className="relative flex items-start gap-4">
