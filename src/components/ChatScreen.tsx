@@ -48,7 +48,7 @@ import { SubChatSuggestion } from '../utils/aiSubChatInitiator';
 // AI理解力经验系统集成
 import { ChatSessionManager, handleChatExperienceUpdate } from '../utils/chatExperienceIntegration';
 import { bootstrapComprehensionSystem } from '../utils/comprehensionSystemBootstrap';
-import { notifyMessageObserved } from '../utils/aiMessageObserver';
+import { notifyAIMessageObserved } from '../utils/aiMessageObserver';
 // 消息转发和多选相关导入
 import MessageSelectionToolbar from './MessageSelectionToolbar';
 import ForwardTargetSelector from './ForwardTargetSelector';
@@ -1957,7 +1957,8 @@ ${characterInfo?.languageStyle ? `语言风格：${characterInfo.languageStyle}`
       lastMessageTime: now,
     });
 
-    notifyMessageObserved(
+    // 🤖 AI 观察用户消息 - 记录轻量统计数据
+    notifyAIMessageObserved(
       {
         ...conversation,
         messages: updatedMessages,
