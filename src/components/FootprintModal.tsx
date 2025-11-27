@@ -2,9 +2,10 @@
 // 类似 Eve Chat 的足迹弹窗，时间轴展示角色活动
 
 import React, { useState, useEffect, useMemo } from 'react';
-import { X, Clock, MapPin, Activity, Filter, Calendar, BarChart3 } from 'lucide-react';
+import { X, Clock, MapPin, Activity, Filter, Calendar, BarChart3, RefreshCw } from 'lucide-react';
 import { FootprintActivity, FootprintFilters, ActivityType, ActivitySource } from '../types/footprint';
 import { footprintStorage } from '../utils/footprintStorage';
+import { initializeFootprintGeneration, generateFootprintNow } from '../utils/footprintGenerator';
 
 interface FootprintModalProps {
   conversationId: string;
@@ -40,12 +41,47 @@ export const FootprintModal: React.FC<FootprintModalProps> = ({
   const [activeTab, setActiveTab] = useState<'timeline' | 'stats'>('timeline');
   const [filters, setFilters] = useState<FootprintFilters>({});
   const [showFilters, setShowFilters] = useState(false);
+  const [updateIntervalHours, setUpdateIntervalHours] = useState<number | null>(null); // null=手动
+  const [isApplyingUpdate, setIsApplyingUpdate] = useState(false);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [refreshError, setRefreshError] = useState<string | null>(null);
 
   // 加载轨迹数据
   useEffect(() => {
     if (isOpen && conversationId) {
       loadFootprintData();
     }
+  }, [isOpen, conversationId]);
+
+  // 初始化或更新自动生成频率
+  useEffect(() => {
+    if (!isOpen) return;
+    const key = `footprint_update_interval_${conversationId}`;
+    const saved = localStorage.getItem(key);
+    let hours: number | null = null;
+    if (saved && saved !== 'manual') {
+      const parsed = parseFloat(saved);
+      hours = Number.isFinite(parsed) ? parsed : null;
+    }
+    setUpdateIntervalHours(hours);
+
+    const apply = async () => {
+      setIsApplyingUpdate(true);
+      try {
+        if (hours === null) {
+          await initializeFootprintGeneration(conversationId, { enableAutoGeneration: false });
+        } else {
+          await initializeFootprintGeneration(conversationId, { enableAutoGeneration: true, generationInterval: hours });
+        }
+        setRefreshError(null);
+      } catch (e: any) {
+        setRefreshError(e?.message || '更新自动频率失败');
+      } finally {
+        setIsApplyingUpdate(false);
+      }
+    };
+    apply();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen, conversationId]);
 
   const loadFootprintData = async () => {
@@ -63,6 +99,50 @@ export const FootprintModal: React.FC<FootprintModalProps> = ({
       console.error('加载轨迹数据失败:', error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleChangeInterval = async (value: string) => {
+    const key = `footprint_update_interval_${conversationId}`;
+    if (value === 'manual') {
+      localStorage.setItem(key, 'manual');
+      setUpdateIntervalHours(null);
+      setIsApplyingUpdate(true);
+      try {
+        await initializeFootprintGeneration(conversationId, { enableAutoGeneration: false });
+        setRefreshError(null);
+      } catch (e: any) {
+        setRefreshError(e?.message || '更新自动频率失败');
+      } finally {
+        setIsApplyingUpdate(false);
+      }
+      return;
+    }
+
+    const hours = parseFloat(value);
+    localStorage.setItem(key, String(hours));
+    setUpdateIntervalHours(hours);
+    setIsApplyingUpdate(true);
+    try {
+      await initializeFootprintGeneration(conversationId, { enableAutoGeneration: true, generationInterval: hours });
+      setRefreshError(null);
+    } catch (e: any) {
+      setRefreshError(e?.message || '更新自动频率失败');
+    } finally {
+      setIsApplyingUpdate(false);
+    }
+  };
+
+  const handleManualRefresh = async () => {
+    setIsRefreshing(true);
+    setRefreshError(null);
+    try {
+      await generateFootprintNow(conversationId);
+      await loadFootprintData();
+    } catch (e: any) {
+      setRefreshError(e?.message || '刷新失败，请重试');
+    } finally {
+      setIsRefreshing(false);
     }
   };
 
@@ -129,20 +209,12 @@ export const FootprintModal: React.FC<FootprintModalProps> = ({
     };
   }, [filteredActivities]);
 
+  // EVE风格时间格式：HH:mm
   const formatTime = (timestamp: number) => {
     return new Date(timestamp).toLocaleTimeString('zh-CN', {
       hour: '2-digit',
       minute: '2-digit'
     });
-  };
-
-  const formatDuration = (ms?: number) => {
-    if (!ms) return '';
-    const minutes = Math.round(ms / 1000 / 60);
-    if (minutes < 60) return `${minutes}分钟`;
-    const hours = Math.floor(minutes / 60);
-    const mins = minutes % 60;
-    return `${hours}小时${mins}分钟`;
   };
 
   if (!isOpen) return null;
@@ -166,7 +238,35 @@ export const FootprintModal: React.FC<FootprintModalProps> = ({
             </div>
           </div>
           
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2">
+              <span className="text-sm text-gray-500">自动更新频率</span>
+              <select
+                className="px-2 py-1 text-sm border border-gray-300 rounded-md bg-white"
+                value={updateIntervalHours === null ? 'manual' : String(updateIntervalHours)}
+                onChange={(e) => handleChangeInterval(e.target.value)}
+              >
+                <option value="manual">手动</option>
+                <option value="0.5">每30分钟</option>
+                <option value="1">每1小时</option>
+                <option value="3">每3小时</option>
+              </select>
+              {isApplyingUpdate && (
+                <div className="w-4 h-4 border-2 border-gray-300 border-t-gray-600 rounded-full animate-spin" />
+              )}
+            </div>
+
+            <button
+              onClick={handleManualRefresh}
+              className="px-3 py-1.5 text-sm bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-md flex items-center gap-1"
+              title="手动刷新"
+            >
+              <RefreshCw className="w-4 h-4" /> 手动刷新
+              {isRefreshing && (
+                <span className="ml-2 inline-block w-3 h-3 border-2 border-gray-300 border-t-gray-600 rounded-full animate-spin"></span>
+              )}
+            </button>
+
             <button
               onClick={() => setShowFilters(!showFilters)}
               className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
@@ -183,6 +283,18 @@ export const FootprintModal: React.FC<FootprintModalProps> = ({
             </button>
           </div>
         </div>
+
+        {refreshError && (
+          <div className="mx-6 mt-3 mb-0 p-3 bg-red-50 border border-red-200 text-red-700 rounded-md flex items-center justify-between">
+            <span className="text-sm">{refreshError}</span>
+            <button
+              onClick={handleManualRefresh}
+              className="px-2 py-1 text-sm bg-red-100 hover:bg-red-200 rounded"
+            >
+              重试
+            </button>
+          </div>
+        )}
 
         {/* 标签页 */}
         <div className="flex border-b border-gray-100">
@@ -291,68 +403,32 @@ export const FootprintModal: React.FC<FootprintModalProps> = ({
                         <div className="absolute left-6 top-0 bottom-0 w-0.5 bg-gray-200"></div>
 
                         {/* 活动项 */}
-                        <div className="space-y-4">
+                        <div className="space-y-6">
                           {dayActivities.map((activity) => {
-                            const config = ACTIVITY_CONFIG[activity.activityType];
                             return (
-                              <div key={activity.id} className="relative flex items-start gap-4">
-                                {/* 时间轴节点 */}
-                                <div 
-                                  className="relative z-10 w-12 h-12 rounded-full flex items-center justify-center text-lg shadow-md"
-                                  style={{ backgroundColor: config.color + '20', border: `2px solid ${config.color}` }}
-                                >
-                                  {config.icon}
+                              <div key={activity.id} className="relative flex items-start gap-3 pl-2">
+                                {/* 时间轴节点 - EVE风格简洁蓝色圆点 */}
+                                <div className="relative z-10 flex-shrink-0">
+                                  <div className="w-2 h-2 rounded-full bg-blue-500 mt-1.5"></div>
                                 </div>
 
-                                {/* 活动内容 */}
-                                <div className="flex-1 bg-white rounded-lg border border-gray-200 p-4 shadow-sm hover:shadow-md transition-shadow">
-                                  <div className="flex items-center justify-between mb-2">
-                                    <div className="flex items-center gap-2">
-                                      <span className="text-sm font-medium text-gray-900">
-                                        {config.label}
-                                      </span>
-                                      <span className="text-xs text-gray-500">
-                                        {formatTime(activity.timestamp)}
-                                      </span>
-                                      {activity.duration && (
-                                        <span className="text-xs bg-gray-100 text-gray-600 px-2 py-1 rounded">
-                                          {formatDuration(activity.duration)}
-                                        </span>
-                                      )}
-                                    </div>
-                                    
-                                    <div className="flex items-center gap-2">
-                                      {activity.confidence < 1 && (
-                                        <span className="text-xs bg-yellow-100 text-yellow-700 px-2 py-1 rounded">
-                                          AI推测 {Math.round(activity.confidence * 100)}%
-                                        </span>
-                                      )}
-                                    </div>
+                                {/* 活动内容 - EVE风格简洁卡片 */}
+                                <div className="flex-1 pb-1">
+                                  {/* 时间 */}
+                                  <div className="text-sm text-gray-500 mb-1">
+                                    {formatTime(activity.timestamp)}
                                   </div>
                                   
-                                  <p className="text-gray-700 mb-2">{activity.activity}</p>
+                                  {/* 活动描述 */}
+                                  <p className="text-gray-900 leading-relaxed mb-1.5">
+                                    {activity.activity}
+                                  </p>
                                   
-                                  {(activity.location || activity.mood) && (
-                                    <div className="flex items-center gap-4 text-sm text-gray-500">
-                                      {activity.location && (
-                                        <div className="flex items-center gap-1">
-                                          <MapPin className="w-3 h-3" />
-                                          {activity.location}
-                                        </div>
-                                      )}
-                                      {activity.mood && (
-                                        <span>心情：{activity.mood}</span>
-                                      )}
-                                    </div>
-                                  )}
-                                  
-                                  {activity.tags && activity.tags.length > 0 && (
-                                    <div className="flex flex-wrap gap-1 mt-2">
-                                      {activity.tags.map(tag => (
-                                        <span key={tag} className="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded">
-                                          {tag}
-                                        </span>
-                                      ))}
+                                  {/* 地点 - EVE风格 */}
+                                  {activity.location && (
+                                    <div className="flex items-center gap-1 text-sm text-gray-500">
+                                      <MapPin className="w-3.5 h-3.5" />
+                                      <span>{activity.location}</span>
                                     </div>
                                   )}
                                 </div>

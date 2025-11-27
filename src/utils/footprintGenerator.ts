@@ -1492,60 +1492,42 @@ class FootprintGeneratorService {
 
   // === 个性化描述生成方法 ===
   
-  // 个性化聊天描述
+  // 个性化聊天描述 - EVE风格：生活化、自然、具体
   private personalizeChatDescription(topic: string, character: any): string {
-    const templates = {
-      '学生': [
-        `和你聊了关于${topic}的话题，感觉学到了很多`,
-        `和你讨论${topic}，很有意思的交流`,
-        `和你聊${topic}，感觉时间过得好快`
-      ],
-      '上班族': [
-        `和你聊了聊${topic}，放松了一下心情`,
-        `和你讨论${topic}，工作之余的愉快时光`,
-        `和你聊${topic}，感觉压力都减轻了`
-      ],
-      '自由职业者': [
-        `和你聊了${topic}，灵感又多了不少`,
-        `和你讨论${topic}，很有收获的对话`,
-        `和你聊${topic}，思维碰撞的火花`
-      ]
-    };
-    
-    const occupation = character?.occupation || '学生';
     const personality = character?.personality || '温柔体贴';
-    const templateList = templates[occupation as keyof typeof templates] || templates['学生'];
     
-    let description = templateList[Math.floor(Math.random() * templateList.length)];
+    // 根据时间段和话题生成自然描述
+    const templates = [
+      `和你聊了很久关于${topic}的话题`,
+      `和你讨论了${topic}，聊得很投入`,
+      `和你一起聊${topic}，不知不觉时间就过去了`,
+      `一直和你在聊${topic}，心情放松了不少`,
+      `和你聊${topic}聊得很开心`
+    ];
     
-    // 根据性格调整语气
-    if (personality.includes('活泼')) {
-      description = description.replace('感觉', '超开心');
-    } else if (personality.includes('温柔')) {
-      description = description.replace('感觉', '温柔地');
+    let description = templates[Math.floor(Math.random() * templates.length)];
+    
+    // 根据性格微调
+    if (personality.includes('活泼') || personality.includes('外向')) {
+      description = description.replace('聊得很开心', '聊得超开心的！');
     }
     
     return description;
   }
 
-  // 个性化朋友圈描述
-  private personalizeMomentsDescription(content: string, character: any): string {
-    const personality = character?.personality || '温柔体贴';
-    const location = character?.location || '上海';
-    
+  // 个性化朋友圈描述 - EVE风格：简洁、直接
+  private personalizeMomentsDescription(content: string, _character: any): string {
     const templates = [
-      `在${location}分享了自己的心情：${content.substring(0, 30)}...`,
-      `发了朋友圈，记录了${content.substring(0, 20)}...的瞬间`,
-      `更新了动态，分享了${content.substring(0, 25)}...`
+      `发了一条朋友圈`,
+      `更新了朋友圈动态`,
+      `分享了一条朋友圈`
     ];
     
     let description = templates[Math.floor(Math.random() * templates.length)];
     
-    // 根据性格调整
-    if (personality.includes('文艺')) {
-      description = description.replace('分享', '诗意地记录');
-    } else if (personality.includes('活泼')) {
-      description = description.replace('分享', '开心地分享');
+    // 根据内容类型补充细节
+    if (content.includes('图片') || content.includes('[')) {
+      description += '，配了几张图';
     }
     
     return description;
@@ -1574,68 +1556,58 @@ class FootprintGeneratorService {
     return description;
   }
 
-  // 个性化状态描述
+  // 个性化状态描述 - EVE风格：情景化、具体、生活化
   private personalizeStatusDescription(activity: string, character: any): string {
-    const personality = character?.personality || '温柔体贴';
     const occupation = character?.occupation || '学生';
+    const hour = new Date().getHours();
     
     // 如果活动描述已经比较个性化，直接使用
     if (activity.length > 10) {
       return activity;
     }
     
-    // 根据职业和性格生成个性化描述
-    const templates = {
-      '学生': [
-        '在认真学习中',
-        '处理学业事务',
-        '在图书馆学习'
-      ],
-      '上班族': [
-        '在专注工作中',
-        '处理工作事务',
-        '在办公室忙碌'
-      ],
-      '自由职业者': [
-        '在创作中',
-        '处理项目事务',
-        '在工作室忙碌'
-      ]
-    };
-    
-    const templateList = templates[occupation as keyof typeof templates] || templates['学生'];
-    let description = templateList[Math.floor(Math.random() * templateList.length)];
-    
-    // 根据性格调整
-    if (personality.includes('活泼')) {
-      description = description.replace('中', '中，心情愉快');
-    } else if (personality.includes('温柔')) {
-      description = description.replace('中', '中，很安静');
+    // 根据时间段生成具体情景
+    if (hour >= 6 && hour < 9) {
+      // 早上
+      return occupation === '学生' ? '在学校食堂吃了早饭' : '在公司附近的早餐店吃了早饭';
+    } else if (hour >= 9 && hour < 12) {
+      // 上午
+      return occupation === '学生' ? '在教室上课' : '在办公室处理工作';
+    } else if (hour >= 12 && hour < 14) {
+      // 午饭
+      return '随便吃了点东西当午饭';
+    } else if (hour >= 14 && hour < 18) {
+      // 下午
+      return occupation === '学生' ? '在图书馆学习' : '继续忙工作事务';
+    } else if (hour >= 18 && hour < 22) {
+      // 晚上
+      const evening = ['刷了一会手机', '看了一会视频', '听音乐放松一下', '在宿舍/家里休息'];
+      return evening[Math.floor(Math.random() * evening.length)];
+    } else {
+      // 深夜/凌晨
+      return '准备睡觉了';
     }
-    
-    return description;
   }
 
-  // 个性化睡眠描述
-  private personalizeSleepDescription(character: any): string {
-    const personality = character?.personality || '温柔体贴';
+  // 个性化睡眠描述 - EVE风格：情景化
+  private personalizeSleepDescription(_character: any): string {
+    const hour = new Date().getHours();
+    
     const templates = [
-      '已经进入梦乡了',
-      '正在休息中',
-      '安静地睡着了',
-      '进入了深度睡眠'
+      '被闹钟吵醒，挣扎着起床洗漱',  // 早上
+      '关掉手机，进入了梦乡',  // 晚上
+      '放弃挡扎，在床上睡在了一会',
+      '躺在床上看了一会手机，睡着了'
     ];
     
-    let description = templates[Math.floor(Math.random() * templates.length)];
-    
-    // 根据性格调整
-    if (personality.includes('活泼')) {
-      description = description.replace('安静地', '开心地');
-    } else if (personality.includes('文艺')) {
-      description = description.replace('睡眠', '甜美的梦乡');
+    // 根据时间段选择合适的描述
+    if (hour >= 6 && hour < 9) {
+      return templates[0];  // 起床
+    } else if (hour >= 22 || hour < 6) {
+      return templates[Math.floor(Math.random() * (templates.length - 1)) + 1];  // 睡觉
     }
     
-    return description;
+    return templates[Math.floor(Math.random() * templates.length)];
   }
 
   // === 数据处理辅助方法 ===
@@ -1735,8 +1707,11 @@ class FootprintGeneratorService {
 export const footprintGenerator = new FootprintGeneratorService();
 
 // 便捷的初始化和生成方法
-export const initializeFootprintGeneration = async (conversationId: string) => {
-  await footprintGenerator.initialize(conversationId);
+export const initializeFootprintGeneration = async (
+  conversationId: string,
+  config?: Partial<FootprintGenerationConfig>
+) => {
+  await footprintGenerator.initialize(conversationId, config);
 };
 
 export const generateFootprintNow = async (conversationId: string) => {
