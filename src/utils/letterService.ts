@@ -7,6 +7,7 @@ import { Letter, BottleAI, LetterRound } from '../types/letter';
 import { checkLetterAchievements } from './achievementSystem';
 import { detectAgeFromBottleContent } from './bottleAgeDetector';
 import { save, getCachedData, setCachedData } from './storage';
+import { cleanAIMessage } from './messageFormatter';
 
 // 📮 预设AI角色池 - 用户可主动选择的固定角色
 export const PRESET_AI_POOL: BottleAI[] = [
@@ -1503,6 +1504,9 @@ ${aiProfile.customBackground}
 
   const data = await response.json();
   let replyContent = data.choices[0]?.message?.content || '';
+
+  // 清理AI回复中的Markdown/引用/链接等不自然内容
+  replyContent = cleanAIMessage(replyContent);
   
   // 根据性格类型和动机验证字数
   let minLength = 100;
@@ -1522,12 +1526,7 @@ ${aiProfile.customBackground}
   if (replyContent.length < minLength) {
     throw new Error(`AI回复字数过少（${replyContent.length}字），最少需要${minLength}字`);
   }
-  
-  // 限制最大字数
-  if (replyContent.length > 2000) {
-    replyContent = replyContent.substring(0, 2000) + '...';
-  }
-  
+
   return replyContent.trim();
 }
 
