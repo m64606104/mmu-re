@@ -28,7 +28,6 @@ import ZhihuFeed from './ZhihuFeed';
 import NeteaseMusicCard from './NeteaseMusicCard';
 import NeteaseMusicParser from '../utils/neteaseMusicParser';
 import WeiboFeed from './WeiboFeed';
-import { FootprintModal } from './FootprintModal';
 import SearchHistoryView from './SearchHistoryView';
 import ChatSearchModal from './ChatSearchModal';
 import { SmartHTMLGenerator } from '../utils/smartHTMLGenerator';
@@ -83,7 +82,6 @@ import { messagePerceptionService } from '../utils/messagePerceptionService';
 import { buildTimeAwarePrompt, UnrepliedMessageInfo } from '../utils/timeAwareness';
 import { getMomentsData } from '../utils/aiMomentsGenerator';
 import { getAIStatus } from '../utils/aiStatusManager';
-import { initializeFootprintGeneration } from '../utils/footprintGenerator';
 import { getErrorFromResponse, formatErrorMessage } from '../utils/apiErrorHandler';
 // @ts-ignore - 函数在backgroundTaskManager内部使用，TS静态分析无法识别
 import { splitMessages, cleanAIMessage } from '../utils/messageFormatter';
@@ -878,9 +876,6 @@ ${recentMessages}
   // AI状态相关state
   const [aiStatus, setAIStatus] = useState<any | null>(null);
   
-  // 轨迹查看相关state
-  const [showFootprintModal, setShowFootprintModal] = useState(false);
-  
   // 搜索相关state
   const [showSearchModal, setShowSearchModal] = useState(false);
   
@@ -1502,17 +1497,6 @@ ${recentMessages}
         }
       };
       loadStatus();
-      
-      // 🛤️ 初始化轨迹生成服务
-      const initFootprints = async () => {
-        try {
-          await initializeFootprintGeneration(conversation.id);
-          console.log(`✅ 轨迹生成服务已为对话 ${conversation.id} 启动`);
-        } catch (error) {
-          console.error('❌ 启动轨迹生成服务失败:', error);
-        }
-      };
-      initFootprints();
       
       // 🔥 性能优化：移除定时刷新，AI状态只在有消息时更新
       // const interval = setInterval(loadStatus, 30000);
@@ -4738,11 +4722,7 @@ ${doc.content}`;
           <div className="flex flex-col">
             <h1 className="text-base font-semibold text-gray-900">{conversation.name}</h1>
             {conversation.type === 'private' && conversation.characterSettings ? (
-              <div 
-                className="flex items-center gap-1 px-2 py-0.5 -ml-2 cursor-pointer hover:bg-gray-100 rounded transition-colors"
-                onClick={() => setShowFootprintModal(true)}
-                title="点击查看行动轨迹"
-              >
+              <div className="flex items-center gap-1 px-2 py-0.5 -ml-2">
                 <div className={`w-2 h-2 rounded-full flex-shrink-0 ${
                   aiStatus?.status === 'online' ? 'bg-green-500' :
                   aiStatus?.status === 'busy' ? 'bg-yellow-500' :
@@ -4752,9 +4732,6 @@ ${doc.content}`;
                 }`}></div>
                 <span className="text-xs text-gray-500 truncate max-w-[200px]">
                   {aiStatus?.statusText || '在线'}
-                  {aiStatus?.currentActivity && (
-                    <span className="text-gray-400"> • {aiStatus.currentActivity}</span>
-                  )}
                 </span>
               </div>
             ) : (
@@ -6875,16 +6852,6 @@ ${doc.content}`;
           // 返回社交页面
           onBack();
         }}
-      />
-    )}
-
-    {/* 🛤️ 轨迹查看弹窗 */}
-    {conversation.type === 'private' && conversation.characterSettings && (
-      <FootprintModal
-        conversationId={conversation.id}
-        characterName={conversation.name}
-        isOpen={showFootprintModal}
-        onClose={() => setShowFootprintModal(false)}
       />
     )}
     </>

@@ -30,59 +30,83 @@ export type ActivityType =
   | 'writing'       // 写作
   | 'offline';      // 离线
 
-// 扩展的活动记录（基于现有 AIActivityLog）
+// === 足迹明细表：具体行为记录 ===
 export interface FootprintActivity {
   id: string;
-  conversationId: string;        // 关联的对话ID
-  timestamp: number;             // 活动时间戳
-  duration?: number;             // 活动持续时长（毫秒）
+  characterId: string; // 角色 ID（对应 conversationId）
+  timestamp: number; // 开始时间戳
+  endTimestamp?: number; // 结束时间戳
+  duration?: number; // 持续时间（毫秒）
   
-  // 基础信息
-  activity: string;              // 活动描述
-  activityType: ActivityType;    // 活动类型
-  status: AIStatus;              // 当时的在线状态
-  location?: string;             // 活动地点
+  // 活动内容
+  activity: string; // 活动描述（AI 生成或模板）
+  activityType: ActivityType; // 活动类型
+  activitySubType?: string; // 子类型（如聊天的具体话题）
   
-  // 数据来源
-  source: ActivitySource;        // 活动来源
-  sourceId?: string;            // 来源记录ID（消息ID、朋友圈ID等）
-  confidence: number;           // 置信度 0-1（AI生成 vs 真实记录）
+  // 数据来源（硬事实信息）
+  source: ActivitySource; // 数据源类型
+  sourceId?: string; // 源数据的唯一 ID
+  sourceData?: Record<string, any>; // 原始数据快照
   
-  // 扩展信息
-  mood?: string;                // 情绪状态
-  weather?: string;             // 天气信息
-  companions?: string[];        // 同伴（其他角色）
-  tags?: string[];              // 标签（工作、学习、娱乐等）
+  // 可信度和状态
+  confidence: number; // 置信度 0-1
+  status: AIStatus; // 当时的 AI 状态
+  
+  // 位置和上下文
+  location?: string; // 地点信息
+  weather?: string; // 天气信息
+  mood?: string; // 情绪状态
+  
+  // 分类和检索
+  tags: string[]; // 标签数组
+  category?: string; // 分类（日常/特殊/纪念日）
   
   // 元数据
-  createdAt: number;            // 记录创建时间
-  updatedAt?: number;           // 最后更新时间
+  metadata: Record<string, any>; // 额外元数据
+  
+  // 时间戳
+  createdAt: number; // 创建时间
+  updatedAt?: number; // 修改时间
+  generatedAt?: number; // 生成时间（区分于实际发生时间）
 }
 
-// 每日行动轨迹汇总（类似 Eve Chat 的 characterFootprints）
-export interface DailyFootprint {
+// === 足迹头表：按天汇总 ===
+export interface CharacterFootprint {
   id: string;
-  conversationId: string;        // 关联的对话ID
-  date: string;                  // 日期（YYYY-MM-DD）
+  characterId: string; // 角色 ID
+  date: string; // 日期 YYYY-MM-DD
   
   // 汇总统计
-  totalActivities: number;       // 总活动数
-  activeDuration: number;        // 活跃时长（毫秒）
-  sleepDuration: number;         // 睡眠时长
-  chatDuration: number;          // 聊天时长
+  totalActivities: number; // 总活动数
+  totalDuration: number; // 总时长（毫秒）
   
-  // 活动分布
-  activityCounts: Record<ActivityType, number>;
-  statusCounts: Record<AIStatus, number>;
+  // 按类型统计
+  activityCounts: Record<ActivityType, number>; // 各类型活动数量
+  activityDurations: Record<ActivityType, number>; // 各类型持续时间
+  
+  // 状态统计
+  statusDistribution: Record<AIStatus, number>; // 状态分布
+  
+  // 互动统计
+  chatDuration: number; // 聊天时长
+  chatMessageCount: number; // 消息数
+  momentsCount: number; // 朋友圈数
   
   // 重点活动
-  highlights: string[];          // 当日重点活动描述
-  mood: 'positive' | 'neutral' | 'negative'; // 整体情绪
+  highlights: string[]; // 当日亮点活动
+  mood?: string; // 整体情绪
   
   // 元数据
+  summary?: string; // 日结摘要
+  metadata: Record<string, any>;
+  
+  // 时间戳
   createdAt: number;
   updatedAt: number;
 }
+
+// 遗留兼容：旧版 DailyFootprint 类型别名
+export type DailyFootprint = CharacterFootprint;
 
 // 轨迹筛选参数
 export interface FootprintFilters {

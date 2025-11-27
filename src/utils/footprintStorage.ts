@@ -5,7 +5,7 @@ import { FootprintActivity, DailyFootprint, FootprintFilters } from '../types/fo
 
 // IndexedDB 数据库配置
 const DB_NAME = 'CharacterFootprintsDB';
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 const ACTIVITIES_STORE = 'footprint_activities';
 const DAILY_STORE = 'daily_footprints';
 
@@ -25,30 +25,62 @@ class FootprintStorageService {
 
       request.onupgradeneeded = (event) => {
         const db = (event.target as IDBOpenDBRequest).result;
+        const txn = (event.target as IDBOpenDBRequest).transaction as IDBTransaction;
 
         // 活动明细表
+        let activitiesStore: IDBObjectStore;
         if (!db.objectStoreNames.contains(ACTIVITIES_STORE)) {
-          const activitiesStore = db.createObjectStore(ACTIVITIES_STORE, { 
-            keyPath: 'id' 
-          });
-          
-          // 创建索引
+          activitiesStore = db.createObjectStore(ACTIVITIES_STORE, { keyPath: 'id' });
+        } else {
+          activitiesStore = txn.objectStore(ACTIVITIES_STORE);
+        }
+        // 旧索引（兼容）
+        if (!(activitiesStore.indexNames as any).contains('conversationId')) {
           activitiesStore.createIndex('conversationId', 'conversationId');
-          activitiesStore.createIndex('timestamp', 'timestamp');
-          activitiesStore.createIndex('activityType', 'activityType');
-          activitiesStore.createIndex('source', 'source');
+        }
+        if (!(activitiesStore.indexNames as any).contains('date')) {
           activitiesStore.createIndex('date', ['conversationId', 'timestamp']);
+        }
+        // 新索引（推荐）
+        if (!(activitiesStore.indexNames as any).contains('characterId')) {
+          activitiesStore.createIndex('characterId', 'characterId');
+        }
+        if (!(activitiesStore.indexNames as any).contains('characterDate')) {
+          activitiesStore.createIndex('characterDate', ['characterId', 'timestamp']);
+        }
+        if (!(activitiesStore.indexNames as any).contains('timestamp')) {
+          activitiesStore.createIndex('timestamp', 'timestamp');
+        }
+        if (!(activitiesStore.indexNames as any).contains('activityType')) {
+          activitiesStore.createIndex('activityType', 'activityType');
+        }
+        if (!(activitiesStore.indexNames as any).contains('source')) {
+          activitiesStore.createIndex('source', 'source');
         }
 
         // 每日汇总表
+        let dailyStore: IDBObjectStore;
         if (!db.objectStoreNames.contains(DAILY_STORE)) {
-          const dailyStore = db.createObjectStore(DAILY_STORE, { 
-            keyPath: 'id' 
-          });
-          
+          dailyStore = db.createObjectStore(DAILY_STORE, { keyPath: 'id' });
+        } else {
+          dailyStore = txn.objectStore(DAILY_STORE);
+        }
+        // 旧索引（兼容）
+        if (!(dailyStore.indexNames as any).contains('conversationId')) {
           dailyStore.createIndex('conversationId', 'conversationId');
-          dailyStore.createIndex('date', 'date');
+        }
+        if (!(dailyStore.indexNames as any).contains('conversationDate')) {
           dailyStore.createIndex('conversationDate', ['conversationId', 'date']);
+        }
+        if (!(dailyStore.indexNames as any).contains('date')) {
+          dailyStore.createIndex('date', 'date');
+        }
+        // 新索引（推荐）
+        if (!(dailyStore.indexNames as any).contains('characterId')) {
+          dailyStore.createIndex('characterId', 'characterId');
+        }
+        if (!(dailyStore.indexNames as any).contains('characterDate')) {
+          dailyStore.createIndex('characterDate', ['characterId', 'date']);
         }
       };
     });
@@ -99,24 +131,32 @@ class FootprintStorageService {
     return new Promise((resolve, reject) => {
       const transaction = this.db!.transaction([ACTIVITIES_STORE], 'readonly');
       const store = transaction.objectStore(ACTIVITIES_STORE);
-      const index = store.index('conversationId');
-      
+      // 优先使用 characterId 索引，兼容旧版 conversationId
+      const indexName = (store.indexNames as any).contains('characterId') ? 'characterId' : 'conversationId';
+      const index = store.index(indexName);
       const request = index.getAll(conversationId);
-      
+
       request.onsuccess = () => {
-        let results = request.result;
-        
-        // 应用筛选条件
-        if (filters) {
-          results = this.applyFilters(results, filters);
+        let results = request.result || [];
+        const tryFallback = indexName === 'characterId' && (store.indexNames as any).contains('conversationId') && results.length === 0;
+        if (tryFallback) {
+          const fallbackIndex = store.index('conversationId');
+          const fbReq = fallbackIndex.getAll(conversationId);
+          fbReq.onsuccess = () => {
+            results = fbReq.result || [];
+            if (filters) results = this.applyFilters(results, filters);
+            results.sort((a, b) => b.timestamp - a.timestamp);
+            resolve(results);
+          };
+          fbReq.onerror = () => reject(fbReq.error);
+          return;
         }
-        
-        // 按时间排序（最新在前）
+
+        if (filters) results = this.applyFilters(results, filters);
         results.sort((a, b) => b.timestamp - a.timestamp);
-        
         resolve(results);
       };
-      
+
       request.onerror = () => reject(request.error);
     });
   }
@@ -159,11 +199,23 @@ class FootprintStorageService {
     return new Promise((resolve, reject) => {
       const transaction = this.db!.transaction([DAILY_STORE], 'readonly');
       const store = transaction.objectStore(DAILY_STORE);
-      const index = store.index('conversationDate');
-      
+      // 优先使用 characterDate 索引，兼容旧版 conversationDate
+      const indexName = (store.indexNames as any).contains('characterDate') ? 'characterDate' : 'conversationDate';
+      const index = store.index(indexName);
       const request = index.get([conversationId, date]);
-      
-      request.onsuccess = () => resolve(request.result || null);
+
+      request.onsuccess = () => {
+        const result = request.result || null;
+        const tryFallback = indexName === 'characterDate' && (store.indexNames as any).contains('conversationDate') && !result;
+        if (tryFallback) {
+          const fbIndex = store.index('conversationDate');
+          const fbReq = fbIndex.get([conversationId, date]);
+          fbReq.onsuccess = () => resolve(fbReq.result || null);
+          fbReq.onerror = () => reject(fbReq.error);
+          return;
+        }
+        resolve(result);
+      };
       request.onerror = () => reject(request.error);
     });
   }

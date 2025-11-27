@@ -227,21 +227,11 @@ export interface KnowledgeBaseItem {
 // AI状态类型
 export type AIStatus = 'online' | 'offline' | 'busy' | 'resting' | 'away';
 
-// AI活动日志
-export interface AIActivityLog {
-  id: string; // 活动ID
-  timestamp: number; // 活动时间戳
-  activity: string; // 活动描述
-  location?: string; // 活动地点
-  status: AIStatus; // 活动时的状态
-}
-
 // AI状态信息
 export interface AIStatusInfo {
   status: AIStatus; // 当前状态
   statusText: string; // 状态显示文字（如"在线"、"休息中"）
   currentActivity?: string; // 当前行为详细描述
-  activityLogs?: AIActivityLog[]; // 活动日志数组
   lastUpdateTime: number; // 最后更新时间
 }
 

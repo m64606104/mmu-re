@@ -2,11 +2,9 @@
 // 类似 Eve Chat 的足迹弹窗，时间轴展示角色活动
 
 import React, { useState, useEffect, useMemo } from 'react';
-import { X, Clock, MapPin, Activity, Filter, Calendar, BarChart3, RefreshCw } from 'lucide-react';
+import { X, Clock, MapPin, Activity, Filter, Calendar, BarChart3 } from 'lucide-react';
 import { FootprintActivity, FootprintFilters, ActivityType, ActivitySource } from '../types/footprint';
 import { footprintStorage } from '../utils/footprintStorage';
-import { generateFootprintIncremental } from '../utils/footprintGenerator_new';
-import { footprintScheduler } from '../utils/footprintScheduler';
 
 interface FootprintModalProps {
   conversationId: string;
@@ -42,16 +40,11 @@ export const FootprintModal: React.FC<FootprintModalProps> = ({
   const [activeTab, setActiveTab] = useState<'timeline' | 'stats'>('timeline');
   const [filters, setFilters] = useState<FootprintFilters>({});
   const [showFilters, setShowFilters] = useState(false);
-  
-  // 刷新相关状态
-  const [isRefreshing, setIsRefreshing] = useState(false);
-  const [refreshMode, setRefreshMode] = useState<'manual' | '30' | '60' | '120'>('manual');
 
-  // 加载轨迹数据和刷新设置
+  // 加载轨迹数据
   useEffect(() => {
     if (isOpen && conversationId) {
       loadFootprintData();
-      loadRefreshSettings();
     }
   }, [isOpen, conversationId]);
 
@@ -70,50 +63,6 @@ export const FootprintModal: React.FC<FootprintModalProps> = ({
       console.error('加载轨迹数据失败:', error);
     } finally {
       setLoading(false);
-    }
-  };
-
-  // 加载刷新设置
-  const loadRefreshSettings = () => {
-    try {
-      const savedMode = localStorage.getItem(`footprint_refresh_${conversationId}`);
-      if (savedMode && ['manual', '30', '60', '120'].includes(savedMode)) {
-        setRefreshMode(savedMode as 'manual' | '30' | '60' | '120');
-      }
-    } catch (error) {
-      console.error('加载刷新设置失败:', error);
-    }
-  };
-
-  // 保存刷新设置
-  const saveRefreshSettings = (mode: 'manual' | '30' | '60' | '120') => {
-    try {
-      localStorage.setItem(`footprint_refresh_${conversationId}`, mode);
-      setRefreshMode(mode);
-      
-      // 同时更新调度器配置
-      footprintScheduler.updateConfig(conversationId, mode);
-    } catch (error) {
-      console.error('保存刷新设置失败:', error);
-    }
-  };
-
-  // 手动刷新轨迹
-  const handleManualRefresh = async () => {
-    if (isRefreshing) return;
-    
-    try {
-      setIsRefreshing(true);
-      
-      // 先生成增量轨迹
-      await generateFootprintIncremental(conversationId);
-      
-      // 重新加载数据
-      await loadFootprintData();
-    } catch (error) {
-      console.error('手动刷新轨迹失败:', error);
-    } finally {
-      setIsRefreshing(false);
     }
   };
 
@@ -219,17 +168,6 @@ export const FootprintModal: React.FC<FootprintModalProps> = ({
           
           <div className="flex items-center gap-2">
             <button
-              onClick={handleManualRefresh}
-              disabled={isRefreshing}
-              className={`p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors ${
-                isRefreshing ? 'animate-spin' : ''
-              }`}
-              title="刷新轨迹"
-            >
-              <RefreshCw className="w-5 h-5" />
-            </button>
-            
-            <button
               onClick={() => setShowFilters(!showFilters)}
               className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
               title="筛选"
@@ -271,23 +209,6 @@ export const FootprintModal: React.FC<FootprintModalProps> = ({
             <BarChart3 className="w-4 h-4 inline mr-2" />
             统计分析
           </button>
-        </div>
-
-        {/* 自动更新频率设置 */}
-        <div className="px-6 py-3 bg-gray-50 border-b border-gray-200">
-          <div className="flex items-center justify-between">
-            <span className="text-sm text-gray-700 font-medium">自动更新频率</span>
-            <select
-              value={refreshMode}
-              onChange={(e) => saveRefreshSettings(e.target.value as 'manual' | '30' | '60' | '120')}
-              className="px-3 py-1 text-sm border border-gray-300 rounded-md bg-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-            >
-              <option value="manual">手动刷新</option>
-              <option value="30">每 30 分钟</option>
-              <option value="60">每 1 小时</option>
-              <option value="120">每 2 小时</option>
-            </select>
-          </div>
         </div>
 
         {/* 筛选栏 */}
