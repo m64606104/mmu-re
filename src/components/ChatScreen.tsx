@@ -28,7 +28,6 @@ import ZhihuFeed from './ZhihuFeed';
 import NeteaseMusicCard from './NeteaseMusicCard';
 import NeteaseMusicParser from '../utils/neteaseMusicParser';
 import WeiboFeed from './WeiboFeed';
-import { FootprintModal } from './FootprintModal';
 import SearchHistoryView from './SearchHistoryView';
 import ChatSearchModal from './ChatSearchModal';
 import { SmartHTMLGenerator } from '../utils/smartHTMLGenerator';
@@ -879,8 +878,6 @@ ${recentMessages}
   
   // 搜索相关state
   const [showSearchModal, setShowSearchModal] = useState(false);
-  // 足迹弹窗
-  const [showFootprintModal, setShowFootprintModal] = useState(false);
   
   // 🎵 音乐相关state
   const [showMusicShareModal, setShowMusicShareModal] = useState(false);
@@ -4730,11 +4727,7 @@ ${doc.content}`;
           <div className="flex flex-col">
             <h1 className="text-base font-semibold text-gray-900">{conversation.name}</h1>
             {conversation.type === 'private' && conversation.characterSettings ? (
-              <button
-                onClick={() => setShowFootprintModal(true)}
-                className="flex items-center gap-1 px-2 py-0.5 -ml-2 hover:bg-gray-100 rounded"
-                title="查看Ta的足迹"
-              >
+              <div className="flex items-center gap-1 px-2 py-0.5 -ml-2">
                 <div className={`w-2 h-2 rounded-full flex-shrink-0 ${
                   aiStatus?.status === 'online' ? 'bg-green-500' :
                   aiStatus?.status === 'busy' ? 'bg-yellow-500' :
@@ -4745,23 +4738,13 @@ ${doc.content}`;
                 <span className="text-xs text-gray-500 truncate max-w-[200px]">
                   {aiStatus?.statusText || '在线'}
                 </span>
-              </button>
+              </div>
             ) : (
               <div className="flex items-center gap-1">
                 <div className="w-2 h-2 bg-green-500 rounded-full"></div>
                 <span className="text-xs text-gray-500">在线</span>
               </div>
             )}
-
-    {/* 🛤️ 足迹查看弹窗 */}
-    {showFootprintModal && (
-      <FootprintModal
-        conversationId={conversation.id}
-        characterName={conversation.characterSettings?.nickname || conversation.name}
-        isOpen={showFootprintModal}
-        onClose={() => setShowFootprintModal(false)}
-      />
-    )}
           </div>
         </div>
         <div className="flex items-center gap-2">
