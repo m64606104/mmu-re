@@ -330,7 +330,7 @@ export default function SocialScreen({ conversations, onNavigate, onImportCharac
       </div>
 
       {/* 底部导航栏 */}
-      <div className={`border-t ${isDarkMode ? 'bg-[#1a1a1a] border-gray-800' : 'bg-white border-gray-200'}`}>
+      <div className={`border-t flex-shrink-0 ${isDarkMode ? 'bg-[#1a1a1a] border-gray-800' : 'bg-white border-gray-200'}`}>
         <div className="flex items-center justify-around px-4 py-2">
           {/* 消息 - 当前页面，高亮显示 */}
           <button className="flex flex-col items-center gap-1 py-1 px-3">

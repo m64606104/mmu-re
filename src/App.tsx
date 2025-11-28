@@ -1162,13 +1162,16 @@ function App() {
 
   return (
     <>
-      <div className={`w-full h-screen flex items-start justify-center fixed inset-0 overflow-hidden ${
-        fullscreenMode 
-          ? 'bg-white pt-0' 
-          : 'bg-slate-100 pt-[10.5px] md:pt-[14px]'
-      }`}>
+      <div 
+        className={`w-full flex items-start justify-center fixed inset-0 overflow-hidden ${
+          fullscreenMode 
+            ? 'bg-white pt-0' 
+            : 'bg-slate-100 pt-[10.5px] md:pt-[14px]'
+        }`}
+        style={fullscreenMode ? { height: '100dvh' } : { height: '100vh' }}
+      >
         {/* 手机容器 - 支持全屏模式切换 */}
-        <div className={`bg-white overflow-hidden relative ${
+        <div className={`bg-white overflow-hidden relative flex flex-col ${
           fullscreenMode
             ? 'w-full h-full rounded-none shadow-none mt-0'
             : 'w-[393px] h-[800px] rounded-[40px] shadow-2xl -mt-[10.2px]'
