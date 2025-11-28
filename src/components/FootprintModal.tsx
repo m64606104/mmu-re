@@ -2,8 +2,8 @@
 // 类似 Eve Chat 的足迹弹窗，时间轴展示角色活动
 
 import React, { useState, useEffect, useMemo } from 'react';
-import { X, MapPin, Activity, Filter, Calendar, RefreshCw } from 'lucide-react';
-import { FootprintActivity, FootprintFilters, ActivityType } from '../types/footprint';
+import { MapPin, Activity, Calendar, RefreshCw } from 'lucide-react';
+import { FootprintActivity } from '../types/footprint';
 import { footprintStorage } from '../utils/footprintStorage';
 import { initializeFootprintGeneration, generateFootprintNow } from '../utils/footprintGenerator';
 
@@ -15,22 +15,6 @@ interface FootprintModalProps {
   conversation?: any; // 传入完整conversation对象以读取真实聊天数据
 }
 
-// 活动类型图标和颜色
-const ACTIVITY_CONFIG = {
-  chatting: { icon: '💬', color: '#10B981', label: '聊天中' },
-  thinking: { icon: '🤔', color: '#8B5CF6', label: '思考中' },
-  sleeping: { icon: '😴', color: '#6B7280', label: '睡眠' },
-  working: { icon: '💼', color: '#F59E0B', label: '工作' },
-  entertainment: { icon: '🎮', color: '#EC4899', label: '娱乐' },
-  social: { icon: '👥', color: '#3B82F6', label: '社交' },
-  exercise: { icon: '🏃', color: '#EF4444', label: '运动' },
-  shopping: { icon: '🛍️', color: '#84CC16', label: '购物' },
-  travel: { icon: '✈️', color: '#06B6D4', label: '出行' },
-  reading: { icon: '📚', color: '#8B5CF6', label: '阅读' },
-  writing: { icon: '✍️', color: '#F97316', label: '写作' },
-  offline: { icon: '🌙', color: '#6B7280', label: '离线' }
-};
-
 export const FootprintModal: React.FC<FootprintModalProps> = ({
   conversationId,
   characterName,
@@ -39,8 +23,6 @@ export const FootprintModal: React.FC<FootprintModalProps> = ({
 }) => {
   const [activities, setActivities] = useState<FootprintActivity[]>([]);
   const [loading, setLoading] = useState(true);
-  const [filters, setFilters] = useState<FootprintFilters>({});
-  const [showFilters, setShowFilters] = useState(false);
   const [updateIntervalHours, setUpdateIntervalHours] = useState<number | null>(null); // null=手动
   const [isApplyingUpdate, setIsApplyingUpdate] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -146,30 +128,8 @@ export const FootprintModal: React.FC<FootprintModalProps> = ({
     }
   };
 
-  // 筛选后的活动
-  const filteredActivities = useMemo(() => {
-    let filtered = [...activities];
-
-    if (filters.activityTypes?.length) {
-      filtered = filtered.filter(activity => 
-        filters.activityTypes!.includes(activity.activityType)
-      );
-    }
-
-    if (filters.sources?.length) {
-      filtered = filtered.filter(activity => 
-        filters.sources!.includes(activity.source)
-      );
-    }
-
-    if (filters.minConfidence) {
-      filtered = filtered.filter(activity => 
-        activity.confidence >= filters.minConfidence!
-      );
-    }
-
-    return filtered;
-  }, [activities, filters]);
+  // 所有活动（移除筛选功能）
+  const filteredActivities = activities;
 
   // 按日期分组的活动
   const groupedActivities = useMemo(() => {
@@ -197,70 +157,62 @@ export const FootprintModal: React.FC<FootprintModalProps> = ({
   return (
     <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4" style={{ height: '100dvh' }}>
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-4xl flex flex-col" style={{ maxHeight: '85dvh' }}>
-        {/* 头部 */}
-        <div className="flex items-center justify-between p-6 border-b border-gray-100">
-          <div className="flex items-center gap-4">
-            <div className="w-12 h-12 bg-gradient-to-br from-blue-500 to-purple-600 rounded-full flex items-center justify-center">
+        {/* 头部 - EVE风格 */}
+        <div className="flex items-center justify-between p-5 border-b border-gray-100">
+          <div className="flex items-center gap-3">
+            <div className="w-12 h-12 bg-gradient-to-br from-blue-500 to-purple-600 rounded-full flex items-center justify-center flex-shrink-0">
               <Activity className="w-6 h-6 text-white" />
             </div>
             <div>
-              <h2 className="text-xl font-semibold text-gray-900">
-                {characterName} 的行动轨迹
-              </h2>
-              <p className="text-sm text-gray-500 mt-1">
-                最近30天的活动记录
+              <h3 className="text-base font-semibold text-gray-900">
+                {characterName}的足迹
+              </h3>
+              <p className="text-xs text-gray-500 mt-0.5">
+                查看Ta的行为轨迹
               </p>
             </div>
           </div>
           
-          <div className="flex items-center gap-3">
-            <div className="flex items-center gap-2">
-              <span className="text-sm text-gray-500">自动更新频率</span>
-              <select
-                className="px-2 py-1 text-sm border border-gray-300 rounded-md bg-white"
-                value={updateIntervalHours === null ? 'manual' : String(updateIntervalHours)}
-                onChange={(e) => handleChangeInterval(e.target.value)}
-              >
-                <option value="manual">手动</option>
-                <option value="0.5">每30分钟</option>
-                <option value="1">每1小时</option>
-                <option value="3">每3小时</option>
-              </select>
-              {isApplyingUpdate && (
-                <div className="w-4 h-4 border-2 border-gray-300 border-t-gray-600 rounded-full animate-spin" />
-              )}
-            </div>
-
+          <div className="flex items-center gap-2">
             <button
               onClick={handleManualRefresh}
-              className="px-3 py-1.5 text-sm bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-md flex items-center gap-1"
-              title="手动刷新"
+              disabled={isRefreshing}
+              className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              title="刷新足迹"
             >
-              <RefreshCw className="w-4 h-4" /> 手动刷新
-              {isRefreshing && (
-                <span className="ml-2 inline-block w-3 h-3 border-2 border-gray-300 border-t-gray-600 rounded-full animate-spin"></span>
-              )}
-            </button>
-
-            <button
-              onClick={() => setShowFilters(!showFilters)}
-              className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
-              title="筛选"
-            >
-              <Filter className="w-5 h-5" />
+              <RefreshCw className={`w-5 h-5 ${isRefreshing ? 'animate-spin' : ''}`} />
             </button>
             
             <button
               onClick={onClose}
-              className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+              className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors text-2xl leading-none"
             >
-              <X className="w-5 h-5" />
+              ×
             </button>
           </div>
         </div>
 
+        {/* 自动更新频率设置 - EVE风格单独一行 */}
+        <div className="px-5 py-3 bg-gray-50/50 border-b border-gray-100">
+          <div className="flex items-center justify-between">
+            <label className="text-sm text-gray-700">自动更新频率</label>
+            <select
+              className="px-3 py-1.5 text-sm border border-gray-300 rounded-lg bg-white focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+              value={updateIntervalHours === null ? 'manual' : String(updateIntervalHours)}
+              onChange={(e) => handleChangeInterval(e.target.value)}
+              disabled={isApplyingUpdate}
+            >
+              <option value="manual">手动刷新</option>
+              <option value="0.5">每30分钟</option>
+              <option value="1">每小时</option>
+              <option value="2">每2小时</option>
+              <option value="3">每3小时</option>
+            </select>
+          </div>
+        </div>
+
         {refreshError && (
-          <div className="mx-6 mt-3 mb-0 p-3 bg-red-50 border border-red-200 text-red-700 rounded-md flex items-center justify-between">
+          <div className="mx-5 mt-3 mb-0 p-3 bg-red-50 border border-red-200 text-red-700 rounded-lg flex items-center justify-between">
             <span className="text-sm">{refreshError}</span>
             <button
               onClick={handleManualRefresh}
@@ -268,49 +220,6 @@ export const FootprintModal: React.FC<FootprintModalProps> = ({
             >
               重试
             </button>
-          </div>
-        )}
-
-
-        {/* 筛选栏 */}
-        {showFilters && (
-          <div className="p-4 bg-gray-50 border-b border-gray-200">
-            <div className="flex flex-wrap gap-3">
-              <select
-                className="px-3 py-1 text-sm border border-gray-300 rounded-md"
-                onChange={(e) => {
-                  const types = e.target.value ? [e.target.value as ActivityType] : undefined;
-                  setFilters(prev => ({ ...prev, activityTypes: types }));
-                }}
-              >
-                <option value="">所有类型</option>
-                {Object.entries(ACTIVITY_CONFIG).map(([type, config]) => (
-                  <option key={type} value={type}>
-                    {config.icon} {config.label}
-                  </option>
-                ))}
-              </select>
-
-              <select
-                className="px-3 py-1 text-sm border border-gray-300 rounded-md"
-                onChange={(e) => {
-                  const confidence = e.target.value ? parseFloat(e.target.value) : undefined;
-                  setFilters(prev => ({ ...prev, minConfidence: confidence }));
-                }}
-              >
-                <option value="">所有置信度</option>
-                <option value="0.8">高可信度 (≥80%)</option>
-                <option value="0.5">中等可信度 (≥50%)</option>
-                <option value="0">所有记录</option>
-              </select>
-
-              <button
-                onClick={() => setFilters({})}
-                className="px-3 py-1 text-sm text-gray-600 hover:text-gray-800"
-              >
-                清除筛选
-              </button>
-            </div>
           </div>
         )}
 
