@@ -72,6 +72,12 @@ function App() {
   const [currentShopType, setCurrentShopType] = useState<ShopType>('food');
   const [showMigrationPrompt, setShowMigrationPrompt] = useState(false);
   const [replyToLetter, setReplyToLetter] = useState<Letter | null>(null);
+  
+  // 全屏模式状态
+  const [fullscreenMode, setFullscreenMode] = useState<boolean>(() => {
+    const saved = localStorage.getItem('fullscreenMode');
+    return saved === 'true';
+  });
 
   // 桌面布局重置函数
   const resetDesktopLayout = useCallback(() => {
@@ -667,6 +673,12 @@ function App() {
     localStorage.setItem('theme', JSON.stringify(newTheme));
   }, []);
 
+  // 切换全屏模式
+  const toggleFullscreenMode = useCallback((enabled: boolean) => {
+    setFullscreenMode(enabled);
+    localStorage.setItem('fullscreenMode', String(enabled));
+  }, []);
+
   // 添加朋友圈
   const addMoment = useCallback((content: string, images: string[]) => {
     const newMoment: MomentPost = {
@@ -904,6 +916,8 @@ function App() {
             apiConfig={apiConfig}
             onUpdateConfig={setApiConfig}
             onBack={goBack}
+            fullscreenMode={fullscreenMode}
+            onToggleFullscreen={toggleFullscreenMode}
           />
         );
       case 'character-settings':
@@ -1148,9 +1162,17 @@ function App() {
 
   return (
     <>
-      <div className="w-full h-screen flex items-start justify-center bg-slate-100 fixed inset-0 overflow-hidden pt-[10.5px] md:pt-[14px]">
-        {/* 手机容器 - 优化尺寸 (393x800) */}
-        <div className="w-[393px] h-[800px] bg-white rounded-[40px] shadow-2xl overflow-hidden relative -mt-[10.2px]">
+      <div className={`w-full h-screen flex items-start justify-center fixed inset-0 overflow-hidden ${
+        fullscreenMode 
+          ? 'bg-white pt-0' 
+          : 'bg-slate-100 pt-[10.5px] md:pt-[14px]'
+      }`}>
+        {/* 手机容器 - 支持全屏模式切换 */}
+        <div className={`bg-white overflow-hidden relative ${
+          fullscreenMode
+            ? 'w-full h-full rounded-none shadow-none mt-0'
+            : 'w-[393px] h-[800px] rounded-[40px] shadow-2xl -mt-[10.2px]'
+        }`}>
           {renderScreen()}
           
           {/* 消息通知 - QQ风格顶部弹窗 */}

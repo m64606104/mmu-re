@@ -8,11 +8,13 @@ interface SettingsScreenProps {
   apiConfig: ApiConfig;
   onUpdateConfig: (config: ApiConfig) => void;
   onBack: () => void;
+  fullscreenMode: boolean;
+  onToggleFullscreen: (enabled: boolean) => void;
 }
 
 const AVATAR_BADGES = ['🎵', '🎮', '🎧', '🎨', '🎬', '📷', '⚡', '🔥', '💫', '✨', '🌟', '💎'];
 
-export default function SettingsScreen({ apiConfig, onUpdateConfig, onBack }: SettingsScreenProps) {
+export default function SettingsScreen({ apiConfig, onUpdateConfig, onBack, fullscreenMode, onToggleFullscreen }: SettingsScreenProps) {
   const [baseUrl, setBaseUrl] = useState(apiConfig.baseUrl);
   const [apiKey, setApiKey] = useState(apiConfig.apiKey);
   const [modelName, setModelName] = useState(apiConfig.modelName);
@@ -755,6 +757,30 @@ export default function SettingsScreen({ apiConfig, onUpdateConfig, onBack }: Se
           >
             保存配置
           </button>
+        </div>
+
+        {/* 外观设置 */}
+        <div className="bg-white rounded-xl shadow-sm p-5 mt-4">
+          <h2 className="text-base font-semibold text-gray-900 mb-3">
+            🎨 外观设置
+          </h2>
+
+          {/* 全屏显示 */}
+          <div className="flex items-center justify-between py-3">
+            <div>
+              <div className="text-sm font-medium text-gray-900">全屏显示</div>
+              <div className="text-xs text-gray-500 mt-1">自动适应浏览器屏幕，无边框全屏效果</div>
+            </div>
+            <label className="relative inline-flex items-center cursor-pointer">
+              <input
+                type="checkbox"
+                checked={fullscreenMode}
+                onChange={(e) => onToggleFullscreen(e.target.checked)}
+                className="sr-only peer"
+              />
+              <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+            </label>
+          </div>
         </div>
 
         {/* AI生图（商城/朋友圈） */}
