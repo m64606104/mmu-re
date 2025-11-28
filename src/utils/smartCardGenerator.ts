@@ -82,6 +82,10 @@ async function generateWordsWithAI(
       console.log(`🎯 第${attempt}次尝试生成60个词汇...`);
       const prompt = buildGenerationPrompt(vocabularyCount, learnedWords, stage);
       
+      // 添加15秒超时
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 15000);
+      
       const response = await fetch(`${apiConfig.baseUrl}/v1/chat/completions`, {
         method: 'POST',
         headers: {
@@ -103,8 +107,11 @@ async function generateWordsWithAI(
           temperature: 0.8,
           max_tokens: 3000, // 增加token限制
           response_format: { type: 'json_object' }
-        })
+        }),
+        signal: controller.signal
       });
+      
+      clearTimeout(timeoutId);
 
       if (!response.ok) {
         const errorText = await response.text();
@@ -130,8 +137,9 @@ async function generateWordsWithAI(
         throw new Error(`生成词汇数量不足: ${words.length}/60`);
       }
 
-    } catch (error) {
-      console.error(`❌ 第${attempt}次生成失败:`, error);
+    } catch (error: any) {
+      const isTimeout = error.name === 'AbortError';
+      console.error(`❌ 第${attempt}次生成失败${isTimeout ? '(超时)' : ''}:`, error);
       
       if (attempt === 3) {
         // 🔥 最后一次尝试也失败了，但不用模板库！
@@ -172,6 +180,10 @@ async function generateSimpleWords(
 
 请直接返回60行：`;
 
+    // 添加10秒超时（简化版本用更短的超时）
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 10000);
+    
     const response = await fetch(`${apiConfig.baseUrl}/v1/chat/completions`, {
       method: 'POST',
       headers: {
@@ -185,8 +197,11 @@ async function generateSimpleWords(
         ],
         temperature: 0.7,
         max_tokens: 2000
-      })
+      }),
+      signal: controller.signal
     });
+    
+    clearTimeout(timeoutId);
 
     if (!response.ok) {
       throw new Error(`简化API调用也失败了 ${response.status}`);

@@ -2,8 +2,8 @@
 // 类似 Eve Chat 的足迹弹窗，时间轴展示角色活动
 
 import React, { useState, useEffect, useMemo } from 'react';
-import { X, Clock, MapPin, Activity, Filter, Calendar, BarChart3, RefreshCw } from 'lucide-react';
-import { FootprintActivity, FootprintFilters, ActivityType, ActivitySource } from '../types/footprint';
+import { X, MapPin, Activity, Filter, Calendar, RefreshCw } from 'lucide-react';
+import { FootprintActivity, FootprintFilters, ActivityType } from '../types/footprint';
 import { footprintStorage } from '../utils/footprintStorage';
 import { initializeFootprintGeneration, generateFootprintNow } from '../utils/footprintGenerator';
 
@@ -12,6 +12,7 @@ interface FootprintModalProps {
   characterName: string;
   isOpen: boolean;
   onClose: () => void;
+  conversation?: any; // 传入完整conversation对象以读取真实聊天数据
 }
 
 // 活动类型图标和颜色
@@ -38,7 +39,6 @@ export const FootprintModal: React.FC<FootprintModalProps> = ({
 }) => {
   const [activities, setActivities] = useState<FootprintActivity[]>([]);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<'timeline' | 'stats'>('timeline');
   const [filters, setFilters] = useState<FootprintFilters>({});
   const [showFilters, setShowFilters] = useState(false);
   const [updateIntervalHours, setUpdateIntervalHours] = useState<number | null>(null); // null=手动
@@ -184,31 +184,6 @@ export const FootprintModal: React.FC<FootprintModalProps> = ({
     return groups;
   }, [filteredActivities]);
 
-  // 统计信息
-  const stats = useMemo(() => {
-    const totalActivities = filteredActivities.length;
-    const activityTypes = filteredActivities.reduce((acc, activity) => {
-      acc[activity.activityType] = (acc[activity.activityType] || 0) + 1;
-      return acc;
-    }, {} as Record<ActivityType, number>);
-
-    const sources = filteredActivities.reduce((acc, activity) => {
-      acc[activity.source] = (acc[activity.source] || 0) + 1;
-      return acc;
-    }, {} as Record<ActivitySource, number>);
-
-    const totalChatTime = filteredActivities
-      .filter(a => a.activityType === 'chatting')
-      .reduce((sum, a) => sum + (a.duration || 0), 0);
-
-    return {
-      totalActivities,
-      activityTypes,
-      sources,
-      totalChatTime: Math.round(totalChatTime / 1000 / 60) // 转为分钟
-    };
-  }, [filteredActivities]);
-
   // EVE风格时间格式：HH:mm
   const formatTime = (timestamp: number) => {
     return new Date(timestamp).toLocaleTimeString('zh-CN', {
@@ -220,8 +195,8 @@ export const FootprintModal: React.FC<FootprintModalProps> = ({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-4xl max-h-[90vh] flex flex-col">
+    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4" style={{ height: '100dvh' }}>
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-4xl flex flex-col" style={{ maxHeight: '85dvh' }}>
         {/* 头部 */}
         <div className="flex items-center justify-between p-6 border-b border-gray-100">
           <div className="flex items-center gap-4">
@@ -296,32 +271,6 @@ export const FootprintModal: React.FC<FootprintModalProps> = ({
           </div>
         )}
 
-        {/* 标签页 */}
-        <div className="flex border-b border-gray-100">
-          <button
-            onClick={() => setActiveTab('timeline')}
-            className={`px-6 py-3 text-sm font-medium transition-colors ${
-              activeTab === 'timeline'
-                ? 'text-blue-600 border-b-2 border-blue-600'
-                : 'text-gray-500 hover:text-gray-700'
-            }`}
-          >
-            <Clock className="w-4 h-4 inline mr-2" />
-            时间轨迹
-          </button>
-          
-          <button
-            onClick={() => setActiveTab('stats')}
-            className={`px-6 py-3 text-sm font-medium transition-colors ${
-              activeTab === 'stats'
-                ? 'text-blue-600 border-b-2 border-blue-600'
-                : 'text-gray-500 hover:text-gray-700'
-            }`}
-          >
-            <BarChart3 className="w-4 h-4 inline mr-2" />
-            统计分析
-          </button>
-        </div>
 
         {/* 筛选栏 */}
         {showFilters && (
@@ -374,7 +323,7 @@ export const FootprintModal: React.FC<FootprintModalProps> = ({
                 <p className="text-gray-500">加载轨迹数据中...</p>
               </div>
             </div>
-          ) : activeTab === 'timeline' ? (
+          ) : (
             // 时间轨迹视图
             <div className="p-6">
               {Object.keys(groupedActivities).length === 0 ? (
@@ -441,75 +390,6 @@ export const FootprintModal: React.FC<FootprintModalProps> = ({
                   ))}
                 </div>
               )}
-            </div>
-          ) : (
-            // 统计分析视图
-            <div className="p-6 space-y-6">
-              {/* 总体统计 */}
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                <div className="bg-gradient-to-br from-blue-50 to-blue-100 p-6 rounded-xl">
-                  <div className="flex items-center gap-3">
-                    <Activity className="w-8 h-8 text-blue-600" />
-                    <div>
-                      <p className="text-sm text-blue-600 font-medium">总活动数</p>
-                      <p className="text-2xl font-bold text-blue-900">{stats.totalActivities}</p>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="bg-gradient-to-br from-green-50 to-green-100 p-6 rounded-xl">
-                  <div className="flex items-center gap-3">
-                    <Clock className="w-8 h-8 text-green-600" />
-                    <div>
-                      <p className="text-sm text-green-600 font-medium">聊天时长</p>
-                      <p className="text-2xl font-bold text-green-900">{stats.totalChatTime}分钟</p>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="bg-gradient-to-br from-purple-50 to-purple-100 p-6 rounded-xl">
-                  <div className="flex items-center gap-3">
-                    <BarChart3 className="w-8 h-8 text-purple-600" />
-                    <div>
-                      <p className="text-sm text-purple-600 font-medium">活跃天数</p>
-                      <p className="text-2xl font-bold text-purple-900">{Object.keys(groupedActivities).length}</p>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              {/* 活动类型分布 */}
-              <div className="bg-white rounded-xl border border-gray-200 p-6">
-                <h3 className="text-lg font-semibold text-gray-900 mb-4">活动类型分布</h3>
-                <div className="space-y-3">
-                  {Object.entries(stats.activityTypes)
-                    .sort(([,a], [,b]) => b - a)
-                    .map(([type, count]) => {
-                      const config = ACTIVITY_CONFIG[type as ActivityType];
-                      const percentage = Math.round((count / stats.totalActivities) * 100);
-                      return (
-                        <div key={type} className="flex items-center gap-3">
-                          <span className="text-lg">{config.icon}</span>
-                          <span className="text-sm font-medium text-gray-900 w-16">
-                            {config.label}
-                          </span>
-                          <div className="flex-1 bg-gray-200 rounded-full h-2">
-                            <div
-                              className="h-2 rounded-full"
-                              style={{ 
-                                width: `${percentage}%`,
-                                backgroundColor: config.color
-                              }}
-                            />
-                          </div>
-                          <span className="text-sm text-gray-500 w-16 text-right">
-                            {count}次 ({percentage}%)
-                          </span>
-                        </div>
-                      );
-                    })}
-                </div>
-              </div>
             </div>
           )}
         </div>
