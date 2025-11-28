@@ -82,9 +82,9 @@ async function generateWordsWithAI(
       console.log(`🎯 第${attempt}次尝试生成60个词汇...`);
       const prompt = buildGenerationPrompt(vocabularyCount, learnedWords, stage);
       
-      // 添加15秒超时
+      // 添加30秒超时
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 15000);
+      const timeoutId = setTimeout(() => controller.abort(), 30000);
       
       const response = await fetch(`${apiConfig.baseUrl}/v1/chat/completions`, {
         method: 'POST',
@@ -180,9 +180,9 @@ async function generateSimpleWords(
 
 请直接返回60行：`;
 
-    // 添加10秒超时（简化版本用更短的超时）
+    // 添加40秒超时（简化版本需要更多时间）
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 10000);
+    const timeoutId = setTimeout(() => controller.abort(), 40000);
     
     const response = await fetch(`${apiConfig.baseUrl}/v1/chat/completions`, {
       method: 'POST',

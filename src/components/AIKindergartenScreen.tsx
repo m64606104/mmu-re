@@ -54,6 +54,7 @@ export default function AIKindergartenScreen({ onBack, onOpenChat, apiConfig }: 
   const [isGenerating, setIsGenerating] = useState(false);
   const [cardPool, setCardPool] = useState<DailyCardPool | null>(null);
   const [isLoadingCards, setIsLoadingCards] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [showChildrenList, setShowChildrenList] = useState(false);
   const [showRoundComplete, setShowRoundComplete] = useState(false); // 显示轮次完成提示
   const [showInteraction, setShowInteraction] = useState(false); // 显示AI互动界面
@@ -101,6 +102,7 @@ export default function AIKindergartenScreen({ onBack, onOpenChat, apiConfig }: 
     if (!selectedChild || !selectedChild.aiChildData) return;
     
     setIsLoadingCards(true);
+    setLoadError(null);
     try {
       const learnedWords = selectedChild.aiChildData.vocabulary.map(w => w.word);
       const pool = await generateDailyCards(
@@ -119,8 +121,11 @@ export default function AIKindergartenScreen({ onBack, onOpenChat, apiConfig }: 
         // 更新上一轮的词
         await updateLastRound(selectedChild.id, nextCards.map(c => c.word));
       }
-    } catch (error) {
+      setLoadError(null);
+    } catch (error: any) {
       console.error('生成词卡失败:', error);
+      const isTimeout = error.name === 'AbortError';
+      setLoadError(isTimeout ? '⏱️ API响应超时（30秒）' : `❌ 生成失败: ${error.message || '未知错误'}`);
     } finally {
       setIsLoadingCards(false);
     }
@@ -800,12 +805,26 @@ export default function AIKindergartenScreen({ onBack, onOpenChat, apiConfig }: 
                   </div>
                 </div>
 
+                {/* 错误状态 */}
+                {loadError && (
+                  <div className="mb-4 p-4 rounded-lg bg-red-50 border border-red-200">
+                    <p className="text-red-700 text-sm mb-3">{loadError}</p>
+                    <button
+                      onClick={initDailyCardPool}
+                      className="w-full py-2 px-4 bg-red-500 hover:bg-red-600 text-white rounded-lg font-medium transition-colors"
+                    >
+                      🔄 重新生成
+                    </button>
+                  </div>
+                )}
+
                 {/* 加载状态 */}
                 {isLoadingCards ? (
                   <div className="py-12 text-center">
                     <div className="w-12 h-12 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
                     <p className="text-gray-600">🎯 AI正在生成今日词卡...</p>
                     <p className="text-xs text-gray-500 mt-2">基于{selectedChild.name}的识字量和理解力</p>
+                    <p className="text-xs text-gray-400 mt-1">最多等待30秒</p>
                   </div>
                 ) : !selectedCard && (currentCards.length > 0 || dailyRounds < 20) ? (
                   <>
