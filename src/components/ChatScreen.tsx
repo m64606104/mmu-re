@@ -2860,6 +2860,122 @@ ${characterInfo?.languageStyle ? `语言风格：${characterInfo.languageStyle}`
     }
   };
 
+  // 🎯 AI主动发送私聊消息函数
+  const maybeSendAutoPrivateDM = async (aiId: string, groupMessage: Message, fromGroupId: string) => {
+    if (!groupMessage.content || !currentUserProfile) return;
+    
+    // 检测AI是否承诺私聊发送内容
+    const privatePromiseKeywords = [
+      '我私聊发给你', '我私下发给你', '我单独发给你',
+      '私聊发', '私下发', '单独发',
+      '我私聊给你发', '我私下给你发', '我单独给你发',
+      '等下私聊发', '等下私下发', '等下单独发',
+      '稍后私聊发', '稍后私下发', '稍后单独发'
+    ];
+    
+    const hasPromise = privatePromiseKeywords.some(keyword => groupMessage.content.includes(keyword));
+    if (!hasPromise) return;
+    
+    console.log(`🎯 检测到AI ${aiId} 承诺私聊发送内容: ${groupMessage.content.substring(0, 50)}...`);
+    
+    // 查找AI对应的私聊会话
+    const privateConversation = conversations.find(c => c.type === 'private' && c.id === aiId);
+    if (!privateConversation) {
+      console.warn(`⚠️ 未找到AI ${aiId} 的私聊会话`);
+      return;
+    }
+    
+    // 延迟3-8秒后发送私聊消息（模拟真实行为）
+    const delay = Math.random() * 5000 + 3000;
+    setTimeout(async () => {
+      try {
+        console.log(`🎯 AI ${aiId} 开始发送承诺的私聊消息...`);
+        
+        // 构建私聊发送的提示词
+        const privatePrompt = `你在群聊中承诺要私聊发送内容给用户。现在请履行承诺，发送相关内容。
+
+群聊背景：${fromGroupId}
+你的承诺：${groupMessage.content.substring(0, 100)}...
+
+请发送符合承诺的内容，可以是：
+- 有趣的视频（使用[视频:描述]格式）
+- 好看的图片（使用[图片:描述]格式）  
+- 有用的链接
+- 其他符合承诺的内容
+
+要求：
+1. 内容要符合你在群聊中的承诺
+2. 自然地提及群聊中的承诺
+3. 内容要有趣、有价值
+4. 长度控制在50-200字以内`;
+
+        // 构建请求体
+        const requestBody = {
+          model: apiConfig.modelName,
+          messages: [
+            {
+              role: 'system',
+              content: `你是${privateConversation.characterSettings?.nickname || privateConversation.name}。${privateConversation.characterSettings?.systemPrompt || ''}`
+            },
+            {
+              role: 'user',
+              content: privatePrompt
+            }
+          ],
+          temperature: 0.7,
+          max_tokens: 500
+        };
+        
+        // 调用Chat API生成私聊消息
+        const response = await fetch('https://api.openai.com/v1/chat/completions', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${apiConfig.apiKey}`
+          },
+          body: JSON.stringify(requestBody)
+        });
+        
+        if (!response.ok) {
+          throw new Error(`API调用失败: ${response.status}`);
+        }
+        
+        const data = await response.json();
+        const aiReply = data.choices?.[0]?.message?.content;
+        
+        if (!aiReply) {
+          console.warn('AI私聊回复为空');
+          return;
+        }
+        
+        // 创建私聊消息
+        const privateMessage: Message = {
+          id: Date.now().toString() + '_private_' + Math.random(),
+          role: 'assistant',
+          content: aiReply.trim(),
+          timestamp: Date.now(),
+        };
+        
+        // 更新私聊会话
+        const updatedPrivateMessages = [...privateConversation.messages, privateMessage];
+        onUpdateConversation(privateConversation.id, {
+          messages: updatedPrivateMessages,
+          lastMessageTime: Date.now()
+        });
+        
+        console.log(`✅ AI ${aiId} 已发送承诺的私聊消息: ${aiReply.substring(0, 50)}...`);
+        
+        // 如果用户当前不在该私聊会话，可以显示一个通知（可选）
+        if (conversation.id !== privateConversation.id) {
+          console.log(`📬 AI ${aiId} 在私聊中发送了消息，但用户当前不在此会话`);
+        }
+        
+      } catch (error) {
+        console.error('AI发送私聊消息失败:', error);
+      }
+    }, delay);
+  };
+
   // 群聊生成函数
   const handleGroupChatGenerate = async () => {
     // 🚀 启动后台生成任务
@@ -2924,6 +3040,9 @@ ${characterInfo?.languageStyle ? `语言风格：${characterInfo.languageStyle}`
                 currentUserProfile.username,
                 conversations
               );
+              
+              // 🎯 检测AI承诺私聊发送内容，主动发送私聊消息
+              maybeSendAutoPrivateDM(_aiId, message, conversation.id);
             }
             
             // 🎁 检测AI发送的群红包，触发其他AI自动领取

@@ -257,8 +257,8 @@ export default function AIKindergartenScreen({ onBack, onOpenChat, apiConfig }: 
 
   // 选择词卡（不立即教学）
   const handleSelectCard = (card: WordCard) => {
-    if (dailyRounds >= 60) {
-      setTeachResult('🌙 今天已经学了60个词啦，已达上限！');
+    if (dailyRounds >= 20) {
+      setTeachResult('🌙 今天已经学了20个词啦，已达上限！');
       return;
     }
     
@@ -317,7 +317,7 @@ export default function AIKindergartenScreen({ onBack, onOpenChat, apiConfig }: 
         saveDailyData();
         
         // 如果完成一轮，显示提示
-        if (roundCompleted && newRounds < 60) {
+        if (roundCompleted && newRounds < 20) {
           setShowRoundComplete(true);
         }
         

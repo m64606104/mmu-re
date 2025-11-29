@@ -298,7 +298,7 @@ export const teachWord = async (
       
       // 复习也会给少量理解力经验
       if (addExperience) {
-        const { updateChildComprehension } = require('./correctComprehensionSystem');
+        const { updateChildComprehension } = await import('./correctComprehensionSystem');
         const learningQuality = Math.max(5, calculateLearningQuality(word, definition, examples) - 3); // 复习质量稍低
         updateChildComprehension(child.aiChildData, word, learningQuality);
       }
@@ -328,7 +328,7 @@ export const teachWord = async (
       }
       
       // 更新理解力 - 使用新的经验系统
-      const { updateChildComprehension } = require('./correctComprehensionSystem');
+      const { updateChildComprehension } = await import('./correctComprehensionSystem');
       
       // 计算学习质量（基于定义完整性）
       const learningQuality = calculateLearningQuality(word, definition, examples);
@@ -455,9 +455,9 @@ const checkStageUpgrade = (childData: AIChildData): void => {
  * 更新理解力 - 使用正确的经验系统
  * 基于门槛+经验+质量影响的完整设计
  */
-export const updateComprehension = (childData: AIChildData): void => {
+export const updateComprehension = async (childData: AIChildData): Promise<void> => {
   // 重新计算所有词汇的累计经验（兼容旧数据）
-  const { recalculateComprehensionFromVocabulary } = require('./correctComprehensionSystem');
+  const { recalculateComprehensionFromVocabulary } = await import('./correctComprehensionSystem');
   recalculateComprehensionFromVocabulary(childData);
 };
 

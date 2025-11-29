@@ -9,7 +9,7 @@ import { smartLoad, smartSave } from './storage';
 
 export interface DailyCardPool {
   date: string;
-  rounds: WordCard[][];  // 15轮，每轮4个词（总60词，3个学习轮次）
+  rounds: WordCard[][];  // 5轮，每轮4个词（总20词，符合用户期望）
   selectedWords: string[];  // 当天已选择的词
   lastRoundWords: string[];  // 上一轮显示的词（用于限制重复）
   allWords: WordCard[];  // 所有可用的词
@@ -17,7 +17,7 @@ export interface DailyCardPool {
 }
 
 /**
- * 为当天生成15轮词卡（共60个词，支持3个学习轮次每轮20词）
+ * 为当天生成5轮词卡（共20个词，符合用户期望）
  */
 export async function generateDailyCards(
   childId: string,
@@ -36,7 +36,7 @@ export async function generateDailyCards(
     return cached;
   }
 
-  // 使用AI生成60个适合的词（15轮×4词）
+  // 使用AI生成20个适合的词（5轮×4词）
   const words = await generateWordsWithAI(vocabularyCount, learnedWords, stage, apiConfig);
   // 判定来源
   let source: DailyCardPool['source'] = 'api';
@@ -46,9 +46,9 @@ export async function generateDailyCards(
     if (id.startsWith('static_')) source = 'static';
   }
   
-  // 分成15轮，每轮4个词
+  // 分成5轮，每轮4个词
   const rounds: WordCard[][] = [];
-  for (let i = 0; i < 15; i++) {
+  for (let i = 0; i < 5; i++) {
     rounds.push(words.slice(i * 4, (i + 1) * 4));
   }
 
@@ -79,7 +79,7 @@ async function generateWordsWithAI(
   // 🔥 重试机制：最多重试3次，不使用模板库
   for (let attempt = 1; attempt <= 3; attempt++) {
     try {
-      console.log(`🎯 第${attempt}次尝试生成60个词汇...`);
+      console.log(`🎯 第${attempt}次尝试生成20个词汇...`);
       const prompt = buildGenerationPrompt(vocabularyCount, learnedWords, stage);
       
       // 添加30秒超时
@@ -130,11 +130,11 @@ async function generateWordsWithAI(
       // 解析AI返回的词汇
       const words = parseAIResponse(content);
       
-      if (words.length >= 40) { // 至少要有40个词才算成功
+      if (words.length >= 15) { // 至少要有15个词才算成功
         console.log(`✅ 成功生成${words.length}个词汇`);
         return words;
       } else {
-        throw new Error(`生成词汇数量不足: ${words.length}/60`);
+        throw new Error(`生成词汇数量不足: ${words.length}/20`);
       }
 
     } catch (error: any) {
@@ -167,18 +167,18 @@ async function generateSimpleWords(
   try {
     console.log('🚨 使用简化方式生成词汇...');
     
-    const prompt = `请为${vocabularyCount}词汇量的AI儿童推荐60个新的学习词汇。
+    const prompt = `请为${vocabularyCount}词汇量的AI儿童推荐20个新的学习词汇。
 
 已学词汇示例：${learnedWords.slice(0, 10).join('、')}
 
-请直接返回60个新词汇，每行一个，格式：
+请直接返回20个新词汇，每行一个，格式：
 词汇-表情-定义-难度(1-3)-类别
 
 例如：
 苹果-🍎-红色的水果-1-食物
 跑步-🏃-快速移动-1-动作
 
-请直接返回60行：`;
+请直接返回20行：`;
 
     // 添加40秒超时（简化版本需要更多时间）
     const controller = new AbortController();
@@ -214,7 +214,7 @@ async function generateSimpleWords(
     const lines = content.split('\n').filter((line: string) => line.trim() && line.includes('-'));
     const words: WordCard[] = [];
     
-    for (let i = 0; i < Math.min(lines.length, 60); i++) {
+    for (let i = 0; i < Math.min(lines.length, 20); i++) {
       const parts = lines[i].split('-');
       if (parts.length >= 5) {
         words.push({
@@ -231,9 +231,9 @@ async function generateSimpleWords(
     
     console.log(`🔄 简化方式生成了${words.length}个词汇`);
     
-    // 用静态词库补足至60个，避免出现虚假随机词
-    if (words.length < 60) {
-      const need = 60 - words.length;
+    // 用静态词库补足至20个，避免出现虚假随机词
+    if (words.length < 20) {
+      const need = 20 - words.length;
       const lib = getAllWordCards();
       // 过滤掉与当前已解析重复的词
       const existing = new Set(words.map(w => w.word));
@@ -261,7 +261,7 @@ async function generateSimpleWords(
     // 最终回退：使用静态词库，避免虚假随机词
     const lib = getAllWordCards();
     const shuffled = lib.sort(() => Math.random() - 0.5);
-    const pick = shuffled.slice(0, Math.min(60, shuffled.length));
+    const pick = shuffled.slice(0, Math.min(20, shuffled.length));
     const words: WordCard[] = pick.map((c, i) => ({
       id: `static_${c.id}_${i}`,
       word: c.word,
@@ -287,7 +287,7 @@ function buildGenerationPrompt(vocabularyCount: number, learnedWords: string[], 
     teen: '少年期（1000+词）：复杂词汇，深度表达'
   }[stage] || '婴儿期';
 
-  return `请为AI儿童生成60个适合学习的词汇。
+  return `请为AI儿童生成20个适合学习的词汇。
 
 【当前状态】
 - 识字量：${vocabularyCount}个
@@ -295,7 +295,7 @@ function buildGenerationPrompt(vocabularyCount: number, learnedWords: string[], 
 - 已学过的词：${learnedWords.slice(0, 20).join('、')}${learnedWords.length > 20 ? '等' : ''}
 
 【要求】
-1. 生成60个词，按难度递进
+1. 生成20个词，按难度递进
 2. 不要包含已学过的词
 3. 不要太基础（如"我你他这那"）
 4. 要实用，能构成对话
@@ -310,7 +310,7 @@ function buildGenerationPrompt(vocabularyCount: number, learnedWords: string[], 
   ]
 }
 
-请生成60个词的完整JSON列表。`;
+请生成20个词的完整JSON列表。`;
 }
 
 /**

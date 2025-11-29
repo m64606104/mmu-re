@@ -60,7 +60,7 @@ export const fixAllComprehensionProgress = async (): Promise<{
         const oldProgress = conversation.aiChildData.comprehension.progress;
         
         // 强制重新计算理解力进度
-        updateComprehension(conversation.aiChildData);
+        await updateComprehension(conversation.aiChildData);
         
         const newProgress = conversation.aiChildData.comprehension.progress;
         const needsFix = oldProgress !== newProgress || isNaN(oldProgress) || oldProgress === undefined;

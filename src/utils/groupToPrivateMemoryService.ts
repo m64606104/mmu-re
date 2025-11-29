@@ -244,39 +244,57 @@ ${bridgeMessage}
   }
 
   /**
-   * 检查消息是否应该触发桥接创建
+   * 检查是否应该创建桥接（从群聊AI消息触发）
    */
   shouldCreateBridge(
     message: Message,
-    conversationId: string,
+    fromGroupId: string,
     userId: string,
     allConversations: Conversation[]
   ): void {
+    // 只处理AI消息
     if (message.role !== 'assistant' || !message.content) return;
 
     // 检测私聊意图
-    for (const conversation of allConversations) {
-      if (conversation.type === 'group' && conversation.id === conversationId) {
-        // 在群聊中检测私聊意图
-        if (this.detectPrivateChatIntent(message.content, conversationId, '', userId)) {
-          // 查找对应的私聊对话
-          const privateConversation = allConversations.find(c => 
-            c.type === 'private' && c.members?.includes(userId)
-          );
+    const hasIntent = this.detectPrivateChatIntent(
+      message.content,
+      fromGroupId,
+      '', // 目标私聊ID暂时未知，稍后通过senderId查找
+      userId
+    );
 
-          if (privateConversation) {
-            this.createPrivateChatIntent(
-              conversationId,
-              privateConversation.id,
-              userId,
-              message.content,
-              conversation.messages
-            );
-          }
-        }
-        break;
-      }
+    if (!hasIntent) return;
+
+    // 🔧 修复：使用消息的senderId定位对应的私聊会话（而不是错误的members.includes）
+    const senderId = (message as any).senderId;
+    if (!senderId) {
+      console.warn('⚠️ AI消息缺少senderId，无法创建私聊桥接');
+      return;
     }
+
+    const privateConversation = allConversations.find(c => 
+      c.type === 'private' && c.id === senderId
+    );
+
+    if (!privateConversation) {
+      console.warn(`⚠️ 未找到AI的私聊会话 (senderId: ${senderId})`);
+      return;
+    }
+
+    // 查找群聊会话
+    const groupConversation = allConversations.find(c => c.id === fromGroupId);
+    if (!groupConversation) return;
+
+    // 创建私聊意图
+    this.createPrivateChatIntent(
+      fromGroupId,
+      privateConversation.id,
+      userId,
+      message.content,
+      groupConversation.messages
+    );
+
+    console.log(`🌉 创建私聊意图: ${fromGroupId} → ${privateConversation.id}`);
   }
 
   /**

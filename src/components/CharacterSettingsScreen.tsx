@@ -300,7 +300,7 @@ export default function CharacterSettingsScreen({
     setShowKnowledgeModal(true);
   };
 
-  const handleSaveKnowledge = () => {
+  const handleSaveKnowledge = async () => {
     try {
       if (!knowledgeTitle.trim() || !knowledgeContent.trim()) {
         alert('请填写标题和内容');
@@ -330,7 +330,7 @@ export default function CharacterSettingsScreen({
         
         // 同时保存到文档库
         try {
-          const { saveDocument } = require('../utils/documentLibrary');
+          const { saveDocument } = await import('../utils/documentLibrary');
           const docToSave = {
             title: knowledgeTitle,
             content: knowledgeContent,
