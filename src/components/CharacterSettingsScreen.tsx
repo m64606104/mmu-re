@@ -1455,7 +1455,7 @@ export default function CharacterSettingsScreen({
                 • 知识库文档<br />
                 • 记忆库（完整的AI记忆）<br />
                 • 朋友圈内容<br />
-                • AI状态和行为轨迹<br />
+                • AI状态信息<br />
                 • 财务数据<br />
                 • 关系网络<br />
                 • 聊天记录（可选）

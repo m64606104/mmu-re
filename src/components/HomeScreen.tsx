@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { MessageCircle, Settings, Music, Phone, Heart, Bell, Play, Pause, SkipBack, SkipForward, MapPin, Sun, Palette, Upload, BookOpen, Mailbox, X, Database, Users, GraduationCap, Dices } from 'lucide-react';
+import { MessageCircle, Settings, Music, Phone, Heart, Bell, Play, Pause, SkipBack, SkipForward, MapPin, Sun, Palette, Upload, BookOpen, Mailbox, X, Database, Users, GraduationCap } from 'lucide-react';
 import { Screen, ThemeSettings } from '../types';
 
 interface HomeScreenProps {
@@ -51,7 +51,7 @@ export default function HomeScreen({ onNavigate, theme }: HomeScreenProps) {
   // 应用布局状态
   const [appLayout, setAppLayout] = useState<string[]>(() => {
     const saved = localStorage.getItem('appLayout');
-    return saved ? JSON.parse(saved) : ['settings', 'social', 'trpg', 'kindergarten', 'theme', 'music', 'phone', 'bell', 'mail', 'database'];
+    return saved ? JSON.parse(saved) : ['settings', 'social', 'kindergarten', 'theme', 'music', 'phone', 'bell', 'mail', 'database'];
   });
   const [quickLayout, setQuickLayout] = useState<string[]>(() => {
     const saved = localStorage.getItem('quickLayout');
@@ -416,7 +416,6 @@ export default function HomeScreen({ onNavigate, theme }: HomeScreenProps) {
     heart: { icon: Heart, name: '收藏' },
     database: { icon: Database, name: '资料库', onClick: () => onNavigate('database') },
     kindergarten: { icon: GraduationCap, name: '幼儿园', onClick: () => onNavigate('kindergarten') },
-    trpg: { icon: Dices, name: '跑团', onClick: () => onNavigate('trpg') },
   };
 
   // 获取当前壁纸样式

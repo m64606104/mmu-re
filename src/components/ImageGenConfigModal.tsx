@@ -157,21 +157,21 @@ export default function ImageGenConfigModal({
         </div>
 
         <div className="space-y-4">
-          {/* API预设选择 */}
-          {availablePresets.length > 0 && (
-            <div>
-              <div className="flex items-center justify-between mb-2">
-                <label className="block text-sm font-medium text-gray-700">
-                  快速选择预设
-                </label>
-                <button
-                  onClick={() => setShowPresetsModal(true)}
-                  className="flex items-center gap-1 px-2 py-1 text-xs bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors"
-                >
-                  <Settings className="w-3 h-3" />
-                  管理预设
-                </button>
-              </div>
+          {/* API预设选择 / 管理 */}
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <label className="block text-sm font-medium text-gray-700">
+                快速选择预设
+              </label>
+              <button
+                onClick={() => setShowPresetsModal(true)}
+                className="flex items-center gap-1 px-2 py-1 text-xs bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors"
+              >
+                <Settings className="w-3 h-3" />
+                管理预设
+              </button>
+            </div>
+            {availablePresets.length > 0 ? (
               <div className="grid grid-cols-1 gap-2">
                 {availablePresets.slice(0, 3).map((preset) => (
                   <button
@@ -184,8 +184,12 @@ export default function ImageGenConfigModal({
                   </button>
                 ))}
               </div>
-            </div>
-          )}
+            ) : (
+              <p className="text-xs text-gray-500">
+                还没有预设，点击「管理预设」可以添加多个API方案
+              </p>
+            )}
+          </div>
 
           {/* API地址 */}
           <div>

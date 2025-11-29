@@ -408,9 +408,9 @@ export default function AnnouncementScreen({ onBack }: AnnouncementScreenProps) 
               </div>
               
               <div>
-                <h4 className="text-sm font-semibold text-pink-200 mb-1">🎭 行为轨迹优化</h4>
+                <h4 className="text-sm font-semibold text-pink-200 mb-1">🎭 互动展示优化</h4>
                 <p className="text-gray-100 text-sm leading-relaxed">
-                  <strong>修复了行为轨迹重复问题</strong>，更好更生动的显示AI的日常活动，让角色更加真实立体。
+                  <strong>优化了AI日常互动的展示效果</strong>，让角色的日常状态呈现得更加连贯、生动。
                 </p>
               </div>
               

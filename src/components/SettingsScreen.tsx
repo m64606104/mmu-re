@@ -3,6 +3,8 @@ import { ChevronLeft, Check, Loader2, Download, Upload, Database } from 'lucide-
 import { ApiConfig } from '../types';
 import { smartLoad, smartSave, checkStorageQuota, saveBatch, getStorageStatus, migrateData, clearAllData, loadBatch } from '../utils/storage';
 import ImageGenConfigModal from './ImageGenConfigModal';
+import { apiPresetsManager, APIPreset } from '../utils/apiPresetsManager';
+import APIPresetsModal from './APIPresetsModal';
 
 interface SettingsScreenProps {
   apiConfig: ApiConfig;
@@ -21,6 +23,8 @@ export default function SettingsScreen({ apiConfig, onUpdateConfig, onBack, full
   const [availableModels, setAvailableModels] = useState<string[]>([]);
   const [testing, setTesting] = useState(false);
   const [testResult, setTestResult] = useState<'success' | 'error' | null>(null);
+  const [apiPresets, setApiPresets] = useState<APIPreset[]>([]);
+  const [showApiPresetsModal, setShowApiPresetsModal] = useState(false);
   const [selectedBadge, setSelectedBadge] = useState('🎵');
   const importInputRef = useRef<HTMLInputElement>(null);
   
@@ -44,6 +48,12 @@ export default function SettingsScreen({ apiConfig, onUpdateConfig, onBack, full
   const [shopGenEnabled, setShopGenEnabled] = useState<boolean>(true);
   const [momentsGenEnabled, setMomentsGenEnabled] = useState<boolean>(false);
   const [momentsDailyLimit, setMomentsDailyLimit] = useState<number>(10);
+
+  // 初始化API预设列表
+  useEffect(() => {
+    const presets = apiPresetsManager.getPresets();
+    setApiPresets(presets);
+  }, []);
 
   useEffect(() => {
     // 加载用户头像装饰配置
@@ -205,6 +215,16 @@ export default function SettingsScreen({ apiConfig, onUpdateConfig, onBack, full
       }
     });
     alert('配置已保存');
+  };
+
+  // 应用选中的API预设（仅填充字段，不自动保存）
+  const handleApplyApiPreset = (preset: APIPreset) => {
+    if (!preset) return;
+    setBaseUrl(preset.apiUrl || '');
+    setApiKey(preset.apiKey || '');
+    setModelName(preset.model || '');
+    // 记录当前预设，便于在预设管理弹窗中高亮
+    apiPresetsManager.switchToPreset(preset.id);
   };
 
   // 保存AI生图配置（商城/朋友圈共用）
@@ -639,6 +659,36 @@ export default function SettingsScreen({ apiConfig, onUpdateConfig, onBack, full
             <Database className="w-5 h-5 text-blue-500" />
             API 配置
           </h2>
+
+          {/* API 预设方案 */}
+          <div className="bg-gray-50 border border-gray-200 rounded-lg p-3">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-xs font-medium text-gray-700">API 预设方案</span>
+              <button
+                onClick={() => setShowApiPresetsModal(true)}
+                className="px-2 py-1 text-xs rounded-md bg-white hover:bg-gray-100 border border-gray-200 text-gray-700 flex items-center gap-1"
+              >
+                管理预设
+              </button>
+            </div>
+            {apiPresets.length > 0 ? (
+              <div className="flex flex-wrap gap-2">
+                {apiPresets.slice(0, 3).map((preset) => (
+                  <button
+                    key={preset.id}
+                    onClick={() => handleApplyApiPreset(preset)}
+                    className="px-3 py-1 text-xs rounded-full bg-blue-50 text-blue-700 hover:bg-blue-100 border border-blue-200"
+                  >
+                    {preset.name}
+                  </button>
+                ))}
+              </div>
+            ) : (
+              <p className="text-xs text-gray-500">
+                还没有预设，点击「管理预设」可以添加多个API方案
+              </p>
+            )}
+          </div>
 
           {/* Base URL */}
           <div>
@@ -1087,6 +1137,16 @@ export default function SettingsScreen({ apiConfig, onUpdateConfig, onBack, full
           </div>
         </div>
       </div>
+      {/* API预设管理弹窗（主聊天/生图共用） */}
+      <APIPresetsModal
+        isOpen={showApiPresetsModal}
+        onClose={() => {
+          setShowApiPresetsModal(false);
+          setApiPresets(apiPresetsManager.getPresets());
+        }}
+        onSelectPreset={handleApplyApiPreset}
+      />
+
       {/* AI生图配置弹窗（商城/朋友圈共用） */}
       <ImageGenConfigModal
         isOpen={showImageGenModal}
