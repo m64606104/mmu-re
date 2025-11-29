@@ -191,7 +191,7 @@ export class APIPresetsManager {
       console.log('🔍 测试API连接:', modelsUrl);
 
       // 尝试多种请求方式
-      const attempts = [
+      const attempts: Array<{ headers: Record<string, string> }> = [
         // 标准Bearer Token
         {
           headers: {
@@ -199,12 +199,11 @@ export class APIPresetsManager {
             'Content-Type': 'application/json'
           }
         },
-        // OpenAI格式
+        // OpenAI格式（简化版）
         {
           headers: {
             'Authorization': `Bearer ${apiKey}`,
-            'Content-Type': 'application/json',
-            'OpenAI-Organization': ''
+            'Content-Type': 'application/json'
           }
         },
         // 自定义API格式 - 可能需要X-API-Key

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { X, Plus, Trash2, Edit2, Check, AlertCircle, Loader, Copy, Download, Upload } from 'lucide-react';
+import { X, Plus, Trash2, Edit2, Check, AlertCircle, Loader, Download, Upload } from 'lucide-react';
 import { apiPresetsManager, APIPreset } from '../utils/apiPresetsManager';
 
 interface APIPresetsModalProps {
@@ -49,7 +49,7 @@ export default function APIPresetsModal({
     }
 
     try {
-      const preset = apiPresetsManager.savePreset({
+      apiPresetsManager.savePreset({
         name: formData.name,
         apiUrl: formData.apiUrl,
         apiKey: formData.apiKey,

@@ -306,18 +306,17 @@ export default function ImageGenConfigModal({
         </div>
       </div>
 
-        {/* API预设管理弹窗 */}
-        <APIPresetsModal
-          isOpen={showPresetsModal}
-          onClose={() => {
-            setShowPresetsModal(false);
-            // 重新加载预设列表
-            const presets = apiPresetsManager.getPresets();
-            setAvailablePresets(presets);
-          }}
-          onSelectPreset={handleSelectPreset}
-        />
-      </div>
+      {/* API预设管理弹窗 */}
+      <APIPresetsModal
+        isOpen={showPresetsModal}
+        onClose={() => {
+          setShowPresetsModal(false);
+          // 重新加载预设列表
+          const presets = apiPresetsManager.getPresets();
+          setAvailablePresets(presets);
+        }}
+        onSelectPreset={handleSelectPreset}
+      />
     </div>
   );
 }

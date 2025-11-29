@@ -318,6 +318,8 @@ export class DiverseMomentsGenerator {
     imageDescriptions: string[];
     theme: string;
     format: MomentsFormat;
+    musicInfo?: { title: string; artist: string; coverUrl: string } | null;
+    linkInfo?: { title: string; description: string; coverUrl: string; url: string } | null;
   } {
     const format = this.selectOptimalFormat(conversation);
     const variation = this.getContentVariation(conversation.id);

@@ -105,7 +105,6 @@ export default function CharacterSettingsScreen({
   const [isParsingFile, setIsParsingFile] = useState(false);
   const [doiInput, setDoiInput] = useState('');
   const [isFetchingDOI, setIsFetchingDOI] = useState(false);
-  const documentInputRef = useRef<HTMLInputElement>(null);
 
   const handleAvatarUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];

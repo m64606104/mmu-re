@@ -92,7 +92,7 @@ export class GroupToPrivateMemoryService {
   /**
    * 检测AI消息中是否包含私聊意图
    */
-  detectPrivateChatIntent(message: string, fromGroupId: string, toPrivateId: string, userId: string): boolean {
+  detectPrivateChatIntent(message: string, _fromGroupId: string, _toPrivateId: string, _userId: string): boolean {
     const privateChatKeywords = [
       '私聊你', '私聊我', '私下聊', '单独聊', '私下说',
       '私聊', '单独聊', '私下交流', '私下谈', '私下沟通',
