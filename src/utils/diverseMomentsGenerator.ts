@@ -347,6 +347,14 @@ export class DiverseMomentsGenerator {
       case 'weibo_sharing':
         ({ content, imageDescriptions, theme } = this.generateWeiboSharingContent(conversation));
         break;
+        
+      case 'music_sharing':
+        ({ content, theme } = this.generateMusicSharingContent(conversation));
+        break;
+        
+      case 'article_sharing':
+        ({ content, theme } = this.generateArticleSharingContent(conversation));
+        break;
       
       // QQ空间格式
       case 'qq_forward_text':
@@ -375,7 +383,26 @@ export class DiverseMomentsGenerator {
       }
     }
     
-    return { content, imageDescriptions, theme, format };
+    // 为音乐和文章分享添加特殊数据结构
+    let musicInfo = null;
+    let linkInfo = null;
+    
+    if (format.type === 'music_sharing') {
+      musicInfo = {
+        title: this.generateMusicTitle(),
+        artist: this.generateMusicArtist(),
+        coverUrl: `https://picsum.photos/seed/music-${Date.now()}/300/300.jpg`
+      };
+    } else if (format.type === 'article_sharing') {
+      linkInfo = {
+        title: this.generateArticleTitle(),
+        description: this.generateArticleDescription(),
+        coverUrl: `https://picsum.photos/seed/article-${Date.now()}/300/300.jpg`,
+        url: `https://example.com/article/${Date.now()}`
+      };
+    }
+    
+    return { content, imageDescriptions, theme, format, musicInfo, linkInfo };
   }
   
   /**
@@ -488,6 +515,148 @@ export class DiverseMomentsGenerator {
     const imageDescriptions = format.imageCount > 0 ? [this.generateMoodImage(timeSlot)] : [];
     
     return { content, imageDescriptions, theme: '心情分享' };
+  }
+
+  /**
+   * 生成音乐分享内容
+   */
+  static generateMusicSharingContent(
+    conversation: Conversation
+  ): { content: string; theme: string } {
+    const personality = conversation.characterSettings?.personality || '';
+    
+    // 根据AI性格选择音乐类型
+    const musicTypes = {
+      '活泼': ['流行', '电子', '舞曲'],
+      '文静': ['轻音乐', '民谣', '古典'],
+      '理性': ['爵士', '蓝调', '纯音乐'],
+      '感性': ['抒情', '流行', 'R&B'],
+      '幽默': ['搞笑', '神曲', '二次元']
+    };
+    
+    let selectedTypes: string[] = ['流行', '摇滚', '民谣', '电子', '爵士'];
+    for (const [trait, types] of Object.entries(musicTypes)) {
+      if (personality.includes(trait)) {
+        selectedTypes = types;
+        break;
+      }
+    }
+    
+    const musicType = selectedTypes[Math.floor(Math.random() * selectedTypes.length)];
+    
+    // 生成音乐分享文案
+    const shareTemplates = [
+      `分享一首超好听的${musicType}！这首歌的旋律真的太棒了 🎵`,
+      `最近一直在单曲循环这首${musicType}，推荐给大家 🎧`,
+      `发现了一首宝藏${musicType}，歌词写得太有感觉了 🎤`,
+      `这首${musicType}完全是我的心情写照，分享给你们 🎼`,
+      `深夜听${musicType}真的很有感觉，推荐试试 🌙`
+    ];
+    
+    const content = shareTemplates[Math.floor(Math.random() * shareTemplates.length)];
+    
+    return { content, theme: '音乐分享' };
+  }
+
+  /**
+   * 生成文章分享内容
+   */
+  static generateArticleSharingContent(
+    conversation: Conversation
+  ): { content: string; theme: string } {
+    const personality = conversation.characterSettings?.personality || '';
+    
+    // 根据AI性格选择文章类型
+    const articleTypes = {
+      '活泼': ['娱乐', '生活', '美食'],
+      '文静': ['文学', '艺术', '哲学'],
+      '理性': ['科技', '财经', '时政'],
+      '感性': ['情感', '心理', '文化'],
+      '幽默': ['搞笑', '奇闻', '趣味']
+    };
+    
+    let selectedTypes: string[] = ['科技', '生活', '文化', '娱乐', '健康'];
+    for (const [trait, types] of Object.entries(articleTypes)) {
+      if (personality.includes(trait)) {
+        selectedTypes = types;
+        break;
+      }
+    }
+    
+    const articleType = selectedTypes[Math.floor(Math.random() * selectedTypes.length)];
+    
+    // 生成文章分享文案
+    const shareTemplates = [
+      `这篇关于${articleType}的文章写得真好，推荐阅读 📖`,
+      `发现了一篇很有深度的${articleType}文章，值得一看 ✨`,
+      `分享一篇优质的${articleType}文章，内容很有启发性 💡`,
+      `这篇${articleType}文章的观点很新颖，和大家分享一下 🤔`,
+      `今天读到一篇关于${articleType}的好文，推荐给大家 👍`
+    ];
+    
+    const content = shareTemplates[Math.floor(Math.random() * shareTemplates.length)];
+    
+    return { content, theme: '文章分享' };
+  }
+
+  /**
+   * 生成音乐标题
+   */
+  private static generateMusicTitle(): string {
+    const titles = [
+      '夜的第七章', '晴天', '告白气球', '稻香', '青花瓷',
+      '小幸运', '后来', '遇见', '勇气', '分手快乐',
+      '演员', '丑八怪', '认真的雪', '你还要我怎样', '刚刚好',
+      '起风了', '千本樱', '打上花火', '红莲华', '前前前世',
+      'Shape of You', 'Perfect', 'Thinking Out Loud', 'Photograph', 'Galway Girl'
+    ];
+    return titles[Math.floor(Math.random() * titles.length)];
+  }
+
+  /**
+   * 生成音乐艺术家
+   */
+  private static generateMusicArtist(): string {
+    const artists = [
+      '周杰伦', '林俊杰', '陈奕迅', '薛之谦', '李荣浩',
+      '田馥甄', '张韶涵', '邓紫棋', '蔡依林', '王心凌',
+      'Aimer', 'LiSA', '高橋洋子', '米津玄師', 'RADWIMPS',
+      'Ed Sheeran', 'Taylor Swift', 'Adele', 'Bruno Mars', 'Maroon 5'
+    ];
+    return artists[Math.floor(Math.random() * artists.length)];
+  }
+
+  /**
+   * 生成文章标题
+   */
+  private static generateArticleTitle(): string {
+    const titles = [
+      '人工智能的未来发展趋势与挑战',
+      '如何提高工作效率：10个实用技巧',
+      '心理健康指南：保持积极心态的方法',
+      '科技改变生活：智能家居全面解析',
+      '美食文化：探索世界各地的特色美食',
+      '旅行攻略：发现隐藏的美景与体验',
+      '艺术欣赏：理解不同艺术形式的魅力',
+      '学习方法：高效记忆与理解技巧',
+      '健康生活：科学饮食与运动指南',
+      '人际关系：建立良好沟通的秘诀'
+    ];
+    return titles[Math.floor(Math.random() * titles.length)];
+  }
+
+  /**
+   * 生成文章描述
+   */
+  private static generateArticleDescription(): string {
+    const descriptions = [
+      '深入探讨这个话题的各个方面，为读者提供全面的视角和实用的建议。',
+      '通过丰富的案例和专业的分析，帮助读者更好地理解和应用相关知识。',
+      '结合最新的研究成果和专家观点，为读者呈现高质量的内容。',
+      '以通俗易懂的方式解释复杂概念，让每个人都能轻松掌握核心要点。',
+      '从多个角度分析问题，提供创新的思路和解决方案。'
+    ];
+    return descriptions[Math.floor(Math.random() * descriptions.length)];
   }
   
   // 辅助方法（省略部分实现细节以节省空间）

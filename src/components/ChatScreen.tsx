@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
+import { groupToPrivateMemoryService } from '../utils/groupToPrivateMemoryService';
 import { ChevronLeft, Send, Mic, Sparkles, Smile, BellOff, Bell, Pause, Play, Image as ImageIcon, Video, Phone, MapPin, FileText, Plus, Search, MessageCircle, MessageSquare, Eye, Music, Gift } from 'lucide-react';
 import { Conversation, Message, ApiConfig, UserProfile, DocumentMessage } from '../types';
 import MoneyTransferModal from './MoneyTransferModal';
@@ -2915,6 +2916,16 @@ ${characterInfo?.languageStyle ? `语言风格：${characterInfo.languageStyle}`
             // 1️⃣ 累积AI消息到快照
             currentMessages = [...currentMessages, message];
             
+            // 🌉 检测AI消息中的私聊意图
+            if (message.role === 'assistant' && message.content && currentUserProfile) {
+              groupToPrivateMemoryService.shouldCreateBridge(
+                message,
+                conversation.id,
+                currentUserProfile.username,
+                conversations
+              );
+            }
+            
             // 🎁 检测AI发送的群红包，触发其他AI自动领取
             if (message.moneyTransfer?.type === 'groupRedPacket' && message.moneyTransfer.groupRedPacket) {
               const redPacket = message.moneyTransfer.groupRedPacket;
@@ -3180,6 +3191,29 @@ ${characterInfo?.languageStyle ? `语言风格：${characterInfo.languageStyle}`
           knowledgeBaseContent += `${index + 1}. ${item.title}\n${item.content}\n\n`;
         });
       }
+
+      // 🌉 检查群聊到私聊的记忆桥接
+      let groupContextContent = '';
+      if (conversation.type === 'private' && currentUserProfile) {
+        const groupContext = groupToPrivateMemoryService.getGroupContextForPrivate(
+          conversation.id, 
+          currentUserProfile.username
+        );
+        
+        if (groupContext.hasContext) {
+          groupContextContent = `
+【群聊对话背景】
+${groupContext.contextSummary}
+
+重要：用户刚刚从群聊来到私聊，你需要基于群聊中的对话内容进行回复，记住你在群聊中说过的话。
+`.trim();
+          
+          console.log('🌉 检测到群聊到私聊的记忆桥接:', {
+            fromGroupId: groupContext.fromGroupId,
+            bridgeMessage: groupContext.bridgeMessage?.substring(0, 50) + '...'
+          });
+        }
+      }
       
       let systemPrompt = conversation.characterSettings
         ? `你是${conversation.characterSettings.nickname}。
@@ -3187,7 +3221,7 @@ ${conversation.characterSettings.systemPrompt ? `人物设定：${conversation.c
 ${conversation.characterSettings.personality ? `性格特征：${conversation.characterSettings.personality}` : ''}
 ${conversation.characterSettings.languageStyle ? `语言风格：${conversation.characterSettings.languageStyle}` : ''}
 ${conversation.characterSettings.languageExample ? `语言示例：${conversation.characterSettings.languageExample}` : ''}
-${conversation.characterSettings.memoryEvents ? `记忆事件：${conversation.characterSettings.memoryEvents}` : ''}${knowledgeBaseContent}
+${conversation.characterSettings.memoryEvents ? `记忆事件：${conversation.characterSettings.memoryEvents}` : ''}${knowledgeBaseContent}${groupContextContent}
 
 【重要表达规范】：
 - 使用真人自然口语表达，不要使用斜杠（/）来表示"或"，例如：
@@ -4086,7 +4120,7 @@ ${SmartHTMLGenerator.getModuleInstructions()}
             if (m.moneyTransfer) {
               const mt = m.moneyTransfer;
               const typeText = mt.type === 'redPacket' ? '红包' : '转账';
-              const extraInfo = `\n[${m.role === 'user' ? '用户' : '你'}发送了${typeText}]
+              const extraInfo = `\n[${m.role === 'user' ? (currentUserProfile?.username || '用户') : '你'}发送了${typeText}]
 金额：¥${mt.amount}${mt.message ? `\n留言：${mt.message}` : ''}
 状态：${mt.status === 'pending' ? '待领取' : mt.status === 'received' ? '已领取' : '已退回'}`;
               content = content ? content + extraInfo : extraInfo;
@@ -4097,7 +4131,7 @@ ${SmartHTMLGenerator.getModuleInstructions()}
               const order = m.order;
               const typeText = order.type === 'gift' ? '礼物' : '代付请求';
               const productList = order.products.map(p => `${p.name} ¥${p.price}`).join('、');
-              const extraInfo = `\n[系统提示：${m.role === 'user' ? '用户' : '你'}发送了${typeText}]
+              const extraInfo = `\n[系统提示：${m.role === 'user' ? (currentUserProfile?.username || '用户') : '你'}发送了${typeText}]
 商品：${productList}
 总金额：¥${order.totalAmount}${order.message ? `\n留言：${order.message}` : ''}
 状态：${order.status === 'pending' ? '待处理' : order.status === 'accepted' ? '已接受' : order.status === 'paid' ? '已支付' : '已拒绝'}
@@ -4110,7 +4144,7 @@ ${SmartHTMLGenerator.getModuleInstructions()}
             if (m.document && m.role === 'user') {
               const doc = m.document;
               const typeText = doc.type === 'text' ? '文本文档' : doc.type === 'markdown' ? 'Markdown文档' : '代码文档';
-              const extraInfo = `\n[用户发送了${typeText}]
+              const extraInfo = `\n[${currentUserProfile?.username || '用户'}发送了${typeText}]
 标题：${doc.title}
 内容：
 ${doc.content}`;
@@ -4120,10 +4154,22 @@ ${doc.content}`;
             // 🎵 注入音乐信息 - 让AI知道用户分享了什么音乐
             if (m.music && m.role === 'user') {
               const music = m.music;
-              const extraInfo = `\n[用户分享了音乐]
+              const extraInfo = `\n[${currentUserProfile?.username || '用户'}分享了音乐]
 歌曲：${music.title} - ${music.artist}${music.album ? `\n专辑：${music.album}` : ''}${music.genre ? `\n曲风：${music.genre}` : ''}${music.mood ? `\n情绪：${music.mood}` : ''}${music.lyrics ? `\n\n完整歌词：\n${music.lyrics}` : ''}
 
 🎵 这首歌现在开始播放，你可以和用户一起"听"这首歌并自然地讨论！`;
+              content = content ? content + extraInfo : extraInfo;
+            }
+            
+            // 🎵 注入网易云音乐信息 - 让AI知道用户分享了网易云链接
+            if (m.neteaseMusicInfo && m.role === 'user') {
+              const music = m.neteaseMusicInfo;
+              const extraInfo = `\n[${currentUserProfile?.username || '用户'}分享了网易云音乐]
+歌曲：${music.title} - ${music.artist}${music.album ? `\n专辑：${music.album}` : ''}
+平台：网易云音乐
+链接：${music.shareUrl}
+
+🎵 这是用户分享的网易云音乐，你可以讨论这首歌的旋律、歌词、歌手，或者分享你对这首歌的感受！`;
               content = content ? content + extraInfo : extraInfo;
             }
             
@@ -4717,13 +4763,32 @@ ${doc.content}`;
 
   return (
     <>
-    <div className="h-full bg-gradient-to-b from-gray-50 to-gray-100 relative" style={{ backgroundImage: 'url("data:image/svg+xml,%3Csvg width=\"20\" height=\"20\" xmlns=\"http://www.w3.org/2000/svg\"%3E%3Cpath d=\"M0 0h20v20H0z\" fill=\"%23fafafa\"/%3E%3Cpath d=\"M0 0h10v10H0z\" fill=\"%23f5f5f5\" fill-opacity=\".5\"/%3E%3C/svg%3E")' }}>
+    <div className="h-full bg-gradient-to-b from-gray-50 to-gray-100 relative" style={{ 
+      backgroundImage: conversation.characterSettings?.chatBackground 
+        ? `url("${conversation.characterSettings.chatBackground}")` 
+        : 'url("data:image/svg+xml,%3Csvg width=\"20\" height=\"20\" xmlns=\"http://www.w3.org/2000/svg\"%3E%3Cpath d=\"M0 0h20v20H0z\" fill=\"%23fafafa\"/%3E%3Cpath d=\"M0 0h10v10H0z\" fill=\"%23f5f5f5\" fill-opacity=\".5\"/%3E%3C/svg%3E")',
+      backgroundSize: conversation.characterSettings?.chatBackground ? 'cover' : 'auto',
+      backgroundPosition: conversation.characterSettings?.chatBackground ? 'center' : 'top',
+      backgroundRepeat: conversation.characterSettings?.chatBackground ? 'no-repeat' : 'repeat'
+    }}>
       {/* Header - 固定在顶部 */}
       <div className="absolute top-0 left-0 right-0 bg-white/95 backdrop-blur-sm border-b border-gray-200 px-4 py-3 flex items-center justify-between shadow-sm z-10">
         <div className="flex items-center gap-3">
           <button onClick={onBack} className="p-1 -ml-1 hover:bg-gray-100 rounded-full transition-colors">
             <ChevronLeft className="w-6 h-6 text-gray-800" strokeWidth={2.5} />
           </button>
+          {/* 群聊头像 */}
+          {conversation.type === 'group' && (
+            <div className="w-8 h-8 rounded-full bg-gradient-to-br from-blue-400 to-purple-500 flex items-center justify-center overflow-hidden">
+              {conversation.avatar ? (
+                <img src={conversation.avatar} alt="群头像" className="w-full h-full object-cover" />
+              ) : (
+                <span className="text-white font-semibold text-sm">
+                  {conversation.name.charAt(0) || '群'}
+                </span>
+              )}
+            </div>
+          )}
           <div className="flex flex-col">
             <h1 className="text-base font-semibold text-gray-900">{conversation.name}</h1>
             {conversation.type === 'private' && conversation.characterSettings ? (

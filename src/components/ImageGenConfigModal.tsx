@@ -1,18 +1,22 @@
 import { useState, useEffect } from 'react';
-import { X, Loader } from 'lucide-react';
+import { X, Loader, Settings } from 'lucide-react';
+import { apiPresetsManager, APIPreset } from '../utils/apiPresetsManager';
+import APIPresetsModal from './APIPresetsModal';
 
 interface ImageGenConfigModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSave: (config: { apiUrl: string; apiKey: string; model: string }) => void;
   initialConfig?: { apiUrl: string; apiKey: string; model?: string };
+  showShopToggle?: boolean; // 是否显示商城生图开关
 }
 
 export default function ImageGenConfigModal({
   isOpen,
   onClose,
   onSave,
-  initialConfig
+  initialConfig,
+  showShopToggle = false
 }: ImageGenConfigModalProps) {
   const [apiUrl, setApiUrl] = useState(initialConfig?.apiUrl || '');
   const [apiKey, setApiKey] = useState(initialConfig?.apiKey || '');
@@ -20,6 +24,11 @@ export default function ImageGenConfigModal({
   const [models, setModels] = useState<string[]>([]);
   const [isLoadingModels, setIsLoadingModels] = useState(false);
   const [error, setError] = useState('');
+  const [shopGenEnabled, setShopGenEnabled] = useState(() => {
+    return (localStorage.getItem('image_gen_shop_enabled') ?? 'true') === 'true';
+  });
+  const [showPresetsModal, setShowPresetsModal] = useState(false);
+  const [availablePresets, setAvailablePresets] = useState<APIPreset[]>([]);
 
   useEffect(() => {
     if (initialConfig) {
@@ -27,7 +36,23 @@ export default function ImageGenConfigModal({
       setApiKey(initialConfig.apiKey);
       setSelectedModel(initialConfig.model || '');
     }
+    
+    // 加载可用预设
+    const presets = apiPresetsManager.getPresets();
+    setAvailablePresets(presets);
   }, [initialConfig]);
+
+  // 选择预设
+  const handleSelectPreset = (preset: APIPreset) => {
+    setApiUrl(preset.apiUrl);
+    setApiKey(preset.apiKey);
+    setSelectedModel(preset.model);
+    
+    // 自动测试连接
+    setTimeout(() => {
+      fetchModels();
+    }, 100);
+  };
 
   // 调取模型列表
   const fetchModels = async () => {
@@ -132,6 +157,36 @@ export default function ImageGenConfigModal({
         </div>
 
         <div className="space-y-4">
+          {/* API预设选择 */}
+          {availablePresets.length > 0 && (
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <label className="block text-sm font-medium text-gray-700">
+                  快速选择预设
+                </label>
+                <button
+                  onClick={() => setShowPresetsModal(true)}
+                  className="flex items-center gap-1 px-2 py-1 text-xs bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors"
+                >
+                  <Settings className="w-3 h-3" />
+                  管理预设
+                </button>
+              </div>
+              <div className="grid grid-cols-1 gap-2">
+                {availablePresets.slice(0, 3).map((preset) => (
+                  <button
+                    key={preset.id}
+                    onClick={() => handleSelectPreset(preset)}
+                    className="text-left p-2 border border-gray-200 rounded-lg hover:border-blue-500 hover:bg-blue-50 transition-colors"
+                  >
+                    <div className="font-medium text-sm text-gray-900">{preset.name}</div>
+                    <div className="text-xs text-gray-500 truncate">{preset.apiUrl}</div>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
           {/* API地址 */}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -198,6 +253,34 @@ export default function ImageGenConfigModal({
             </div>
           )}
 
+          {/* 商城生图开关 */}
+          {showShopToggle && (
+            <div className="border-t border-gray-200 pt-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="font-medium text-gray-900">商城生图</p>
+                  <p className="text-xs text-gray-500 mt-0.5">搜索商品时调用生图API</p>
+                </div>
+                <button
+                  onClick={() => {
+                    const next = !shopGenEnabled;
+                    setShopGenEnabled(next);
+                    localStorage.setItem('image_gen_shop_enabled', String(next));
+                  }}
+                  className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                    shopGenEnabled ? 'bg-blue-500' : 'bg-gray-300'
+                  }`}
+                >
+                  <span
+                    className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                      shopGenEnabled ? 'translate-x-6' : 'translate-x-1'
+                    }`}
+                  />
+                </button>
+              </div>
+            </div>
+          )}
+
           {/* 错误提示 */}
           {error && (
             <div className="bg-red-50 border border-red-200 rounded-lg p-3">
@@ -208,7 +291,7 @@ export default function ImageGenConfigModal({
           {/* 提示信息 */}
           <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
             <p className="text-xs text-blue-600 leading-relaxed">
-              💡 配置AI生图API后，搜索商品时将自动生成商品图片
+              💡 配置AI生图API后，搜索商品时将自动生成商品图片{showShopToggle ? '\n⚙️ 可在此页面直接开启/关闭商城生图功能' : ''}
             </p>
           </div>
 
@@ -221,6 +304,19 @@ export default function ImageGenConfigModal({
             保存配置
           </button>
         </div>
+      </div>
+
+        {/* API预设管理弹窗 */}
+        <APIPresetsModal
+          isOpen={showPresetsModal}
+          onClose={() => {
+            setShowPresetsModal(false);
+            // 重新加载预设列表
+            const presets = apiPresetsManager.getPresets();
+            setAvailablePresets(presets);
+          }}
+          onSelectPreset={handleSelectPreset}
+        />
       </div>
     </div>
   );

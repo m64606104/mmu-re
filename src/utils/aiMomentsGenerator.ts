@@ -8,6 +8,7 @@ import { smartLoad, smartSave } from './storage';
 import { getMemoryBank } from './memory';
 import { getErrorFromResponse, formatErrorMessage } from './apiErrorHandler';
 import { SmartMomentsGenerator } from './smartMomentsSystem';
+import { DiverseMomentsGenerator } from './diverseMomentsGenerator';
 import { recordApiCall } from './apiUsageManager';
 import { parseComplexFrequencyRules, getCurrentFrequencyRule } from './momentsFrequencyParser';
 import { addMomentsNotification } from './momentsNotificationManager';
@@ -81,7 +82,7 @@ function generateRandomArticleInfo() {
     title: article.title,
     description: article.desc,
     coverUrl: article.cover,
-    url: '#'
+    url: `https://example.com/article/${Date.now()}`
   };
 }
 
@@ -598,6 +599,7 @@ export const generateAIMoment = async (
     console.log(`📅 今天已发 ${todayPosts.length} 条朋友圈`);
     
     // 🎯 使用新的多样化朋友圈生成系统
+    const diverseContent = DiverseMomentsGenerator.generateDiverseContent(conversation);
     const { prompt, expectedFormat } = await SmartMomentsGenerator.buildDiversePrompt(conversation, new Date());
     
     // 调用API
@@ -817,13 +819,21 @@ export const generateAIMoment = async (
     console.log('🖼️ 提取的图片描述:', imageDescriptions);
     
     // 🎵 智能检测并补充分享卡片数据
-    // 如果expectedFormat指示了link_sharing类型，尝试使用真实API生成的数据
+    // 优先使用多样化生成器的结果
     let contentType: 'text' | 'images' | 'music' | 'link' = imageDescriptions.length > 0 ? 'images' : 'text';
     let musicInfo: MomentPost['musicInfo'] | undefined;
     let linkInfo: MomentPost['linkInfo'] | undefined;
     
-    // 优先检查格式类型（来自精简版生成器）
-    if (expectedFormat?.format?.type === 'link_sharing') {
+    // 优先检查多样化生成器的格式类型
+    if (diverseContent.format?.type === 'music_sharing') {
+      contentType = 'music';
+      musicInfo = diverseContent.musicInfo || generateRandomMusicInfo();
+    } else if (diverseContent.format?.type === 'article_sharing') {
+      contentType = 'link';
+      linkInfo = diverseContent.linkInfo || generateRandomArticleInfo();
+    }
+    // 降级：检查expectedFormat指示了link_sharing类型
+    else if (expectedFormat?.format?.type === 'link_sharing') {
       // 使用真实API生成的数据（已在prompt生成阶段准备）
       // 这里尝试从内容中提取或使用随机数据
       const isMusicHint = cleanedContent.match(/单曲循环|在听|分享.*歌|推荐.*歌|音乐|旋律/);
@@ -856,7 +866,7 @@ export const generateAIMoment = async (
               title: article.title,
               description: article.summary,
               coverUrl: article.coverUrl,
-              url: '#'
+              url: `https://example.com/article/${Date.now()}`
             };
           } else {
             const news = await getRandomNews(apiConfig);
@@ -864,7 +874,7 @@ export const generateAIMoment = async (
               title: news.title,
               description: news.summary,
               coverUrl: news.coverUrl,
-              url: '#'
+              url: `https://example.com/news/${Date.now()}`
             };
           }
         } catch (error) {

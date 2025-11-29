@@ -375,9 +375,25 @@ const ShoppingScreen: React.FC<ShoppingScreenProps> = ({
     
     // 如果配置了AI生图，且商城开关开启，使用AI生成
     const shopGenEnabled = (localStorage.getItem('image_gen_shop_enabled') ?? 'true') === 'true';
+    
     if (shopGenEnabled && imageGenConfig.apiUrl && imageGenConfig.apiKey) {
       generateProductImage(searchQuery);
     } else {
+      // 检查具体原因并提示用户
+      if (!shopGenEnabled) {
+        console.warn('⚠️ 商城生图功能已关闭');
+        // 显示提示信息
+        setTimeout(() => {
+          alert('⚠️ 商城生图功能已关闭\n\n如需启用AI生图：\n1. 点击商城右上角设置图标⚙️\n2. 开启"商城生图"开关\n3. 确保已配置生图API');
+        }, 100);
+      } else if (!imageGenConfig.apiUrl || !imageGenConfig.apiKey) {
+        console.warn('⚠️ AI生图API未配置');
+        // 显示提示信息
+        setTimeout(() => {
+          alert('⚠️ AI生图API未配置\n\n请先配置生图API：\n1. 点击商城右上角设置图标⚙️\n2. 配置API地址、密钥和模型\n3. 开启"商城生图"开关');
+        }, 100);
+      }
+      
       // 否则创建占位商品并显示弹窗
       setTimeout(() => {
         const newProduct: Product = {
@@ -1039,6 +1055,7 @@ const ShoppingScreen: React.FC<ShoppingScreenProps> = ({
         onClose={() => setShowSettings(false)}
         onSave={saveImageGenConfig}
         initialConfig={imageGenConfig}
+        showShopToggle={true}
       />
 
       {/* 购买选项弹窗 */}

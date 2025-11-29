@@ -39,6 +39,7 @@ export default function CharacterSettingsScreen({
   const [nickname, setNickname] = useState(settings.nickname);
   const [username, setUsername] = useState(settings.username || '');
   const [avatar, setAvatar] = useState(settings.avatar || '');
+  const [chatBackground, setChatBackground] = useState(settings.chatBackground || '');
   const [systemPrompt, setSystemPrompt] = useState(settings.systemPrompt);
   const [personality, setPersonality] = useState(settings.personality);
   const [languageStyle, setLanguageStyle] = useState(settings.languageStyle);
@@ -56,6 +57,8 @@ export default function CharacterSettingsScreen({
   const [includeSubChats, setIncludeSubChats] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const chatImportRef = useRef<HTMLInputElement>(null);
+  const documentInputRef = useRef<HTMLInputElement>(null);
+  const backgroundInputRef = useRef<HTMLInputElement>(null);
   
   // AI主动发消息配置
   const [proactiveEnabled, setProactiveEnabled] = useState(settings.proactiveMessaging?.enabled || false);
@@ -112,6 +115,35 @@ export default function CharacterSettingsScreen({
         setAvatar(reader.result as string);
       };
       reader.readAsDataURL(file);
+    }
+  };
+
+  const handleChatBackgroundUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      try {
+        // 导入图片压缩工具
+        const { compressChatBackground, formatFileSize } = await import('../utils/imageCompression');
+        
+        // 压缩图片
+        const compressed = await compressChatBackground(file);
+        
+        console.log('🖼️ 聊天背景压缩完成:', {
+          原始大小: formatFileSize(compressed.originalSize),
+          压缩后: formatFileSize(compressed.size),
+          压缩比: `${(1 - compressed.compressionRatio) * 100}%`
+        });
+        
+        setChatBackground(compressed.dataUrl);
+      } catch (error) {
+        console.error('❌ 聊天背景压缩失败:', error);
+        // 降级：直接使用原图
+        const reader = new FileReader();
+        reader.onloadend = () => {
+          setChatBackground(reader.result as string);
+        };
+        reader.readAsDataURL(file);
+      }
     }
   };
 
@@ -200,6 +232,7 @@ export default function CharacterSettingsScreen({
           avatar,
           nickname,
           username,
+          chatBackground,
           systemPrompt,
           personality,
           languageStyle,
@@ -645,6 +678,54 @@ export default function CharacterSettingsScreen({
               onChange={handleAvatarUpload}
               className="hidden"
             />
+          </div>
+        </div>
+
+        {/* Chat Background */}
+        <div className="bg-white rounded-lg shadow-sm p-4">
+          <label className="block text-sm font-medium text-gray-700 mb-3">
+            聊天背景
+          </label>
+          <div className="space-y-4">
+            <div className="flex items-center gap-4">
+              <div className="w-32 h-20 rounded-lg bg-gray-200 overflow-hidden border-2 border-gray-300">
+                {chatBackground ? (
+                  <img src={chatBackground} alt="聊天背景" className="w-full h-full object-cover" />
+                ) : (
+                  <div className="w-full h-full bg-gradient-to-br from-gray-100 to-gray-200 flex items-center justify-center">
+                    <span className="text-gray-500 text-xs">无背景</span>
+                  </div>
+                )}
+              </div>
+              <div className="flex-1">
+                <button
+                  onClick={() => backgroundInputRef.current?.click()}
+                  className="flex items-center gap-2 px-4 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 transition-colors mb-2"
+                >
+                  <Upload className="w-4 h-4" />
+                  上传背景图
+                </button>
+                {chatBackground && (
+                  <button
+                    onClick={() => setChatBackground('')}
+                    className="flex items-center gap-2 px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition-colors"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                    移除背景
+                  </button>
+                )}
+                <input
+                  ref={backgroundInputRef}
+                  type="file"
+                  accept="image/*"
+                  onChange={handleChatBackgroundUpload}
+                  className="hidden"
+                />
+              </div>
+            </div>
+            <div className="text-xs text-gray-500">
+              💡 聊天背景会自动压缩以节省内存，每个聊天可独立设置
+            </div>
           </div>
         </div>
 

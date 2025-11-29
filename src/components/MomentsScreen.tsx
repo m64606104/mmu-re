@@ -809,8 +809,8 @@ export default function MomentsScreen({
                   </div>
                 )}
 
-                {/* Image Descriptions (AI生成的图片描述 - 始终显示) */}
-                {moment.imageDescriptions && moment.imageDescriptions.length > 0 && !(moment.images && moment.images.length > 0) && (
+                {/* Image Descriptions (AI生成的图片描述 - 仅在没有真实图片时显示) */}
+                {moment.imageDescriptions && moment.imageDescriptions.length > 0 && (!moment.images || moment.images.length === 0) && (
                   <div className={`grid mb-3 ${getImageGridClass(moment.imageDescriptions.length)}`}>
                     {moment.imageDescriptions.map((desc, index) => (
                       <div 
@@ -833,8 +833,8 @@ export default function MomentsScreen({
                   </div>
                 )}
 
-                {/* Music Share Card - 音乐分享卡片 */}
-                {moment.musicInfo && (
+                {/* Music Share Card - 音乐分享卡片 (音乐分享时不显示图片) */}
+                {moment.musicInfo && (!moment.images || moment.images.length === 0) && (
                   <ShareCard
                     type="music"
                     title={moment.musicInfo.title}
