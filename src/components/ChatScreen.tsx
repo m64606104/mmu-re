@@ -637,6 +637,13 @@ export default function ChatScreen({
     isActive: true, // ChatScreen打开时认为是激活状态
     userName: currentUserProfile?.username || '用户'
   });
+
+  // 如果会话被隐藏，进入聊天时自动取消隐藏
+  useEffect(() => {
+    if (conversation.isHidden) {
+      onUpdateConversation(conversation.id, { isHidden: false });
+    }
+  }, [conversation.id, conversation.isHidden, onUpdateConversation]);
   
   // 格式化消息给AI，包括转发内容
   const formatMessageForAI = (msg: Message): string => {
@@ -1978,6 +1985,7 @@ ${characterInfo?.languageStyle ? `语言风格：${characterInfo.languageStyle}`
     onUpdateConversation(conversation.id, {
       messages: [...conversation.messages, newMessage],
       lastMessageTime: Date.now(),
+      isHidden: false, // 确保发送消息时恢复显示
     });
 
     // 🧠 [消息感知] 用户发送消息后，AI立即感知到消息内容（后台处理）

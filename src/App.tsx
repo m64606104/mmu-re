@@ -489,7 +489,8 @@ function App() {
           ...conv,
           messages: [...conv.messages, message],
           lastMessageTime: message.timestamp,
-          unreadCount: shouldIncreaseUnread ? conv.unreadCount + 1 : 0
+          unreadCount: shouldIncreaseUnread ? conv.unreadCount + 1 : 0,
+          isHidden: false // 收到新消息时，恢复显示
         };
       }
       return conv;
