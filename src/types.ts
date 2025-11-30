@@ -259,6 +259,17 @@ export interface SubChatRequest {
   timestamp: number; // 发起时间
 }
 
+// 📞 通话记录类型
+export interface CallLog {
+  id: string;
+  type: 'video' | 'voice'; // 目前主要实现视频通话
+  startTime: number; // 开始时间
+  endTime: number; // 结束时间
+  duration: number; // 持续时长（秒）
+  transcript: Message[]; // 通话时的对话记录
+  summary?: string; // 通话总结（可选）
+}
+
 export interface Conversation {
   id: string;
   type: 'private' | 'group';
@@ -274,6 +285,7 @@ export interface Conversation {
   members?: string[]; // 群成员ID数组（仅群聊）
   aiStatus?: AIStatusInfo; // AI状态信息（仅私聊AI角色）
   subChats?: SubChat[]; // 子聊天列表
+  callHistory?: CallLog[]; // 通话记录历史
   groupChatMode?: 'sequential' | 'free'; // 群聊回复模式：顺序模式 | 自由模式（默认sequential）
   groupContextConfig?: { // 群聊上下文配置（仅群聊）
     enabled: boolean; // 是否启用自定义上下文数量

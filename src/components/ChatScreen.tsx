@@ -89,6 +89,9 @@ import { splitMessages, cleanAIMessage } from '../utils/messageFormatter';
 // 群聊服务
 import { generateGroupChatReplies, generateGroupChatRepliesFreeMode } from '../utils/groupChatService';
 import GroupChatSettingsModal from './GroupChatSettingsModal';
+import VideoCallModal from './VideoCallModal'; // 导入视频通话组件
+import { CallLog } from '../types';
+
 // import { backgroundTaskManager } from '../utils/backgroundTaskManager';
 // 直接在这里定义一个简化版的backgroundTaskManager作为替代
 const backgroundTaskManager = {
@@ -733,8 +736,30 @@ export default function ChatScreen({
   const [currentTypingAI, setCurrentTypingAI] = useState<{id: string; name: string; avatar?: string} | null>(null);
   const [showGroupSettings, setShowGroupSettings] = useState(false);
   const [showGroupRedPacketModal, setShowGroupRedPacketModal] = useState(false);
+  const [showVideoCall, setShowVideoCall] = useState(false); // 视频通话状态
+  const [callType, setCallType] = useState<'video' | 'voice'>('video');
+  const [showCallTypeSelector, setShowCallTypeSelector] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+
+  // 保存通话记录
+  const handleSaveCallLog = (log: CallLog) => {
+    const currentHistory = conversation.callHistory || [];
+    // 保存系统消息通知
+    const typeText = log.type === 'video' ? '📹 视频通话' : '📞 语音通话';
+    const systemMsg: Message = {
+      id: Date.now().toString(),
+      role: 'system',
+      content: `${typeText}结束，时长 ${Math.floor(log.duration / 60)}:${(log.duration % 60).toString().padStart(2, '0')}`,
+      timestamp: Date.now()
+    };
+    
+    onUpdateConversation(conversation.id, {
+      messages: [...conversation.messages, systemMsg],
+      callHistory: [...currentHistory, log],
+      lastMessageTime: Date.now()
+    });
+  };
   
   // 消息操作相关状态
   const [selectedMessageId, setSelectedMessageId] = useState<string | null>(null);
@@ -4964,6 +4989,17 @@ ${doc.content}`;
             </button>
           )}
           
+          {/* 视频通话按钮 (仅私聊) */}
+          {conversation.type === 'private' && (
+            <button
+              onClick={() => setShowVideoCall(true)}
+              className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+              title="视频通话"
+            >
+              <Video className="w-5 h-5 text-gray-700" />
+            </button>
+          )}
+          
           {/* 免打扰按钮 */}
           <button
             onClick={() => {
@@ -6098,7 +6134,10 @@ ${doc.content}`;
                   <Music className="w-4 h-4 text-gray-600" />
                 </div>
               </button>
-              <button className="flex-shrink-0">
+              <button 
+                className="flex-shrink-0"
+                onClick={() => setShowCallTypeSelector(true)}
+              >
                 <div className="w-9 h-9 rounded-full bg-white border border-gray-300 flex items-center justify-center hover:border-gray-400 transition-colors">
                   <Phone className="w-4 h-4 text-gray-600" />
                 </div>
@@ -6235,6 +6274,57 @@ ${doc.content}`;
         </div>
       </div>
     </div>
+
+    {/* 视频通话弹窗 */}
+    <VideoCallModal
+      isOpen={showVideoCall}
+      onClose={() => setShowVideoCall(false)}
+      conversation={conversation}
+      currentUserProfile={currentUserProfile}
+      apiConfig={apiConfig}
+      onSaveCallLog={handleSaveCallLog}
+      callType={callType}
+    />
+
+    {/* 通话类型选择器 */}
+    {showCallTypeSelector && (
+      <div className="absolute inset-0 bg-black/50 flex items-end justify-center z-50 animate-fade-in" onClick={() => setShowCallTypeSelector(false)}>
+        <div className="bg-white w-full rounded-t-2xl p-4 space-y-2 animate-slide-up" onClick={e => e.stopPropagation()}>
+          <div className="text-center text-sm text-gray-500 mb-4">选择通话方式</div>
+          <button
+            onClick={() => {
+              setCallType('video');
+              setShowVideoCall(true);
+              setShowCallTypeSelector(false);
+              setShowToolbar(false);
+            }}
+            className="w-full py-3.5 bg-white border-b border-gray-100 text-gray-900 text-base font-medium flex items-center justify-center gap-2 hover:bg-gray-50 active:bg-gray-100 transition-colors"
+          >
+            <Video className="w-5 h-5 text-gray-700" />
+            视频通话
+          </button>
+          <button
+            onClick={() => {
+              setCallType('voice');
+              setShowVideoCall(true);
+              setShowCallTypeSelector(false);
+              setShowToolbar(false);
+            }}
+            className="w-full py-3.5 bg-white text-gray-900 text-base font-medium flex items-center justify-center gap-2 hover:bg-gray-50 active:bg-gray-100 transition-colors"
+          >
+            <Phone className="w-5 h-5 text-gray-700" />
+            语音通话
+          </button>
+          <div className="h-2 bg-gray-100 -mx-4"></div>
+          <button
+            onClick={() => setShowCallTypeSelector(false)}
+            className="w-full py-3.5 bg-white text-gray-900 text-base font-medium hover:bg-gray-50 active:bg-gray-100 transition-colors"
+          >
+            取消
+          </button>
+        </div>
+      </div>
+    )}
 
     {/* 表情包输入弹窗 */}
     {showStickerModal && (

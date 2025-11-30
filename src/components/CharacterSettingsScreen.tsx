@@ -1,7 +1,8 @@
 import { useState, useRef, useEffect } from 'react';
-import { ChevronLeft, Upload, Brain, Trash2, Download, FileUp, Zap, X, Camera, RefreshCw, BookOpen, Plus, Edit, FileText, Users } from 'lucide-react';
+import { ChevronLeft, Upload, Brain, Trash2, Download, FileUp, Zap, X, Camera, RefreshCw, BookOpen, Plus, Edit, FileText, Users, Video } from 'lucide-react';
 import { Conversation, ApiConfig, KnowledgeBaseItem } from '../types';
 import MemoryManager from './MemoryManager';
+import CallHistoryModal from './CallHistoryModal';
 import RelationshipManagementScreen from './RelationshipManagementScreen';
 import { addMomentPost } from '../utils/aiMomentsGenerator';
 import { parseComplexFrequencyRules, getCurrentFrequencyRule, getRulesSummary } from '../utils/momentsFrequencyParser';
@@ -48,6 +49,7 @@ export default function CharacterSettingsScreen({
   const [showMemoryManager, setShowMemoryManager] = useState(false);
   const [showRelationshipManager, setShowRelationshipManager] = useState(false);
   const [showImportModal, setShowImportModal] = useState(false);
+  const [showCallHistory, setShowCallHistory] = useState(false);
   const [importData, setImportData] = useState<{messages: any[], count: number} | null>(null);
   const [showMomentsTest, setShowMomentsTest] = useState(false);
   const [momentsType, setMomentsType] = useState<'text' | 'image'>('text');
@@ -1042,6 +1044,28 @@ export default function CharacterSettingsScreen({
           </div>
         )}
 
+        {/* 📞 通话记录管理 */}
+        <div className="bg-white rounded-lg shadow-sm p-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Video className="w-5 h-5 text-blue-500" />
+              <h3 className="text-sm font-medium text-gray-900">通话记录</h3>
+            </div>
+            <button
+              onClick={() => setShowCallHistory(true)}
+              className="px-3 py-1.5 bg-blue-50 text-blue-600 text-xs font-medium rounded-lg hover:bg-blue-100 transition-colors"
+            >
+              查看记录
+            </button>
+          </div>
+          <div className="mt-3 bg-gray-50 border border-gray-200 rounded-lg p-3">
+            <p className="text-xs text-gray-600">
+              共 {conversation.callHistory?.length || 0} 次通话记录，
+              总时长 {Math.floor((conversation.callHistory?.reduce((acc, log) => acc + log.duration, 0) || 0) / 60)} 分钟
+            </p>
+          </div>
+        </div>
+
         {/* 🧠 记忆系统配置 - 仅非AI儿童显示 */}
         {!isAIChild && (
         <div className="bg-white rounded-lg shadow-sm p-4">
@@ -1422,15 +1446,26 @@ export default function CharacterSettingsScreen({
         />
       )}
 
-      {/* 关系管理屏幕 */}
+      {/* 关系管理界面 */}
       {showRelationshipManager && (
         <RelationshipManagementScreen
           conversation={conversation}
           allConversations={allConversations}
-          apiConfig={apiConfig}
+          onUpdateConversation={onUpdateConversation}
           onBack={() => setShowRelationshipManager(false)}
         />
       )}
+
+      {/* 通话记录查看 */}
+      <CallHistoryModal
+        isOpen={showCallHistory}
+        onClose={() => setShowCallHistory(false)}
+        callHistory={conversation.callHistory || []}
+        characterName={nickname}
+      />
+    </div>
+  );
+}
 
       {/* 角色迁移弹窗 */}
       {showMigration && (
