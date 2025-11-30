@@ -875,6 +875,7 @@ function App() {
             conversations={conversations}
             onNavigate={navigateTo}
             onImportCharacter={handleImportCharacter}
+            onUpdateConversation={updateConversation}
           />
         );
       case 'moments':

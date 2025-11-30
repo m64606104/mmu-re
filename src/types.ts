@@ -292,6 +292,8 @@ export interface Conversation {
     messageCount: number; // 上下文消息数量（1-100，默认30）
   };
   pinned?: boolean; // 是否置顶
+  isHidden?: boolean; // 是否隐藏（不显示在列表，直到有新消息）
+  isBlocked?: boolean; // 是否拉黑（AI会感知到被拉黑，且不会显示在列表）
   aiChildData?: AIChildData; // AI儿童数据（仅AI幼儿园角色）
 }
 

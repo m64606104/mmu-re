@@ -5097,19 +5097,13 @@ ${doc.content}`;
               {message.role === 'system' ? (
                 <>
                   {/* 红包领取通知 - 醒目样式 */}
-                  {(message as any).moneyTransfer?.isClaimNotification ? (
+                  {(message as any).systemMessageType === 'redPacketClaim' || (message as any).moneyTransfer?.isClaimNotification ? (
                     <div className="flex justify-center my-2">
                       <div className="bg-gradient-to-r from-red-50 to-orange-50 border border-red-200 rounded-xl px-4 py-2.5 shadow-sm">
                         <div className="flex items-center gap-2">
                           <span className="text-lg">🎁</span>
-                          <div className="text-sm">
-                            <span className="font-medium text-gray-900">
-                              {(message as any).moneyTransfer.claimerName}
-                            </span>
-                            <span className="text-gray-600"> 领取了你的红包 </span>
-                            <span className="font-bold text-red-600">
-                              ¥{(message as any).moneyTransfer.amount.toFixed(2)}
-                            </span>
+                          <div className="text-sm text-gray-600">
+                            {message.content}
                           </div>
                         </div>
                       </div>
