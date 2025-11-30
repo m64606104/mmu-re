@@ -51,20 +51,8 @@ export default function VideoCallModal({
         setDuration(prev => prev + 1);
       }, 1000);
       
-      // AI 初始问候
-      setTimeout(() => {
-        const greeting = callType === 'video' 
-          ? '*微笑着看向镜头* 嗨！能看到我吗？'
-          : '*接通了电话* 喂？听得到吗？';
-          
-        const initialGreeting = {
-          id: Date.now().toString(),
-          role: 'assistant' as const,
-          content: greeting,
-          timestamp: Date.now()
-        };
-        setMessages([initialGreeting]);
-      }, 1500);
+      // 移除自动开场白，等待用户先说话
+      setMessages([]);
     } else {
       if (timerRef.current) {
         clearInterval(timerRef.current);
@@ -109,9 +97,9 @@ export default function VideoCallModal({
       let callPrompt = '';
       
       if (callType === 'video') {
-        callPrompt = `\n\n【重要指令】\n现在你正在和用户进行视频通话。这是一个实时的视频聊天场景。\n1. 请表现得像是在视频里，多使用动作描述（格式：*动作*），例如 *凑近镜头*、*笑着挥手*、*整理头发*。\n2. 描述你所处的环境或你的状态，例如 *喝了一口咖啡*。\n3. 语气要非常口语化、亲切、自然，像在和朋友视频一样。\n4. 回复尽量简短，不要长篇大论，保持互动的节奏。`;
+        callPrompt = `\n\n【重要指令】\n现在你正在和用户进行视频通话。这是一个实时的视频聊天场景。\n1. 你的回复必须包含画面感，多使用动作描述（格式：*动作*），例如 *凑近镜头*、*调整了一下坐姿*、*笑着挥手*。\n2. 描述你所处的环境或你的状态，例如 *拿起杯子喝了一口水*、*揉了揉眼睛*。\n3. 语气要非常口语化、亲切、自然，就像真正的视频聊天一样。\n4. 严禁长篇大论，保持互动的节奏感。\n5. 如果用户问你在哪，请根据你的人设描述一个具体的背景环境。`;
       } else {
-        callPrompt = `\n\n【重要指令】\n现在你正在和用户进行语音通话（电话）。\n1. 只能使用声音相关的描述（如 *笑声*、*叹气*），不要描述视觉动作（用户看不到你）。\n2. 语气要非常口语化、亲切，多使用语气词。\n3. 就像在打电话一样，回复要简短自然。`;
+        callPrompt = `\n\n【重要指令】\n现在你正在和用户进行语音通话（电话）。\n1. 只能使用声音相关的描述（如 *笑声*、*叹气*、*清嗓子*），绝对不要描述视觉动作（用户看不到你）。\n2. 语气要非常口语化、亲切，多使用语气词（嗯、啊、那个）。\n3. 就像在打电话一样，回复要简短自然。`;
       }
 
       const contextMessages = [
@@ -133,7 +121,7 @@ export default function VideoCallModal({
         body: JSON.stringify({
           model: apiConfig.modelName,
           messages: contextMessages,
-          temperature: 0.8, 
+          temperature: 0.85, // 提高温度增加随机性和自然度
           max_tokens: 150
         })
       });
@@ -267,59 +255,75 @@ export default function VideoCallModal({
 
       {/* 背景层 */}
       <div className="absolute inset-0 z-0 flex items-center justify-center bg-gray-900">
-        {/* 背景模糊 */}
-        {conversation.avatar && (
-          <div 
-            className="absolute inset-0 bg-cover bg-center opacity-30 blur-xl transform scale-110"
-            style={{ backgroundImage: `url(${conversation.avatar})` }}
-          />
-        )}
-        
-        {/* 主体显示 */}
-        <div className="relative z-10 flex flex-col items-center">
-          <div className={`rounded-full overflow-hidden border-4 border-white/10 shadow-2xl relative transition-all duration-500 ${
-            callType === 'video' ? 'w-48 h-48' : 'w-40 h-40'
-          }`}>
-            {conversation.avatar ? (
-              <img 
-                src={conversation.avatar} 
-                alt={conversation.name} 
-                className={`w-full h-full object-cover ${callType === 'video' ? 'animate-pulse-slow' : ''}`} 
+        {callType === 'video' ? (
+          // 视频模式：全屏铺满
+          <div className="absolute inset-0 w-full h-full">
+             {conversation.avatar ? (
+               <img 
+                 src={conversation.avatar} 
+                 alt={conversation.name} 
+                 className="w-full h-full object-cover" 
+               />
+             ) : (
+               <div className="w-full h-full bg-gradient-to-br from-blue-400 to-purple-500 flex items-center justify-center text-white text-4xl font-bold">
+                 {conversation.name[0]}
+               </div>
+             )}
+             {/* 视频通话时的全屏遮罩 */}
+             <div className="absolute inset-0 bg-gradient-to-b from-black/30 via-transparent to-black/60" />
+             
+             {/* 说话状态指示 (全屏微弱呼吸) */}
+             {isAiTyping && (
+               <div className="absolute inset-0 bg-black/10 animate-pulse" />
+             )}
+          </div>
+        ) : (
+          // 语音模式：保留原有的模糊背景+中间头像
+          <>
+            {conversation.avatar && (
+              <div 
+                className="absolute inset-0 bg-cover bg-center opacity-30 blur-xl transform scale-110"
+                style={{ backgroundImage: `url(${conversation.avatar})` }}
               />
-            ) : (
-              <div className="w-full h-full bg-gradient-to-br from-blue-400 to-purple-500 flex items-center justify-center text-white text-4xl font-bold">
-                {conversation.name[0]}
+            )}
+            
+            <div className="relative z-10 flex flex-col items-center">
+              <div className="w-40 h-40 rounded-full overflow-hidden border-4 border-white/10 shadow-2xl relative">
+                {conversation.avatar ? (
+                  <img 
+                    src={conversation.avatar} 
+                    alt={conversation.name} 
+                    className="w-full h-full object-cover" 
+                  />
+                ) : (
+                  <div className="w-full h-full bg-gradient-to-br from-blue-400 to-purple-500 flex items-center justify-center text-white text-4xl font-bold">
+                    {conversation.name[0]}
+                  </div>
+                )}
+                
+                {/* 语音模式下的波纹动画 */}
+                {isAiTyping && (
+                  <>
+                    <div className="absolute inset-0 border-4 border-green-400/50 rounded-full animate-ping" />
+                    <div className="absolute inset-0 border-4 border-green-400/30 rounded-full animate-ping" style={{ animationDelay: '0.5s' }} />
+                  </>
+                )}
               </div>
-            )}
-            
-            {/* 语音模式下的波纹动画 */}
-            {callType === 'voice' && isAiTyping && (
-              <>
-                <div className="absolute inset-0 border-4 border-green-400/50 rounded-full animate-ping" />
-                <div className="absolute inset-0 border-4 border-green-400/30 rounded-full animate-ping" style={{ animationDelay: '0.5s' }} />
-              </>
-            )}
-            
-            {/* 视频模式下的说话指示器 */}
-            {callType === 'video' && isAiTyping && (
-              <div className="absolute bottom-0 right-0 left-0 h-1 bg-green-500/80 animate-pulse" />
-            )}
-          </div>
-          
-          <h2 className="mt-6 text-white text-2xl font-semibold shadow-black drop-shadow-md tracking-wide">
-            {conversation.name}
-          </h2>
-          <div className="flex items-center gap-2 mt-2 text-white/70">
-            {callType === 'voice' && <Volume2 className="w-4 h-4" />}
-            <p className="text-sm font-mono tracking-wider">{formatTime(duration)}</p>
-          </div>
-          
-          {callType === 'voice' && (
-            <p className="text-white/50 text-sm mt-4 animate-pulse">
-              {isAiTyping ? '对方正在说话...' : '通话中'}
-            </p>
-          )}
-        </div>
+              
+              <h2 className="mt-6 text-white text-2xl font-semibold shadow-black drop-shadow-md tracking-wide">
+                {conversation.name}
+              </h2>
+              <div className="flex items-center gap-2 mt-2 text-white/70">
+                <Volume2 className="w-4 h-4" />
+                <p className="text-sm font-mono tracking-wider">{formatTime(duration)}</p>
+              </div>
+              
+              <p className="text-white/50 text-sm mt-4 animate-pulse">
+                {isAiTyping ? '对方正在说话...' : '通话中'}
+              </p>
+            </div>
+          </>
+        )}
 
         {/* 用户小窗口 (仅视频模式显示) */}
         {callType === 'video' && (
@@ -340,7 +344,15 @@ export default function VideoCallModal({
 
       {/* 弹幕/对话层 */}
       <div className="absolute inset-0 z-30 flex flex-col pointer-events-none">
-        <div className="flex-1 overflow-y-auto p-4 space-y-4 mt-24 mb-36 pointer-events-auto mask-linear-fade">
+        {/* 增加了 pb-48 以防止气泡被遮挡 */}
+        <div className="flex-1 overflow-y-auto p-4 space-y-4 mt-24 pb-64 pointer-events-auto mask-linear-fade scrollbar-hide">
+          {/* 接通提示 */}
+          <div className="flex justify-center my-4">
+             <div className="bg-black/30 text-white/70 px-4 py-1 rounded-full text-xs backdrop-blur-sm">
+               {callType === 'video' ? '视频通话已接通' : '语音通话已接通'}
+             </div>
+          </div>
+          
           {messages.map((msg) => (
             <div 
               key={msg.id} 
@@ -350,7 +362,7 @@ export default function VideoCallModal({
                 className={`max-w-[80%] px-4 py-2 rounded-2xl backdrop-blur-md text-sm shadow-sm ${
                   msg.role === 'user' 
                     ? 'bg-blue-500/40 text-white border border-blue-400/30' 
-                    : 'bg-white/10 text-white border border-white/10'
+                    : 'bg-black/40 text-white border border-white/10'
                 }`}
               >
                 {/* 解析动作描述并高亮 */}
