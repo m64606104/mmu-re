@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { X, Video, Clock, ChevronRight, ChevronDown, Calendar } from 'lucide-react';
 import { CallLog } from '../types';
 
