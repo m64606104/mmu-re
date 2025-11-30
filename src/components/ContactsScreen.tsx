@@ -179,7 +179,7 @@ export default function ContactsScreen({ conversations, onNavigate, onBack, onUp
             </div>
           ) : (
             <div className="bg-white mt-2">
-              {filteredGroups.map((group, index) => (
+              {filteredGroups.map((group) => (
                 <button
                   key={group.id}
                   onClick={() => onNavigate('chat', group.id)}
