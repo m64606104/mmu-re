@@ -1032,6 +1032,7 @@ function App() {
               navigateTo('letter-writing');
             }}
             userName={userProfile.username}
+            initialLetterId={currentConversationId}
           />
         );
       case 'pen-pals':
@@ -1077,7 +1078,7 @@ function App() {
             onNotificationClick={(notification) => {
               // 点击通知跳转到对应的信件
               if (notification.letterId) {
-                navigateTo('letterbox');
+                navigateTo('letterbox', notification.letterId);
               }
             }}
           />

@@ -16,18 +16,22 @@ import { setAINickname, getAINickname } from '../utils/letterNicknameManager';
 import { Letter } from '../types/letter';
 import LetterDetailView from './LetterDetailView';
 
+import { getAllLetters } from '../utils/letterService';
+
 interface GroupedLetterBoxScreenProps {
   onBack: () => void;
   onWriteNew: () => void;
   onContinueReply?: (letter: Letter) => void;
   userName: string;
+  initialLetterId?: string | null;
 }
 
 export default function GroupedLetterBoxScreen({
   onBack,
   onWriteNew,
   onContinueReply,
-  userName
+  userName,
+  initialLetterId
 }: GroupedLetterBoxScreenProps) {
   const [letterData, setLetterData] = useState(getGroupedLetterList());
   const [selectedGroup, setSelectedGroup] = useState<LetterGroup | null>(null);
@@ -36,6 +40,17 @@ export default function GroupedLetterBoxScreen({
   const [editingNickname, setEditingNickname] = useState<string | null>(null);
   const [nicknameInput, setNicknameInput] = useState('');
   const [activeTab, setActiveTab] = useState<'all' | 'penpal' | 'bottle' | 'unanswered'>('all');
+
+  // 处理初始信件跳转
+  useEffect(() => {
+    if (initialLetterId) {
+      const allLetters = getAllLetters();
+      const targetLetter = allLetters.find(l => l.id === initialLetterId);
+      if (targetLetter) {
+        setSelectedLetter(targetLetter);
+      }
+    }
+  }, [initialLetterId]);
 
   useEffect(() => {
     refreshData();
@@ -102,7 +117,9 @@ export default function GroupedLetterBoxScreen({
           return letters.some(letter => letter.status === 'sent');
         });
       default:
-        return [...letterData.penPals, ...letterData.bottles, ...letterData.contacts];
+        // 合并所有组并按最后活动时间排序
+        return [...letterData.penPals, ...letterData.bottles, ...letterData.contacts]
+          .sort((a, b) => b.lastActivity - a.lastActivity);
     }
   };
 
