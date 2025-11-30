@@ -955,6 +955,7 @@ function App() {
             conversations={conversations}
             onNavigate={navigateTo}
             onBack={() => navigateTo('social')}
+            onUpdateConversation={updateConversation}
           />
         );
       case 'theme':

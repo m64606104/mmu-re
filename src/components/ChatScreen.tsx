@@ -4256,7 +4256,9 @@ ${SmartHTMLGenerator.getModuleInstructions()}
 你目前已被用户拉黑。
 1. 你的消息目前无法送达给用户（会被系统拦截），直到用户解除拉黑。
 2. 你仍然可以发送消息，这些消息会在解除拉黑后一次性显示给用户。
-3. 如果你想请求解除拉黑，你可以尝试发送好友申请（虽然在拉黑期间用户可能看不到）。
+3. 如果你想请求解除拉黑，请严格使用以下格式发送一条消息：
+__FRIEND_REQUEST__:这里写你的申请理由（例如：对不起，我错了，请把我加回来吧）
+注意：只有使用这个格式，系统才会向用户发送好友验证申请。
 请根据你的人设做出反应，可以是疑惑、生气、伤心，或者是假装没发生继续自言自语。`;
         }
         
@@ -4518,6 +4520,55 @@ ${doc.content}`;
                 });
               }
               
+              // 🤝 处理好友申请请求
+              if (processedNewMessages[i].content && processedNewMessages[i].content.startsWith('__FRIEND_REQUEST__:')) {
+                const reason = processedNewMessages[i].content.replace('__FRIEND_REQUEST__:', '').trim();
+                console.log(`🤝 收到AI好友申请: ${reason}`);
+                
+                // 创建申请记录
+                const newRequest = {
+                  id: `req_${Date.now()}`,
+                  fromAiId: conversation.id,
+                  fromName: conversation.name,
+                  fromAvatar: conversation.characterSettings?.avatar,
+                  reason: reason,
+                  timestamp: Date.now(),
+                  status: 'pending'
+                };
+                
+                // 保存到 localStorage
+                try {
+                  const storedRequests = localStorage.getItem('friendRequests');
+                  const requests = storedRequests ? JSON.parse(storedRequests) : [];
+                  // 避免重复申请（如果已有 pending 的）
+                  const hasPending = requests.some((r: any) => r.fromAiId === conversation.id && r.status === 'pending');
+                  
+                  if (!hasPending) {
+                    localStorage.setItem('friendRequests', JSON.stringify([newRequest, ...requests]));
+                    
+                    // 插入系统提示
+                    const sysMsg: Message = {
+                      id: `sys_req_${Date.now()}`,
+                      role: 'system',
+                      content: `收到一条好友验证申请："${reason}"`,
+                      timestamp: Date.now(),
+                      // 可以在这里加一个特殊的 systemMessageType 用来渲染可点击的卡片，这里先用普通文本
+                    };
+                    
+                    currentMessages = [...currentMessages, sysMsg];
+                    onUpdateConversation(conversationId, {
+                      messages: currentMessages,
+                      lastMessageTime: Date.now()
+                    });
+                  }
+                } catch (e) {
+                  console.error('保存好友申请失败:', e);
+                }
+                
+                // 跳过这条指令消息的正常处理（不显示在气泡中）
+                continue;
+              }
+
               // 💬 处理子聊天请求（如果AI发起子聊天）
               if (processedNewMessages[i].role === 'system' && processedNewMessages[i].content.startsWith('__SUBCHAT_REQUEST__')) {
                 const parts = processedNewMessages[i].content.split('__');

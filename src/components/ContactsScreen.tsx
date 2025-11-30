@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { ChevronLeft, Search, UserPlus, MessageCircle } from 'lucide-react';
 import { Conversation, Screen } from '../types';
 
@@ -8,8 +8,131 @@ interface ContactsScreenProps {
   onBack: () => void;
 }
 
-export default function ContactsScreen({ conversations, onNavigate, onBack }: ContactsScreenProps) {
+interface FriendRequest {
+  id: string;
+  fromAiId: string;
+  fromName: string;
+  fromAvatar?: string;
+  reason: string;
+  timestamp: number;
+  status: 'pending' | 'accepted' | 'rejected';
+}
+
+export default function ContactsScreen({ conversations, onNavigate, onBack, onUpdateConversation }: ContactsScreenProps & { onUpdateConversation?: (id: string, updates: Partial<Conversation>) => void }) {
   const [searchQuery, setSearchQuery] = useState('');
+  const [showNewFriends, setShowNewFriends] = useState(false);
+  const [requests, setRequests] = useState<FriendRequest[]>([]);
+  
+  // 加载好友申请
+  useEffect(() => {
+    const loadRequests = () => {
+      try {
+        const stored = localStorage.getItem('friendRequests');
+        if (stored) {
+          setRequests(JSON.parse(stored));
+        }
+      } catch (e) {
+        console.error('加载好友申请失败:', e);
+      }
+    };
+    loadRequests();
+  }, [showNewFriends]); // 每次打开时刷新
+
+  const pendingCount = requests.filter(r => r.status === 'pending').length;
+
+  // 处理好友申请
+  const handleRequest = (req: FriendRequest, accept: boolean) => {
+    // 更新请求状态
+    const updatedRequests = requests.map(r => 
+      r.id === req.id ? { ...r, status: accept ? 'accepted' : 'rejected' } : r
+    ) as FriendRequest[];
+    
+    setRequests(updatedRequests);
+    localStorage.setItem('friendRequests', JSON.stringify(updatedRequests));
+    
+    if (accept && onUpdateConversation) {
+      // 1. 解除拉黑
+      onUpdateConversation(req.fromAiId, { isBlocked: false });
+      
+      // 2. 发送通过验证的消息
+      // 获取当前会话
+      const conversation = conversations.find(c => c.id === req.fromAiId);
+      if (conversation) {
+        const sysMsg: any = {
+          id: `sys_pass_${Date.now()}`,
+          role: 'system',
+          content: '你已通过了对方的朋友验证请求，现在可以开始聊天了',
+          timestamp: Date.now()
+        };
+        onUpdateConversation(req.fromAiId, {
+          messages: [...conversation.messages, sysMsg]
+        });
+      }
+    }
+  };
+
+  // 如果显示新的朋友页面
+  if (showNewFriends) {
+    return (
+      <div className="h-full bg-gray-50 flex flex-col">
+        <div className="bg-white border-b border-gray-200 px-4 py-3 flex items-center">
+          <button onClick={() => setShowNewFriends(false)} className="p-2 -ml-2">
+            <ChevronLeft className="w-6 h-6" />
+          </button>
+          <h1 className="text-lg font-semibold ml-2">新的朋友</h1>
+        </div>
+        <div className="flex-1 overflow-y-auto">
+          {requests.length === 0 ? (
+            <div className="flex flex-col items-center justify-center h-full text-gray-400">
+              <p>暂无好友申请</p>
+            </div>
+          ) : (
+            <div className="bg-white mt-2">
+              {requests.map(req => (
+                <div key={req.id} className="px-4 py-3 flex items-center gap-3 border-b border-gray-100 last:border-0">
+                   <div className="w-12 h-12 rounded-lg bg-gray-200 overflow-hidden">
+                     {req.fromAvatar ? (
+                       <img src={req.fromAvatar} className="w-full h-full object-cover" />
+                     ) : (
+                       <div className="w-full h-full flex items-center justify-center text-gray-500 font-bold text-xl">
+                         {req.fromName.charAt(0)}
+                       </div>
+                     )}
+                   </div>
+                   <div className="flex-1 min-w-0">
+                     <div className="font-medium text-gray-900">{req.fromName}</div>
+                     <div className="text-sm text-gray-500 truncate">{req.reason}</div>
+                   </div>
+                   <div>
+                     {req.status === 'pending' ? (
+                       <div className="flex gap-2">
+                         <button 
+                           onClick={() => handleRequest(req, false)}
+                           className="px-3 py-1.5 bg-gray-100 text-gray-600 text-xs rounded font-medium"
+                         >
+                           拒绝
+                         </button>
+                         <button 
+                           onClick={() => handleRequest(req, true)}
+                           className="px-3 py-1.5 bg-green-500 text-white text-xs rounded font-medium"
+                         >
+                           接受
+                         </button>
+                       </div>
+                     ) : (
+                       <span className="text-sm text-gray-400">
+                         {req.status === 'accepted' ? '已添加' : '已拒绝'}
+                       </span>
+                     )}
+                   </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
 
   // 获取所有联系人（私聊对话）
   const contacts = conversations.filter(conv => conv.type === 'private');
@@ -60,6 +183,22 @@ export default function ContactsScreen({ conversations, onNavigate, onBack }: Co
           />
         </div>
       </div>
+
+      {/* 新的朋友入口 */}
+      <button 
+        onClick={() => setShowNewFriends(true)}
+        className="bg-white w-full px-4 py-3 flex items-center gap-3 mb-2 border-b border-gray-200 hover:bg-gray-50 active:bg-gray-100 transition-colors"
+      >
+         <div className="w-10 h-10 bg-orange-400 rounded-lg flex items-center justify-center shadow-sm">
+            <UserPlus className="text-white w-6 h-6" />
+         </div>
+         <div className="flex-1 text-left font-medium text-gray-900">新的朋友</div>
+         {pendingCount > 0 && (
+             <div className="bg-red-500 text-white text-xs px-2 py-0.5 rounded-full font-bold min-w-[20px] text-center">
+                {pendingCount}
+             </div>
+         )}
+      </button>
 
       {/* Contacts List */}
       <div className="flex-1 overflow-y-auto">
