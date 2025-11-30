@@ -39,6 +39,7 @@ export default function ContactsScreen({ conversations, onNavigate, onBack, onUp
   }, [showNewFriends]); // 每次打开时刷新
 
   const pendingCount = requests.filter(r => r.status === 'pending').length;
+  const latestPendingRequest = requests.find(r => r.status === 'pending');
 
   // 处理好友申请
   const handleRequest = (req: FriendRequest, accept: boolean) => {
@@ -189,12 +190,19 @@ export default function ContactsScreen({ conversations, onNavigate, onBack, onUp
         onClick={() => setShowNewFriends(true)}
         className="bg-white w-full px-4 py-3 flex items-center gap-3 mb-2 border-b border-gray-200 hover:bg-gray-50 active:bg-gray-100 transition-colors"
       >
-         <div className="w-10 h-10 bg-orange-400 rounded-lg flex items-center justify-center shadow-sm">
+         <div className="w-10 h-10 bg-orange-400 rounded-lg flex items-center justify-center shadow-sm flex-shrink-0">
             <UserPlus className="text-white w-6 h-6" />
          </div>
-         <div className="flex-1 text-left font-medium text-gray-900">新的朋友</div>
+         <div className="flex-1 text-left min-w-0">
+            <div className="font-medium text-gray-900">新的朋友</div>
+            {latestPendingRequest && (
+              <div className="text-sm text-gray-500 truncate mt-0.5">
+                {latestPendingRequest.fromName}: {latestPendingRequest.reason}
+              </div>
+            )}
+         </div>
          {pendingCount > 0 && (
-             <div className="bg-red-500 text-white text-xs px-2 py-0.5 rounded-full font-bold min-w-[20px] text-center">
+             <div className="bg-red-500 text-white text-xs px-2 py-0.5 rounded-full font-bold min-w-[20px] text-center flex-shrink-0">
                 {pendingCount}
              </div>
          )}
