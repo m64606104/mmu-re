@@ -485,12 +485,21 @@ function App() {
           currentConversationId === conversationId
         );
         
+        // 🚫 如果被拉黑，标记消息
+        const isBlocked = conv.isBlocked;
+        const finalMessage = {
+          ...message,
+          isBlockedMessage: isBlocked
+        };
+
         return {
           ...conv,
-          messages: [...conv.messages, message],
+          messages: [...conv.messages, finalMessage],
           lastMessageTime: message.timestamp,
-          unreadCount: shouldIncreaseUnread ? conv.unreadCount + 1 : 0,
-          isHidden: false // 收到新消息时，恢复显示
+          // 如果被拉黑，不增加未读数
+          unreadCount: (!isBlocked && shouldIncreaseUnread) ? conv.unreadCount + 1 : conv.unreadCount,
+          // 如果被拉黑，不强制取消隐藏（保持原状态）；否则收到新消息恢复显示
+          isHidden: isBlocked ? conv.isHidden : false
         };
       }
       return conv;
