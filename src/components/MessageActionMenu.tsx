@@ -14,6 +14,7 @@ interface MessageActionMenuProps {
   onDelete: () => void;
   onMultiSelect: () => void;
   onForward?: () => void; // 转发功能
+  onReact: (emoji: string) => void; // 表情回应
   onClose: () => void;
 }
 
@@ -25,6 +26,7 @@ export const MessageActionMenu: React.FC<MessageActionMenuProps> = ({
   onDelete,
   onMultiSelect,
   onForward,
+  onReact,
   onClose,
 }) => {
   if (!isVisible) return null;
@@ -36,6 +38,31 @@ export const MessageActionMenu: React.FC<MessageActionMenuProps> = ({
         className="fixed inset-0 z-40" 
         onClick={onClose}
       />
+      
+      {/* 表情回应栏 - 放在菜单上方 */}
+      <div
+        className="fixed z-50 bg-white rounded-full shadow-lg border border-gray-200 flex items-center px-2 py-1 gap-1"
+        style={{
+          left: `${position.x}px`,
+          top: `${position.y - 10}px`, // 稍微上移
+          transform: 'translate(-50%, -220%)', // 向上偏移更多，避开菜单
+          maxWidth: '90vw',
+        }}
+      >
+        {['👍', '❤️', '😂', '😮', '😢', '👏'].map(emoji => (
+          <button
+            key={emoji}
+            onClick={(e) => {
+              e.stopPropagation();
+              onReact(emoji);
+              onClose();
+            }}
+            className="text-2xl p-1.5 hover:scale-125 transition-transform active:scale-95 cursor-pointer"
+          >
+            {emoji}
+          </button>
+        ))}
+      </div>
       
       {/* 胶囊菜单 - 优化尺寸和视觉效果 */}
       <div

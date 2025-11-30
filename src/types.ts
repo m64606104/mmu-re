@@ -67,6 +67,11 @@ export interface Message {
   };
   // 🚫 标记是否为拉黑期间的消息
   isBlockedMessage?: boolean;
+  // 🆕 消息回应
+  reactions?: Array<{
+    from: 'user' | 'assistant';
+    type: string; // emoji
+  }>;
 }
 
 // 💰 红包/转账类型

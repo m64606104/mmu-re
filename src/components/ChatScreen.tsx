@@ -2893,6 +2893,35 @@ ${characterInfo?.languageStyle ? `语言风格：${characterInfo.languageStyle}`
     }
   };
 
+  // 处理消息回应 (Reaction)
+  const handleReactMessage = (emoji: string) => {
+    if (!selectedMessageId) return;
+    
+    const updatedMessages = conversation.messages.map(msg => {
+      if (msg.id === selectedMessageId) {
+        const currentReactions = msg.reactions || [];
+        // 检查是否已经有该用户的该表情
+        const existingIndex = currentReactions.findIndex(r => r.from === 'user' && r.type === emoji);
+        
+        let newReactions;
+        if (existingIndex >= 0) {
+          // 如果已存在，则移除（toggle）
+          newReactions = currentReactions.filter((_, i) => i !== existingIndex);
+        } else {
+          // 否则添加
+          newReactions = [...currentReactions, { from: 'user' as const, type: emoji }];
+        }
+        
+        return { ...msg, reactions: newReactions };
+      }
+      return msg;
+    });
+    
+    onUpdateConversation(conversation.id, {
+      messages: updatedMessages
+    });
+  };
+
   // 🎯 AI主动发送私聊消息函数
   const maybeSendAutoPrivateDM = async (aiId: string, groupMessage: Message, fromGroupId: string) => {
     if (!groupMessage.content || !currentUserProfile) return;
@@ -4350,6 +4379,77 @@ ${doc.content}`;
           temperature: 0.7,  // 添加合适的temperature以保持自然对话
           max_tokens: 2000
         };
+
+        // 🧠 [跨频道记忆] 注入朋友圈信息
+        try {
+          const momentsKey = `moments_${conversation.id}`;
+          const momentsData = localStorage.getItem(momentsKey);
+          if (momentsData && Math.random() < 0.25) { // 25% 概率触发
+             const moments = JSON.parse(momentsData).posts || [];
+             if (moments.length > 0) {
+               // 取最近3条中的一条
+               const recentMoments = moments.slice(0, 3);
+               const randomMoment = recentMoments[Math.floor(Math.random() * recentMoments.length)];
+               if (randomMoment) {
+                 const momentContext = `\n【记忆片段】你最近发了一条朋友圈："${randomMoment.content.substring(0, 50)}..."${randomMoment.images?.length ? ' [配图]' : ''}。如果在对话中合适，可以自然地提到它，但不要生硬。`;
+                 messages.push({ role: 'system', content: momentContext });
+                 console.log('🧠 注入朋友圈记忆:', randomMoment.content.substring(0, 20));
+               }
+             }
+          }
+        } catch (e) { console.error('朋友圈记忆注入失败:', e); }
+
+        // 🧠 [跨频道记忆] 注入群聊信息
+        try {
+           const allConvsData = localStorage.getItem('conversations');
+           if (allConvsData && Math.random() < 0.25) { // 25% 概率触发
+             const allConvs = JSON.parse(allConvsData);
+             const groupConvs = allConvs.filter((c: any) => c.type === 'group' && c.members?.includes(conversation.id));
+             
+             if (groupConvs.length > 0) {
+                const randomGroup = groupConvs[Math.floor(Math.random() * groupConvs.length)];
+                if (randomGroup.messages && randomGroup.messages.length > 0) {
+                  const recentMsgs = randomGroup.messages.slice(-5).map((m:any) => 
+                    `${m.role==='user'?'用户':(m.senderName||'某人')}: ${m.content.substring(0, 20)}`
+                  ).join('\n');
+                  
+                  const groupContext = `\n【记忆片段】你们在群聊"${randomGroup.name}"里最近聊过：\n${recentMsgs}\n\n如果话题相关，可以提到群里的事。`;
+                  messages.push({ role: 'system', content: groupContext });
+                  console.log('🧠 注入群聊记忆:', randomGroup.name);
+                }
+             }
+           }
+        } catch (e) { console.error('群聊记忆注入失败:', e); }
+
+        // 🎯 [拟人化] 短回合/既读不回机制
+        const lastUserMsg = conversation.messages.filter(m => m.role === 'user').pop();
+        if (lastUserMsg && lastUserMsg.content) {
+            const txt = lastUserMsg.content.trim().toLowerCase();
+            const shortWords = ['好的', '好', '嗯', '哦', '行', 'ok', 'haha', '哈哈', '嘿嘿', 'yes', 'no', 'bye', '拜拜', '晚安'];
+            // 检查是否完全匹配或仅加了标点
+            const isShort = shortWords.some(w => 
+              txt === w || txt === w + '。' || txt === w + '！' || txt === w + '~' || txt === w + '...'
+            );
+            
+            if (isShort) {
+                // 🎲 40% 概率不回复（既读不回）
+                if (Math.random() < 0.4) {
+                    console.log('🎯 [拟人化] 短回合对话，AI选择不回复');
+                    setShowSendingHint(false);
+                    setShowTyping(false);
+                    setIsGenerating(false);
+                    // 模拟一个随机延迟后结束（不调用API）
+                    return; 
+                } else {
+                    // 🎯 否则强制短回复
+                    console.log('🎯 [拟人化] 短回合对话，强制AI短回复');
+                    messages.push({ 
+                      role: 'system', 
+                      content: '【指令】用户发送了简短的确认/结束语。请务必仅用1-5个字+一个表情回复。绝对不要长篇大论。例如：好的👌、晚安💤、哈哈😄' 
+                    });
+                }
+            }
+        }
       }
       
       // 私聊模式：使用原有的单AI回复逻辑
@@ -5994,6 +6094,16 @@ ${doc.content}`;
                     {message.role === 'user' && message.mediaType && message.mediaType !== 'sticker' && message.mediaType !== 'voice' && message.mediaDescription && (
                       <p className="text-[13px] leading-relaxed px-3 py-2 text-gray-600">{message.mediaDescription}</p>
                     )}
+                    {/* 🆕 消息回应显示 */}
+                    {message.reactions && message.reactions.length > 0 && (
+                      <div className={`absolute -bottom-4 ${message.role === 'user' ? 'left-0' : 'right-0'} flex gap-1 z-10`}>
+                        {message.reactions.map((reaction, rIdx) => (
+                          <div key={rIdx} className="bg-white border border-gray-200 rounded-full px-1.5 py-0.5 text-xs shadow-sm scale-90 flex items-center justify-center min-w-[20px] h-[20px]">
+                            {reaction.type}
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
                   {/* Message tail */}
                   <div className={`absolute bottom-3 ${
@@ -6616,6 +6726,7 @@ ${doc.content}`;
       onDelete={handleDeleteMessage}
       onMultiSelect={handleEnterMultiSelect}
       onForward={handleForwardSingleMessage}
+      onReact={handleReactMessage}
       onClose={handleCloseMenu}
     />
 
