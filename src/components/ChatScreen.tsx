@@ -2872,7 +2872,12 @@ ${characterInfo?.languageStyle ? `语言风格：${characterInfo.languageStyle}`
   };
 
   // AI自动领取群红包函数
-  const handleAIAutoClaimRedPacket = async (redPacket: any, senderAiId: string) => {
+  const handleAIAutoClaimRedPacket = async (
+    redPacket: any, 
+    senderAiId: string,
+    currentContextMessages?: Message[],
+    onClaim?: (message: Message) => void
+  ) => {
     if (conversation.type !== 'group' || !conversation.members) return;
     
     console.log(`🎁 开始AI自动领取红包流程，发送者: ${senderAiId}`);
@@ -2909,11 +2914,14 @@ ${characterInfo?.languageStyle ? `语言风格：${characterInfo.languageStyle}`
     };
     
     try {
+      // 使用传入的上下文或当前会话消息
+      const contextMessages = currentContextMessages || conversation.messages;
+
       await handleAIGroupRedPacketClaiming(
         redPacketMessage,
         aiMembers,
         conversation,
-        conversation.messages.slice(-10), // 最近10条消息作为上下文
+        contextMessages.slice(-10), // 最近10条消息作为上下文
         apiConfig,
         (aiId: string, aiName: string, amount: number) => {
           console.log(`🎁 ${aiName} 领取了红包 ¥${amount.toFixed(2)}`);
@@ -2927,12 +2935,17 @@ ${characterInfo?.languageStyle ? `语言风格：${characterInfo.languageStyle}`
             systemMessageType: 'redPacketClaim' as const
           };
           
-          // 更新对话，添加领取消息
-          const updatedMessages = [...conversation.messages, claimMessage];
-          onUpdateConversation(conversation.id, {
-            messages: updatedMessages,
-            lastMessageTime: Date.now()
-          });
+          if (onClaim) {
+            // ✅ 如果提供了回调，使用回调处理（用于生成过程中）
+            onClaim(claimMessage);
+          } else {
+            // 更新对话，添加领取消息
+            const updatedMessages = [...conversation.messages, claimMessage];
+            onUpdateConversation(conversation.id, {
+              messages: updatedMessages,
+              lastMessageTime: Date.now()
+            });
+          }
         }
       );
     } catch (error) {
@@ -3169,7 +3182,20 @@ ${characterInfo?.languageStyle ? `语言风格：${characterInfo.languageStyle}`
               
               // 延迟1-5秒，让其他AI陆续尝试领取红包
               setTimeout(() => {
-                handleAIAutoClaimRedPacket(redPacket, _aiId);
+                handleAIAutoClaimRedPacket(
+                  redPacket, 
+                  _aiId,
+                  currentMessages,
+                  (claimMessage) => {
+                    // ✅ 回调：更新本地 currentMessages 并触发更新
+                    console.log(`🎁 [回调] 添加红包领取消息: ${claimMessage.content}`);
+                    currentMessages = [...currentMessages, claimMessage];
+                    onUpdateConversation(conversation.id, {
+                      messages: currentMessages,
+                      lastMessageTime: Date.now()
+                    });
+                  }
+                );
               }, Math.random() * 4000 + 1000);
             }
             
