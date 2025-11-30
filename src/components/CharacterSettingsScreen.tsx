@@ -108,6 +108,8 @@ export default function CharacterSettingsScreen({
   const [doiInput, setDoiInput] = useState('');
   const [isFetchingDOI, setIsFetchingDOI] = useState(false);
 
+  const [isBlocked, setIsBlocked] = useState(conversation.isBlocked || false);
+
   const handleAvatarUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
@@ -228,6 +230,7 @@ export default function CharacterSettingsScreen({
       console.log('📝 准备更新对话数据...');
       
       onUpdateConversation(conversation.id, {
+        isBlocked, // 保存拉黑状态
         name: nickname || conversation.name,
         characterSettings: {
           avatar,
@@ -757,6 +760,24 @@ export default function CharacterSettingsScreen({
             className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
           />
           <p className="text-xs text-gray-500 mt-1">在群聊中显示的网名</p>
+        </div>
+
+        {/* Block Switch - 拉黑开关 */}
+        <div className="bg-white rounded-lg shadow-sm p-4 flex items-center justify-between">
+          <div>
+            <label className="block text-sm font-medium text-gray-700">
+              加入黑名单
+            </label>
+            <div className="text-xs text-gray-500 mt-1">
+              {isBlocked ? '已停止接收消息（点击保存生效）' : '拉黑后将不再接收对方的消息'}
+            </div>
+          </div>
+          <button 
+            onClick={() => setIsBlocked(!isBlocked)}
+            className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 ${isBlocked ? 'bg-red-500' : 'bg-gray-200'}`}
+          >
+            <span className={`${isBlocked ? 'translate-x-6' : 'translate-x-1'} inline-block h-4 w-4 transform rounded-full bg-white transition-transform`} />
+          </button>
         </div>
 
         {/* System Prompt - 仅非AI儿童显示 */}
