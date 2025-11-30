@@ -224,6 +224,19 @@ export interface CharacterSettings {
   customBubbleCss?: string;
   // 🎨 是否隐藏气泡尾巴
   hideBubbleTail?: boolean;
+  // 🎨 气泡装饰配置
+  bubbleDecoration?: BubbleDecoration;
+}
+
+// 气泡装饰配置接口
+export interface BubbleDecoration {
+  show: boolean;
+  type: 'image' | 'text';
+  content: string; // 图片URL 或 文字内容
+  position: 'top-right' | 'bottom-right' | 'bottom-left' | 'top-left';
+  size: number; // 大小 (px)
+  offsetX: number; // 横向偏移
+  offsetY: number; // 纵向偏移
 }
 
 // 资料库条目

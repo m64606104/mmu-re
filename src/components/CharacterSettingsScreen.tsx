@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
-import { ChevronLeft, Upload, Brain, Trash2, Download, FileUp, Zap, X, Camera, RefreshCw, BookOpen, Plus, Edit, FileText, Users, Video } from 'lucide-react';
-import { Conversation, ApiConfig, KnowledgeBaseItem } from '../types';
+import { ChevronLeft, Upload, Brain, Trash2, Download, FileUp, Zap, X, Camera, RefreshCw, BookOpen, Plus, Edit, FileText, Users, Video, Image as ImageIcon } from 'lucide-react';
+import { Conversation, ApiConfig, KnowledgeBaseItem, BubbleDecoration } from '../types';
 import MemoryManager from './MemoryManager';
 import CallHistoryModal from './CallHistoryModal';
 import RelationshipManagementScreen from './RelationshipManagementScreen';
@@ -106,11 +106,38 @@ export default function CharacterSettingsScreen({
   const [knowledgeContent, setKnowledgeContent] = useState('');
   const [customBubbleCss, setCustomBubbleCss] = useState(settings.customBubbleCss || '');
   const [hideBubbleTail, setHideBubbleTail] = useState(settings.hideBubbleTail || false);
+  const [decorationConfig, setDecorationConfig] = useState<BubbleDecoration>(settings.bubbleDecoration || {
+    show: false,
+    type: 'text',
+    content: '🧀',
+    position: 'bottom-right',
+    size: 24,
+    offsetX: 0,
+    offsetY: -10
+  });
   const [isParsingFile, setIsParsingFile] = useState(false);
   const [doiInput, setDoiInput] = useState('');
   const [isFetchingDOI, setIsFetchingDOI] = useState(false);
 
   const [isBlocked, setIsBlocked] = useState(conversation.isBlocked || false);
+
+  const decorationImageInputRef = useRef<HTMLInputElement>(null);
+
+  const handleDecorationImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setDecorationConfig(prev => ({
+          ...prev,
+          type: 'image',
+          content: reader.result as string,
+          show: true
+        }));
+      };
+      reader.readAsDataURL(file);
+    }
+  };
 
   const handleAvatarUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -264,6 +291,7 @@ export default function CharacterSettingsScreen({
           // 保存自定义气泡样式
           customBubbleCss,
           hideBubbleTail,
+          bubbleDecoration: decorationConfig,
           contextConfig: {
             enabled: contextConfigEnabled,
             messageCount: contextMessageCount,
@@ -774,6 +802,39 @@ export default function CharacterSettingsScreen({
                   <style>{customBubbleCss}</style>
                   {hideBubbleTail && <style>{`.message-tail { display: none !important; }`}</style>}
                   
+                  {/* 注入装饰CSS */}
+                  {decorationConfig.show && (
+                    <style>{`
+                      .message-bubble {
+                        position: relative !important;
+                        overflow: visible !important;
+                      }
+                      .message-bubble::after {
+                        content: ${decorationConfig.type === 'text' ? `"${decorationConfig.content}"` : '""'} !important;
+                        position: absolute !important;
+                        z-index: 10 !important;
+                        width: ${decorationConfig.size}px !important;
+                        height: ${decorationConfig.size}px !important;
+                        font-size: ${decorationConfig.size}px !important;
+                        line-height: 1 !important;
+                        display: flex !important;
+                        align-items: center !important;
+                        justify-content: center !important;
+                        pointer-events: none !important;
+                        ${decorationConfig.type === 'image' ? `
+                          background-image: url('${decorationConfig.content}') !important;
+                          background-size: contain !important;
+                          background-repeat: no-repeat !important;
+                          background-position: center !important;
+                        ` : ''}
+                        ${decorationConfig.position === 'top-right' ? `top: ${decorationConfig.offsetY}px !important; right: ${decorationConfig.offsetX}px !important;` : ''}
+                        ${decorationConfig.position === 'bottom-right' ? `bottom: ${decorationConfig.offsetY}px !important; right: ${decorationConfig.offsetX}px !important;` : ''}
+                        ${decorationConfig.position === 'bottom-left' ? `bottom: ${decorationConfig.offsetY}px !important; left: ${decorationConfig.offsetX}px !important;` : ''}
+                        ${decorationConfig.position === 'top-left' ? `top: ${decorationConfig.offsetY}px !important; left: ${decorationConfig.offsetX}px !important;` : ''}
+                      }
+                    `}</style>
+                  )}
+                  
                   <div className="preview-area relative z-10">
                     {/* User Bubble */}
                     <div className="flex justify-end mb-4 items-end gap-2">
@@ -798,6 +859,137 @@ export default function CharacterSettingsScreen({
                     </div>
                   </div>
                 </div>
+              </div>
+
+              {/* 气泡小装饰设置 */}
+              <div className="mb-4 border border-gray-200 rounded-lg overflow-hidden">
+                <div className="bg-gray-50 px-3 py-2 text-xs font-medium text-gray-700 flex items-center justify-between">
+                  <span>✨ 气泡小装饰</span>
+                  <label className="relative inline-flex items-center cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={decorationConfig.show}
+                      onChange={(e) => setDecorationConfig(prev => ({ ...prev, show: e.target.checked }))}
+                      className="sr-only peer"
+                    />
+                    <div className="w-7 h-4 bg-gray-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-3 after:w-3 after:transition-all peer-checked:bg-blue-500"></div>
+                  </label>
+                </div>
+                
+                {decorationConfig.show && (
+                  <div className="p-3 space-y-3 bg-white">
+                    {/* 类型选择 */}
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => setDecorationConfig(prev => ({ ...prev, type: 'image' }))}
+                        className={`flex-1 py-1.5 text-xs rounded border ${decorationConfig.type === 'image' ? 'bg-blue-50 border-blue-500 text-blue-700' : 'border-gray-200 text-gray-600'}`}
+                      >
+                        🖼️ 图片/图标
+                      </button>
+                      <button
+                        onClick={() => setDecorationConfig(prev => ({ ...prev, type: 'text' }))}
+                        className={`flex-1 py-1.5 text-xs rounded border ${decorationConfig.type === 'text' ? 'bg-blue-50 border-blue-500 text-blue-700' : 'border-gray-200 text-gray-600'}`}
+                      >
+                        😊 Emoji/文字
+                      </button>
+                    </div>
+
+                    {/* 内容输入 */}
+                    <div>
+                      {decorationConfig.type === 'image' ? (
+                        <div className="flex items-center gap-3">
+                          <div className="w-10 h-10 border border-gray-200 rounded bg-gray-50 flex items-center justify-center overflow-hidden">
+                            {decorationConfig.content ? (
+                              <img src={decorationConfig.content} alt="装饰" className="w-full h-full object-contain" />
+                            ) : (
+                              <ImageIcon className="w-4 h-4 text-gray-400" />
+                            )}
+                          </div>
+                          <button
+                            onClick={() => decorationImageInputRef.current?.click()}
+                            className="px-3 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs rounded transition-colors"
+                          >
+                            上传图片
+                          </button>
+                          <input
+                            ref={decorationImageInputRef}
+                            type="file"
+                            accept="image/*"
+                            onChange={handleDecorationImageUpload}
+                            className="hidden"
+                          />
+                        </div>
+                      ) : (
+                        <div>
+                          <label className="block text-xs text-gray-500 mb-1">输入 Emoji 或文字</label>
+                          <input
+                            type="text"
+                            value={decorationConfig.content}
+                            onChange={(e) => setDecorationConfig(prev => ({ ...prev, content: e.target.value }))}
+                            className="w-full px-3 py-1.5 border border-gray-300 rounded text-sm"
+                            placeholder="例如：🧀"
+                          />
+                        </div>
+                      )}
+                    </div>
+
+                    {/* 位置选择 */}
+                    <div>
+                      <label className="block text-xs text-gray-500 mb-1">位置</label>
+                      <div className="grid grid-cols-2 gap-2">
+                        {['top-left', 'top-right', 'bottom-left', 'bottom-right'].map((pos) => (
+                          <button
+                            key={pos}
+                            onClick={() => setDecorationConfig(prev => ({ ...prev, position: pos as any }))}
+                            className={`py-1 text-xs rounded border ${decorationConfig.position === pos ? 'bg-blue-50 border-blue-500 text-blue-700' : 'border-gray-200 text-gray-600'}`}
+                          >
+                            {pos === 'top-left' ? '↖️ 左上' : pos === 'top-right' ? '↗️ 右上' : pos === 'bottom-left' ? '↙️ 左下' : '↘️ 右下'}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* 大小与偏移 */}
+                    <div className="space-y-2">
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs text-gray-500 w-12">大小</span>
+                        <input
+                          type="range"
+                          min="10"
+                          max="100"
+                          value={decorationConfig.size}
+                          onChange={(e) => setDecorationConfig(prev => ({ ...prev, size: parseInt(e.target.value) }))}
+                          className="flex-1 h-1.5 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-blue-500"
+                        />
+                        <span className="text-xs text-gray-500 w-8 text-right">{decorationConfig.size}px</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs text-gray-500 w-12">X偏移</span>
+                        <input
+                          type="range"
+                          min="-50"
+                          max="50"
+                          value={decorationConfig.offsetX}
+                          onChange={(e) => setDecorationConfig(prev => ({ ...prev, offsetX: parseInt(e.target.value) }))}
+                          className="flex-1 h-1.5 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-blue-500"
+                        />
+                        <span className="text-xs text-gray-500 w-8 text-right">{decorationConfig.offsetX}</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs text-gray-500 w-12">Y偏移</span>
+                        <input
+                          type="range"
+                          min="-50"
+                          max="50"
+                          value={decorationConfig.offsetY}
+                          onChange={(e) => setDecorationConfig(prev => ({ ...prev, offsetY: parseInt(e.target.value) }))}
+                          className="flex-1 h-1.5 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-blue-500"
+                        />
+                        <span className="text-xs text-gray-500 w-8 text-right">{decorationConfig.offsetY}</span>
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
               
               <textarea

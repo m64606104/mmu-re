@@ -5116,6 +5116,8 @@ ${doc.content}`;
   const customCss = conversation.characterSettings?.customBubbleCss;
   // 提取是否隐藏气泡尾巴
   const hideBubbleTail = conversation.characterSettings?.hideBubbleTail;
+  // 提取气泡装饰配置
+  const decorationConfig = conversation.characterSettings?.bubbleDecoration;
 
   return (
     <>
@@ -5131,6 +5133,38 @@ ${doc.content}`;
       {customCss && <style>{customCss}</style>}
       {/* 如果开启了隐藏尾巴，注入隐藏样式 */}
       {hideBubbleTail && <style>{`.message-tail { display: none !important; }`}</style>}
+      {/* 注入气泡装饰样式 */}
+      {decorationConfig?.show && (
+        <style>{`
+          .message-bubble {
+            position: relative !important;
+            overflow: visible !important;
+          }
+          .message-bubble::after {
+            content: ${decorationConfig.type === 'text' ? `"${decorationConfig.content}"` : '""'} !important;
+            position: absolute !important;
+            z-index: 10 !important;
+            width: ${decorationConfig.size}px !important;
+            height: ${decorationConfig.size}px !important;
+            font-size: ${decorationConfig.size}px !important;
+            line-height: 1 !important;
+            display: flex !important;
+            align-items: center !important;
+            justify-content: center !important;
+            pointer-events: none !important;
+            ${decorationConfig.type === 'image' ? `
+              background-image: url('${decorationConfig.content}') !important;
+              background-size: contain !important;
+              background-repeat: no-repeat !important;
+              background-position: center !important;
+            ` : ''}
+            ${decorationConfig.position === 'top-right' ? `top: ${decorationConfig.offsetY}px !important; right: ${decorationConfig.offsetX}px !important;` : ''}
+            ${decorationConfig.position === 'bottom-right' ? `bottom: ${decorationConfig.offsetY}px !important; right: ${decorationConfig.offsetX}px !important;` : ''}
+            ${decorationConfig.position === 'bottom-left' ? `bottom: ${decorationConfig.offsetY}px !important; left: ${decorationConfig.offsetX}px !important;` : ''}
+            ${decorationConfig.position === 'top-left' ? `top: ${decorationConfig.offsetY}px !important; left: ${decorationConfig.offsetX}px !important;` : ''}
+          }
+        `}</style>
+      )}
 
       {/* Header - 固定在顶部 */}
       <div className="absolute top-0 left-0 right-0 bg-white/95 backdrop-blur-sm border-b border-gray-200 px-4 py-3 flex items-center justify-between shadow-sm z-10">
