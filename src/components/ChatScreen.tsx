@@ -898,9 +898,55 @@ ${recentMessages}
       console.error('生成上下文提示失败:', error);
     }
     
-    // 如果生成失败，使用默认提示
-    const aiName = conversationData.characterSettings?.nickname || conversationData.name;
-    return `${aiName}看到了你的消息，但现在不想回复`;
+    // 如果生成失败，使用中性兜底提示（不依赖上下文）
+    return '对方可能暂时忙碌，没有立即回复';
+  };
+  
+  // 统一处理“AI选择不回复”的系统提示
+  const handleAINoReply = async (targetConversationId: string) => {
+    try {
+      // 优先从 localStorage 获取最新的会话数据，避免使用过期的 props
+      const storedConversations = localStorage.getItem('conversations');
+      let targetConversation: Conversation | undefined = conversation;
+
+      if (storedConversations) {
+        try {
+          const allConversations = JSON.parse(storedConversations) as Conversation[];
+          const latest = allConversations.find(c => c.id === targetConversationId);
+          if (latest) {
+            targetConversation = latest;
+          }
+        } catch (e) {
+          console.error('解析本地会话数据失败:', e);
+        }
+      }
+
+      if (!targetConversation) {
+        console.warn('handleAINoReply: 未找到目标会话，使用当前会话作为退路');
+        targetConversation = conversation;
+      }
+
+      const contextualHint = await generateContextualHint(targetConversation);
+
+      const systemMessage: Message = {
+        id: Date.now().toString(),
+        role: 'system',
+        content: contextualHint,
+        timestamp: Date.now(),
+      };
+
+      onUpdateConversation(targetConversationId, {
+        messages: [...targetConversation.messages, systemMessage],
+        lastMessageTime: Date.now(),
+      });
+    } catch (err) {
+      console.error('handleAINoReply 处理失败:', err);
+    } finally {
+      // 无论如何都要清理 loading / 打字状态
+      setShowSendingHint(false);
+      setShowTyping(false);
+      setIsGenerating(false);
+    }
   };
   
   // 追踪用户是否还在当前聊天页面
@@ -4434,11 +4480,9 @@ ${doc.content}`;
             if (isShort) {
                 // 🎲 40% 概率不回复（既读不回）
                 if (Math.random() < 0.4) {
-                    console.log('🎯 [拟人化] 短回合对话，AI选择不回复');
-                    setShowSendingHint(false);
-                    setShowTyping(false);
-                    setIsGenerating(false);
-                    // 模拟一个随机延迟后结束（不调用API）
+                    console.log('🎯 [拟人化] 短回合对话，AI选择不回复 (短回合策略)');
+                    // 直接复用统一的 AI 不回复处理逻辑
+                    void handleAINoReply(conversation.id);
                     return; 
                 } else {
                     // 🎯 否则强制短回复
@@ -4508,55 +4552,8 @@ ${doc.content}`;
             
             // 情况2：AI选择不回复（error === 'AI_NO_REPLY' 或无error）
             console.log('💬 AI选择不回复');
-            
-            // 🔥 生成智能的上下文不回复提示，作为系统消息添加到聊天记录
-            generateContextualHint(conversation).then(contextualHint => {
-              console.log('📝 生成智能提示 (系统消息):', contextualHint);
-              
-              const systemMessage: Message = {
-                id: Date.now().toString(),
-                role: 'system',
-                content: contextualHint,
-                timestamp: Date.now(),
-              };
-              
-              // 从localStorage获取最新的消息列表
-              const storedConversations = localStorage.getItem('conversations');
-              if (storedConversations) {
-                const allConversations = JSON.parse(storedConversations) as Conversation[];
-                const currentConversation = allConversations.find((c: Conversation) => c.id === conversationId);
-                if (currentConversation) {
-                  console.log('💾 添加系统提示消息到聊天记录');
-                  onUpdateConversation(conversationId, {
-                    messages: [...currentConversation.messages, systemMessage],
-                    lastMessageTime: Date.now(),
-                  });
-                }
-              }
-            }).catch(error => {
-              console.error('生成智能提示失败:', error);
-              // 如果生成智能提示也失败了，就使用一个简单的系统消息
-              const aiName = conversation.characterSettings?.nickname || conversation.name;
-              const fallbackMessage: Message = {
-                id: Date.now().toString(),
-                role: 'system',
-                content: `${aiName} 看到了你的消息，但选择不回复`,
-                timestamp: Date.now(),
-              };
-              
-              const storedConversations = localStorage.getItem('conversations');
-              if (storedConversations) {
-                const allConversations = JSON.parse(storedConversations) as Conversation[];
-                const currentConversation = allConversations.find((c: Conversation) => c.id === conversationId);
-                if (currentConversation) {
-                  onUpdateConversation(conversationId, {
-                    messages: [...currentConversation.messages, fallbackMessage],
-                    lastMessageTime: Date.now(),
-                  });
-                }
-              }
-            });
-            
+
+            await handleAINoReply(conversationId);
             return;
           }
           

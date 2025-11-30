@@ -1097,6 +1097,37 @@ ${purposeDetected ? `\n\n⚠️ 重要：用户刚刚说明了这个子聊天的
     setSelectedMessageId(null);
   };
 
+  // 处理子聊天中的消息回应 (Reaction)
+  const handleReactMessage = (emoji: string) => {
+    if (!selectedMessageId) return;
+
+    const updatedMessages = subChat.messages.map(msg => {
+      if (msg.id === selectedMessageId) {
+        const currentReactions = msg.reactions || [];
+        // 检查是否已经有该用户的该表情
+        const existingIndex = currentReactions.findIndex(r => r.from === 'user' && r.type === emoji);
+
+        let newReactions;
+        if (existingIndex >= 0) {
+          // 如果已存在，则移除（toggle）
+          newReactions = currentReactions.filter((_, i) => i !== existingIndex);
+        } else {
+          // 否则添加
+          newReactions = [...currentReactions, { from: 'user' as const, type: emoji }];
+        }
+
+        return { ...msg, reactions: newReactions };
+      }
+      return msg;
+    });
+
+    _onUpdateSubChat(subChat.id, {
+      messages: updatedMessages
+    });
+
+    setSelectedMessageId(null);
+  };
+
   // 🔥 导出子聊天功能
   const handleExportSubChat = () => {
     try {
@@ -2200,6 +2231,7 @@ ${purposeDetected ? `\n\n⚠️ 重要：用户刚刚说明了这个子聊天的
         onDelete={handleDeleteMessage}
         onMultiSelect={handleEnterMultiSelect}
         onForward={handleForwardSingleMessage}
+        onReact={handleReactMessage}
         onClose={handleCloseMenu}
       />
 
