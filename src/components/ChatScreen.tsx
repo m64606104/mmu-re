@@ -4248,7 +4248,17 @@ ${SmartHTMLGenerator.getModuleInstructions()}
         
         // 🎵 添加音乐上下文 - 让AI感知当前播放的音乐
         const musicContext = musicContextService.generateAIContextPrompt();
-        const finalContextPrompt = subContextPrompt + musicContext;
+        let finalContextPrompt = subContextPrompt + musicContext;
+
+        // 🚫 如果被拉黑，通知AI
+        if (conversation.isBlocked) {
+          finalContextPrompt += `\n\n【系统提示】
+你目前已被用户拉黑。
+1. 你的消息目前无法送达给用户（会被系统拦截），直到用户解除拉黑。
+2. 你仍然可以发送消息，这些消息会在解除拉黑后一次性显示给用户。
+3. 如果你想请求解除拉黑，你可以尝试发送好友申请（虽然在拉黑期间用户可能看不到）。
+请根据你的人设做出反应，可以是疑惑、生气、伤心，或者是假装没发生继续自言自语。`;
+        }
         
         messages = [
           { role: 'system', content: finalContextPrompt },
@@ -4446,6 +4456,7 @@ ${doc.content}`;
           // 获取最新的conversation（可能已经从localStorage更新了）
           const latestConversationData = localStorage.getItem('conversations');
           let currentMessages = [...conversation.messages];
+          let isCurrentBlocked = conversation.isBlocked;
           
           if (latestConversationData) {
             try {
@@ -4453,17 +4464,24 @@ ${doc.content}`;
               const latestConv = conversations.find((c: Conversation) => c.id === conversationId);
               if (latestConv) {
                 currentMessages = [...latestConv.messages];
+                isCurrentBlocked = latestConv.isBlocked;
               }
             } catch (e) {
               console.error('Failed to get latest conversation:', e);
             }
           }
           
+          // 🚫 如果被拉黑，给新消息加上标记
+          const processedNewMessages = newMessages.map(msg => ({
+            ...msg,
+            isBlockedMessage: isCurrentBlocked
+          }));
+          
           if (userStillOnPage) {
-            // 👤 用户还在页面：显示完整的输入动画
+            // 👤 用户还在页面：显示完整的输入动画（即使被拉黑也显示，模拟对方正在回复）
             console.log('用户还在页面，显示输入动画');
             
-            for (let i = 0; i < newMessages.length; i++) {
+            for (let i = 0; i < processedNewMessages.length; i++) {
               // 显示输入动画
               setShowTyping(true);
               
@@ -4479,20 +4497,21 @@ ${doc.content}`;
               setShowTyping(false);
               
               // 添加这条消息到conversation
-              currentMessages = [...currentMessages, newMessages[i]];
+              // 注意：如果 isBlockedMessage 为 true，这条消息在 JSX 渲染时会被过滤掉
+              currentMessages = [...currentMessages, processedNewMessages[i]];
               onUpdateConversation(conversationId, {
                 messages: currentMessages,
                 lastMessageTime: Date.now(),
               });
               
               // 🎁 处理订单响应（如果AI回复包含订单响应标记）
-              if (newMessages[i].content) {
-                await processAIOrderResponse(newMessages[i], currentMessages);
+              if (processedNewMessages[i].content) {
+                await processAIOrderResponse(processedNewMessages[i], currentMessages);
               }
               
               // 💰 处理红包/转账响应（如果AI回复包含红包响应）
-              if (newMessages[i].moneyTransfer) {
-                currentMessages = processAIMoneyResponse(newMessages[i], currentMessages);
+              if (processedNewMessages[i].moneyTransfer) {
+                currentMessages = processAIMoneyResponse(processedNewMessages[i], currentMessages);
                 // 🔥 更新到conversation
                 onUpdateConversation(conversationId, {
                   messages: currentMessages
@@ -4500,14 +4519,14 @@ ${doc.content}`;
               }
               
               // 💬 处理子聊天请求（如果AI发起子聊天）
-              if (newMessages[i].role === 'system' && newMessages[i].content.startsWith('__SUBCHAT_REQUEST__')) {
-                const parts = newMessages[i].content.split('__');
+              if (processedNewMessages[i].role === 'system' && processedNewMessages[i].content.startsWith('__SUBCHAT_REQUEST__')) {
+                const parts = processedNewMessages[i].content.split('__');
                 if (parts.length >= 4) {
                   const purpose = parts[2];
                   const suggestedName = parts[3];
                   handleAIInitiateSubChat(purpose, suggestedName);
                   // 从消息列表中移除这个系统消息
-                  currentMessages = currentMessages.filter(msg => msg.id !== newMessages[i].id);
+                  currentMessages = currentMessages.filter(msg => msg.id !== processedNewMessages[i].id);
                   onUpdateConversation(conversationId, {
                     messages: currentMessages
                   });
@@ -4515,16 +4534,16 @@ ${doc.content}`;
               }
               
               // 短暂停顿再显示下一条
-              if (i < newMessages.length - 1) {
+              if (i < processedNewMessages.length - 1) {
                 await new Promise(resolve => setTimeout(resolve, 300));
               }
             }
             
             // 🎭 检查是否有头像更换指令
-            const hasAvatarChangeRequest = newMessages.some(msg => 
+            const hasAvatarChangeRequest = processedNewMessages.some(msg => 
               msg.role === 'assistant' && msg.content && msg.content.includes('换头像')
             );
-            const hasRestoreAvatarRequest = newMessages.some(msg => 
+            const hasRestoreAvatarRequest = processedNewMessages.some(msg => 
               msg.role === 'assistant' && msg.content && msg.content.includes('换回原头像')
             );
             
@@ -4577,26 +4596,44 @@ ${doc.content}`;
             // 所有消息显示完毕，隐藏生成状态
             setIsGenerating(false);
             
+            // 🚫 如果是拉黑状态，添加系统拦截提示
+            if (isCurrentBlocked && processedNewMessages.length > 0) {
+              const blockSystemMsg: Message = {
+                id: `sys_block_${Date.now()}`,
+                role: 'system',
+                content: '对方消息已发出，但因被拉黑无法送达',
+                timestamp: Date.now()
+              };
+              
+              // 添加这条系统消息
+              currentMessages = [...currentMessages, blockSystemMsg];
+              onUpdateConversation(conversationId, {
+                messages: currentMessages,
+                lastMessageTime: Date.now()
+              });
+            }
+            
             // 🚀 通知后台服务生成完成
             backgroundGenerationService.completeGeneration(conversationId, currentMessages);
             
           } else {
-            // 🚀 用户已离开：直接添加所有消息，不显示动画
-            console.log('用户已离开页面，直接添加所有消息并显示通知');
+            // 🚀 用户已离开或被拉黑：直接添加所有消息，不显示动画
+            console.log(isCurrentBlocked ? '用户已拉黑AI，隐式接收消息' : '用户已离开页面，直接添加所有消息并显示通知');
             
             // 直接添加所有消息
-            currentMessages = [...currentMessages, ...newMessages];
+            currentMessages = [...currentMessages, ...processedNewMessages];
             onUpdateConversation(conversationId, {
               messages: currentMessages,
               lastMessageTime: Date.now(),
             });
             
             // 🎁 处理订单响应（用户离开的情况下也要处理）
-            for (const msg of newMessages) {
+            for (const msg of processedNewMessages) {
               if (msg.content) {
                 await processAIOrderResponse(msg, currentMessages);
               }
               // 💰 处理红包/转账响应
+
               if (msg.moneyTransfer) {
                 currentMessages = processAIMoneyResponse(msg, currentMessages);
               }
@@ -5075,6 +5112,11 @@ ${doc.content}`;
         
         {/* 根据消息窗口显示消息 */}
         {conversation.messages.slice(messageWindow.startIndex, messageWindow.startIndex + messageWindow.size).map((message, index) => {
+          // 🚫 如果是拉黑期间的消息且当前仍在拉黑状态，则不显示
+          if (message.isBlockedMessage && conversation.isBlocked) {
+            return null;
+          }
+
           // 获取当前显示的消息数组，用于正确计算时间显示
           const displayMessages = conversation.messages.slice(messageWindow.startIndex, messageWindow.startIndex + messageWindow.size);
           
@@ -5153,6 +5195,13 @@ ${doc.content}`;
                   </div>
                 )}
                 <div className="relative max-w-[70%]">
+                  {/* 🚫 拉黑期间消息标记（解除拉黑后显示） */}
+                  {message.isBlockedMessage && !conversation.isBlocked && (
+                    <div className="absolute -right-6 top-1/2 -translate-y-1/2 text-red-500 font-bold text-lg select-none cursor-help" title="对方在被拉黑期间发送的消息">
+                      !
+                    </div>
+                  )}
+
                   {/* 群聊：显示发送者名字 */}
                   {message.role === 'assistant' && conversation.type === 'group' && (message as any).senderName && (
                     <div className="text-xs text-gray-500 mb-1 ml-1">

@@ -11,8 +11,8 @@ interface SocialScreenProps {
 }
 
 export default function SocialScreen({ conversations, onNavigate, onImportCharacter, onUpdateConversation }: SocialScreenProps) {
-  // 过滤掉隐藏或拉黑的会话
-  const visibleConversations = conversations.filter(c => !c.isHidden && !c.isBlocked);
+  // 过滤掉隐藏的会话（保留被拉黑的会话）
+  const visibleConversations = conversations.filter(c => !c.isHidden);
   const sortedConversations = [...visibleConversations].sort((a, b) => b.lastMessageTime - a.lastMessageTime);
   
   const [isDarkMode, setIsDarkMode] = useState(true);
@@ -81,12 +81,16 @@ export default function SocialScreen({ conversations, onNavigate, onImportCharac
   };
 
   // 处理操作
-  const handleAction = (action: 'hide' | 'block' | 'delete', conversation: Conversation) => {
+  const handleAction = (action: 'hide' | 'block' | 'unblock' | 'delete', conversation: Conversation) => {
     if (action === 'hide') {
       onUpdateConversation(conversation.id, { isHidden: true });
     } else if (action === 'block') {
-      if (confirm(`确定要拉黑 ${conversation.name} 吗？拉黑后将不再接收对方消息。`)) {
-        onUpdateConversation(conversation.id, { isBlocked: true, isHidden: true });
+      if (confirm(`确定要拉黑 ${conversation.name} 吗？拉黑后对方将无法发送消息。`)) {
+        onUpdateConversation(conversation.id, { isBlocked: true });
+      }
+    } else if (action === 'unblock') {
+      if (confirm(`确定要解除对 ${conversation.name} 的拉黑吗？`)) {
+        onUpdateConversation(conversation.id, { isBlocked: false });
       }
     } else if (action === 'delete') {
       if (confirm(`确定要删除与 ${conversation.name} 的对话吗？聊天记录将被清空。`)) {
@@ -363,12 +367,21 @@ export default function SocialScreen({ conversations, onNavigate, onImportCharac
                     >
                       不显示
                     </button>
-                    <button 
-                      onClick={(e) => { e.stopPropagation(); handleAction('block', conversation); }}
-                      className="flex-1 bg-orange-500 text-white flex items-center justify-center text-sm font-medium active:bg-orange-600"
-                    >
-                      拉黑
-                    </button>
+                    {conversation.isBlocked ? (
+                      <button 
+                        onClick={(e) => { e.stopPropagation(); handleAction('unblock', conversation); }}
+                        className="flex-1 bg-gray-500 text-white flex items-center justify-center text-sm font-medium active:bg-gray-600"
+                      >
+                        解除
+                      </button>
+                    ) : (
+                      <button 
+                        onClick={(e) => { e.stopPropagation(); handleAction('block', conversation); }}
+                        className="flex-1 bg-orange-500 text-white flex items-center justify-center text-sm font-medium active:bg-orange-600"
+                      >
+                        拉黑
+                      </button>
+                    )}
                     <button 
                       onClick={(e) => { e.stopPropagation(); handleAction('delete', conversation); }}
                       className="flex-1 bg-red-500 text-white flex items-center justify-center text-sm font-medium active:bg-red-600"
@@ -395,7 +408,7 @@ export default function SocialScreen({ conversations, onNavigate, onImportCharac
                       transform: `translateX(${offset}px)`,
                       transition: touchStart ? 'none' : 'transform 0.2s ease-out'
                     }}
-                    className={`relative z-10 w-full px-4 py-3 flex items-center gap-3 transition-colors cursor-pointer ${isDarkMode ? 'bg-[#1a1a1a] hover:bg-[#2a2a2a] active:bg-[#333]' : 'bg-white hover:bg-gray-50 active:bg-gray-100'}`}
+                    className={`relative z-10 w-full px-4 py-3 flex items-center gap-3 transition-colors cursor-pointer ${isDarkMode ? 'bg-[#1a1a1a] hover:bg-[#2a2a2a] active:bg-[#333]' : 'bg-white hover:bg-gray-50 active:bg-gray-100'} ${conversation.isBlocked ? 'opacity-60 grayscale' : ''}`}
                   >
                     {/* Avatar - 更精致的头像 */}
                     <div className="relative flex-shrink-0">
@@ -414,6 +427,12 @@ export default function SocialScreen({ conversations, onNavigate, onImportCharac
                           </span>
                         )}
                       </div>
+                      {/* 拉黑状态覆盖层 */}
+                      {conversation.isBlocked && (
+                        <div className="absolute inset-0 bg-black/20 rounded-lg flex items-center justify-center">
+                          <span className="text-lg">🚫</span>
+                        </div>
+                      )}
                       {/* 未读标记 */}
                       {conversation.unreadCount > 0 && (
                         <div className={`absolute -top-1 -right-1 min-w-[18px] h-[18px] bg-red-500 rounded-full flex items-center justify-center px-1 ${isDarkMode ? 'border-2 border-[#1a1a1a]' : 'border-2 border-white'}`}>

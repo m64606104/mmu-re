@@ -65,6 +65,8 @@ export interface Message {
     shareUrl: string;
     platform: 'netease';
   };
+  // 🚫 标记是否为拉黑期间的消息
+  isBlockedMessage?: boolean;
 }
 
 // 💰 红包/转账类型
