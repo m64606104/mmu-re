@@ -5112,16 +5112,22 @@ ${doc.content}`;
     }
   };
 
+  // 提取自定义CSS
+  const customCss = conversation.characterSettings?.customBubbleCss;
+
   return (
     <>
-    <div className="h-full bg-gradient-to-b from-gray-50 to-gray-100 relative" style={{ 
-      backgroundImage: conversation.characterSettings?.chatBackground 
-        ? `url("${conversation.characterSettings.chatBackground}")` 
-        : 'url("data:image/svg+xml,%3Csvg width=\"20\" height=\"20\" xmlns=\"http://www.w3.org/2000/svg\"%3E%3Cpath d=\"M0 0h20v20H0z\" fill=\"%23fafafa\"/%3E%3Cpath d=\"M0 0h10v10H0z\" fill=\"%23f5f5f5\" fill-opacity=\".5\"/%3E%3C/svg%3E")',
-      backgroundSize: conversation.characterSettings?.chatBackground ? 'cover' : 'auto',
-      backgroundPosition: conversation.characterSettings?.chatBackground ? 'center' : 'top',
-      backgroundRepeat: conversation.characterSettings?.chatBackground ? 'no-repeat' : 'repeat'
-    }}>
+    <div 
+      className="flex flex-col h-full bg-gray-50 relative"
+      style={conversation.characterSettings?.chatBackground ? {
+        backgroundImage: `url(${conversation.characterSettings.chatBackground})`,
+        backgroundSize: 'cover',
+        backgroundPosition: 'center',
+      } : undefined}
+    >
+      {/* 注入自定义气泡样式 */}
+      {customCss && <style>{customCss}</style>}
+
       {/* Header - 固定在顶部 */}
       <div className="absolute top-0 left-0 right-0 bg-white/95 backdrop-blur-sm border-b border-gray-200 px-4 py-3 flex items-center justify-between shadow-sm z-10">
         <div className="flex items-center gap-3">
@@ -5411,7 +5417,7 @@ ${doc.content}`;
                         handleMessageClick(message.id, e);
                       }
                     }}
-                    className={`rounded-2xl shadow-sm cursor-pointer ${
+                    className={`message-bubble ${message.role === 'user' ? 'user' : 'ai'} rounded-2xl shadow-sm cursor-pointer ${
                       message.moneyTransfer 
                         ? 'p-0 overflow-hidden'
                         : message.role === 'user'
@@ -6099,7 +6105,7 @@ ${doc.content}`;
                     
                     {/* 纯文字内容 */}
                     {!message.mediaType && !message.moneyTransfer && !message.document && !message.order && message.content && message.content.trim() && (
-                      <p className={`text-[15px] leading-relaxed whitespace-pre-wrap break-words ${message.replyTo ? 'px-4' : ''}`}>{message.content}</p>
+                      <p className={`message-content text-[15px] leading-relaxed whitespace-pre-wrap break-words ${message.replyTo ? 'px-4' : ''}`}>{message.content}</p>
                     )}
                     {/* 用户媒体的描述文字（排除语音和表情包） */}
                     {message.role === 'user' && message.mediaType && message.mediaType !== 'sticker' && message.mediaType !== 'voice' && message.mediaDescription && (
@@ -6117,7 +6123,7 @@ ${doc.content}`;
                     )}
                   </div>
                   {/* Message tail */}
-                  <div className={`absolute bottom-3 ${
+                  <div className={`message-tail absolute bottom-3 ${
                     message.role === 'user' ? 'right-0 translate-x-[40%]' : 'left-0 -translate-x-[40%]'
                   }`}>
                     <div className={`w-2.5 h-2.5 bg-white border-gray-200 transform rotate-45 shadow-sm ${

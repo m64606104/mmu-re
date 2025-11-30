@@ -413,19 +413,29 @@ export default function SocialScreen({ conversations, onNavigate, onImportCharac
                     {/* Avatar - 更精致的头像 */}
                     <div className="relative flex-shrink-0">
                       <div className={`w-12 h-12 rounded-lg bg-gradient-to-br ${getAvatarGradient(conversation.name)} flex items-center justify-center shadow-md overflow-hidden`}>
-                        {conversation.characterSettings?.avatar ? (
-                          <img 
-                            src={conversation.characterSettings.avatar} 
-                            alt={conversation.name}
-                            className="w-full h-full object-cover"
-                          />
-                        ) : conversation.type === 'group' ? (
-                          <Users className="w-6 h-6 text-white" strokeWidth={2.5} />
-                        ) : (
-                          <span className="text-white font-semibold text-lg">
-                            {conversation.name.charAt(0)}
-                          </span>
-                        )}
+                        {(() => {
+                          const avatarUrl = conversation.type === 'group' 
+                            ? conversation.avatar 
+                            : (conversation.characterSettings?.avatar || conversation.avatar);
+                            
+                          if (avatarUrl) {
+                            return (
+                              <img 
+                                src={avatarUrl} 
+                                alt={conversation.name}
+                                className="w-full h-full object-cover"
+                              />
+                            );
+                          } else if (conversation.type === 'group') {
+                            return <Users className="w-6 h-6 text-white" strokeWidth={2.5} />;
+                          } else {
+                            return (
+                              <span className="text-white font-semibold text-lg">
+                                {conversation.name.charAt(0)}
+                              </span>
+                            );
+                          }
+                        })()}
                       </div>
                       {/* 拉黑状态覆盖层 */}
                       {conversation.isBlocked && (

@@ -104,6 +104,7 @@ export default function CharacterSettingsScreen({
   const [editingKnowledge, setEditingKnowledge] = useState<KnowledgeBaseItem | null>(null);
   const [knowledgeTitle, setKnowledgeTitle] = useState('');
   const [knowledgeContent, setKnowledgeContent] = useState('');
+  const [customBubbleCss, setCustomBubbleCss] = useState(settings.customBubbleCss || '');
   const [isParsingFile, setIsParsingFile] = useState(false);
   const [doiInput, setDoiInput] = useState('');
   const [isFetchingDOI, setIsFetchingDOI] = useState(false);
@@ -259,6 +260,8 @@ export default function CharacterSettingsScreen({
           momentsConfig: {
             description: momentsFrequencyDescription,
           },
+          // 保存自定义气泡样式
+          customBubbleCss,
           contextConfig: {
             enabled: contextConfigEnabled,
             messageCount: contextMessageCount,
@@ -653,136 +656,228 @@ export default function CharacterSettingsScreen({
 
       {/* Content */}
       <div className="flex-1 overflow-y-auto p-4 space-y-4">
-        {/* Avatar */}
-        <div className="bg-white rounded-lg shadow-sm p-4">
-          <label className="block text-sm font-medium text-gray-700 mb-3">
-            角色头像
-          </label>
-          <div className="flex items-center gap-4">
-            <div className="w-20 h-20 rounded-full bg-gradient-to-br from-blue-400 to-purple-500 flex items-center justify-center overflow-hidden">
-              {avatar ? (
-                <img src={avatar} alt="Avatar" className="w-full h-full object-cover" />
-              ) : (
-                <span className="text-white font-semibold text-2xl">
-                  {nickname.charAt(0) || '?'}
-                </span>
-              )}
+        {/* 🎨 外观设置 */}
+        <details className="bg-white rounded-lg shadow-sm overflow-hidden group" open>
+          <summary className="px-4 py-3 flex items-center justify-between bg-gray-50 border-b border-gray-100 cursor-pointer list-none select-none">
+            <div className="flex items-center gap-2">
+              <div className="w-1 h-4 bg-blue-500 rounded-full"></div>
+              <h3 className="text-sm font-medium text-gray-900">外观设置</h3>
             </div>
-            <button
-              onClick={() => fileInputRef.current?.click()}
-              className="flex items-center gap-2 px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors"
-            >
-              <Upload className="w-4 h-4" />
-              上传头像
-            </button>
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept="image/*"
-              onChange={handleAvatarUpload}
-              className="hidden"
-            />
-          </div>
-        </div>
-
-        {/* Chat Background */}
-        <div className="bg-white rounded-lg shadow-sm p-4">
-          <label className="block text-sm font-medium text-gray-700 mb-3">
-            聊天背景
-          </label>
-          <div className="space-y-4">
-            <div className="flex items-center gap-4">
-              <div className="w-32 h-20 rounded-lg bg-gray-200 overflow-hidden border-2 border-gray-300">
-                {chatBackground ? (
-                  <img src={chatBackground} alt="聊天背景" className="w-full h-full object-cover" />
-                ) : (
-                  <div className="w-full h-full bg-gradient-to-br from-gray-100 to-gray-200 flex items-center justify-center">
-                    <span className="text-gray-500 text-xs">无背景</span>
-                  </div>
-                )}
-              </div>
-              <div className="flex-1">
+            <ChevronLeft className="w-4 h-4 text-gray-500 transition-transform group-open:-rotate-90" />
+          </summary>
+          <div className="p-4 space-y-4">
+            {/* Avatar */}
+            <div className="bg-white rounded-lg border border-gray-100 p-3">
+              <label className="block text-sm font-medium text-gray-700 mb-3">
+                角色头像
+              </label>
+              <div className="flex items-center gap-4">
+                <div className="w-20 h-20 rounded-full bg-gradient-to-br from-blue-400 to-purple-500 flex items-center justify-center overflow-hidden">
+                  {avatar ? (
+                    <img src={avatar} alt="Avatar" className="w-full h-full object-cover" />
+                  ) : (
+                    <span className="text-white font-semibold text-2xl">
+                      {nickname.charAt(0) || '?'}
+                    </span>
+                  )}
+                </div>
                 <button
-                  onClick={() => backgroundInputRef.current?.click()}
-                  className="flex items-center gap-2 px-4 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 transition-colors mb-2"
+                  onClick={() => fileInputRef.current?.click()}
+                  className="flex items-center gap-2 px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors"
                 >
                   <Upload className="w-4 h-4" />
-                  上传背景图
+                  上传头像
                 </button>
-                {chatBackground && (
-                  <button
-                    onClick={() => setChatBackground('')}
-                    className="flex items-center gap-2 px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition-colors"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                    移除背景
-                  </button>
-                )}
                 <input
-                  ref={backgroundInputRef}
+                  ref={fileInputRef}
                   type="file"
                   accept="image/*"
-                  onChange={handleChatBackgroundUpload}
+                  onChange={handleAvatarUpload}
                   className="hidden"
                 />
               </div>
             </div>
-            <div className="text-xs text-gray-500">
-              💡 聊天背景会自动压缩以节省内存，每个聊天可独立设置
+
+            {/* Chat Background */}
+            <div className="bg-white rounded-lg border border-gray-100 p-3">
+              <label className="block text-sm font-medium text-gray-700 mb-3">
+                聊天背景
+              </label>
+              <div className="space-y-4">
+                <div className="flex items-center gap-4">
+                  <div className="w-32 h-20 rounded-lg bg-gray-200 overflow-hidden border-2 border-gray-300">
+                    {chatBackground ? (
+                      <img src={chatBackground} alt="聊天背景" className="w-full h-full object-cover" />
+                    ) : (
+                      <div className="w-full h-full bg-gradient-to-br from-gray-100 to-gray-200 flex items-center justify-center">
+                        <span className="text-gray-500 text-xs">无背景</span>
+                      </div>
+                    )}
+                  </div>
+                  <div className="flex-1">
+                    <button
+                      onClick={() => backgroundInputRef.current?.click()}
+                      className="flex items-center gap-2 px-4 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 transition-colors mb-2"
+                    >
+                      <Upload className="w-4 h-4" />
+                      上传背景图
+                    </button>
+                    {chatBackground && (
+                      <button
+                        onClick={() => setChatBackground('')}
+                        className="flex items-center gap-2 px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition-colors"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                        移除背景
+                      </button>
+                    )}
+                    <input
+                      ref={backgroundInputRef}
+                      type="file"
+                      accept="image/*"
+                      onChange={handleChatBackgroundUpload}
+                      className="hidden"
+                    />
+                  </div>
+                </div>
+                <div className="text-xs text-gray-500">
+                  💡 聊天背景会自动压缩以节省内存，每个聊天可独立设置
+                </div>
+              </div>
+            </div>
+
+            {/* Custom Bubble Style (New) */}
+            <div className="bg-white rounded-lg border border-gray-100 p-3">
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                自定义气泡样式 (CSS)
+              </label>
+              
+              {/* Preview */}
+              <div className="bg-gray-50 rounded-lg p-3 mb-3 border border-gray-200">
+                <div className="text-xs text-gray-500 mb-2">预览效果：</div>
+                <div className="space-y-3 p-4 bg-gray-100 rounded border border-gray-200 relative overflow-hidden" style={{ backgroundImage: chatBackground ? `url(${chatBackground})` : undefined, backgroundSize: 'cover', backgroundPosition: 'center' }}>
+                  {/* Inject scoped CSS for preview */}
+                  <style>{customBubbleCss}</style>
+                  
+                  <div className="preview-area relative z-10">
+                    {/* User Bubble */}
+                    <div className="flex justify-end mb-4 items-end gap-2">
+                      <div className="message-bubble user bg-green-50 border-green-100 rounded-2xl rounded-tr-sm p-3 shadow-sm border relative max-w-[80%]">
+                        <p className="message-content text-sm text-gray-900">我方气泡预览</p>
+                        <div className="message-tail absolute bottom-3 -right-1.5 w-3 h-3 bg-green-50 border-r border-b border-green-100 transform rotate-45"></div>
+                      </div>
+                      <div className="w-8 h-8 rounded-full bg-gray-300 flex-shrink-0 overflow-hidden">
+                         <div className="w-full h-full bg-gray-200"></div>
+                      </div>
+                    </div>
+                    
+                    {/* AI Bubble */}
+                    <div className="flex justify-start items-end gap-2">
+                      <div className="w-8 h-8 rounded-full bg-blue-400 flex-shrink-0 overflow-hidden">
+                        {avatar && <img src={avatar} className="w-full h-full object-cover"/>}
+                      </div>
+                      <div className="message-bubble ai bg-white border-gray-100 rounded-2xl rounded-tl-sm p-3 shadow-sm border relative max-w-[80%]">
+                        <p className="message-content text-sm text-gray-900">对方气泡预览</p>
+                        <div className="message-tail absolute bottom-3 -left-1.5 w-3 h-3 bg-white border-l border-t border-gray-100 transform rotate-45"></div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              
+              <textarea
+                value={customBubbleCss}
+                onChange={(e) => setCustomBubbleCss(e.target.value)}
+                placeholder={".message-bubble {\n  /* 通用样式 */\n}\n.message-bubble.user {\n  /* 我方样式 */\n}\n.message-bubble.ai {\n  /* 对方样式 */\n}"}
+                rows={6}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono text-xs"
+              />
+              <div className="mt-2 text-xs text-gray-500">
+                <p>支持类名：</p>
+                <ul className="list-disc list-inside ml-2 space-y-1 mt-1">
+                  <li><code>.message-bubble</code>: 气泡容器</li>
+                  <li><code>.message-bubble.user</code>: 我方气泡</li>
+                  <li><code>.message-bubble.ai</code>: 对方气泡</li>
+                  <li><code>.message-content</code>: 文字内容</li>
+                  <li><code>.message-tail</code>: 气泡尾巴</li>
+                </ul>
+              </div>
             </div>
           </div>
-        </div>
+        </details>
 
-        {/* Nickname */}
-        <div className="bg-white rounded-lg shadow-sm p-4">
-          <label className="block text-sm font-medium text-gray-700 mb-2">
-            备注名
-          </label>
-          <input
-            type="text"
-            value={nickname}
-            onChange={(e) => setNickname(e.target.value)}
-            placeholder="输入角色备注名"
-            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-          />
-        </div>
+        {/* 👤 基本信息 */}
+        <details className="bg-white rounded-lg shadow-sm overflow-hidden group">
+          <summary className="px-4 py-3 flex items-center justify-between bg-gray-50 border-b border-gray-100 cursor-pointer list-none select-none">
+            <div className="flex items-center gap-2">
+              <div className="w-1 h-4 bg-green-500 rounded-full"></div>
+              <h3 className="text-sm font-medium text-gray-900">基本信息</h3>
+            </div>
+            <ChevronLeft className="w-4 h-4 text-gray-500 transition-transform group-open:-rotate-90" />
+          </summary>
+          <div className="p-4 space-y-4">
+            {/* Nickname */}
+            <div className="bg-white rounded-lg border border-gray-100 p-3">
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                备注名
+              </label>
+              <input
+                type="text"
+                value={nickname}
+                onChange={(e) => setNickname(e.target.value)}
+                placeholder="输入角色备注名"
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
 
-        {/* Username */}
-        <div className="bg-white rounded-lg shadow-sm p-4">
-          <label className="block text-sm font-medium text-gray-700 mb-2">
-            角色网名
-          </label>
-          <input
-            type="text"
-            value={username}
-            onChange={(e) => setUsername(e.target.value)}
-            placeholder="例如：AI小助手2024"
-            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-          />
-          <p className="text-xs text-gray-500 mt-1">在群聊中显示的网名</p>
-        </div>
+            {/* Username */}
+            <div className="bg-white rounded-lg border border-gray-100 p-3">
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                角色网名
+              </label>
+              <input
+                type="text"
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
+                placeholder="例如：AI小助手2024"
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+              <p className="text-xs text-gray-500 mt-1">在群聊中显示的网名</p>
+            </div>
 
-        {/* Block Switch - 拉黑开关 */}
-        <div className="bg-white rounded-lg shadow-sm p-4 flex items-center justify-between">
-          <div>
-            <label className="block text-sm font-medium text-gray-700">
-              加入黑名单
-            </label>
-            <div className="text-xs text-gray-500 mt-1">
-              {isBlocked ? '已停止接收消息（点击保存生效）' : '拉黑后将不再接收对方的消息'}
+            {/* Block Switch */}
+            <div className="bg-white rounded-lg border border-gray-100 p-3 flex items-center justify-between">
+              <div>
+                <label className="block text-sm font-medium text-gray-700">
+                  加入黑名单
+                </label>
+                <div className="text-xs text-gray-500 mt-1">
+                  {isBlocked ? '已停止接收消息（点击保存生效）' : '拉黑后将不再接收对方的消息'}
+                </div>
+              </div>
+              <button 
+                onClick={() => setIsBlocked(!isBlocked)}
+                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 ${isBlocked ? 'bg-red-500' : 'bg-gray-200'}`}
+              >
+                <span className={`${isBlocked ? 'translate-x-6' : 'translate-x-1'} inline-block h-4 w-4 transform rounded-full bg-white transition-transform`} />
+              </button>
             </div>
           </div>
-          <button 
-            onClick={() => setIsBlocked(!isBlocked)}
-            className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 ${isBlocked ? 'bg-red-500' : 'bg-gray-200'}`}
-          >
-            <span className={`${isBlocked ? 'translate-x-6' : 'translate-x-1'} inline-block h-4 w-4 transform rounded-full bg-white transition-transform`} />
-          </button>
-        </div>
+        </details>
 
-        {/* System Prompt - 仅非AI儿童显示 */}
+        {/* 🎭 角色设定 (仅非AI儿童) */}
         {!isAIChild && (
-          <div className="bg-white rounded-lg shadow-sm p-4">
+          <details className="bg-white rounded-lg shadow-sm overflow-hidden group">
+            <summary className="px-4 py-3 flex items-center justify-between bg-gray-50 border-b border-gray-100 cursor-pointer list-none select-none">
+              <div className="flex items-center gap-2">
+                <div className="w-1 h-4 bg-purple-500 rounded-full"></div>
+                <h3 className="text-sm font-medium text-gray-900">角色设定</h3>
+              </div>
+              <ChevronLeft className="w-4 h-4 text-gray-500 transition-transform group-open:-rotate-90" />
+            </summary>
+            <div className="p-4 space-y-4">
+              {/* System Prompt */}
+              <div className="bg-white rounded-lg border border-gray-100 p-3">
             <div className="flex justify-between items-center mb-2">
               <label className="block text-sm font-medium text-gray-700">
                 人物设定
@@ -804,11 +899,9 @@ export default function CharacterSettingsScreen({
               </p>
             )}
           </div>
-        )}
 
-        {/* Personality - 仅非AI儿童显示 */}
-        {!isAIChild && (
-          <div className="bg-white rounded-lg shadow-sm p-4">
+          {/* Personality */}
+          <div className="bg-white rounded-lg border border-gray-100 p-3">
             <div className="flex justify-between items-center mb-2">
               <label className="block text-sm font-medium text-gray-700">
                 性格特征
@@ -830,11 +923,9 @@ export default function CharacterSettingsScreen({
               </p>
             )}
           </div>
-        )}
 
-        {/* Language Style - 仅非AI儿童显示 */}
-        {!isAIChild && (
-          <div className="bg-white rounded-lg shadow-sm p-4">
+          {/* Language Style */}
+          <div className="bg-white rounded-lg border border-gray-100 p-3">
             <div className="flex justify-between items-center mb-2">
               <label className="block text-sm font-medium text-gray-700">
                 语言风格
@@ -856,11 +947,9 @@ export default function CharacterSettingsScreen({
               </p>
             )}
           </div>
-        )}
 
-        {/* Language Example - 仅非AI儿童显示 */}
-        {!isAIChild && (
-          <div className="bg-white rounded-lg shadow-sm p-4">
+          {/* Language Example */}
+          <div className="bg-white rounded-lg border border-gray-100 p-3">
             <div className="flex justify-between items-center mb-2">
               <label className="block text-sm font-medium text-gray-700">
                 语言示例
@@ -882,11 +971,9 @@ export default function CharacterSettingsScreen({
               </p>
             )}
           </div>
-        )}
 
-        {/* Memory Events - 仅非AI儿童显示 */}
-        {!isAIChild && (
-          <div className="bg-white rounded-lg shadow-sm p-4">
+          {/* Memory Events */}
+          <div className="bg-white rounded-lg border border-gray-100 p-3">
             <div className="flex justify-between items-center mb-2">
               <label className="block text-sm font-medium text-gray-700">
                 记忆事件
@@ -908,554 +995,510 @@ export default function CharacterSettingsScreen({
               </p>
             )}
           </div>
-        )}
-
-        {/* 长期记忆库按钮 - 仅非AI儿童显示 */}
-        {!isAIChild && (
-          <div className="bg-white rounded-lg shadow-sm p-4">
-            <button
-              onClick={() => setShowMemoryManager(true)}
-              className="w-full py-3 border-2 border-purple-200 hover:border-purple-400 hover:bg-purple-50 rounded-lg transition-colors flex items-center justify-center gap-2 text-purple-700"
-            >
-              <Brain className="w-5 h-5" />
-              <span className="font-medium">查看长期记忆库</span>
-            </button>
-            <p className="text-xs text-gray-500 mt-2 text-center">
-              💡 AI会自动记住对话中的重要信息
-            </p>
           </div>
+        </details>
         )}
 
-        {/* 人际关系管理按钮 - 仅非AI儿童显示 */}
+        {/* ⚙️ 高级功能 (仅非AI儿童) */}
         {!isAIChild && (
-          <div className="bg-white rounded-lg shadow-sm p-4">
-            <button
-              onClick={() => setShowRelationshipManager(true)}
-              className="w-full py-3 border-2 border-blue-200 hover:border-blue-400 hover:bg-blue-50 rounded-lg transition-colors flex items-center justify-center gap-2 text-blue-700"
-            >
-              <Users className="w-5 h-5" />
-              <span className="font-medium">人际关系管理</span>
-            </button>
-            <p className="text-xs text-gray-500 mt-2 text-center">
-              👥 管理角色的社交网络和关系
-            </p>
-          </div>
-        )}
-
-        {/* AI主动发消息 - 仅非AI儿童显示 */}
-        {!isAIChild && (
-          <div className="bg-white rounded-lg shadow-sm p-4">
-            <div className="flex items-center justify-between mb-3">
+          <details className="bg-white rounded-lg shadow-sm overflow-hidden group">
+            <summary className="px-4 py-3 flex items-center justify-between bg-gray-50 border-b border-gray-100 cursor-pointer list-none select-none">
               <div className="flex items-center gap-2">
-                <Zap className="w-5 h-5 text-orange-500" />
-                <h3 className="text-sm font-medium text-gray-900">AI主动发消息</h3>
+                <div className="w-1 h-4 bg-orange-500 rounded-full"></div>
+                <h3 className="text-sm font-medium text-gray-900">高级功能</h3>
               </div>
-            <label className="relative inline-flex items-center cursor-pointer">
-              <input
-                type="checkbox"
-                checked={proactiveEnabled}
-                onChange={(e) => setProactiveEnabled(e.target.checked)}
-                className="sr-only peer"
-              />
-              <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
-            </label>
-          </div>
-
-          {proactiveEnabled && (
-            <div className="space-y-4 mt-4">
-              {/* 消息间隔 */}
-              <div>
-                <div className="flex items-center justify-between mb-2">
-                  <label className="text-sm text-gray-600">消息间隔</label>
-                  <span className="text-xs text-gray-500">分钟</span>
-                </div>
-                <div className="flex items-center gap-3">
-                  <input
-                    type="number"
-                    value={minInterval}
-                    onChange={(e) => setMinInterval(Math.max(10, parseInt(e.target.value) || 10))}
-                    min="10"
-                    max="240"
-                    className="w-20 px-3 py-2 text-center border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  />
-                  <span className="text-gray-500">-</span>
-                  <input
-                    type="number"
-                    value={maxInterval}
-                    onChange={(e) => setMaxInterval(Math.max(minInterval, parseInt(e.target.value) || 120))}
-                    min={minInterval}
-                    max="480"
-                    className="w-20 px-3 py-2 text-center border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  />
-                </div>
-              </div>
-
-              {/* 活跃时段 */}
-              <div>
-                <div className="flex items-center justify-between mb-2">
-                  <label className="text-sm text-gray-600">活跃时段</label>
-                  <span className="text-xs text-gray-500">点（0-23）</span>
-                </div>
-                <div className="flex items-center gap-3">
-                  <input
-                    type="text"
-                    inputMode="numeric"
-                    value={activeHourStart}
-                    onChange={(e) => {
-                      const val = e.target.value;
-                      // 允许空白或数字输入
-                      if (val === '' || /^\d+$/.test(val)) {
-                        const num = val === '' ? 0 : parseInt(val);
-                        if (num >= 0 && num <= 23) {
-                          setActiveHourStart(num);
-                        }
-                      }
-                    }}
-                    onBlur={(e) => {
-                      // 失焦时确保有效值
-                      const val = e.target.value;
-                      if (val === '') {
-                        setActiveHourStart(0);
-                      }
-                    }}
-                    placeholder="0"
-                    className="w-20 px-3 py-2 text-center border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  />
-                  <span className="text-gray-500">-</span>
-                  <input
-                    type="text"
-                    inputMode="numeric"
-                    value={activeHourEnd}
-                    onChange={(e) => {
-                      const val = e.target.value;
-                      // 允许空白或数字输入
-                      if (val === '' || /^\d+$/.test(val)) {
-                        const num = val === '' ? 23 : parseInt(val);
-                        if (num >= 0 && num <= 23) {
-                          setActiveHourEnd(num);
-                        }
-                      }
-                    }}
-                    onBlur={(e) => {
-                      // 失焦时确保有效值且不小于开始时间
-                      const val = e.target.value;
-                      if (val === '') {
-                        setActiveHourEnd(Math.max(activeHourStart, 23));
-                      } else {
-                        const num = parseInt(val);
-                        if (num < activeHourStart) {
-                          setActiveHourEnd(activeHourStart);
-                        }
-                      }
-                    }}
-                    placeholder="23"
-                    className="w-20 px-3 py-2 text-center border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  />
-                </div>
-              </div>
-
-              {/* 说明 */}
-              <div className="bg-blue-50 border border-blue-100 rounded-lg p-3">
-                <p className="text-xs text-blue-700 leading-relaxed">
-                  💡 AI会在设定的时间段内，根据情境主动发送消息与你聊天
+              <ChevronLeft className="w-4 h-4 text-gray-500 transition-transform group-open:-rotate-90" />
+            </summary>
+            <div className="p-4 space-y-4">
+              
+              {/* Memory Manager */}
+              <div className="bg-white rounded-lg border border-gray-100 p-3">
+                <button
+                  onClick={() => setShowMemoryManager(true)}
+                  className="w-full py-2 border border-purple-200 hover:bg-purple-50 rounded-lg transition-colors flex items-center justify-center gap-2 text-purple-700"
+                >
+                  <Brain className="w-4 h-4" />
+                  <span className="font-medium text-sm">查看长期记忆库</span>
+                </button>
+                <p className="text-xs text-gray-500 mt-2 text-center">
+                  💡 AI会自动记住对话中的重要信息
                 </p>
               </div>
-            </div>
-          )}
-          </div>
-        )}
 
-        {/* 📞 通话记录管理 */}
-        <div className="bg-white rounded-lg shadow-sm p-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <Video className="w-5 h-5 text-blue-500" />
-              <h3 className="text-sm font-medium text-gray-900">通话记录</h3>
-            </div>
-            <button
-              onClick={() => setShowCallHistory(true)}
-              className="px-3 py-1.5 bg-blue-50 text-blue-600 text-xs font-medium rounded-lg hover:bg-blue-100 transition-colors"
-            >
-              查看记录
-            </button>
-          </div>
-          <div className="mt-3 bg-gray-50 border border-gray-200 rounded-lg p-3">
-            <p className="text-xs text-gray-600">
-              共 {conversation.callHistory?.length || 0} 次通话记录，
-              总时长 {Math.floor((conversation.callHistory?.reduce((acc, log) => acc + log.duration, 0) || 0) / 60)} 分钟
-            </p>
-          </div>
-        </div>
+              {/* Relationship Manager */}
+              <div className="bg-white rounded-lg border border-gray-100 p-3">
+                <button
+                  onClick={() => setShowRelationshipManager(true)}
+                  className="w-full py-2 border border-blue-200 hover:bg-blue-50 rounded-lg transition-colors flex items-center justify-center gap-2 text-blue-700"
+                >
+                  <Users className="w-4 h-4" />
+                  <span className="font-medium text-sm">人际关系管理</span>
+                </button>
+                <p className="text-xs text-gray-500 mt-2 text-center">
+                  👥 管理角色的社交网络和关系
+                </p>
+              </div>
 
-        {/* 🧠 记忆系统配置 - 仅非AI儿童显示 */}
-        {!isAIChild && (
-        <div className="bg-white rounded-lg shadow-sm p-4">
-          <div className="flex items-center justify-between mb-3">
-            <div className="flex items-center gap-2">
-              <Brain className="w-5 h-5 text-purple-500" />
-              <h3 className="text-sm font-medium text-gray-900">完整记忆系统</h3>
-            </div>
-            <label className="relative inline-flex items-center cursor-pointer">
-              <input
-                type="checkbox"
-                checked={memoryConfigEnabled}
-                onChange={(e) => setMemoryConfigEnabled(e.target.checked)}
-                className="sr-only peer"
-              />
-              <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-purple-300 rounded-full peer peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-purple-600"></div>
-            </label>
-          </div>
-          <div className={`rounded-lg p-3 ${
-            memoryConfigEnabled ? 'bg-purple-50 border border-purple-100' : 'bg-gray-50 border border-gray-200'
-          }`}>
-            <p className="text-xs leading-relaxed ${
-              memoryConfigEnabled ? 'text-purple-700' : 'text-gray-600'
-            }">
-              {memoryConfigEnabled ? (
-                <><span className="font-medium">✅ 已开启</span> - 每次对话都包含完整记忆库内容，AI能记住所有重要信息（性能要求较高）</>
-              ) : (
-                <><span className="font-medium">⚡ 已关闭</span> - 仅在需要时调取记忆，性能更友好，适合轻量级使用</>
-              )}
-            </p>
-          </div>
-        </div>
-        )}
-
-        {/* 📸 朋友圈记忆配置 - 仅非AI儿童显示 */}
-        {!isAIChild && (
-        <div className="bg-white rounded-lg shadow-sm p-4">
-          <div className="flex items-center justify-between mb-3">
-            <div className="flex items-center gap-2">
-              <Camera className="w-5 h-5 text-pink-500" />
-              <h3 className="text-sm font-medium text-gray-900">朋友圈记忆</h3>
-            </div>
-            <label className="relative inline-flex items-center cursor-pointer">
-              <input
-                type="checkbox"
-                checked={momentsMemoryEnabled}
-                onChange={(e) => setMomentsMemoryEnabled(e.target.checked)}
-                className="sr-only peer"
-              />
-              <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-pink-300 rounded-full peer peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-pink-600"></div>
-            </label>
-          </div>
-          <div className={`rounded-lg p-3 ${
-            momentsMemoryEnabled ? 'bg-pink-50 border border-pink-100' : 'bg-gray-50 border border-gray-200'
-          }`}>
-            <p className="text-xs leading-relaxed ${
-              momentsMemoryEnabled ? 'text-pink-700' : 'text-gray-600'
-            }">
-              {momentsMemoryEnabled ? (
-                <><span className="font-medium">✅ 已开启</span> - AI会记住查看过的朋友圈内容，可以在聊天中提及</>
-              ) : (
-                <><span className="font-medium">⚡ 已关闭</span> - 朋友圈内容不会记录到记忆库，减少记忆负担</>
-              )}
-            </p>
-          </div>
-        </div>
-        )}
-
-        {/* 📸 朋友圈发布频率设置 - 仅非AI儿童显示 */}
-        {!isAIChild && (
-        <div className="bg-white rounded-lg shadow-sm p-4">
-          <div className="flex items-center gap-2 mb-3">
-            <RefreshCw className="w-5 h-5 text-indigo-500" />
-            <h3 className="text-sm font-medium text-gray-900">朋友圈发布频率</h3>
-          </div>
-          
-          <div className="space-y-3">
-            <div>
-              <label className="block text-xs font-medium text-gray-700 mb-2">
-                用你的话描述发布习惯：
-              </label>
-              <textarea
-                value={momentsFrequencyDescription}
-                onChange={(e) => setMomentsFrequencyDescription(e.target.value)}
-                placeholder={"例如：\n工作日比较忙，偶尔发一次\n周末会多发一些，大概一天一次\n假期会疯狂发朋友圈，记录生活"}
-                rows={4}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 resize-none text-sm"
-              />
-            </div>
-            
-            {/* 智能分析结果 */}
-            {parsedRules && (
-              <div className="bg-gradient-to-r from-indigo-50 to-purple-50 border border-indigo-100 rounded-lg p-3">
-                <div className="flex items-start gap-2 mb-2">
-                  <span className="text-indigo-700 text-xs font-medium">✨ 智能分析结果：</span>
+              {/* Proactive Messaging */}
+              <div className="bg-white rounded-lg border border-gray-100 p-3">
+                <div className="flex items-center justify-between mb-3">
+                  <div className="flex items-center gap-2">
+                    <Zap className="w-5 h-5 text-orange-500" />
+                    <h3 className="text-sm font-medium text-gray-900">AI主动发消息</h3>
+                  </div>
+                  <label className="relative inline-flex items-center cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={proactiveEnabled}
+                      onChange={(e) => setProactiveEnabled(e.target.checked)}
+                      className="sr-only peer"
+                    />
+                    <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+                  </label>
                 </div>
-                <div className="space-y-1">
-                  {getRulesSummary(parsedRules).map((rule, index) => (
-                    <div key={index} className="text-xs text-gray-700">
-                      {rule}
+
+                {proactiveEnabled && (
+                  <div className="space-y-4 mt-4">
+                    {/* 消息间隔 */}
+                    <div>
+                      <div className="flex items-center justify-between mb-2">
+                        <label className="text-sm text-gray-600">消息间隔</label>
+                        <span className="text-xs text-gray-500">分钟</span>
+                      </div>
+                      <div className="flex items-center gap-3">
+                        <input
+                          type="number"
+                          value={minInterval}
+                          onChange={(e) => setMinInterval(Math.max(10, parseInt(e.target.value) || 10))}
+                          min="10"
+                          max="240"
+                          className="w-20 px-3 py-2 text-center border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        />
+                        <span className="text-gray-500">-</span>
+                        <input
+                          type="number"
+                          value={maxInterval}
+                          onChange={(e) => setMaxInterval(Math.max(minInterval, parseInt(e.target.value) || 120))}
+                          min={minInterval}
+                          max="480"
+                          className="w-20 px-3 py-2 text-center border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        />
+                      </div>
                     </div>
-                  ))}
-                </div>
-                {currentRuleInfo && (
-                  <div className="mt-2 pt-2 border-t border-indigo-200">
-                    <div className="text-xs text-indigo-600">
-                      📍 当前时间应用规则：
-                      <span className="font-medium ml-1">{currentRuleInfo}</span>
+
+                    {/* 活跃时段 */}
+                    <div>
+                      <div className="flex items-center justify-between mb-2">
+                        <label className="text-sm text-gray-600">活跃时段</label>
+                        <span className="text-xs text-gray-500">点（0-23）</span>
+                      </div>
+                      <div className="flex items-center gap-3">
+                        <input
+                          type="text"
+                          inputMode="numeric"
+                          value={activeHourStart}
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            if (val === '' || /^\d+$/.test(val)) {
+                              const num = val === '' ? 0 : parseInt(val);
+                              if (num >= 0 && num <= 23) setActiveHourStart(num);
+                            }
+                          }}
+                          onBlur={(e) => {
+                            const val = e.target.value;
+                            if (val === '') setActiveHourStart(0);
+                          }}
+                          placeholder="0"
+                          className="w-20 px-3 py-2 text-center border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        />
+                        <span className="text-gray-500">-</span>
+                        <input
+                          type="text"
+                          inputMode="numeric"
+                          value={activeHourEnd}
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            if (val === '' || /^\d+$/.test(val)) {
+                              const num = val === '' ? 23 : parseInt(val);
+                              if (num >= 0 && num <= 23) setActiveHourEnd(num);
+                            }
+                          }}
+                          onBlur={(e) => {
+                            const val = e.target.value;
+                            if (val === '') {
+                              setActiveHourEnd(Math.max(activeHourStart, 23));
+                            } else {
+                              const num = parseInt(val);
+                              if (num < activeHourStart) setActiveHourEnd(activeHourStart);
+                            }
+                          }}
+                          placeholder="23"
+                          className="w-20 px-3 py-2 text-center border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        />
+                      </div>
+                    </div>
+
+                    {/* 说明 */}
+                    <div className="bg-blue-50 border border-blue-100 rounded-lg p-3">
+                      <p className="text-xs text-blue-700 leading-relaxed">
+                        💡 AI会在设定的时间段内，根据情境主动发送消息与你聊天
+                      </p>
                     </div>
                   </div>
                 )}
               </div>
-            )}
-            
-            {/* 示例提示 */}
-            <details className="text-sm">
-              <summary className="cursor-pointer text-indigo-600 font-medium text-xs hover:text-indigo-700">
-                💡 查看示例
-              </summary>
-              
-              <div className="mt-2 space-y-3 p-3 bg-gray-50 rounded-lg">
-                <div>
-                  <div className="font-medium text-xs text-gray-900">📝 学生示例：</div>
-                  <div className="text-gray-600 text-xs mt-1 leading-relaxed">
-                    平时上课比较忙，一周发一两次<br/>
-                    周末和朋友出去玩会多发<br/>
-                    寒暑假基本天天发，记录生活
+
+              {/* Memory Config */}
+              <div className="bg-white rounded-lg border border-gray-100 p-3">
+                <div className="flex items-center justify-between mb-3">
+                  <div className="flex items-center gap-2">
+                    <Brain className="w-5 h-5 text-purple-500" />
+                    <h3 className="text-sm font-medium text-gray-900">完整记忆系统</h3>
                   </div>
+                  <label className="relative inline-flex items-center cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={memoryConfigEnabled}
+                      onChange={(e) => setMemoryConfigEnabled(e.target.checked)}
+                      className="sr-only peer"
+                    />
+                    <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-purple-300 rounded-full peer peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-purple-600"></div>
+                  </label>
+                </div>
+                <div className={`rounded-lg p-3 ${
+                  memoryConfigEnabled ? 'bg-purple-50 border border-purple-100' : 'bg-gray-50 border border-gray-200'
+                }`}>
+                  <p className={`text-xs leading-relaxed ${
+                    memoryConfigEnabled ? 'text-purple-700' : 'text-gray-600'
+                  }`}>
+                    {memoryConfigEnabled ? (
+                      <><span className="font-medium">✅ 已开启</span> - 每次对话都包含完整记忆库内容，AI能记住所有重要信息（性能要求较高）</>
+                    ) : (
+                      <><span className="font-medium">⚡ 已关闭</span> - 仅在需要时调取记忆，性能更友好，适合轻量级使用</>
+                    )}
+                  </p>
+                </div>
+              </div>
+
+              {/* Moments Memory */}
+              <div className="bg-white rounded-lg border border-gray-100 p-3">
+                <div className="flex items-center justify-between mb-3">
+                  <div className="flex items-center gap-2">
+                    <Camera className="w-5 h-5 text-pink-500" />
+                    <h3 className="text-sm font-medium text-gray-900">朋友圈记忆</h3>
+                  </div>
+                  <label className="relative inline-flex items-center cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={momentsMemoryEnabled}
+                      onChange={(e) => setMomentsMemoryEnabled(e.target.checked)}
+                      className="sr-only peer"
+                    />
+                    <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-pink-300 rounded-full peer peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-pink-600"></div>
+                  </label>
+                </div>
+                <div className={`rounded-lg p-3 ${
+                  momentsMemoryEnabled ? 'bg-pink-50 border border-pink-100' : 'bg-gray-50 border border-gray-200'
+                }`}>
+                  <p className={`text-xs leading-relaxed ${
+                    momentsMemoryEnabled ? 'text-pink-700' : 'text-gray-600'
+                  }`}>
+                    {momentsMemoryEnabled ? (
+                      <><span className="font-medium">✅ 已开启</span> - AI会记住查看过的朋友圈内容，可以在聊天中提及</>
+                    ) : (
+                      <><span className="font-medium">⚡ 已关闭</span> - 朋友圈内容不会记录到记忆库，减少记忆负担</>
+                    )}
+                  </p>
+                </div>
+              </div>
+
+              {/* Moments Frequency */}
+              <div className="bg-white rounded-lg border border-gray-100 p-3">
+                <div className="flex items-center gap-2 mb-3">
+                  <RefreshCw className="w-5 h-5 text-indigo-500" />
+                  <h3 className="text-sm font-medium text-gray-900">朋友圈发布频率</h3>
                 </div>
                 
-                <div>
-                  <div className="font-medium text-xs text-gray-900">📝 上班族示例：</div>
-                  <div className="text-gray-600 text-xs mt-1 leading-relaxed">
-                    工作日很少发，太忙了<br/>
-                    周末偶尔发一下，放松心情<br/>
-                    月底发工资时会发红包和庆祝
+                <div className="space-y-3">
+                  <div>
+                    <label className="block text-xs font-medium text-gray-700 mb-2">
+                      用你的话描述发布习惯：
+                    </label>
+                    <textarea
+                      value={momentsFrequencyDescription}
+                      onChange={(e) => setMomentsFrequencyDescription(e.target.value)}
+                      placeholder={"例如：\n工作日比较忙，偶尔发一次\n周末会多发一些，大概一天一次\n假期会疯狂发朋友圈，记录生活"}
+                      rows={4}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 resize-none text-sm"
+                    />
                   </div>
-                </div>
-                
-                <div>
-                  <div className="font-medium text-xs text-gray-900">📝 研究生示例：</div>
-                  <div className="text-gray-600 text-xs mt-1 leading-relaxed">
-                    平时实验室很忙，半个月发一次<br/>
-                    周末会发一些生活照<br/>
-                    假期回家会多发，和家人朋友聚会
-                  </div>
-                </div>
-              </div>
-            </details>
-            
-            <div className="bg-blue-50 border border-blue-100 rounded-lg p-3">
-              <p className="text-xs text-blue-700 leading-relaxed">
-                💡 你可以描述工作日vs周末、月初/月中/月末、假期等不同时间段的发布习惯，系统会智能分析并应用相应规则
-              </p>
-            </div>
-          </div>
-        </div>
-        )}
-
-        {/* 📝 自定义上下文配置 - 仅非AI儿童显示 */}
-        {!isAIChild && (
-        <div className="bg-white rounded-lg shadow-sm p-4">
-          <div className="flex items-center justify-between mb-3">
-            <div className="flex items-center gap-2">
-              <FileUp className="w-5 h-5 text-blue-500" />
-              <h3 className="text-sm font-medium text-gray-900">自定义上下文数量</h3>
-            </div>
-            <label className="relative inline-flex items-center cursor-pointer">
-              <input
-                type="checkbox"
-                checked={contextConfigEnabled}
-                onChange={(e) => setContextConfigEnabled(e.target.checked)}
-                className="sr-only peer"
-              />
-              <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
-            </label>
-          </div>
-
-          {contextConfigEnabled && (
-            <div className="space-y-3 mt-4">
-              <div className="flex items-center gap-3">
-                <input
-                  type="range"
-                  min="1"
-                  max="100"
-                  value={contextMessageCount}
-                  onChange={(e) => setContextMessageCount(parseInt(e.target.value))}
-                  className="flex-1 h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-blue-600"
-                />
-                <input
-                  type="number"
-                  min="1"
-                  max="100"
-                  value={contextMessageCount}
-                  onChange={(e) => setContextMessageCount(Math.max(1, Math.min(100, parseInt(e.target.value) || 1)))}
-                  className="w-20 px-3 py-2 text-center border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-              </div>
-              <div className="bg-blue-50 border border-blue-100 rounded-lg p-3">
-                <p className="text-xs text-blue-700 leading-relaxed">
-                  💡 当前设置：发送给AI <span className="font-medium">{contextMessageCount}</span> 条历史消息作为上下文
-                </p>
-                <p className="text-xs text-gray-600 mt-1">
-                  • 数量越少，回复越快，但AI可能遗忘较早的内容<br/>
-                  • 数量越多，AI记得更完整，但回复会变慢
-                </p>
-              </div>
-            </div>
-          )}
-
-          {!contextConfigEnabled && (
-            <div className="bg-gray-50 border border-gray-200 rounded-lg p-3 mt-3">
-              <p className="text-xs text-gray-600 leading-relaxed">
-                ⚡ 已关闭 - 使用默认逻辑（发送所有历史消息）
-              </p>
-            </div>
-          )}
-        </div>
-        )}
-
-        {/* 📚 资料库 - 仅非AI儿童显示 */}
-        {!isAIChild && (
-        <div className="bg-white rounded-lg shadow-sm p-4">
-          <div className="flex items-center justify-between mb-3">
-            <div className="flex items-center gap-2">
-              <BookOpen className="w-5 h-5 text-purple-500" />
-              <h3 className="text-sm font-medium text-gray-900">专属资料库</h3>
-            </div>
-            <button
-              onClick={handleAddKnowledge}
-              className="flex items-center gap-1 px-3 py-1.5 bg-purple-500 hover:bg-purple-600 text-white text-xs rounded-lg transition-colors"
-            >
-              <Plus className="w-4 h-4" />
-              <span>新建资料</span>
-            </button>
-          </div>
-
-          <div className="bg-purple-50 border border-purple-100 rounded-lg p-3 mb-3">
-            <p className="text-xs text-purple-700 leading-relaxed">
-              📚 上传或新建专业资料，AI会在对话中调取这些内容作为参考。比如语C术语、角色设定、专业知识等。
-            </p>
-          </div>
-
-          {knowledgeBase.length > 0 ? (
-            <div className="space-y-2">
-              {knowledgeBase.map(item => (
-                <div key={item.id} className="bg-gray-50 border border-gray-200 rounded-lg p-3 hover:bg-gray-100 transition-colors">
-                  <div className="flex items-start justify-between">
-                    <div className="flex-1">
-                      <div className="flex items-center gap-2 mb-1">
-                        <FileText className="w-4 h-4 text-purple-500" />
-                        <h4 className="text-sm font-medium text-gray-900">{item.title}</h4>
+                  
+                  {/* 智能分析结果 */}
+                  {parsedRules && (
+                    <div className="bg-gradient-to-r from-indigo-50 to-purple-50 border border-indigo-100 rounded-lg p-3">
+                      <div className="flex items-start gap-2 mb-2">
+                        <span className="text-indigo-700 text-xs font-medium">✨ 智能分析结果：</span>
                       </div>
-                      <p className="text-xs text-gray-600 line-clamp-2">{item.content}</p>
-                      <p className="text-xs text-gray-400 mt-1">
-                        {new Date(item.updatedAt).toLocaleDateString()}
+                      <div className="space-y-1">
+                        {getRulesSummary(parsedRules).map((rule, index) => (
+                          <div key={index} className="text-xs text-gray-700">
+                            {rule}
+                          </div>
+                        ))}
+                      </div>
+                      {currentRuleInfo && (
+                        <div className="mt-2 pt-2 border-t border-indigo-200">
+                          <div className="text-xs text-indigo-600">
+                            📍 当前时间应用规则：
+                            <span className="font-medium ml-1">{currentRuleInfo}</span>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                  
+                  {/* 示例提示 */}
+                  <details className="text-sm">
+                    <summary className="cursor-pointer text-indigo-600 font-medium text-xs hover:text-indigo-700">
+                      💡 查看示例
+                    </summary>
+                    <div className="mt-2 space-y-3 p-3 bg-gray-50 rounded-lg">
+                      <div>
+                        <div className="font-medium text-xs text-gray-900">📝 学生示例：</div>
+                        <div className="text-gray-600 text-xs mt-1 leading-relaxed">
+                          平时上课比较忙，一周发一两次<br/>
+                          周末和朋友出去玩会多发<br/>
+                          寒暑假基本天天发，记录生活
+                        </div>
+                      </div>
+                      <div>
+                        <div className="font-medium text-xs text-gray-900">📝 上班族示例：</div>
+                        <div className="text-gray-600 text-xs mt-1 leading-relaxed">
+                          工作日很少发，太忙了<br/>
+                          周末偶尔发一下，放松心情<br/>
+                          月底发工资时会发红包和庆祝
+                        </div>
+                      </div>
+                    </div>
+                  </details>
+                </div>
+              </div>
+
+              {/* Context Config */}
+              <div className="bg-white rounded-lg border border-gray-100 p-3">
+                <div className="flex items-center justify-between mb-3">
+                  <div className="flex items-center gap-2">
+                    <FileUp className="w-5 h-5 text-blue-500" />
+                    <h3 className="text-sm font-medium text-gray-900">自定义上下文数量</h3>
+                  </div>
+                  <label className="relative inline-flex items-center cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={contextConfigEnabled}
+                      onChange={(e) => setContextConfigEnabled(e.target.checked)}
+                      className="sr-only peer"
+                    />
+                    <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+                  </label>
+                </div>
+
+                {contextConfigEnabled && (
+                  <div className="space-y-3 mt-4">
+                    <div className="flex items-center gap-3">
+                      <input
+                        type="range"
+                        min="1"
+                        max="100"
+                        value={contextMessageCount}
+                        onChange={(e) => setContextMessageCount(parseInt(e.target.value))}
+                        className="flex-1 h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-blue-600"
+                      />
+                      <input
+                        type="number"
+                        min="1"
+                        max="100"
+                        value={contextMessageCount}
+                        onChange={(e) => setContextMessageCount(Math.max(1, Math.min(100, parseInt(e.target.value) || 1)))}
+                        className="w-20 px-3 py-2 text-center border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      />
+                    </div>
+                    <div className="bg-blue-50 border border-blue-100 rounded-lg p-3">
+                      <p className="text-xs text-blue-700 leading-relaxed">
+                        💡 当前设置：发送给AI <span className="font-medium">{contextMessageCount}</span> 条历史消息作为上下文
                       </p>
                     </div>
-                    <div className="flex gap-1 ml-2">
-                      <button
-                        onClick={() => handleEditKnowledge(item)}
-                        className="p-1.5 hover:bg-white rounded transition-colors"
-                      >
-                        <Edit className="w-4 h-4 text-blue-500" />
-                      </button>
-                      <button
-                        onClick={() => handleDeleteKnowledge(item.id)}
-                        className="p-1.5 hover:bg-white rounded transition-colors"
-                      >
-                        <Trash2 className="w-4 h-4 text-red-500" />
-                      </button>
-                    </div>
                   </div>
+                )}
+              </div>
+
+              {/* Knowledge Base */}
+              <div className="bg-white rounded-lg border border-gray-100 p-3">
+                <div className="flex items-center justify-between mb-3">
+                  <div className="flex items-center gap-2">
+                    <BookOpen className="w-5 h-5 text-purple-500" />
+                    <h3 className="text-sm font-medium text-gray-900">专属资料库</h3>
+                  </div>
+                  <button
+                    onClick={handleAddKnowledge}
+                    className="flex items-center gap-1 px-3 py-1.5 bg-purple-500 hover:bg-purple-600 text-white text-xs rounded-lg transition-colors"
+                  >
+                    <Plus className="w-4 h-4" />
+                    <span>新建资料</span>
+                  </button>
                 </div>
-              ))}
+
+                {knowledgeBase.length > 0 ? (
+                  <div className="space-y-2">
+                    {knowledgeBase.map(item => (
+                      <div key={item.id} className="bg-gray-50 border border-gray-200 rounded-lg p-3 hover:bg-gray-100 transition-colors">
+                        <div className="flex items-start justify-between">
+                          <div className="flex-1">
+                            <div className="flex items-center gap-2 mb-1">
+                              <FileText className="w-4 h-4 text-purple-500" />
+                              <h4 className="text-sm font-medium text-gray-900">{item.title}</h4>
+                            </div>
+                            <p className="text-xs text-gray-600 line-clamp-2">{item.content}</p>
+                          </div>
+                          <div className="flex gap-1 ml-2">
+                            <button
+                              onClick={() => handleEditKnowledge(item)}
+                              className="p-1.5 hover:bg-white rounded transition-colors"
+                            >
+                              <Edit className="w-4 h-4 text-blue-500" />
+                            </button>
+                            <button
+                              onClick={() => handleDeleteKnowledge(item.id)}
+                              className="p-1.5 hover:bg-white rounded transition-colors"
+                            >
+                              <Trash2 className="w-4 h-4 text-red-500" />
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="text-center py-6 text-gray-400">
+                    <BookOpen className="w-12 h-12 mx-auto mb-2 opacity-30" />
+                    <p className="text-sm">暂无资料，点击上方按钮添加</p>
+                  </div>
+                )}
+              </div>
+
             </div>
-          ) : (
-            <div className="text-center py-6 text-gray-400">
-              <BookOpen className="w-12 h-12 mx-auto mb-2 opacity-30" />
-              <p className="text-sm">暂无资料，点击上方按钮添加</p>
+          </details>
+        )}
+
+        {/* 🛠 数据管理 */}
+        <details className="bg-white rounded-lg shadow-sm overflow-hidden group">
+          <summary className="px-4 py-3 flex items-center justify-between bg-gray-50 border-b border-gray-100 cursor-pointer list-none select-none">
+            <div className="flex items-center gap-2">
+              <div className="w-1 h-4 bg-gray-500 rounded-full"></div>
+              <h3 className="text-sm font-medium text-gray-900">数据管理</h3>
             </div>
-          )}
-        </div>
-        )}
+            <ChevronLeft className="w-4 h-4 text-gray-500 transition-transform group-open:-rotate-90" />
+          </summary>
+          <div className="p-4 space-y-4">
+            
+            {/* Call History */}
+            <div className="bg-white rounded-lg border border-gray-100 p-3">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Video className="w-5 h-5 text-blue-500" />
+                  <h3 className="text-sm font-medium text-gray-900">通话记录</h3>
+                </div>
+                <button
+                  onClick={() => setShowCallHistory(true)}
+                  className="px-3 py-1.5 bg-blue-50 text-blue-600 text-xs font-medium rounded-lg hover:bg-blue-100 transition-colors"
+                >
+                  查看记录
+                </button>
+              </div>
+              <div className="mt-3 bg-gray-50 border border-gray-200 rounded-lg p-3">
+                <p className="text-xs text-gray-600">
+                  共 {conversation.callHistory?.length || 0} 次通话记录，
+                  总时长 {Math.floor((conversation.callHistory?.reduce((acc, log) => acc + log.duration, 0) || 0) / 60)} 分钟
+                </p>
+              </div>
+            </div>
 
-        {/* 提示信息 - 仅非AI儿童显示 */}
-        {!isAIChild && (
-        <div className="bg-blue-50 border border-blue-100 rounded-lg p-4">
-          <p className="text-sm text-blue-700 leading-relaxed">
-            💡 这些设置将影响AI生成回复时的风格和内容，帮助创建更真实的对话体验
-          </p>
-        </div>
-        )}
+            {/* Character Migration (!isAIChild) */}
+            {!isAIChild && (
+              <div className="bg-white rounded-lg border border-gray-100 p-3">
+                <h3 className="text-sm font-medium text-gray-700 mb-3">角色迁移</h3>
+                <button
+                  onClick={() => setShowMigration(true)}
+                  className="w-full py-3 border-2 border-orange-200 hover:border-orange-400 hover:bg-orange-50 rounded-lg transition-colors flex items-center justify-center gap-2 text-orange-700"
+                >
+                  <RefreshCw className="w-5 h-5" />
+                  <span className="font-medium">迁移角色数据</span>
+                </button>
+                <p className="text-xs text-gray-500 mt-2 text-center">
+                  📦 导出/导入角色设置、记忆库和聊天记录
+                </p>
+              </div>
+            )}
 
-        {/* 角色迁移 - 仅非AI儿童显示 */}
-        {!isAIChild && (
-        <div className="bg-white rounded-lg shadow-sm p-4">
-          <h3 className="text-sm font-medium text-gray-700 mb-3">角色迁移</h3>
-          <button
-            onClick={() => setShowMigration(true)}
-            className="w-full py-3 border-2 border-orange-200 hover:border-orange-400 hover:bg-orange-50 rounded-lg transition-colors flex items-center justify-center gap-2 text-orange-700"
-          >
-            <RefreshCw className="w-5 h-5" />
-            <span className="font-medium">迁移角色数据</span>
-          </button>
-          <p className="text-xs text-gray-500 mt-2 text-center">
-            📦 导出/导入角色设置、记忆库和聊天记录
-          </p>
-        </div>
-        )}
+            {/* Moments Test (!isAIChild) */}
+            {!isAIChild && (
+              <div className="bg-white rounded-lg border border-gray-100 p-3">
+                <h3 className="text-sm font-medium text-gray-700 mb-3">朋友圈测试</h3>
+                <button
+                  onClick={() => setShowMomentsTest(true)}
+                  className="w-full py-3 border-2 border-purple-200 hover:border-purple-400 hover:bg-purple-50 rounded-lg transition-colors flex items-center justify-center gap-2 text-purple-700"
+                >
+                  <Camera className="w-5 h-5" />
+                  <span className="font-medium">发布测试朋友圈</span>
+                </button>
+                <p className="text-xs text-gray-500 mt-2 text-center">
+                  🧪 测试不同类型的朋友圈样式
+                </p>
+              </div>
+            )}
 
-        {/* 朋友圈测试 - 仅非AI儿童显示 */}
-        {!isAIChild && (
-        <div className="bg-white rounded-lg shadow-sm p-4">
-          <h3 className="text-sm font-medium text-gray-700 mb-3">朋友圈测试</h3>
-          <button
-            onClick={() => setShowMomentsTest(true)}
-            className="w-full py-3 border-2 border-purple-200 hover:border-purple-400 hover:bg-purple-50 rounded-lg transition-colors flex items-center justify-center gap-2 text-purple-700"
-          >
-            <Camera className="w-5 h-5" />
-            <span className="font-medium">发布测试朋友圈</span>
-          </button>
-          <p className="text-xs text-gray-500 mt-2 text-center">
-            🧪 测试不同类型的朋友圈样式
-          </p>
-        </div>
-        )}
+            {/* Chat Export/Import (!isAIChild) */}
+            {!isAIChild && (
+              <div className="bg-white rounded-lg border border-gray-100 p-3">
+                <h3 className="text-sm font-medium text-gray-700 mb-3">聊天记录管理</h3>
+                <div className="grid grid-cols-2 gap-3">
+                  <button
+                    onClick={handleExportChat}
+                    className="py-3 border-2 border-green-200 hover:border-green-400 hover:bg-green-50 rounded-lg transition-colors flex items-center justify-center gap-2 text-green-700"
+                  >
+                    <Download className="w-5 h-5" />
+                    <span className="font-medium">导出记录</span>
+                  </button>
+                  <button
+                    onClick={() => chatImportRef.current?.click()}
+                    className="py-3 border-2 border-blue-200 hover:border-blue-400 hover:bg-blue-50 rounded-lg transition-colors flex items-center justify-center gap-2 text-blue-700"
+                  >
+                    <FileUp className="w-5 h-5" />
+                    <span className="font-medium">导入记录</span>
+                  </button>
+                </div>
+                <input
+                  ref={chatImportRef}
+                  type="file"
+                  accept=".json"
+                  onChange={handleImportChat}
+                  className="hidden"
+                />
+                <p className="text-xs text-gray-500 mt-2 text-center">
+                  💾 导出后可在其他设备导入，保留所有聊天记录
+                </p>
+              </div>
+            )}
 
-        {/* 聊天记录导入导出 - 仅非AI儿童显示 */}
-        {!isAIChild && (
-        <div className="bg-white rounded-lg shadow-sm p-4">
-          <h3 className="text-sm font-medium text-gray-700 mb-3">聊天记录管理</h3>
-          <div className="grid grid-cols-2 gap-3">
+            {/* Delete Contact */}
             <button
-              onClick={handleExportChat}
-              className="py-3 border-2 border-green-200 hover:border-green-400 hover:bg-green-50 rounded-lg transition-colors flex items-center justify-center gap-2 text-green-700"
+              onClick={handleDelete}
+              className="w-full bg-red-500 text-white py-3 rounded-lg font-medium hover:bg-red-600 active:bg-red-700 transition-colors flex items-center justify-center gap-2"
             >
-              <Download className="w-5 h-5" />
-              <span className="font-medium">导出记录</span>
-            </button>
-            <button
-              onClick={() => chatImportRef.current?.click()}
-              className="py-3 border-2 border-blue-200 hover:border-blue-400 hover:bg-blue-50 rounded-lg transition-colors flex items-center justify-center gap-2 text-blue-700"
-            >
-              <FileUp className="w-5 h-5" />
-              <span className="font-medium">导入记录</span>
+              <Trash2 className="w-5 h-5" />
+              删除联系人
             </button>
           </div>
-          <input
-            ref={chatImportRef}
-            type="file"
-            accept=".json"
-            onChange={handleImportChat}
-            className="hidden"
-          />
-          <p className="text-xs text-gray-500 mt-2 text-center">
-            💾 导出后可在其他设备导入，保留所有聊天记录
-          </p>
-        </div>
-        )}
-
-        {/* Delete Contact Button */}
-        <button
-          onClick={handleDelete}
-          className="w-full bg-red-500 text-white py-3 rounded-lg font-medium hover:bg-red-600 active:bg-red-700 transition-colors flex items-center justify-center gap-2"
-        >
-          <Trash2 className="w-5 h-5" />
-          删除联系人
-        </button>
+        </details>
       </div>
 
       {/* 记忆管理器 */}

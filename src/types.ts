@@ -220,6 +220,8 @@ export interface CharacterSettings {
   momentsConfig?: {
     description?: string; // 用户用自然语言描述的发布规则
   };
+  // 🎨 自定义气泡样式 (CSS)
+  customBubbleCss?: string;
 }
 
 // 资料库条目
