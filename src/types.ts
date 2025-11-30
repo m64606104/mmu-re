@@ -222,6 +222,8 @@ export interface CharacterSettings {
   };
   // 🎨 自定义气泡样式 (CSS)
   customBubbleCss?: string;
+  // 🎨 是否隐藏气泡尾巴
+  hideBubbleTail?: boolean;
 }
 
 // 资料库条目

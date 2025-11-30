@@ -105,6 +105,7 @@ export default function CharacterSettingsScreen({
   const [knowledgeTitle, setKnowledgeTitle] = useState('');
   const [knowledgeContent, setKnowledgeContent] = useState('');
   const [customBubbleCss, setCustomBubbleCss] = useState(settings.customBubbleCss || '');
+  const [hideBubbleTail, setHideBubbleTail] = useState(settings.hideBubbleTail || false);
   const [isParsingFile, setIsParsingFile] = useState(false);
   const [doiInput, setDoiInput] = useState('');
   const [isFetchingDOI, setIsFetchingDOI] = useState(false);
@@ -262,6 +263,7 @@ export default function CharacterSettingsScreen({
           },
           // 保存自定义气泡样式
           customBubbleCss,
+          hideBubbleTail,
           contextConfig: {
             enabled: contextConfigEnabled,
             messageCount: contextMessageCount,
@@ -748,9 +750,21 @@ export default function CharacterSettingsScreen({
 
             {/* Custom Bubble Style (New) */}
             <div className="bg-white rounded-lg border border-gray-100 p-3">
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                自定义气泡样式 (CSS)
-              </label>
+              <div className="flex justify-between items-center mb-2">
+                <label className="block text-sm font-medium text-gray-700">
+                  自定义气泡样式 (CSS)
+                </label>
+                <label className="relative inline-flex items-center cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={hideBubbleTail}
+                    onChange={(e) => setHideBubbleTail(e.target.checked)}
+                    className="sr-only peer"
+                  />
+                  <div className="w-9 h-5 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-blue-600"></div>
+                  <span className="ml-2 text-xs text-gray-600">隐藏小尾巴</span>
+                </label>
+              </div>
               
               {/* Preview */}
               <div className="bg-gray-50 rounded-lg p-3 mb-3 border border-gray-200">
@@ -758,6 +772,7 @@ export default function CharacterSettingsScreen({
                 <div className="space-y-3 p-4 bg-gray-100 rounded border border-gray-200 relative overflow-hidden" style={{ backgroundImage: chatBackground ? `url(${chatBackground})` : undefined, backgroundSize: 'cover', backgroundPosition: 'center' }}>
                   {/* Inject scoped CSS for preview */}
                   <style>{customBubbleCss}</style>
+                  {hideBubbleTail && <style>{`.message-tail { display: none !important; }`}</style>}
                   
                   <div className="preview-area relative z-10">
                     {/* User Bubble */}
@@ -792,6 +807,58 @@ export default function CharacterSettingsScreen({
                 rows={6}
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono text-xs"
               />
+              
+              {/* Helper & Templates */}
+              <details className="mt-3">
+                <summary className="text-xs text-blue-600 font-medium cursor-pointer hover:text-blue-700 select-none">
+                  💡 注意事项 & AI 指令模板
+                </summary>
+                <div className="mt-2 p-3 bg-blue-50 border border-blue-100 rounded-lg text-xs text-gray-700 space-y-3">
+                  <div>
+                    <p className="font-bold text-blue-800 mb-1">🛠️ 核心注意事项：</p>
+                    <ul className="list-disc list-inside space-y-0.5 text-gray-600">
+                      <li>CSS 属性建议加 <code>!important</code> 以覆盖默认样式</li>
+                      <li>如需添加气泡外装饰（如小动物），请设置 <code>.message-bubble {'{'} overflow: visible !important; {'}'}</code></li>
+                    </ul>
+                  </div>
+                  
+                  <div>
+                    <p className="font-bold text-blue-800 mb-1">🤖 AI 指令模板：</p>
+                    <div className="bg-white p-2 rounded border border-blue-100 text-gray-500 font-mono select-all">
+                      帮我写一个聊天气泡 CSS。
+                      <br/>要求：
+                      <br/>1. 风格：[填入风格，如像素风/奶油风]
+                      <br/>2. 对方(ai)背景色：[颜色]
+                      <br/>3. 我方(user)背景色：[颜色]
+                      <br/>4. 请使用 !important 覆盖默认样式
+                    </div>
+                  </div>
+
+                  <div>
+                    <p className="font-bold text-blue-800 mb-1">🧀 装饰物/图片气泡示例：</p>
+                    <div className="bg-white p-2 rounded border border-blue-100 text-gray-500 font-mono whitespace-pre overflow-x-auto">
+{`/* 添加右下角图片装饰 */
+.message-bubble {
+  position: relative !important;
+  overflow: visible !important;
+}
+.message-bubble::after {
+  content: "" !important;
+  position: absolute !important;
+  bottom: -10px !important;
+  right: -10px !important;
+  width: 40px !important;
+  height: 40px !important;
+  background-image: url('图片URL') !important;
+  background-size: contain !important;
+  background-repeat: no-repeat !important;
+  pointer-events: none !important;
+}`}
+                    </div>
+                  </div>
+                </div>
+              </details>
+              
               <div className="mt-2 text-xs text-gray-500">
                 <p>支持类名：</p>
                 <ul className="list-disc list-inside ml-2 space-y-1 mt-1">

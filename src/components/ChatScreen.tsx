@@ -5114,6 +5114,8 @@ ${doc.content}`;
 
   // 提取自定义CSS
   const customCss = conversation.characterSettings?.customBubbleCss;
+  // 提取是否隐藏气泡尾巴
+  const hideBubbleTail = conversation.characterSettings?.hideBubbleTail;
 
   return (
     <>
@@ -5127,6 +5129,8 @@ ${doc.content}`;
     >
       {/* 注入自定义气泡样式 */}
       {customCss && <style>{customCss}</style>}
+      {/* 如果开启了隐藏尾巴，注入隐藏样式 */}
+      {hideBubbleTail && <style>{`.message-tail { display: none !important; }`}</style>}
 
       {/* Header - 固定在顶部 */}
       <div className="absolute top-0 left-0 right-0 bg-white/95 backdrop-blur-sm border-b border-gray-200 px-4 py-3 flex items-center justify-between shadow-sm z-10">
@@ -6105,7 +6109,7 @@ ${doc.content}`;
                     
                     {/* 纯文字内容 */}
                     {!message.mediaType && !message.moneyTransfer && !message.document && !message.order && message.content && message.content.trim() && (
-                      <p className={`message-content text-[15px] leading-relaxed whitespace-pre-wrap break-words ${message.replyTo ? 'px-4' : ''}`}>{message.content}</p>
+                      <p className={`message-content content text-[15px] leading-relaxed whitespace-pre-wrap break-words ${message.replyTo ? 'px-4' : ''}`}>{message.content}</p>
                     )}
                     {/* 用户媒体的描述文字（排除语音和表情包） */}
                     {message.role === 'user' && message.mediaType && message.mediaType !== 'sticker' && message.mediaType !== 'voice' && message.mediaDescription && (
