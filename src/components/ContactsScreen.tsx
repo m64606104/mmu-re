@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { ChevronLeft, Search, UserPlus, MessageCircle } from 'lucide-react';
+import { ChevronLeft, Search, UserPlus, MessageCircle, Users } from 'lucide-react';
 import { Conversation, Screen } from '../types';
 
 interface ContactsScreenProps {
@@ -21,6 +21,7 @@ interface FriendRequest {
 export default function ContactsScreen({ conversations, onNavigate, onBack, onUpdateConversation }: ContactsScreenProps & { onUpdateConversation?: (id: string, updates: Partial<Conversation>) => void }) {
   const [searchQuery, setSearchQuery] = useState('');
   const [showNewFriends, setShowNewFriends] = useState(false);
+  const [showGroups, setShowGroups] = useState(false);
   const [requests, setRequests] = useState<FriendRequest[]>([]);
   
   // 加载好友申请
@@ -135,6 +136,79 @@ export default function ContactsScreen({ conversations, onNavigate, onBack, onUp
     );
   }
 
+  // 如果显示群聊页面
+  if (showGroups) {
+    const groups = conversations.filter(c => c.type === 'group');
+    const filteredGroups = groups.filter(g => 
+      g.name.toLowerCase().includes(searchQuery.toLowerCase())
+    );
+
+    return (
+      <div className="h-full bg-gray-50 flex flex-col">
+        <div className="bg-white border-b border-gray-200 px-4 py-3 flex items-center">
+          <button onClick={() => setShowGroups(false)} className="p-2 -ml-2">
+            <ChevronLeft className="w-6 h-6" />
+          </button>
+          <h1 className="text-lg font-semibold ml-2">群聊</h1>
+          <div className="ml-auto text-sm text-gray-500">
+            {groups.length} 个群聊
+          </div>
+        </div>
+
+        {/* Search Bar */}
+        <div className="bg-white px-4 py-3 border-b border-gray-200">
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="搜索群聊"
+              className="w-full pl-10 pr-4 py-2 bg-gray-100 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+          </div>
+        </div>
+
+        <div className="flex-1 overflow-y-auto">
+          {filteredGroups.length === 0 ? (
+            <div className="flex flex-col items-center justify-center h-full text-gray-400">
+              <Users className="w-16 h-16 mb-4" />
+              <p className="text-lg font-medium">
+                {searchQuery ? '未找到群聊' : '暂无群聊'}
+              </p>
+            </div>
+          ) : (
+            <div className="bg-white mt-2">
+              {filteredGroups.map((group, index) => (
+                <button
+                  key={group.id}
+                  onClick={() => onNavigate('chat', group.id)}
+                  className="w-full px-4 py-3 flex items-center gap-3 hover:bg-gray-50 active:bg-gray-100 transition-colors border-b border-gray-100 last:border-0"
+                >
+                  <div className="w-12 h-12 rounded-lg bg-gray-200 overflow-hidden flex-shrink-0">
+                    {group.avatar ? (
+                      <img src={group.avatar} alt={group.name} className="w-full h-full object-cover" />
+                    ) : (
+                      <div className="w-full h-full flex items-center justify-center bg-green-100 text-green-600">
+                        <Users className="w-6 h-6" />
+                      </div>
+                    )}
+                  </div>
+                  <div className="flex-1 text-left min-w-0">
+                    <div className="font-medium text-gray-900 truncate">{group.name}</div>
+                    <div className="text-sm text-gray-500 truncate">
+                      {group.members?.length || 0} 位成员
+                    </div>
+                  </div>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
+
   // 获取所有联系人（私聊对话）
   const contacts = conversations.filter(conv => conv.type === 'private');
 
@@ -188,7 +262,7 @@ export default function ContactsScreen({ conversations, onNavigate, onBack, onUp
       {/* 新的朋友入口 */}
       <button 
         onClick={() => setShowNewFriends(true)}
-        className="bg-white w-full px-4 py-3 flex items-center gap-3 mb-2 border-b border-gray-200 hover:bg-gray-50 active:bg-gray-100 transition-colors"
+        className="bg-white w-full px-4 py-3 flex items-center gap-3 border-b border-gray-200 hover:bg-gray-50 active:bg-gray-100 transition-colors"
       >
          <div className="w-10 h-10 bg-orange-400 rounded-lg flex items-center justify-center shadow-sm flex-shrink-0">
             <UserPlus className="text-white w-6 h-6" />
@@ -206,6 +280,17 @@ export default function ContactsScreen({ conversations, onNavigate, onBack, onUp
                 {pendingCount}
              </div>
          )}
+      </button>
+
+      {/* 群聊入口 */}
+      <button 
+        onClick={() => setShowGroups(true)}
+        className="bg-white w-full px-4 py-3 flex items-center gap-3 mb-2 border-b border-gray-200 hover:bg-gray-50 active:bg-gray-100 transition-colors"
+      >
+         <div className="w-10 h-10 bg-green-500 rounded-lg flex items-center justify-center shadow-sm flex-shrink-0">
+            <Users className="text-white w-6 h-6" />
+         </div>
+         <div className="flex-1 text-left font-medium text-gray-900">群聊</div>
       </button>
 
       {/* Contacts List */}
