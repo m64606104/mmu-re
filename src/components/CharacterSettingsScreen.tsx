@@ -1451,7 +1451,7 @@ export default function CharacterSettingsScreen({
         <RelationshipManagementScreen
           conversation={conversation}
           allConversations={allConversations}
-          onUpdateConversation={onUpdateConversation}
+          apiConfig={apiConfig}
           onBack={() => setShowRelationshipManager(false)}
         />
       )}
@@ -1463,9 +1463,6 @@ export default function CharacterSettingsScreen({
         callHistory={conversation.callHistory || []}
         characterName={nickname}
       />
-    </div>
-  );
-}
 
       {/* 角色迁移弹窗 */}
       {showMigration && (
