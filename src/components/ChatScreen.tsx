@@ -735,6 +735,7 @@ export default function ChatScreen({
   const imageInputRef = useRef<HTMLInputElement>(null);
   const videoInputRef = useRef<HTMLInputElement>(null);
   const [showSendingHint, setShowSendingHint] = useState(false);
+  const [isGroupProcessing, setIsGroupProcessing] = useState(false); // 🚀 新增：群聊处理中状态
   const [showTyping, setShowTyping] = useState(false);
   const [pendingMessages, setPendingMessages] = useState<string[]>([]);
   const [showAllSentHint, setShowAllSentHint] = useState(false);
@@ -3115,9 +3116,17 @@ ${characterInfo?.languageStyle ? `语言风格：${characterInfo.languageStyle}`
         apiConfig,
         conversations,
         {
+          onGroupChatProcessing: () => {
+            // 🚀 全局处理开始
+            console.log('🔄 群聊处理中...');
+            setIsGroupProcessing(true);
+            setShowSendingHint(false); // 隐藏普通发送提示，改用全局处理提示
+          },
+          
           onAIStart: (aiId, aiName) => {
             console.log(`🤖 ${aiName} 开始回复`);
-            // 隐藏发送中提示，显示AI打字动画
+            // 隐藏全局处理提示和发送中提示，显示AI打字动画
+            setIsGroupProcessing(false);
             setShowSendingHint(false);
             
             // 获取AI头像
@@ -3231,6 +3240,7 @@ ${characterInfo?.languageStyle ? `语言风格：${characterInfo.languageStyle}`
             });
             
             setIsGenerating(false);
+            setIsGroupProcessing(false); // 重置群聊处理状态
             setCurrentTypingAI(null);
             setShowSendingHint(false);
             
@@ -3490,7 +3500,11 @@ ${conversation.characterSettings.memoryEvents ? `记忆事件：${conversation.c
 3. 🎤 语音消息：[语音:内容,时长X秒]
    示例："[语音:我今天特别开心,5秒]"
    适用场景：想表达语气、内容较长、更亲切的交流
-   注意：时长可以省略（默认3秒），内容要自然口语化
+   注意：
+   - 时长可以省略（默认3秒），内容要自然口语化，像真实语音的转文字
+   - 中括号里的内容必须是你实际会说的一句话或几句话
+   - 可以在前后用少量语气说明（如"（笑着说）我今天太困了"）
+   - 🚫 禁止只写纯粹的语气/情绪描述（如"哈哈大笑"、"叹气"），必须包含完整的语音内容
 
 4. 😊 表情包：[表情包:描述]
    示例："[表情包:哈哈哈笑cry]"
@@ -6134,6 +6148,15 @@ ${doc.content}`;
             </div>
           );
         })}
+
+        {isGroupProcessing && (
+          <div className="flex justify-center my-2">
+            <div className="bg-indigo-500/90 backdrop-blur text-white text-xs px-3 py-1.5 rounded-full shadow-sm flex items-center space-x-1 animate-pulse">
+               <span>⚡</span>
+               <span>群聊响应中...</span>
+            </div>
+          </div>
+        )}
 
         {showSendingHint && (
           <div className="flex justify-center my-2">

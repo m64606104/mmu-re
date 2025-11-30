@@ -1,8 +1,6 @@
 import { Conversation, Message, ApiConfig, CharacterSettings } from '../types';
-import { cleanAIMessage } from './messageFormatter';
-import { analyzeConversationContinuation, selectNextRoundParticipants } from './groupChatContinuationAnalyzer';
-import { generateGroupChatSummary, evaluateConversationNaturalness } from './groupChatEnhancer';
-import { splitMessages } from './messageFormatter';
+import { cleanAIMessage, splitMessages } from './messageFormatter';
+import { selectNextRoundParticipants } from './groupChatContinuationAnalyzer';
 import { buildTimeAwarePrompt } from './timeAwareness';
 
 /**
@@ -22,6 +20,7 @@ export interface GroupAIReply {
 
 // 群聊生成回调
 export interface GroupChatCallback {
+  onGroupChatProcessing?: () => void; // 群聊处理开始（整体）
   onAIStart?: (aiId: string, aiName: string) => void; // AI开始回复
   onAITyping?: (aiId: string) => void; // AI正在打字
   onAIMessage?: (aiId: string, message: Message) => void; // AI发送单条消息
@@ -124,8 +123,12 @@ ${aiSettings.memoryEvents ? `记忆事件：${aiSettings.memoryEvents}` : ''}
    使用场景：分享动态内容、精彩瞬间
 
 3. 🎤 **语音消息**：[语音:语音内容文字]
-   示例："[语音:哈哈哈太搞笑了]"
+   示例："[语音:我今天特别开心]"
    使用场景：语音聊天、表达情绪
+   要求：
+   - 中括号里的内容必须是你实际会说的一句话或几句话，口语化
+   - 可以在前后用少量语气说明（如"（笑着说）我今天太困了"）
+   - 🚫 禁止只写纯粹的语气/情绪描述（如"哈哈大笑"、"叹气"），必须包含完整的语音内容
 
 4. 😊 **表情包**：[表情包:表情描述]
    示例："[表情包:笑哭了]"
@@ -340,6 +343,20 @@ function parseAIResponse(
         .replace(/口令[:：].+?(?:[，,。]|$)/, '')
         .replace(/(普通|拼手气|专属)/, '')
         .trim() || '恭喜发财，大吉大利';
+    }
+
+    // 🔒 安全兜底：避免出现"专属红包"但无人可领的情况
+    if (redPacketType === 'exclusive' && !exclusiveUserId) {
+      if (userName) {
+        // 优先默认指定给用户本人
+        exclusiveUserId = 'user';
+        exclusiveUserName = userName;
+        console.log(`🎯 未明确指定接收者，专属红包默认发给用户: ${userName}`);
+      } else {
+        // 实在无法确定接收者时，降级为拼手气红包，避免逻辑死锁
+        console.warn('⚠️ 专属红包未指定接收者且无法获取用户名称，降级为拼手气红包');
+        redPacketType = 'random';
+      }
     }
     
     const redPacketId = `ai_redpacket_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
@@ -583,25 +600,19 @@ export async function generateGroupChatReplies(
   const allReplies: GroupAIReply[] = [];
   const isFreeMode = groupConversation.groupChatMode === 'free';
   
+  // 🚀 全局开始：显示群聊处理中状态
+  callbacks?.onGroupChatProcessing?.();
+  
   // 依次为每个AI生成回复
   for (let idx = 0; idx < aiMembers.length; idx++) {
     const aiMember = aiMembers[idx];
     
     // 🎯 优化：如果不是第一个AI，先等待短暂间隔
     if (idx > 0) {
-      await new Promise(resolve => setTimeout(resolve, 200)); // AI之间的间隔
+      await new Promise(resolve => setTimeout(resolve, 300));
     }
     
-    // 🎯 改进策略：第一个AI等API返回再显示动画，避免"输入中→无人回复"的尴尬
-    // 第一个AI：保持"消息发送中" → API调用 → 有回复才显示输入中动画
-    // 后续AI：先显示输入中动画 → API调用（因为肯定有人在回复）
-    const isFirstAI = idx === 0;
-    
-    if (!isFirstAI) {
-      // 后续AI：提前显示输入中动画
-      callbacks?.onAIStart?.(aiMember.id, aiMember.characterSettings?.nickname || aiMember.name);
-      callbacks?.onAITyping?.(aiMember.id);
-    }
+    // ⚠️ 注意：不再预先显示typing动画，直到确认有回复内容
     
     // 调用API生成回复
     const apiStartTime = Date.now();
@@ -614,13 +625,12 @@ export async function generateGroupChatReplies(
     
     // API返回后处理
     if (reply.status !== 'error' && reply.messages.length > 0) {
-      // 有回复
-      if (isFirstAI) {
-        // 第一个AI：现在才显示输入中动画
-        callbacks?.onAIStart?.(aiMember.id, aiMember.characterSettings?.nickname || aiMember.name);
-        callbacks?.onAITyping?.(aiMember.id);
-      }
-      // ✅ 移除延迟：已经有输入动画，不需要额外等待
+      // ✅ 确认有回复：现在才显示输入中动画
+      callbacks?.onAIStart?.(aiMember.id, aiMember.characterSettings?.nickname || aiMember.name);
+      callbacks?.onAITyping?.(aiMember.id);
+      
+      // ⏳ 必须给一点时间让用户看到"正在输入"的状态，否则消息出来得太突兀
+      await new Promise(resolve => setTimeout(resolve, 400));
     }
     
     if (reply.status === 'error') {
@@ -634,7 +644,7 @@ export async function generateGroupChatReplies(
       continue;
     }
     
-    // 逐条发送消息（打字动画延迟已在上面的470-478行处理）
+    // 逐条发送消息
     for (let i = 0; i < reply.messages.length; i++) {
       const message = reply.messages[i];
       
@@ -656,13 +666,11 @@ export async function generateGroupChatReplies(
       
       // 🎯 优化：缩短消息间延迟，让对话更流畅
       if (i < reply.messages.length - 1) {
-        await new Promise(resolve => setTimeout(resolve, 300)); // 从400ms缩短到300ms
+        await new Promise(resolve => setTimeout(resolve, 300));
       }
     }
     
     callbacks?.onAIComplete?.(reply.aiId, reply.messages);
-    
-    // 注意：AI之间的间隔已经移到循环开头处理，这里不需要了
   }
   
   // 所有AI完成
@@ -718,17 +726,10 @@ async function generateSingleRound(
     
     // 🎯 优化：如果不是第一个AI，先等待短暂间隔
     if (idx > 0) {
-      await new Promise(resolve => setTimeout(resolve, 200)); // AI之间的间隔
+      await new Promise(resolve => setTimeout(resolve, 300));
     }
     
-    // 🎯 改进策略：第一个AI等API返回再显示动画（同顺序模式）
-    const isFirstAI = idx === 0;
-    
-    if (!isFirstAI) {
-      // 后续AI：提前显示输入中动画
-      callbacks?.onAIStart?.(aiMember.id, aiMember.characterSettings?.nickname || aiMember.name);
-      callbacks?.onAITyping?.(aiMember.id);
-    }
+    // ⚠️ 注意：移除预先显示typing逻辑，等待API结果
     
     // 调用API生成回复
     const reply = await generateAIReply(aiMember, groupConversation, apiConfig, allConversations, true);
@@ -736,14 +737,12 @@ async function generateSingleRound(
     
     // API返回后处理
     if (reply.status !== 'error' && reply.messages.length > 0) {
-      // 有回复
-      if (isFirstAI) {
-        // 第一个AI：现在才显示输入中动画
-        callbacks?.onAIStart?.(aiMember.id, aiMember.characterSettings?.nickname || aiMember.name);
-        callbacks?.onAITyping?.(aiMember.id);
-      }
-      // 短暂延迟让用户看到打字效果
-      await new Promise(resolve => setTimeout(resolve, 200));
+      // ✅ 确认有回复：现在才显示输入中动画
+      callbacks?.onAIStart?.(aiMember.id, aiMember.characterSettings?.nickname || aiMember.name);
+      callbacks?.onAITyping?.(aiMember.id);
+      
+      // ⏳ 必须给一点时间让用户看到"正在输入"的状态
+      await new Promise(resolve => setTimeout(resolve, 400));
     }
     
     if (reply.status === 'error') {
@@ -757,7 +756,7 @@ async function generateSingleRound(
       continue;
     }
     
-    // 逐条发送消息（打字动画延迟已处理）
+    // 逐条发送消息
     for (let i = 0; i < reply.messages.length; i++) {
       const message = reply.messages[i];
       
@@ -778,13 +777,11 @@ async function generateSingleRound(
       
       // 🎯 优化：缩短消息间延迟，让对话更流畅
       if (i < reply.messages.length - 1) {
-        await new Promise(resolve => setTimeout(resolve, 300)); // 从400ms缩短到300ms
+        await new Promise(resolve => setTimeout(resolve, 300));
       }
     }
     
     callbacks?.onAIComplete?.(reply.aiId, reply.messages);
-    
-    // 注意：AI之间的间隔已经移到循环开头处理，这里不需要了
   }
   
   return roundReplies.filter(r => r.messages.length > 0);
@@ -808,84 +805,82 @@ export async function generateGroupChatRepliesFreeMode(
   if (aiMembers.length === 0) {
     throw new Error('群聊中没有AI成员');
   }
-  
-  const MAX_ROUNDS = 3; // 最大轮数
-  let currentRound = 0;
+
   const allReplies: GroupAIReply[] = [];
-  
-  console.log(`🔄 自由模式：开始多轮回复，最多${MAX_ROUNDS}轮`);
-  
-  let previousAnalysis: any = null;
-  
-  while (currentRound < MAX_ROUNDS) {
-    currentRound++;
-    console.log(`\n📍 第${currentRound}轮回复开始...`);
-    
-    // 智能参与者选择（从第2轮开始）
-    const suggestedParticipants = previousAnalysis?.suggestedParticipants;
-    const previousRoundReplies = allReplies.length > 0 ? 
-      allReplies.slice(-Math.min(3, allReplies.length)) : // 最近3个回复
-      undefined;
-    
-    // 生成本轮回复
-    const roundReplies = await generateSingleRound(
-      aiMembers,
-      groupConversation,
+
+  // 🚀 全局开始：显示群聊处理中状态
+  callbacks?.onGroupChatProcessing?.();
+
+  console.log('🔄 自由模式：开始单轮回复 + 随机二次补刀');
+
+  // 第1轮：整群自由模式随机选择若干AI回复
+  const firstRoundReplies = await generateSingleRound(
+    aiMembers,
+    groupConversation,
+    apiConfig,
+    allConversations,
+    callbacks
+  );
+
+  allReplies.push(...firstRoundReplies);
+
+  if (firstRoundReplies.length === 0) {
+    console.log('💤 第一轮无人回复，对话结束');
+    callbacks?.onAllComplete?.(allReplies);
+    return allReplies;
+  }
+
+  // 第2步：从第一轮真正发过言的AI中，随机抽取少量进行二次回复
+  const activeAIs = firstRoundReplies.filter(r => r.messages.length > 0);
+  const maxSecondWave = Math.min(2, activeAIs.length); // 最多2个
+  const secondWaveCount = maxSecondWave > 0 ? Math.floor(Math.random() * (maxSecondWave + 1)) : 0; // 0~maxSecondWave 个
+
+  if (secondWaveCount > 0) {
+    const shuffled = [...activeAIs].sort(() => Math.random() - 0.5);
+    const selectedForSecond = shuffled.slice(0, secondWaveCount);
+    const selectedIds = new Set(selectedForSecond.map(r => r.aiId));
+
+    console.log(`🎯 第二轮补刀AI: ${selectedForSecond.map(r => r.aiName).join('、')}`);
+
+    const secondRoundMembers = aiMembers.filter(ai => selectedIds.has(ai.id));
+
+    // 🧠 将第一轮所有实际发言，作为“已发生的群聊历史”拼接进上下文
+    const firstRoundContextMessages = firstRoundReplies.flatMap(r =>
+      r.messages.map(msg => ({
+        ...msg,
+        // 标记这是哪个AI说的话，后续在 generateAIReply 中会按 senderId 决定角色和前缀
+        senderId: r.aiId,
+        senderName: r.aiName,
+        senderAvatar: r.aiAvatar,
+      } as any))
+    );
+
+    const extendedGroupConversation: Conversation = {
+      ...groupConversation,
+      // 注意：这里只是为了本次补刀构造一个虚拟快照，不会影响真实会话里的消息列表
+      messages: [
+        ...groupConversation.messages,
+        ...firstRoundContextMessages,
+      ],
+    };
+
+    const secondRoundReplies = await generateSingleRound(
+      secondRoundMembers,
+      extendedGroupConversation,
       apiConfig,
       allConversations,
-      callbacks,
-      suggestedParticipants,
-      previousRoundReplies
+      callbacks
     );
-    
-    // 收集所有回复
-    allReplies.push(...roundReplies);
-    
-    // 如果本轮没有任何AI回复，结束
-    if (roundReplies.length === 0) {
-      console.log('💤 本轮无人回复，对话结束');
-      break;
-    }
-    
-    // 🧠 智能检测对话是否应该继续
-    previousAnalysis = analyzeConversationContinuation(
-      roundReplies,
-      currentRound,
-      MAX_ROUNDS,
-      aiMembers
-    );
-    
-    console.log(`🧠 对话分析: ${previousAnalysis.reason} (置信度: ${(previousAnalysis.confidence * 100).toFixed(0)}%)`);
-    if (previousAnalysis.suggestedParticipants !== undefined) {
-      console.log(`   📊 下轮建议参与者: ${previousAnalysis.suggestedParticipants}人`);
-    }
-    
-    if (!previousAnalysis.shouldContinue) {
-      console.log('✋ 智能分析：对话应该结束');
-      break;
-    }
-    
-    // 如果不是最后一轮，添加轮次间隔
-    if (currentRound < MAX_ROUNDS) {
-      console.log('⏳ 等待下一轮...');
-      await new Promise(resolve => setTimeout(resolve, 300)); // 优化：从1000ms减少到300ms
-    }
+
+    allReplies.push(...secondRoundReplies);
+  } else {
+    console.log('💤 本次不触发第二轮补刀');
   }
-  
-  console.log(`\n✅ 自由模式完成，共${currentRound}轮，${allReplies.length}个AI回复`);
-  
-  // 📊 生成智能总结
-  if (allReplies.length > 0) {
-    const summary = generateGroupChatSummary(allReplies, currentRound);
-    const naturalness = evaluateConversationNaturalness(allReplies);
-    
-    console.log('\n📊 群聊质量分析:');
-    console.log(summary);
-    console.log(`🌟 自然度评分: ${naturalness.score}分 - ${naturalness.feedback}`);
-  }
-  
+
+  console.log(`\n✅ 自由模式完成，本次共 ${allReplies.length} 个AI回复`);
+
   // 所有轮次完成
   callbacks?.onAllComplete?.(allReplies);
-  
+
   return allReplies;
 }
