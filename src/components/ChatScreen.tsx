@@ -681,7 +681,12 @@ export default function ChatScreen({
     
     // 处理文档消息
     if (msg.document) {
-      return `[发文档:${msg.document.title}:${msg.document.type}]`;
+      // 用户发送的文档：需要完整传递内容给AI
+      if (msg.role === 'user') {
+        return `[用户发送了${msg.document.type === 'text' ? '文本' : msg.document.type === 'markdown' ? 'Markdown' : '代码'}文档]\n标题：${msg.document.title}\n内容：\n${msg.document.content}`;
+      }
+      // AI发送的文档：只需要标记格式
+      return `[发文档:${msg.document.title}:${msg.document.type}] ${msg.document.content}`;
     }
     
     // 处理转账/红包消息
