@@ -373,6 +373,25 @@ export const buildTimeAwarePrompt = (
   prompt += `【🕐 时间感知系统 - 强制遵守】\n`;
   prompt += `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n`;
   
+  // 🚨 最高优先级警告：禁止复读旧话题
+  if (context.timeGapMinutes && context.timeGapMinutes > 1440) { // 超过1天
+    const days = Math.floor(context.timeGapMinutes / 1440);
+    prompt += `🚨🚨🚨 **【最高优先级警告】** 🚨🚨🚨\n`;
+    prompt += `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`;
+    prompt += `⛔ **绝对禁止复读${days}天前的旧话题！**\n\n`;
+    prompt += `❌ 禁止示例：\n`;
+    prompt += `   - "你刚刚吃的烤肉怎么样" ← 那是${days}天前的事！\n`;
+    prompt += `   - "你刚才说的那个电影..." ← 那是${days}天前说的！\n`;
+    prompt += `   - "刚刚你发的照片..." ← 那是${days}天前发的！\n`;
+    prompt += `   - "你今天做的..." ← 那不是今天，是${days}天前！\n\n`;
+    prompt += `✅ 正确做法：\n`;
+    prompt += `   - "最近怎么样呀"\n`;
+    prompt += `   - "今天过得如何"\n`;
+    prompt += `   - 开启新话题，不要追问${days}天前的事\n`;
+    prompt += `   - 就当那些旧消息不存在，自然地聊新的\n`;
+    prompt += `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n`;
+  }
+  
   prompt += `📅 当前时间（你现在回复的时间）: ${context.currentTime}\n`;
   
   // 🆕 添加AI消息时间感知

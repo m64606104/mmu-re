@@ -5953,9 +5953,15 @@ ${doc.content}`;
                             )}
                           </div>
                         ))}
-                        {/* 文字内容（如果有） */}
-                        {message.content && message.content !== '[多媒体消息]' && (
-                          <p className="text-[15px] leading-relaxed whitespace-pre-wrap break-words px-4 py-2.5">{message.content}</p>
+                        {/* 文字内容独立气泡（如果有） - 与多媒体分离 */}
+                        {message.content && message.content !== '[多媒体消息]' && message.content !== '[图片]' && message.content !== '[视频]' && message.content !== '[语音]' && message.content !== '[表情包]' && (
+                          <div className={`mt-2 rounded-2xl shadow-sm p-3 ${
+                            message.role === 'user' 
+                              ? 'bg-gradient-to-br from-blue-500 to-blue-600 text-white rounded-tr-sm' 
+                              : 'bg-white text-gray-800 rounded-tl-sm border border-gray-100'
+                          }`}>
+                            <p className="text-[15px] leading-relaxed whitespace-pre-wrap break-words">{message.content}</p>
+                          </div>
                         )}
                       </div>
                     )}
@@ -6159,13 +6165,21 @@ ${doc.content}`;
                       </div>
                     )}
                     
-                    {/* 纯文字内容 - 只在没有多媒体内容或者有混合内容时显示 */}
-                    {!message.moneyTransfer && !message.document && !message.order && message.content && message.content.trim() && (
-                      !message.mediaType || 
-                      // 对于多媒体消息，如果内容不等于多媒体标记，说明有混合文本，需要显示
-                      (message.mediaType && message.content !== '[图片]' && message.content !== '[视频]' && message.content !== '[语音]' && message.content !== '[表情包]')
-                    ) && (
+                    {/* 纯文字内容 - 只在没有多媒体内容时显示；如果有多媒体，文字会在上面独立气泡显示 */}
+                    {!message.moneyTransfer && !message.document && !message.order && !message.mediaType && !message.mediaItems && message.content && message.content.trim() && (
                       <p className={`message-content content text-[15px] leading-relaxed whitespace-pre-wrap break-words ${message.replyTo ? 'px-4' : ''}`}>{message.content}</p>
+                    )}
+                    
+                    {/* 多媒体+文字混合消息：文字独立气泡 */}
+                    {!message.moneyTransfer && !message.document && !message.order && (message.mediaType || message.mediaItems) && message.content && message.content.trim() && 
+                     message.content !== '[图片]' && message.content !== '[视频]' && message.content !== '[语音]' && message.content !== '[表情包]' && message.content !== '[多媒体消息]' && (
+                      <div className={`mt-2 rounded-2xl shadow-sm p-3 ${
+                        message.role === 'user' 
+                          ? 'bg-gradient-to-br from-blue-500 to-blue-600 text-white rounded-tr-sm' 
+                          : 'bg-white text-gray-800 rounded-tl-sm border border-gray-100'
+                      }`}>
+                        <p className="text-[15px] leading-relaxed whitespace-pre-wrap break-words">{message.content}</p>
+                      </div>
                     )}
                     {/* 用户媒体的描述文字（排除语音和表情包） */}
                     {message.role === 'user' && message.mediaType && message.mediaType !== 'sticker' && message.mediaType !== 'voice' && message.mediaDescription && (
