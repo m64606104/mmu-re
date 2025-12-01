@@ -25,9 +25,9 @@ interface ActionDuration {
 
 const COMMON_ACTIONS: ActionDuration[] = [
   {
-    keywords: ['吃饭', '去吃饭', '要吃饭', '吃个饭', '吃东西', '去吃', '点外卖', '做饭'],
+    keywords: ['吃饭', '去吃饭', '要吃饭', '吃个饭', '吃东西', '去吃', '点外卖', '做饭', '烤肉', '吃烤肉', '吃火锅', '吃烧烤', '聚餐', '吃晚饭', '吃午饭', '吃早餐'],
     minDuration: 20,
-    maxDuration: 60,
+    maxDuration: 90,
     description: '吃饭'
   },
   {
@@ -373,25 +373,6 @@ export const buildTimeAwarePrompt = (
   prompt += `【🕐 时间感知系统 - 强制遵守】\n`;
   prompt += `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n`;
   
-  // 🚨 最高优先级警告：禁止复读旧话题
-  if (context.timeGapMinutes && context.timeGapMinutes > 1440) { // 超过1天
-    const days = Math.floor(context.timeGapMinutes / 1440);
-    prompt += `🚨🚨🚨 **【最高优先级警告】** 🚨🚨🚨\n`;
-    prompt += `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`;
-    prompt += `⛔ **绝对禁止复读${days}天前的旧话题！**\n\n`;
-    prompt += `❌ 禁止示例：\n`;
-    prompt += `   - "你刚刚吃的烤肉怎么样" ← 那是${days}天前的事！\n`;
-    prompt += `   - "你刚才说的那个电影..." ← 那是${days}天前说的！\n`;
-    prompt += `   - "刚刚你发的照片..." ← 那是${days}天前发的！\n`;
-    prompt += `   - "你今天做的..." ← 那不是今天，是${days}天前！\n\n`;
-    prompt += `✅ 正确做法：\n`;
-    prompt += `   - "最近怎么样呀"\n`;
-    prompt += `   - "今天过得如何"\n`;
-    prompt += `   - 开启新话题，不要追问${days}天前的事\n`;
-    prompt += `   - 就当那些旧消息不存在，自然地聊新的\n`;
-    prompt += `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n`;
-  }
-  
   prompt += `📅 当前时间（你现在回复的时间）: ${context.currentTime}\n`;
   
   // 🆕 添加AI消息时间感知
@@ -419,14 +400,12 @@ export const buildTimeAwarePrompt = (
       prompt += `- 自然地提及这个时间差（"哇你终于回我了"、"过了这么久"等）\n`;
       prompt += `- 不要当成"刚刚"的对话延续\n`;
       prompt += `- 可以稍微调整话题或问候一下\n`;
-      prompt += `- 保持轻松自然，不要尴尬\n`;
-      prompt += `- **严禁**说"你刚刚..."、"刚才..."，因为已经过了${daysSinceAI}天！\n\n`;
+      prompt += `- 保持轻松自然，不要尴尬\n\n`;
       
       prompt += `❌ **绝对禁止**：\n`;
       prompt += `- 不要说"好的那我们现在就开始吧"（太突兀）\n`;
       prompt += `- 不要无视时间差，直接延续话题\n`;
       prompt += `- 不要假装刚刚才说过的样子\n`;
-      prompt += `- 不要复读上一轮的具体话题细节（如"你刚刚吃的烤肉怎么样"），因为那是${daysSinceAI}天前的事了！\n`;
       prompt += `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n`;
     } else if (hoursSinceAI > 3) {
       // AI消息是几小时前发的
@@ -505,7 +484,6 @@ export const buildTimeAwarePrompt = (
       prompt += `   ✅ 允许: "${days}天前"、"前几天"、"之前"、"最近"（因为过了${days}天）\n`;
       prompt += `   ❌ **严格禁止**: "今天"、"刚才"、"刚刚"、"昨天"（已经过了${days}天！绝对不要用这些词）\n`;
       prompt += `   🚫 **绝对禁止**: 不要回应之前的具体话题内容，必须像久别重逢一样开启新对话\n`;
-      prompt += `   🛑 **禁止复读**: 不要问"你刚刚说的[旧话题]怎么样"，因为那已经是过去式了！\n`;
     }
     prompt += `\n`;
   }

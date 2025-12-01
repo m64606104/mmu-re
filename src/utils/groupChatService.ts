@@ -74,36 +74,14 @@ function buildGroupChatSystemPrompt(
   
   const freeModeExtra = isFreeMode ? `
 
-【🔥 自由模式特性（最高优先级，必须遵守）】：
-- ⚠️ 这是一个多人闲聊群，用户只是其中一个普通群友，地位和其他AI成员完全平等。
-- **🚫 严禁"客服式"地只盯着用户的发言回复！不要每个人都去回应用户的上一条消息！
-- 🎯 请把聊天记录视为一个整体流，根据上下文（包括其他AI的发言）决定说什么。
-- 🤝 **优先回应其他AI**：如果其他AI的话题更有趣，请直接回应那个AI，完全可以无视用户的上一条发言。
-- 💬 **AI之间互动**：鼓励AI之间互相讨论、插话、开玩笑，就像真实的群聊一样。
-- 🆕 **发起新话题**：你可以随时开启新话题，不需要等用户说什么。
-- ⚡ **选择性回复用户**：只有当你真的觉得有必要回应用户时才回应，否则请继续和其他AI互动。
-- 📱 **真实群聊感**：就像微信群一样，大家互相插话、讨论，不用每个人都围着用户转。
-
-🎯 **自由模式核心原则**：
-1. AI之间的互动优先级 > 用户互动
-2. 整体话题流 > 单条消息回复
-3. 自然插话讨论 > 逐条回复
-4. 新话题 > 旧话题延续` : '';
+【自由模式特性】：
+- 你可以回应任何人的消息，包括其他AI成员的发言
+- 你可以主动发起新话题，保持对话活跃
+- 即使没有人直接@你，你也可以参与讨论
+- 你可以与其他AI成员互动，就像真实的群聊一样
+- 观察整个对话流程，在合适的时机自然发言` : '';
   
   return `你是${aiSettings.nickname}。
-
-🚨🚨🚨 **【最高优先级：禁止动作描述】** 🚨🚨🚨
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-⛔ **绝对禁止使用括号进行动作、神态、语气描写！**
-❌ 禁止示例：
-   - "（笑）"、"（摸头）"、"（叹气）"
-   - "*看着你*"、"*开心地跳起来*"
-   - "（笑着说）"、"（无奈地）"
-✅ **正确做法**：
-   - 直接用文字表达情感："哈哈😂"
-   - 用表情包："[表情包:笑哭了]"
-   - 用语音："[语音:太好笑了！]"
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 【群聊环境】：
 - 这是一个名为"${groupName}"的群聊
@@ -149,7 +127,7 @@ ${aiSettings.memoryEvents ? `记忆事件：${aiSettings.memoryEvents}` : ''}
    使用场景：语音聊天、表达情绪
    要求：
    - 中括号里的内容必须是你实际会说的一句话或几句话，口语化
-   - 🚫 禁止在括号里写语气描述（如"笑着说"、"大笑"），直接写语音内容
+   - 可以在前后用少量语气说明（如"（笑着说）我今天太困了"）
    - 🚫 禁止只写纯粹的语气/情绪描述（如"哈哈大笑"、"叹气"），必须包含完整的语音内容
 
 4. 😊 **表情包**：[表情包:表情描述]
@@ -179,14 +157,12 @@ ${aiSettings.memoryEvents ? `记忆事件：${aiSettings.memoryEvents}` : ''}
 - ❌ 不要进行总结性发言
 - ❌ 不要使用英文分析
 - ❌ 不要模仿其他AI的身份发言
-- ❌ 不要使用括号进行动作、神态、语气描写（如"（摸头）"、"（笑）"、"*看着你*"），这些不是真实的社交软件聊天方式！请直接用文字、表情包或语音表达情感。
 
 ✅ **正确做法**：
 - ✅ 直接用自然的中文回复
 - ✅ 像朋友聊天一样表达
 - ✅ 根据角色性格自然发言
-- ✅ 回应其他AI时，自然地提到他们的名字
-- ✅ 阅读完整上下文，鼓励回应其他AI成员`;
+- ✅ 回应其他AI时，自然地提到他们的名字`;
 }
 
 /**
@@ -430,7 +406,13 @@ function parseAIResponse(
     });
   }
   
-  return messages;
+  // 🎯 重新排序消息：将纯文本消息放在最后，媒体消息优先
+  // 这样可以避免图片、表情包和文字混在一个气泡里
+  const textMessages = messages.filter(m => !m.mediaType);
+  const mediaMessages = messages.filter(m => m.mediaType);
+  
+  // 返回重新排序后的消息：媒体消息在前，文本消息在后
+  return [...mediaMessages, ...textMessages];
 }
 
 /**
@@ -479,37 +461,34 @@ async function generateAIReply(
       isFreeMode
     );
     
-    // 🆕 群聊整体上下文强化
-    if (groupConversation.messages.length > 0) {
-      const recentContext = groupConversation.messages.slice(-10).map(m => {
-        // 尝试识别消息发送者
-        let sender = '用户';
-        if (m.role === 'assistant') {
-          const senderId = (m as any).senderId;
-          if (senderId) {
-            const senderObj = allConversations.find(c => c.id === senderId);
-            sender = senderObj?.characterSettings?.nickname || senderObj?.name || 'AI成员';
-          } else {
-            sender = 'AI成员'; // 无法识别具体是谁
-          }
-        }
-        return `${sender}: ${m.content}`;
-      }).join('\n');
-
-      systemPrompt += `\n\n【💬 近期群聊上下文】：\n${recentContext}\n\n`;
-      systemPrompt += `🔥 **【核心指令：AI间互动优先】** 🔥\n`;
-      systemPrompt += `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`;
-      systemPrompt += `⚠️ **最高优先级**：请仔细阅读完整的群聊上下文，不要只盯着用户的最后一条消息！\n`;
-      systemPrompt += `🤝 **强烈建议回应其他AI**：如果看到其他AI成员的发言，优先回应他们而不是用户！\n`;
-      systemPrompt += `💬 **AI间互动示例**：\n`;
-      systemPrompt += `   - 如果AI-A说"今天天气真好"，你可以回应"是啊，适合出去玩了"\n`;
-      systemPrompt += `   - 如果AI-B分享了个笑话，你可以直接笑或者讲另一个笑话\n`;
-      systemPrompt += `   - 如果AI-C在讨论某个话题，你可以加入讨论或者提出新观点\n`;
-      systemPrompt += `⚡ **选择性回应用户**：只有当用户的消息真的需要回应时才回复，否则继续AI之间的讨论！\n`;
-      systemPrompt += `🆕 **发起新话题**：你可以随时开启新话题，不需要等用户说话！\n`;
-      systemPrompt += `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`;
-    }
+    // 🚀 优化：禁止动作描述提示
+    // ⚠️ 例外情况：如果角色设定明确要求进行文字描写（如语C、角色扮演、小说家），则允许使用
+    const isRoleplay = aiMember.characterSettings?.systemPrompt?.includes('语C') || 
+                      aiMember.characterSettings?.systemPrompt?.includes('文字描写') ||
+                      aiMember.characterSettings?.systemPrompt?.includes('动作描写') ||
+                      aiMember.characterSettings?.systemPrompt?.includes('小说模式');
     
+    if (!isRoleplay) {
+      systemPrompt += `
+    
+【❌ 严格禁止动作描述】：
+- 禁止使用括号描述动作或神态，如（笑着说）、（摸摸头）、（叹气）等
+- 禁止使用星号描述动作，如 *看着你*、*点头*
+- 必须像真实人类在微信/QQ聊天一样，只发送文字、图片或表情
+- 不要像写小说一样描述场景
+- 示例：
+  ❌ 错误：(开心地点头) 好的呀！
+  ✅ 正确：好的呀！[表情包:开心]`;
+    } else {
+      // 如果是语C模式，添加专门的提示
+      systemPrompt += `
+      
+【🎭 角色扮演模式】：
+- 你正在进行语言Cosplay或角色扮演
+- 可以使用括号、星号等方式进行动作、神态、心理描写
+- 请充分发挥文学创作能力，生动刻画角色`;
+    }
+
     // 构建消息历史（使用自定义上下文数量或默认30条）
     const contextEnabled = groupConversation.groupContextConfig?.enabled || false;
     const contextCount = contextEnabled 
@@ -533,6 +512,7 @@ async function generateAIReply(
       );
       systemPrompt += timeAwarePrompt;
     }
+   // 1. 格式化最近消息（保留媒体标记）
     const apiMessages = recentMessages.map(msg => {
       if (msg.role === 'system') {
         return null; // 跳过系统消息
@@ -544,7 +524,6 @@ async function generateAIReply(
       
       if (msg.role === 'assistant') {
         // 这是AI消息，需要确定是哪个AI
-        // 通过消息上下文或元数据判断（简化处理：假设有senderId字段）
         const senderId = (msg as any).senderId;
         if (senderId) {
           const sender = allConversations.find(c => c.id === senderId);
@@ -558,14 +537,39 @@ async function generateAIReply(
       }
       
       const content = formatMessageForAI(msg);
-      const prefix = role === 'user' ? `${senderName}: ` : '';
       
+      // 🎯 关键修复：如果是自由模式，将所有非自己的消息都视为 User Role，并在内容前加名字
+      // 这样AI就能“看”到其他AI的发言，而不仅仅是用户的发言
+      if (isFreeMode && role === 'user') {
+        return {
+          role: 'user',
+          content: `${senderName}: ${content}`
+        };
+      }
+      
+      // 传统模式：保持原有逻辑
+      const prefix = role === 'user' ? `${senderName}: ` : '';
       return {
         role: role,
         content: prefix + content
       };
     }).filter(m => m !== null);
     
+      // 🎯 关键修改：确保AI之间互动
+      // 如果最新的一条消息是其他AI发的，当前AI应该主要针对那条消息回复，或者是针对整个对话流
+      // 而不是只盯着"用户"发的消息
+      if (isFreeMode) {
+        systemPrompt += `
+        
+【🧠 自由群聊思维】：
+- 你正在参与一个多人自由聊天
+- 不要只盯着用户的消息回复！
+- **必须**关注最后一条消息是谁发的，如果是其他AI发的，请与他互动
+- 把这当成一个整体的群聊流，而不是"用户问-我答"的模式
+- 如果话题已经偏离了用户的初始问题，请跟随最新的话题
+- 积极回应其他群成员（包括AI）的观点`;
+      }
+
     // 调用API
     reply.status = 'typing';
     

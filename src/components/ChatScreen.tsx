@@ -4042,6 +4042,28 @@ ${SmartHTMLGenerator.getModuleInstructions()}
 记住：像真人一样使用这些功能，在合适的时机自然地发送红包、转账、文档或礼物。`
         : '你是一个AI助手。使用自然口语表达，不要使用斜杠（/）等书面符号。';
 
+      // 🚀 优化：禁止动作描述提示（适用于单聊和私聊）
+      // ⚠️ 例外情况：如果角色设定明确要求进行文字描写（如语C、角色扮演、小说家），则允许使用
+      const isRoleplay = conversation.characterSettings?.systemPrompt?.includes('语C') || 
+                        conversation.characterSettings?.systemPrompt?.includes('文字描写') ||
+                        conversation.characterSettings?.systemPrompt?.includes('动作描写') ||
+                        conversation.characterSettings?.systemPrompt?.includes('小说模式');
+      
+      if (!isRoleplay) {
+        systemPrompt += `
+        
+【❌ 严格禁止动作描述】：
+- 禁止使用括号描述动作或神态，如（笑着说）、（摸摸头）、（叹气）等
+- 禁止使用星号描述动作，如 *看着你*、*点头*
+- 必须像真实人类在微信/QQ聊天一样，只发送文字、图片或表情
+- 不要像写小说一样描述场景
+- 示例：
+  ❌ 错误：(开心地点头) 好的呀！
+  ✅ 正确：好的呀！[表情包:开心]`;
+      } else {
+        console.log('🎭 检测到角色扮演/语C模式，允许使用动作描述');
+      }
+
       // 添加用户资料信息
       systemPrompt += userInfoPrompt;
       
@@ -5159,14 +5181,14 @@ ${doc.content}`;
       {customCss && <style>{customCss}</style>}
       {/* 如果开启了隐藏尾巴，注入隐藏样式 */}
       {hideBubbleTail && <style>{`.message-tail { display: none !important; }`}</style>}
-      {/* 注入气泡装饰样式 - 只针对纯文本气泡 (.text-message-bubble) */}
+      {/* 注入气泡装饰样式 */}
       {decorationConfig?.show && (
         <style>{`
-          .message-bubble.text-message-bubble {
+          .message-bubble {
             position: relative !important;
             overflow: visible !important;
           }
-          .message-bubble.text-message-bubble::after {
+          .message-bubble::after {
             content: ${decorationConfig.type === 'text' ? `"${decorationConfig.content}"` : '""'} !important;
             position: absolute !important;
             z-index: 10 !important;
@@ -5473,17 +5495,25 @@ ${doc.content}`;
                     </div>
                   )}
                   
-                  <div 
-                    className={`message-bubble relative max-w-[85%] md:max-w-[75%] rounded-2xl shadow-sm 
-                    ${!message.mediaType && !message.moneyTransfer && !message.document && !message.order ? 'text-message-bubble' : 'media-message-bubble'}
-                    ${
-                      message.role === 'user' 
-                        ? 'bg-gradient-to-br from-blue-500 to-blue-600 text-white rounded-tr-sm' 
-                        : 'bg-white text-gray-800 rounded-tl-sm border border-gray-100'
-                    } ${message.replyTo ? 'pt-2' : 'p-3'}`}
-                    onClick={(e) => handleMessageClick(message.id, e)}
+                  <div
+                    onClick={(e) => {
+                      if (isMultiSelectMode) {
+                        toggleMessageSelection(message.id);
+                      } else {
+                        handleMessageClick(message.id, e);
+                      }
+                    }}
+                    className={`message-bubble ${message.role === 'user' ? 'user' : 'ai'} rounded-2xl shadow-sm cursor-pointer ${
+                      message.moneyTransfer 
+                        ? 'p-0 overflow-hidden'
+                        : message.role === 'user'
+                        ? 'bg-white text-gray-900 border border-gray-200'
+                        : 'bg-white text-gray-900 border border-gray-200'
+                    } ${message.mediaType || message.moneyTransfer ? 'p-0 overflow-hidden' : message.replyTo ? 'pb-2.5' : 'px-4 py-2.5'} ${
+                      isMultiSelectMode && selectedMessages.includes(message.id) ? 'ring-2 ring-purple-500' : ''
+                    }`}
                   >
-                    {/* 引用消息（在气泡内部显示，适用于普通文本消息） */}
+                    {/* 引用消息显示（只在非特殊消息时显示在这里） */}
                     {message.replyTo && !message.moneyTransfer && !message.document && !message.order && (
                       <div className="pt-3">
                         {/* 被引用的原消息 */}
@@ -5953,15 +5983,9 @@ ${doc.content}`;
                             )}
                           </div>
                         ))}
-                        {/* 文字内容独立气泡（如果有） - 与多媒体分离 */}
-                        {message.content && message.content !== '[多媒体消息]' && message.content !== '[图片]' && message.content !== '[视频]' && message.content !== '[语音]' && message.content !== '[表情包]' && (
-                          <div className={`mt-2 rounded-2xl shadow-sm p-3 ${
-                            message.role === 'user' 
-                              ? 'bg-gradient-to-br from-blue-500 to-blue-600 text-white rounded-tr-sm' 
-                              : 'bg-white text-gray-800 rounded-tl-sm border border-gray-100'
-                          }`}>
-                            <p className="text-[15px] leading-relaxed whitespace-pre-wrap break-words">{message.content}</p>
-                          </div>
+                        {/* 文字内容（如果有） */}
+                        {message.content && message.content !== '[多媒体消息]' && (
+                          <p className="text-[15px] leading-relaxed whitespace-pre-wrap break-words px-4 py-2.5">{message.content}</p>
                         )}
                       </div>
                     )}
@@ -6165,21 +6189,9 @@ ${doc.content}`;
                       </div>
                     )}
                     
-                    {/* 纯文字内容 - 只在没有多媒体内容时显示；如果有多媒体，文字会在上面独立气泡显示 */}
-                    {!message.moneyTransfer && !message.document && !message.order && !message.mediaType && !message.mediaItems && message.content && message.content.trim() && (
+                    {/* 纯文字内容 */}
+                    {!message.mediaType && !message.moneyTransfer && !message.document && !message.order && message.content && message.content.trim() && (
                       <p className={`message-content content text-[15px] leading-relaxed whitespace-pre-wrap break-words ${message.replyTo ? 'px-4' : ''}`}>{message.content}</p>
-                    )}
-                    
-                    {/* 多媒体+文字混合消息：文字独立气泡 */}
-                    {!message.moneyTransfer && !message.document && !message.order && (message.mediaType || message.mediaItems) && message.content && message.content.trim() && 
-                     message.content !== '[图片]' && message.content !== '[视频]' && message.content !== '[语音]' && message.content !== '[表情包]' && message.content !== '[多媒体消息]' && (
-                      <div className={`mt-2 rounded-2xl shadow-sm p-3 ${
-                        message.role === 'user' 
-                          ? 'bg-gradient-to-br from-blue-500 to-blue-600 text-white rounded-tr-sm' 
-                          : 'bg-white text-gray-800 rounded-tl-sm border border-gray-100'
-                      }`}>
-                        <p className="text-[15px] leading-relaxed whitespace-pre-wrap break-words">{message.content}</p>
-                      </div>
                     )}
                     {/* 用户媒体的描述文字（排除语音和表情包） */}
                     {message.role === 'user' && message.mediaType && message.mediaType !== 'sticker' && message.mediaType !== 'voice' && message.mediaDescription && (
