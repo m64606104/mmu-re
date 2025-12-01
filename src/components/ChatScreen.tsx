@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { groupToPrivateMemoryService } from '../utils/groupToPrivateMemoryService';
-import { ChevronLeft, Send, Mic, Sparkles, Smile, BellOff, Bell, Pause, Play, Image as ImageIcon, Video, Phone, MapPin, FileText, Plus, Search, MessageCircle, MessageSquare, Eye, Music, Gift } from 'lucide-react';
+import { ChevronLeft, Send, Mic, Sparkles, Smile, BellOff, Bell, Pause, Play, Image as ImageIcon, Video, Phone, MapPin, FileText, Plus, Search, MessageCircle, MessageSquare, Eye, Music } from 'lucide-react';
 import { Conversation, Message, ApiConfig, UserProfile, DocumentMessage } from '../types';
 import MoneyTransferModal from './MoneyTransferModal';
 import GroupRedPacketModal from './GroupRedPacketModal';
@@ -6595,106 +6595,171 @@ ${doc.content}`;
           </div>
         )}
 
-        {/* Toolbar */}
+        {/* 底部抽屉工具栏 */}
         {showToolbar && (
-          <div className="px-3 py-2 bg-white border-b border-gray-200">
-            <div className="flex gap-2 items-center overflow-x-auto">
-              <button onClick={() => imageInputRef.current?.click()} className="flex-shrink-0">
-                <div className="w-9 h-9 rounded-full bg-white border border-gray-300 flex items-center justify-center hover:border-gray-400 transition-colors">
-                  <ImageIcon className="w-4 h-4 text-gray-600" />
+          <>
+            {/* 遮罩层 */}
+            <div 
+              className="fixed inset-0 bg-black/30 z-40"
+              onClick={() => setShowToolbar(false)}
+            ></div>
+            
+            {/* 抽屉内容 */}
+            <div className="absolute bottom-0 left-0 right-0 bg-white rounded-t-3xl shadow-2xl z-50 max-h-[70vh] overflow-y-auto">
+              {/* 拖动条 */}
+              <div className="flex justify-center pt-3 pb-2">
+                <div className="w-12 h-1 bg-gray-300 rounded-full"></div>
+              </div>
+              
+              {/* 常用动作 */}
+              <div className="px-4 pt-2 pb-4">
+                <div className="text-xs text-gray-500 mb-3 font-medium">常用</div>
+                <div className="grid grid-cols-6 gap-4">
+                  {/* 语音 */}
+                  <button 
+                    onClick={handleVoiceClick}
+                    className="flex flex-col items-center gap-2"
+                  >
+                    <div className="w-14 h-14 rounded-full bg-gradient-to-br from-purple-400 to-purple-600 flex items-center justify-center shadow-md active:scale-95 transition-transform">
+                      <Mic className="w-6 h-6 text-white" />
+                    </div>
+                    <span className="text-xs text-gray-700">语音</span>
+                  </button>
+                  
+                  {/* 图片 */}
+                  <button 
+                    onClick={() => imageInputRef.current?.click()}
+                    className="flex flex-col items-center gap-2"
+                  >
+                    <div className="w-14 h-14 rounded-full bg-gradient-to-br from-blue-400 to-blue-600 flex items-center justify-center shadow-md active:scale-95 transition-transform">
+                      <ImageIcon className="w-6 h-6 text-white" />
+                    </div>
+                    <span className="text-xs text-gray-700">图片</span>
+                  </button>
+                  <input
+                    ref={imageInputRef}
+                    type="file"
+                    accept="image/*"
+                    multiple
+                    className="hidden"
+                    onChange={handleImageUpload}
+                  />
+                  
+                  {/* 视频 */}
+                  <button 
+                    onClick={() => videoInputRef.current?.click()}
+                    className="flex flex-col items-center gap-2"
+                  >
+                    <div className="w-14 h-14 rounded-full bg-gradient-to-br from-green-400 to-green-600 flex items-center justify-center shadow-md active:scale-95 transition-transform">
+                      <Video className="w-6 h-6 text-white" />
+                    </div>
+                    <span className="text-xs text-gray-700">视频</span>
+                  </button>
+                  <input
+                    ref={videoInputRef}
+                    type="file"
+                    accept="video/*"
+                    className="hidden"
+                    onChange={handleVideoUpload}
+                  />
+                  
+                  {/* 🧧红包 */}
+                  <button 
+                    onClick={() => {
+                      if (conversation.type === 'group') {
+                        setShowGroupRedPacketModal(true);
+                        setShowToolbar(false);
+                      } else {
+                        setShowMoneyTransferModal(true);
+                        setShowToolbar(false);
+                      }
+                    }}
+                    className="flex flex-col items-center gap-2"
+                  >
+                    <div className="w-14 h-14 rounded-full bg-gradient-to-br from-red-500 to-red-600 flex items-center justify-center shadow-md active:scale-95 transition-transform">
+                      <span className="text-2xl">🧧</span>
+                    </div>
+                    <span className="text-xs text-gray-700">红包</span>
+                  </button>
+                  
+                  {/* 文档 */}
+                  <button 
+                    onClick={() => {
+                      setShowSendDocumentModal(true);
+                      setShowToolbar(false);
+                    }}
+                    className="flex flex-col items-center gap-2"
+                  >
+                    <div className="w-14 h-14 rounded-full bg-gradient-to-br from-orange-400 to-orange-600 flex items-center justify-center shadow-md active:scale-95 transition-transform">
+                      <FileText className="w-6 h-6 text-white" />
+                    </div>
+                    <span className="text-xs text-gray-700">文档</span>
+                  </button>
+                  
+                  {/* 位置 */}
+                  <button 
+                    onClick={() => setShowLocationModal(true)}
+                    className="flex flex-col items-center gap-2"
+                  >
+                    <div className="w-14 h-14 rounded-full bg-gradient-to-br from-teal-400 to-teal-600 flex items-center justify-center shadow-md active:scale-95 transition-transform">
+                      <MapPin className="w-6 h-6 text-white" />
+                    </div>
+                    <span className="text-xs text-gray-700">位置</span>
+                  </button>
                 </div>
-              </button>
-              <input
-                ref={imageInputRef}
-                type="file"
-                accept="image/*"
-                multiple
-                className="hidden"
-                onChange={handleImageUpload}
-              />
-              <button onClick={() => videoInputRef.current?.click()} className="flex-shrink-0">
-                <div className="w-9 h-9 rounded-full bg-white border border-gray-300 flex items-center justify-center hover:border-gray-400 transition-colors">
-                  <Video className="w-4 h-4 text-gray-600" />
+              </div>
+              
+              {/* 其他功能 */}
+              <div className="px-4 pb-6 pt-2 border-t border-gray-100">
+                <div className="text-xs text-gray-500 mb-3 font-medium">更多</div>
+                <div className="grid grid-cols-4 gap-4">
+                  {/* 音乐 */}
+                  <button 
+                    onClick={() => {
+                      setShowRealMusicModal(true);
+                      setShowToolbar(false);
+                    }}
+                    className="flex flex-col items-center gap-2"
+                  >
+                    <div className="w-12 h-12 rounded-full bg-gray-100 flex items-center justify-center active:bg-gray-200 transition-colors">
+                      <Music className="w-5 h-5 text-gray-600" />
+                    </div>
+                    <span className="text-xs text-gray-700">音乐</span>
+                  </button>
+                  
+                  {/* 表情 */}
+                  <button 
+                    onClick={() => {
+                      handleStickerClick();
+                      setShowToolbar(false);
+                    }}
+                    className="flex flex-col items-center gap-2"
+                  >
+                    <div className="w-12 h-12 rounded-full bg-gray-100 flex items-center justify-center active:bg-gray-200 transition-colors">
+                      <Smile className="w-5 h-5 text-gray-600" />
+                    </div>
+                    <span className="text-xs text-gray-700">表情</span>
+                  </button>
+                  
+                  {/* 子聊天（仅私聊） */}
+                  {conversation.type === 'private' && (
+                    <button 
+                      onClick={() => {
+                        setShowSubChatManager(true);
+                        setShowToolbar(false);
+                      }}
+                      className="flex flex-col items-center gap-2"
+                    >
+                      <div className="w-12 h-12 rounded-full bg-gray-100 flex items-center justify-center active:bg-gray-200 transition-colors">
+                        <MessageCircle className="w-5 h-5 text-gray-600" />
+                      </div>
+                      <span className="text-xs text-gray-700">子聊天</span>
+                    </button>
+                  )}
                 </div>
-              </button>
-              <input
-                ref={videoInputRef}
-                type="file"
-                accept="video/*"
-                className="hidden"
-                onChange={handleVideoUpload}
-              />
-              <button 
-                className="flex-shrink-0"
-                onClick={handleVoiceClick}
-              >
-                <div className="w-9 h-9 rounded-full bg-white border border-gray-300 flex items-center justify-center hover:border-gray-400 transition-colors">
-                  <Mic className="w-4 h-4 text-gray-600" />
-                </div>
-              </button>
-              <button 
-                className="flex-shrink-0"
-                onClick={handleStickerClick}
-              >
-                <div className="w-9 h-9 rounded-full bg-white border border-gray-300 flex items-center justify-center hover:border-gray-400 transition-colors">
-                  <Smile className="w-4 h-4 text-gray-600" />
-                </div>
-              </button>
-              <button 
-                className="flex-shrink-0"
-                onClick={() => setShowRealMusicModal(true)}
-                title="搜索真实音乐"
-              >
-                <div className="w-9 h-9 rounded-full bg-white border border-gray-300 flex items-center justify-center hover:border-gray-400 transition-colors">
-                  <Music className="w-4 h-4 text-gray-600" />
-                </div>
-              </button>
-              <button 
-                className="flex-shrink-0"
-                onClick={() => setShowCallTypeSelector(true)}
-              >
-                <div className="w-9 h-9 rounded-full bg-white border border-gray-300 flex items-center justify-center hover:border-gray-400 transition-colors">
-                  <Phone className="w-4 h-4 text-gray-600" />
-                </div>
-              </button>
-              <button className="flex-shrink-0">
-                <div className="w-9 h-9 rounded-full bg-white border border-gray-300 flex items-center justify-center hover:border-gray-400 transition-colors">
-                  <MapPin className="w-4 h-4 text-gray-600" />
-                </div>
-              </button>
-              {/* 红包按钮 - 私聊打开普通红包，群聊打开群红包 */}
-              <button 
-                className="flex-shrink-0"
-                onClick={() => {
-                  if (conversation.type === 'group') {
-                    setShowGroupRedPacketModal(true);
-                  } else {
-                    setShowMoneyTransferModal(true);
-                  }
-                }}
-              >
-                <div className="w-9 h-9 rounded-full bg-white border border-gray-300 flex items-center justify-center hover:border-gray-400 transition-colors">
-                  <Gift className="w-4 h-4 text-gray-600" />
-                </div>
-              </button>
-              <button 
-                className="flex-shrink-0"
-                onClick={() => setShowSendDocumentModal(true)}
-              >
-                <div className="w-9 h-9 rounded-full bg-white border border-gray-300 flex items-center justify-center hover:border-gray-400 transition-colors">
-                  <FileText className="w-4 h-4 text-gray-600" />
-                </div>
-              </button>
-              <button 
-                className="flex-shrink-0"
-                onClick={() => setShowSubChatManager(true)}
-              >
-                <div className="w-9 h-9 rounded-full bg-white border border-purple-300 flex items-center justify-center hover:border-purple-400 transition-colors hover:bg-purple-50">
-                  <MessageCircle className="w-4 h-4 text-purple-600" />
-                </div>
-              </button>
+              </div>
             </div>
-          </div>
+          </>
         )}
 
         {/* 引用提示 */}
@@ -6958,6 +7023,82 @@ ${doc.content}`;
               onClick={handleSendSticker}
               disabled={!stickerDescInput.trim()}
               className="flex-1 px-4 py-2.5 bg-blue-500 text-white rounded-xl hover:bg-blue-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed font-medium"
+            >
+              发送
+            </button>
+          </div>
+        </div>
+      </div>
+    )}
+
+    {/* 📍 位置发送弹窗 */}
+    {showLocationModal && (
+      <div className="absolute inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+        <div className="bg-white rounded-2xl p-6 w-full max-w-sm shadow-2xl">
+          <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
+            <MapPin className="w-5 h-5 text-teal-500" />
+            发送位置
+          </h3>
+          <p className="text-sm text-gray-600 mb-4">
+            选择自动定位或手动输入位置信息
+          </p>
+          
+          {/* 自动定位按钮 */}
+          <button
+            onClick={handleAutoLocation}
+            disabled={isGettingLocation}
+            className="w-full mb-3 px-4 py-3 bg-gradient-to-r from-teal-500 to-teal-600 text-white rounded-xl hover:from-teal-600 hover:to-teal-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed font-medium flex items-center justify-center gap-2"
+          >
+            {isGettingLocation ? (
+              <>
+                <svg className="animate-spin h-5 w-5" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none"></circle>
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+                定位中...
+              </>
+            ) : (
+              <>
+                <MapPin className="w-5 h-5" />
+                自动定位
+              </>
+            )}
+          </button>
+          
+          {/* 分隔线 */}
+          <div className="flex items-center gap-3 mb-3">
+            <div className="flex-1 border-t border-gray-200"></div>
+            <span className="text-xs text-gray-400">或</span>
+            <div className="flex-1 border-t border-gray-200"></div>
+          </div>
+          
+          {/* 手动输入 */}
+          <div className="mb-4">
+            <label className="block text-sm font-medium text-gray-700 mb-2">手动输入位置</label>
+            <input
+              type="text"
+              value={locationInput}
+              onChange={(e) => setLocationInput(e.target.value)}
+              placeholder="例如：上海市浦东新区陆家嘴"
+              className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-teal-500 text-sm"
+            />
+          </div>
+          
+          <div className="flex gap-3">
+            <button
+              onClick={() => {
+                setShowLocationModal(false);
+                setLocationInput('');
+                setIsGettingLocation(false);
+              }}
+              className="flex-1 px-4 py-2.5 border border-gray-300 text-gray-700 rounded-xl hover:bg-gray-50 transition-colors font-medium"
+            >
+              取消
+            </button>
+            <button
+              onClick={handleManualLocation}
+              disabled={!locationInput.trim()}
+              className="flex-1 px-4 py-2.5 bg-teal-500 text-white rounded-xl hover:bg-teal-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed font-medium"
             >
               发送
             </button>
