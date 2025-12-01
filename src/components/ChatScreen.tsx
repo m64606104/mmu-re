@@ -1300,6 +1300,7 @@ ${recentMessages}
   const [isSpeechRecognizing, setIsSpeechRecognizing] = useState(false);
   const [speechRecognitionSupported, setSpeechRecognitionSupported] = useState(false);
   const speechRecognitionRef = useRef<any>(null);
+  const finalTranscriptRef = useRef<string>(''); // 🔥 追踪已确认的最终文本，避免重复
   
   // 检测Web Speech API支持
   useEffect(() => {
@@ -2912,16 +2913,14 @@ ${characterInfo?.languageStyle ? `语言风格：${characterInfo.languageStyle}`
           }
         }
 
-        // 实时更新文本框内容
-        const currentText = finalTranscript || interimTranscript;
-        if (currentText) {
-          setVoiceTranscript(prev => {
-            // 如果有最终结果，追加；否则替换临时结果
-            if (finalTranscript) {
-              return prev + finalTranscript;
-            }
-            return prev.replace(/[^\n]*$/, interimTranscript);
-          });
+        // 🔥 修复重复问题：只追加新的最终文本
+        if (finalTranscript) {
+          // 有最终结果，追加到已确认的文本中
+          finalTranscriptRef.current += finalTranscript;
+          setVoiceTranscript(finalTranscriptRef.current);
+        } else if (interimTranscript) {
+          // 只有临时结果，显示在已确认文本后面（不保存）
+          setVoiceTranscript(finalTranscriptRef.current + interimTranscript);
         }
       };
 
@@ -2964,6 +2963,7 @@ ${characterInfo?.languageStyle ? `语言风格：${characterInfo.languageStyle}`
   const handleVoiceClick = async () => {
     // 直接打开弹窗，让用户选择输入或语音识别
     setVoiceTranscript('');
+    finalTranscriptRef.current = ''; // 🔥 重置已确认的文本
     setShowVoiceConfirmModal(true);
   };
 
@@ -6116,7 +6116,41 @@ ${doc.content}`;
                         className="w-full max-w-[200px] rounded-2xl"
                       />
                     )}
-                    {!message.mediaItems && message.role === 'user' && message.mediaType === 'voice' && message.mediaUrl && (
+                    {/* 用户语音消息（与AI样式一致：只显示转文字，不播放音频） */}
+                    {!message.mediaItems && message.role === 'user' && message.mediaType === 'voice' && message.isMediaDescriptionOnly && (
+                      <div>
+                        <div 
+                          onClick={() => setViewingVoice(prev => 
+                            prev.includes(message.id) 
+                              ? prev.filter(id => id !== message.id)
+                              : [...prev, message.id]
+                          )}
+                          className="cursor-pointer flex items-center gap-2 px-3 py-2 bg-gray-50 rounded-xl min-w-[120px] max-w-[200px]"
+                        >
+                          <Mic className="w-4 h-4 text-gray-600 flex-shrink-0" />
+                          <div className="flex-1 flex items-center gap-0.5">
+                            <div className="flex gap-0.5">
+                              {[...Array(15)].map((_, i) => (
+                                <div 
+                                  key={i} 
+                                  className="w-0.5 bg-gray-400 rounded-full"
+                                  style={{ height: `${Math.random() * 12 + 4}px` }}
+                                />
+                              ))}
+                            </div>
+                          </div>
+                          <span className="text-xs text-gray-600 flex-shrink-0">{message.voiceDuration || 3}"</span>
+                        </div>
+                        {/* 语音内容文字（点击气泡显示） */}
+                        {viewingVoice.includes(message.id) && message.mediaDescription && (
+                          <div className="mt-2 px-4 py-2 bg-gray-50 rounded-xl border border-gray-200">
+                            <p className="text-[13px] text-gray-700">{message.mediaDescription}</p>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                    {/* 用户语音消息（旧版本：带播放功能，保留兼容） */}
+                    {!message.mediaItems && message.role === 'user' && message.mediaType === 'voice' && message.mediaUrl && !message.isMediaDescriptionOnly && (
                       <div>
                         <div 
                           onClick={() => setViewingVoice(prev => 
@@ -6992,6 +7026,7 @@ ${doc.content}`;
                 stopSpeechRecognition();
                 setShowVoiceConfirmModal(false);
                 setVoiceTranscript('');
+                finalTranscriptRef.current = ''; // 🔥 重置已确认的文本
               }}
               className="flex-1 px-4 py-2.5 border border-gray-300 text-gray-700 rounded-xl hover:bg-gray-50 transition-colors font-medium"
             >
@@ -7001,7 +7036,7 @@ ${doc.content}`;
               onClick={() => {
                 stopSpeechRecognition();
                 if (voiceTranscript.trim()) {
-                  // 发送为语音消息（带转写文字）
+                  // 发送为语音消息（只有转文字，不播放音频，与AI语音样式一致）
                   const voiceMessage: Message = {
                     id: Date.now().toString(),
                     role: 'user',
@@ -7009,7 +7044,8 @@ ${doc.content}`;
                     timestamp: Date.now(),
                     mediaType: 'voice',
                     mediaDescription: voiceTranscript.trim(), // 转写文字
-                    voiceDuration: 3 // 默认3秒
+                    voiceDuration: 3, // 默认3秒
+                    isMediaDescriptionOnly: true // 🔥 只有描述文字，不需要播放音频
                   };
                   
                   onUpdateConversation(conversation.id, {
@@ -7019,6 +7055,7 @@ ${doc.content}`;
                   
                   setShowVoiceConfirmModal(false);
                   setVoiceTranscript('');
+                  finalTranscriptRef.current = ''; // 🔥 重置已确认的文本
                 }
               }}
               disabled={!voiceTranscript.trim()}
