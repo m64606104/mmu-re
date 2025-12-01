@@ -5481,6 +5481,7 @@ ${doc.content}`;
                         ? 'bg-gradient-to-br from-blue-500 to-blue-600 text-white rounded-tr-sm' 
                         : 'bg-white text-gray-800 rounded-tl-sm border border-gray-100'
                     } ${message.replyTo ? 'pt-2' : 'p-3'}`}
+                    onClick={(e) => handleMessageClick(message.id, e)}
                   >
                     {/* 引用消息（在气泡内部显示，适用于普通文本消息） */}
                     {message.replyTo && !message.moneyTransfer && !message.document && !message.order && (
