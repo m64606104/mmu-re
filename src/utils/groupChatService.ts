@@ -35,26 +35,26 @@ export interface GroupChatCallback {
 function formatMessageForAI(msg: Message): string {
   let content = msg.content || '';
   
-  // 处理媒体描述
+  // 处理媒体描述 (移除硬编码的"用户"前缀，因为外层会添加具体昵称)
   if (msg.mediaType === 'image' && msg.mediaDescription) {
-    content += ` [用户发送了图片：${msg.mediaDescription}]`;
+    content += ` [发送了图片：${msg.mediaDescription}]`;
   } else if (msg.mediaType === 'video' && msg.mediaDescription) {
-    content += ` [用户发送了视频：${msg.mediaDescription}]`;
+    content += ` [发送了视频：${msg.mediaDescription}]`;
   } else if (msg.mediaType === 'voice' && msg.mediaDescription) {
-    content += ` [用户发送了语音：${msg.mediaDescription}]`;
+    content += ` [发送了语音：${msg.mediaDescription}]`;
   } else if (msg.mediaType === 'sticker' && msg.mediaDescription) {
-    content += ` [用户发送了表情包：${msg.mediaDescription}]`;
+    content += ` [发送了表情包：${msg.mediaDescription}]`;
   }
   
-  // 处理红包消息
+  // 处理红包消息 (移除硬编码的"用户"前缀)
   if (msg.moneyTransfer?.type === 'groupRedPacket' && msg.moneyTransfer.groupRedPacket) {
     const rp = msg.moneyTransfer.groupRedPacket;
     const typeText = rp.redPacketType === 'average' ? '普通红包' : rp.redPacketType === 'exclusive' ? '专属红包' : '拼手气红包';
-    content += ` [用户发送了群红包：${typeText}，总金额${rp.totalAmount}元，${rp.totalCount}个，留言"${rp.message}"]`;
+    content += ` [发送了群红包：${typeText}，总金额${rp.totalAmount}元，${rp.totalCount}个，留言"${rp.message}"]`;
   } else if (msg.moneyTransfer?.type === 'redPacket') {
-    content += ` [用户发送了红包：${msg.moneyTransfer.amount}元，留言"${msg.moneyTransfer.message}"]`;
+    content += ` [发送了红包：${msg.moneyTransfer.amount}元，留言"${msg.moneyTransfer.message}"]`;
   } else if (msg.moneyTransfer?.type === 'transfer') {
-    content += ` [用户转账：${msg.moneyTransfer.amount}元，留言"${msg.moneyTransfer.message}"]`;
+    content += ` [转账：${msg.moneyTransfer.amount}元，留言"${msg.moneyTransfer.message}"]`;
   }
   
   return content.trim();
@@ -460,6 +460,17 @@ async function generateAIReply(
       userName,
       isFreeMode
     );
+
+    if (isFreeMode) {
+      systemPrompt += `
+
+【🧠 自由群聊思维】：
+- 这是一个多人自由聊天环境，请完全像真人一样参与
+- 请注意观察每条消息前的【发送者名字】，明确谁说了什么
+- 你的发言对象不限于用户，可以回应任何人的消息（包括其他AI成员）
+- 不要刻意只回复最后一条消息，请结合整个对话流进行判断
+- 如果觉得不需要回复或插不上话，请输出 [不回复]`;
+    }
     
     // 🚀 优化：禁止动作描述提示
     // ⚠️ 例外情况：如果角色设定明确要求进行文字描写（如语C、角色扮演、小说家），则允许使用
@@ -521,10 +532,17 @@ async function generateAIReply(
       // 判断消息发送者
       let senderName = '用户';
       let role: 'user' | 'assistant' = 'user';
-      
+      let senderId = ''; // 🆕 增加变量声明
+
+      // 🧑‍💻 用户消息：使用具体昵称
+      if (msg.role === 'user') {
+        senderName = userName || '你';
+        role = 'user';
+      }
+
       if (msg.role === 'assistant') {
         // 这是AI消息，需要确定是哪个AI
-        const senderId = (msg as any).senderId;
+        senderId = (msg as any).senderId; // 赋值
         if (senderId) {
           const sender = allConversations.find(c => c.id === senderId);
           senderName = sender?.characterSettings?.nickname || sender?.name || 'AI';
@@ -538,38 +556,33 @@ async function generateAIReply(
       
       const content = formatMessageForAI(msg);
       
-      // 🎯 关键修复：如果是自由模式，将所有非自己的消息都视为 User Role，并在内容前加名字
-      // 这样AI就能“看”到其他AI的发言，而不仅仅是用户的发言
-      if (isFreeMode && role === 'user') {
+      // 🎯 关键修复：自由模式下，清晰标识每个角色的身份
+      // 无论是用户还是其他AI，都统一格式为 "名字: 内容"
+      // role统一使用'user'，让当前AI将其视为"外部输入"
+      // 只有当前AI自己之前的发言保持role='assistant'
+      if (role === 'assistant' && senderId !== aiMember.id) {
+        // 这是其他AI的消息 -> 标记为user role，带上名字前缀
         return {
           role: 'user',
           content: `${senderName}: ${content}`
         };
       }
       
-      // 传统模式：保持原有逻辑
-      const prefix = role === 'user' ? `${senderName}: ` : '';
+      if (role === 'user') {
+        // 这是用户的消息 -> 标记为user role，带上名字前缀
+        return {
+          role: 'user',
+          content: `${senderName}: ${content}`
+        };
+      }
+      
+      // 当前AI自己的消息 -> 保持assistant role，不带前缀（或者根据模型习惯决定）
       return {
-        role: role,
-        content: prefix + content
+        role: 'assistant',
+        content: content
       };
     }).filter(m => m !== null);
     
-      // 🎯 关键修改：确保AI之间互动
-      // 如果最新的一条消息是其他AI发的，当前AI应该主要针对那条消息回复，或者是针对整个对话流
-      // 而不是只盯着"用户"发的消息
-      if (isFreeMode) {
-        systemPrompt += `
-        
-【🧠 自由群聊思维】：
-- 你正在参与一个多人自由聊天
-- 不要只盯着用户的消息回复！
-- **必须**关注最后一条消息是谁发的，如果是其他AI发的，请与他互动
-- 把这当成一个整体的群聊流，而不是"用户问-我答"的模式
-- 如果话题已经偏离了用户的初始问题，请跟随最新的话题
-- 积极回应其他群成员（包括AI）的观点`;
-      }
-
     // 调用API
     reply.status = 'typing';
     
