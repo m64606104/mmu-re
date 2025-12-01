@@ -747,6 +747,12 @@ export default function ChatScreen({
   const [showVideoCall, setShowVideoCall] = useState(false); // 视频通话状态
   const [callType, setCallType] = useState<'video' | 'voice'>('video');
   const [showCallTypeSelector, setShowCallTypeSelector] = useState(false);
+  
+  // @ 成员列表相关状态
+  const [showAtMemberList, setShowAtMemberList] = useState(false);
+  const [atFilterText, setAtFilterText] = useState('');
+  const [atCursorPosition, setAtCursorPosition] = useState(0);
+  
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -2258,6 +2264,26 @@ ${characterInfo?.languageStyle ? `语言风格：${characterInfo.languageStyle}`
     onUpdateConversation(conversation.id, {
       messages: [...updatedMessages, patMessage]
     });
+  };
+
+  // 点击@成员列表中的成员
+  const handleSelectAtMember = (nickname: string) => {
+    const beforeAt = currentInput.slice(0, atCursorPosition);
+    const afterAt = currentInput.slice(atCursorPosition + 1 + atFilterText.length);
+    const newInput = `${beforeAt}@${nickname} ${afterAt}`;
+    setCurrentInput(newInput);
+    setShowAtMemberList(false);
+    setAtFilterText('');
+    
+    // 聚焦输入框并设置光标位置
+    if (inputRef.current) {
+      const textarea = inputRef.current as unknown as HTMLTextAreaElement;
+      setTimeout(() => {
+        textarea.focus();
+        const newCursorPos = beforeAt.length + nickname.length + 2; // @昵称 后面
+        textarea.setSelectionRange(newCursorPos, newCursorPos);
+      }, 0);
+    }
   };
 
   // 处理图片上传（支持多图）
@@ -6597,6 +6623,67 @@ ${doc.content}`;
           </div>
         )}
 
+        {/* @成员列表弹窗 */}
+        {showAtMemberList && conversation.type === 'group' && (
+          <div className="absolute bottom-16 left-0 right-0 bg-white border-t border-gray-200 shadow-lg max-h-60 overflow-y-auto">
+            <div className="p-2 space-y-1">
+              {(conversation.members || [])
+                .map(memberId => conversations.find(c => c.id === memberId))
+                .filter(c => c)
+                .filter(member => {
+                  const nickname = (member as Conversation).characterSettings?.nickname || (member as Conversation).name;
+                  return nickname.toLowerCase().includes(atFilterText.toLowerCase());
+                })
+                .map(member => {
+                  const m = member as Conversation;
+                  const nickname = m.characterSettings?.nickname || m.name;
+                  return (
+                    <button
+                      key={m.id}
+                      onClick={() => handleSelectAtMember(nickname)}
+                      className="w-full flex items-center gap-3 p-2 rounded-lg hover:bg-gray-100 transition-colors"
+                    >
+                      <div className="w-10 h-10 rounded-full overflow-hidden border-2 border-white shadow-sm flex-shrink-0">
+                        {m.characterSettings?.avatar || m.avatar ? (
+                          <img
+                            src={m.characterSettings?.avatar || m.avatar}
+                            alt={nickname}
+                            className="w-full h-full object-cover"
+                          />
+                        ) : (
+                          <div className="w-full h-full bg-gradient-to-br from-blue-400 to-purple-500 flex items-center justify-center">
+                            <span className="text-white text-sm font-semibold">
+                              {nickname.charAt(0)}
+                            </span>
+                          </div>
+                        )}
+                      </div>
+                      <div className="flex-1 text-left">
+                        <div className="font-medium text-gray-900 text-sm">{nickname}</div>
+                        {m.characterSettings?.personality && (
+                          <div className="text-xs text-gray-500 truncate">
+                            {m.characterSettings.personality.slice(0, 20)}...
+                          </div>
+                        )}
+                      </div>
+                    </button>
+                  );
+                })}
+              {(conversation.members || [])
+                .map(memberId => conversations.find(c => c.id === memberId))
+                .filter(c => c)
+                .filter(member => {
+                  const nickname = (member as Conversation).characterSettings?.nickname || (member as Conversation).name;
+                  return nickname.toLowerCase().includes(atFilterText.toLowerCase());
+                }).length === 0 && (
+                <div className="text-center py-4 text-gray-400 text-sm">
+                  没有匹配的成员
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+        
         {/* Input bar */}
         <div className="px-3 py-3 bg-white">
           <div className="flex items-center gap-2">
@@ -6611,7 +6698,30 @@ ${doc.content}`;
                 ref={inputRef as any}
                 value={currentInput}
                 onChange={(e) => {
-                  setCurrentInput(e.target.value);
+                  const value = e.target.value;
+                  const cursorPos = e.target.selectionStart || 0;
+                  setCurrentInput(value);
+                  
+                  // 检测@输入（仅群聊）
+                  if (conversation.type === 'group') {
+                    const textBeforeCursor = value.slice(0, cursorPos);
+                    const lastAtIndex = textBeforeCursor.lastIndexOf('@');
+                    
+                    if (lastAtIndex !== -1) {
+                      const textAfterAt = textBeforeCursor.slice(lastAtIndex + 1);
+                      // 如果@后面没有空格，显示成员列表
+                      if (!textAfterAt.includes(' ')) {
+                        setShowAtMemberList(true);
+                        setAtFilterText(textAfterAt);
+                        setAtCursorPosition(lastAtIndex);
+                      } else {
+                        setShowAtMemberList(false);
+                      }
+                    } else {
+                      setShowAtMemberList(false);
+                    }
+                  }
+                  
                   // 自动调整高度
                   e.target.style.height = 'auto';
                   e.target.style.height = Math.min(e.target.scrollHeight, 120) + 'px';
