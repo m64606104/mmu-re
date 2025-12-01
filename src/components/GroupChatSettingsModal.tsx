@@ -1,13 +1,13 @@
 import React, { useState } from 'react';
-import { X, Users, MessageCircle, Info, Image as ImageIcon, UserPlus, UserMinus, Trash2, Camera } from 'lucide-react';
+import { X, Users, Info, Image as ImageIcon, UserPlus, UserMinus, Trash2, Camera, ChevronRight } from 'lucide-react';
 import { Conversation } from '../types';
 
 interface GroupChatSettingsModalProps {
   conversation: Conversation;
-  conversations: Conversation[]; // 需要用于成员选择
+  conversations: Conversation[];
   onClose: () => void;
   onUpdateConversation: (conversationId: string, updates: Partial<Conversation>) => void;
-  onDeleteConversation?: (conversationId: string) => void; // 删除群功能
+  onDeleteConversation?: (conversationId: string) => void;
 }
 
 const GroupChatSettingsModal: React.FC<GroupChatSettingsModalProps> = ({
@@ -17,7 +17,7 @@ const GroupChatSettingsModal: React.FC<GroupChatSettingsModalProps> = ({
   onUpdateConversation,
   onDeleteConversation,
 }) => {
-  const [activeTab, setActiveTab] = useState<'info' | 'mode' | 'members'>('info');
+  // 状态管理
   const [groupChatMode, setGroupChatMode] = useState<'sequential' | 'free'>(
     conversation.groupChatMode || 'sequential'
   );
@@ -31,6 +31,7 @@ const GroupChatSettingsModal: React.FC<GroupChatSettingsModalProps> = ({
   // 上下文配置状态
   const [contextEnabled, setContextEnabled] = useState(conversation.groupContextConfig?.enabled || false);
   const [contextMessageCount, setContextMessageCount] = useState(conversation.groupContextConfig?.messageCount || 30);
+  
   // 生成温度（0-1）
   const [groupTemperature, setGroupTemperature] = useState<number>(
     typeof conversation.groupTemperature === 'number'
@@ -100,14 +101,12 @@ const GroupChatSettingsModal: React.FC<GroupChatSettingsModalProps> = ({
     }
   };
 
-  // 获取成员信息
   const getMembers = () => {
     return (conversation.members || [])
       .map(memberId => conversations.find(c => c.id === memberId))
       .filter(c => c) as Conversation[];
   };
 
-  // 温度标签与描述（与私聊页风格一致的分层说明）
   const getTempLabel = (t: number) => (t <= 0.3 ? '稳重聚焦' : t <= 0.6 ? '均衡自然' : '灵感活跃');
   const getTempDesc = (t: number) => (
     t <= 0.3
@@ -117,7 +116,6 @@ const GroupChatSettingsModal: React.FC<GroupChatSettingsModalProps> = ({
       : '更有创意与惊喜，可能偶尔跑题或炫技'
   );
 
-  // 获取可添加的联系人（排除已在群内的）
   const getAvailableContacts = () => {
     const memberIds = conversation.members || [];
     return conversations.filter(c => 
@@ -127,7 +125,7 @@ const GroupChatSettingsModal: React.FC<GroupChatSettingsModalProps> = ({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
-      <div className="bg-white rounded-3xl w-[90%] max-w-md max-h-[80vh] overflow-hidden shadow-2xl">
+      <div className="bg-white rounded-3xl w-[90%] max-w-md max-h-[85vh] overflow-hidden shadow-2xl flex flex-col">
         {/* 标题栏 */}
         <div className="sticky top-0 bg-gradient-to-r from-blue-500 to-purple-500 text-white px-6 py-4 flex items-center justify-between">
           <div className="flex items-center gap-3">
@@ -142,45 +140,19 @@ const GroupChatSettingsModal: React.FC<GroupChatSettingsModalProps> = ({
           </button>
         </div>
 
-        {/* 标签页 */}
-        <div className="flex border-b border-gray-200 bg-white">
-          <button
-            onClick={() => setActiveTab('info')}
-            className={`flex-1 py-3 px-4 text-sm font-medium transition-colors ${
-              activeTab === 'info'
-                ? 'text-blue-600 border-b-2 border-blue-600'
-                : 'text-gray-600 hover:text-gray-900'
-            }`}
-          >
-            群信息
-          </button>
-          <button
-            onClick={() => setActiveTab('mode')}
-            className={`flex-1 py-3 px-4 text-sm font-medium transition-colors ${
-              activeTab === 'mode'
-                ? 'text-blue-600 border-b-2 border-blue-600'
-                : 'text-gray-600 hover:text-gray-900'
-            }`}
-          >
-            回复模式
-          </button>
-          <button
-            onClick={() => setActiveTab('members')}
-            className={`flex-1 py-3 px-4 text-sm font-medium transition-colors ${
-              activeTab === 'members'
-                ? 'text-blue-600 border-b-2 border-blue-600'
-                : 'text-gray-600 hover:text-gray-900'
-            }`}
-          >
-            成员管理
-          </button>
-        </div>
-
-        {/* 内容区域 */}
-        <div className="p-6 space-y-6 overflow-y-auto max-h-[calc(80vh-200px)]">
-          {/* 群信息标签页 */}
-          {activeTab === 'info' && (
-            <div className="space-y-4">
+        {/* 折叠面板内容区域 */}
+        <div className="flex-1 overflow-y-auto p-4 space-y-3 bg-gray-50">
+          
+          {/* 📋 群信息 */}
+          <details className="bg-white rounded-lg shadow-sm overflow-hidden group border border-gray-100" open>
+            <summary className="px-4 py-3 flex items-center justify-between bg-gray-50 border-b border-gray-100 cursor-pointer list-none select-none hover:bg-gray-100 transition-colors">
+              <div className="flex items-center gap-2">
+                <div className="w-1 h-4 bg-blue-500 rounded-full"></div>
+                <h3 className="text-sm font-medium text-gray-900">群信息</h3>
+              </div>
+              <ChevronRight className="w-4 h-4 text-gray-500 transition-transform group-open:rotate-90" />
+            </summary>
+            <div className="p-4 space-y-4">
               {/* 群头像 */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">群头像</label>
@@ -254,171 +226,169 @@ const GroupChatSettingsModal: React.FC<GroupChatSettingsModalProps> = ({
                 </button>
               </div>
             </div>
-          )}
+          </details>
 
-          {/* 回复模式标签页 */}
-          {activeTab === 'mode' && (
-            <div className="space-y-4">
-            {/* 对话行为 */}
-            <div className="bg-white rounded-lg shadow-sm overflow-hidden border border-gray-100">
-              <div className="px-4 py-3 flex items-center justify-between bg-gray-50 border-b border-gray-100">
-                <div className="flex items-center gap-2">
-                  <MessageCircle className="w-5 h-5 text-blue-500" />
-                  <h3 className="text-sm font-medium text-gray-900">对话行为</h3>
-                </div>
-              </div>
-              <div className="p-4 space-y-3">
-              {/* 顺序模式 */}
-              <button
-                onClick={() => setGroupChatMode('sequential')}
-                className={`w-full text-left p-4 rounded-xl border-2 transition-all ${
-                  groupChatMode === 'sequential'
-                    ? 'border-blue-500 bg-blue-50'
-                    : 'border-gray-200 bg-white hover:border-gray-300'
-                }`}
-              >
-                <div className="flex items-start justify-between mb-2">
-                  <div className="font-medium text-gray-900">顺序模式</div>
-                  {groupChatMode === 'sequential' && (
-                    <div className="w-5 h-5 bg-blue-500 rounded-full flex items-center justify-center">
-                      <div className="w-2 h-2 bg-white rounded-full"></div>
-                    </div>
-                  )}
-                </div>
-                <div className="text-sm text-gray-600">
-                  所有AI成员依次回复，确保每个AI都能发言
-                </div>
-              </button>
-
-              {/* 自由模式 */}
-              <button
-                onClick={() => setGroupChatMode('free')}
-                className={`w-full text-left p-4 rounded-xl border-2 transition-all ${
-                  groupChatMode === 'free'
-                    ? 'border-purple-500 bg-purple-50'
-                    : 'border-gray-200 bg-white hover:border-gray-300'
-                }`}
-              >
-                <div className="flex items-start justify-between mb-2">
-                  <div className="font-medium text-gray-900">自由模式</div>
-                  {groupChatMode === 'free' && (
-                    <div className="w-5 h-5 bg-purple-500 rounded-full flex items-center justify-center">
-                      <div className="w-2 h-2 bg-white rounded-full"></div>
-                    </div>
-                  )}
-                </div>
-                <div className="text-sm text-gray-600">
-                  随机选择0到全部AI回复，AI之间可以自由对话
-                </div>
-              </button>
-              {/* 自由模式说明 */}
-              {groupChatMode === 'free' && (
-                <div className="bg-purple-50 rounded-xl p-4 border border-purple-200">
-                  <div className="flex items-start gap-2">
-                    <Info className="w-5 h-5 text-purple-500 flex-shrink-0 mt-0.5" />
-                    <div className="text-sm text-gray-700">
-                      <div className="font-medium text-purple-900 mb-2">自由模式特性：</div>
-                      <ul className="space-y-1 list-disc list-inside">
-                        <li>每次生成时随机选择参与回复的AI数量</li>
-                        <li>AI可以根据其他AI的消息进行回复</li>
-                        <li>AI可以引入新话题，保持对话活跃</li>
-                        <li>即使没有新消息，AI也会继续聊天</li>
-                        <li>如果没有AI回复，会显示提示信息</li>
-                      </ul>
-                    </div>
-                  </div>
-                </div>
-              )}
-              </div>
-            </div>
-
-          {/* 生成温度设置 */}
-          <div className="bg-white rounded-lg shadow-sm overflow-hidden border border-gray-100">
-            <div className="px-4 py-3 flex items-center justify-between bg-gray-50 border-b border-gray-100">
+          {/* 💬 回复模式 */}
+          <details className="bg-white rounded-lg shadow-sm overflow-hidden group border border-gray-100">
+            <summary className="px-4 py-3 flex items-center justify-between bg-gray-50 border-b border-gray-100 cursor-pointer list-none select-none hover:bg-gray-100 transition-colors">
               <div className="flex items-center gap-2">
-                <MessageCircle className="w-5 h-5 text-orange-500" />
-                <h3 className="text-sm font-medium text-gray-900">生成温度</h3>
+                <div className="w-1 h-4 bg-purple-500 rounded-full"></div>
+                <h3 className="text-sm font-medium text-gray-900">回复模式</h3>
               </div>
-              <div className="text-sm font-medium text-orange-600 pr-1">
-                {getTempLabel(groupTemperature)} · {groupTemperature.toFixed(1)}
-              </div>
-            </div>
-            <div className="flex items-center justify-between mb-3">
-              <div className="text-sm text-gray-600">控制创意与连贯性的平衡</div>
-              <div className="text-xs text-gray-500">0.0 - 1.0</div>
-            </div>
-            <div className="bg-orange-50 rounded-lg mx-4 mb-4 p-3 border border-orange-200">
-              <input
-                type="range"
-                min="0"
-                max="1"
-                step="0.1"
-                value={groupTemperature}
-                onChange={(e) => setGroupTemperature(parseFloat(e.target.value))}
-                className="w-full h-2 bg-orange-200 rounded-lg appearance-none cursor-pointer"
-              />
-              <div className="flex justify-between text-xs text-gray-500 mt-1">
-                <span>稳重</span>
-                <span>均衡</span>
-                <span>活跃</span>
-              </div>
-              <div className="text-xs text-gray-600 bg-white/70 rounded-md p-2 mt-3">
-                {getTempDesc(groupTemperature)}
-              </div>
-            </div>
-          </div>
-
-          {/* 自定义上下文数量 */}
-          <div className="border-t pt-4 mt-4">
-            <div className="flex items-center justify-between mb-3">
-              <div className="flex items-center gap-2">
-                <MessageCircle className="w-5 h-5 text-green-500" />
-                <h3 className="font-semibold text-gray-900">自定义上下文数量</h3>
-              </div>
-              <label className="relative inline-flex items-center cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={contextEnabled}
-                  onChange={(e) => setContextEnabled(e.target.checked)}
-                  className="sr-only peer"
-                />
-                <div className="w-11 h-6 bg-gray-300 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-green-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-green-600"></div>
-              </label>
-            </div>
-            
-            {contextEnabled && (
+              <ChevronRight className="w-4 h-4 text-gray-500 transition-transform group-open:rotate-90" />
+            </summary>
+            <div className="p-4 space-y-4">
+              {/* 对话行为 */}
               <div className="space-y-3">
-                <div className="bg-green-50 rounded-lg p-3 border border-green-200">
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="text-sm font-medium text-gray-700">上下文消息数量：</span>
-                    <span className="text-sm font-bold text-green-600">{contextMessageCount} 条</span>
+                <h4 className="text-xs font-medium text-gray-500 uppercase tracking-wide">对话行为</h4>
+                
+                {/* 顺序模式 */}
+                <button
+                  onClick={() => setGroupChatMode('sequential')}
+                  className={`w-full text-left p-4 rounded-xl border-2 transition-all ${
+                    groupChatMode === 'sequential'
+                      ? 'border-blue-500 bg-blue-50'
+                      : 'border-gray-200 bg-white hover:border-gray-300'
+                  }`}
+                >
+                  <div className="flex items-start justify-between mb-2">
+                    <div className="font-medium text-gray-900">顺序模式</div>
+                    {groupChatMode === 'sequential' && (
+                      <div className="w-5 h-5 bg-blue-500 rounded-full flex items-center justify-center">
+                        <div className="w-2 h-2 bg-white rounded-full"></div>
+                      </div>
+                    )}
                   </div>
+                  <div className="text-sm text-gray-600">
+                    所有AI成员依次回复，确保每个AI都能发言
+                  </div>
+                </button>
+
+                {/* 自由模式 */}
+                <button
+                  onClick={() => setGroupChatMode('free')}
+                  className={`w-full text-left p-4 rounded-xl border-2 transition-all ${
+                    groupChatMode === 'free'
+                      ? 'border-purple-500 bg-purple-50'
+                      : 'border-gray-200 bg-white hover:border-gray-300'
+                  }`}
+                >
+                  <div className="flex items-start justify-between mb-2">
+                    <div className="font-medium text-gray-900">自由模式</div>
+                    {groupChatMode === 'free' && (
+                      <div className="w-5 h-5 bg-purple-500 rounded-full flex items-center justify-center">
+                        <div className="w-2 h-2 bg-white rounded-full"></div>
+                      </div>
+                    )}
+                  </div>
+                  <div className="text-sm text-gray-600">
+                    随机选择0到全部AI回复，AI之间可以自由对话
+                  </div>
+                </button>
+                
+                {/* 自由模式说明 */}
+                {groupChatMode === 'free' && (
+                  <div className="bg-purple-50 rounded-xl p-4 border border-purple-200">
+                    <div className="flex items-start gap-2">
+                      <Info className="w-5 h-5 text-purple-500 flex-shrink-0 mt-0.5" />
+                      <div className="text-sm text-gray-700">
+                        <div className="font-medium text-purple-900 mb-2">自由模式特性：</div>
+                        <ul className="space-y-1 list-disc list-inside text-xs">
+                          <li>每次生成时随机选择参与回复的AI数量</li>
+                          <li>AI可以根据其他AI的消息进行回复</li>
+                          <li>AI可以引入新话题，保持对话活跃</li>
+                          <li>即使没有新消息，AI也会继续聊天</li>
+                        </ul>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* 生成温度设置 */}
+              <div className="space-y-3 pt-4 border-t border-gray-100">
+                <div className="flex items-center justify-between">
+                  <h4 className="text-xs font-medium text-gray-500 uppercase tracking-wide">生成温度</h4>
+                  <div className="text-sm font-medium text-orange-600">
+                    {getTempLabel(groupTemperature)} · {groupTemperature.toFixed(1)}
+                  </div>
+                </div>
+                <div className="bg-orange-50 rounded-lg p-3 border border-orange-200">
                   <input
                     type="range"
-                    min="1"
-                    max="100"
-                    value={contextMessageCount}
-                    onChange={(e) => setContextMessageCount(parseInt(e.target.value))}
-                    className="w-full h-2 bg-green-200 rounded-lg appearance-none cursor-pointer"
+                    min="0"
+                    max="1"
+                    step="0.1"
+                    value={groupTemperature}
+                    onChange={(e) => setGroupTemperature(parseFloat(e.target.value))}
+                    className="w-full h-2 bg-orange-200 rounded-lg appearance-none cursor-pointer"
                   />
                   <div className="flex justify-between text-xs text-gray-500 mt-1">
-                    <span>1条</span>
-                    <span>100条</span>
+                    <span>稳重</span>
+                    <span>均衡</span>
+                    <span>活跃</span>
+                  </div>
+                  <div className="text-xs text-gray-600 bg-white/70 rounded-md p-2 mt-3">
+                    {getTempDesc(groupTemperature)}
                   </div>
                 </div>
-                <div className="text-xs text-gray-600 bg-gray-50 rounded-lg p-3">
-                  💡 说明：控制AI回复时参考的历史消息数量。消息越多，AI理解上下文越准确，但会增加API调用成本。
-                </div>
               </div>
-            )}
-          </div>
 
+              {/* 自定义上下文数量 */}
+              <div className="space-y-3 pt-4 border-t border-gray-100">
+                <div className="flex items-center justify-between">
+                  <h4 className="text-xs font-medium text-gray-500 uppercase tracking-wide">自定义上下文数量</h4>
+                  <label className="relative inline-flex items-center cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={contextEnabled}
+                      onChange={(e) => setContextEnabled(e.target.checked)}
+                      className="sr-only peer"
+                    />
+                    <div className="w-11 h-6 bg-gray-300 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-green-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-green-600"></div>
+                  </label>
+                </div>
+                
+                {contextEnabled && (
+                  <div className="space-y-3">
+                    <div className="bg-green-50 rounded-lg p-3 border border-green-200">
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="text-sm font-medium text-gray-700">上下文消息数量：</span>
+                        <span className="text-sm font-bold text-green-600">{contextMessageCount} 条</span>
+                      </div>
+                      <input
+                        type="range"
+                        min="1"
+                        max="100"
+                        value={contextMessageCount}
+                        onChange={(e) => setContextMessageCount(parseInt(e.target.value))}
+                        className="w-full h-2 bg-green-200 rounded-lg appearance-none cursor-pointer"
+                      />
+                      <div className="flex justify-between text-xs text-gray-500 mt-1">
+                        <span>1条</span>
+                        <span>100条</span>
+                      </div>
+                    </div>
+                    <div className="text-xs text-gray-600 bg-gray-50 rounded-lg p-3">
+                      💡 控制AI回复时参考的历史消息数量。消息越多，AI理解上下文越准确，但会增加API调用成本。
+                    </div>
+                  </div>
+                )}
+              </div>
             </div>
-          )}
+          </details>
 
-          {/* 成员管理标签页 */}
-          {activeTab === 'members' && (
-            <div className="space-y-4">
+          {/* 👥 成员管理 */}
+          <details className="bg-white rounded-lg shadow-sm overflow-hidden group border border-gray-100">
+            <summary className="px-4 py-3 flex items-center justify-between bg-gray-50 border-b border-gray-100 cursor-pointer list-none select-none hover:bg-gray-100 transition-colors">
+              <div className="flex items-center gap-2">
+                <div className="w-1 h-4 bg-green-500 rounded-full"></div>
+                <h3 className="text-sm font-medium text-gray-900">成员管理</h3>
+                <span className="text-xs text-gray-500">({getMembers().length})</span>
+              </div>
+              <ChevronRight className="w-4 h-4 text-gray-500 transition-transform group-open:rotate-90" />
+            </summary>
+            <div className="p-4 space-y-4">
               {/* 添加成员按钮 */}
               <button
                 onClick={() => setShowAddMember(true)}
@@ -430,9 +400,6 @@ const GroupChatSettingsModal: React.FC<GroupChatSettingsModalProps> = ({
 
               {/* 成员列表 */}
               <div className="space-y-2">
-                <div className="text-sm font-medium text-gray-700 mb-3">
-                  群成员 ({getMembers().length})
-                </div>
                 {getMembers().map(member => (
                   <div
                     key={member.id}
@@ -485,7 +452,7 @@ const GroupChatSettingsModal: React.FC<GroupChatSettingsModalProps> = ({
                 )}
               </div>
             </div>
-          )}
+          </details>
         </div>
 
         {/* 底部按钮 */}
@@ -509,7 +476,6 @@ const GroupChatSettingsModal: React.FC<GroupChatSettingsModalProps> = ({
       {showAddMember && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 backdrop-blur-sm">
           <div className="bg-white rounded-2xl w-[90%] max-w-md max-h-[70vh] overflow-hidden shadow-2xl flex flex-col">
-            {/* 标题栏 */}
             <div className="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
               <h3 className="text-lg font-semibold text-gray-900">添加群成员</h3>
               <button
@@ -523,7 +489,6 @@ const GroupChatSettingsModal: React.FC<GroupChatSettingsModalProps> = ({
               </button>
             </div>
 
-            {/* 联系人列表 */}
             <div className="flex-1 overflow-y-auto p-4">
               {getAvailableContacts().length === 0 ? (
                 <div className="text-center py-8 text-gray-400">
@@ -577,7 +542,6 @@ const GroupChatSettingsModal: React.FC<GroupChatSettingsModalProps> = ({
               )}
             </div>
 
-            {/* 底部按钮 */}
             <div className="p-4 border-t border-gray-200 flex gap-3">
               <button
                 onClick={() => {
