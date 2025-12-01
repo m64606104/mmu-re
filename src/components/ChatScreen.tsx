@@ -753,6 +753,14 @@ export default function ChatScreen({
   const [atFilterText, setAtFilterText] = useState('');
   const [atCursorPosition, setAtCursorPosition] = useState(0);
   
+  // 更多菜单
+  const [showMoreMenu, setShowMoreMenu] = useState(false);
+  
+  // 位置功能
+  const [showLocationModal, setShowLocationModal] = useState(false);
+  const [locationInput, setLocationInput] = useState('');
+  const [isGettingLocation, setIsGettingLocation] = useState(false);
+  
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -2284,6 +2292,77 @@ ${characterInfo?.languageStyle ? `语言风格：${characterInfo.languageStyle}`
         textarea.setSelectionRange(newCursorPos, newCursorPos);
       }, 0);
     }
+  };
+
+  // 📍 位置功能：自动定位
+  const handleAutoLocation = async () => {
+    setIsGettingLocation(true);
+    try {
+      if (!navigator.geolocation) {
+        alert('您的浏览器不支持定位功能');
+        setIsGettingLocation(false);
+        return;
+      }
+      
+      navigator.geolocation.getCurrentPosition(
+        (position) => {
+          const { latitude, longitude } = position.coords;
+          const locationText = `📍 位置：${latitude.toFixed(6)}, ${longitude.toFixed(6)}`;
+          
+          const newMessage: Message = {
+            id: Date.now().toString(),
+            role: 'user',
+            content: locationText,
+            timestamp: Date.now()
+          };
+          
+          onUpdateConversation(conversation.id, {
+            messages: [...conversation.messages, newMessage],
+            lastMessageTime: Date.now()
+          });
+          
+          setShowLocationModal(false);
+          setIsGettingLocation(false);
+          setShowToolbar(false);
+        },
+        (error) => {
+          console.error('定位失败:', error);
+          alert('定位失败，请尝试手动输入位置');
+          setIsGettingLocation(false);
+        },
+        { timeout: 10000, enableHighAccuracy: true }
+      );
+    } catch (error) {
+      console.error('定位错误:', error);
+      alert('定位出错，请尝试手动输入位置');
+      setIsGettingLocation(false);
+    }
+  };
+
+  // 📍 位置功能：手动输入
+  const handleManualLocation = () => {
+    if (!locationInput.trim()) {
+      alert('请输入位置信息');
+      return;
+    }
+    
+    const locationText = `📍 位置：${locationInput.trim()}`;
+    
+    const newMessage: Message = {
+      id: Date.now().toString(),
+      role: 'user',
+      content: locationText,
+      timestamp: Date.now()
+    };
+    
+    onUpdateConversation(conversation.id, {
+      messages: [...conversation.messages, newMessage],
+      lastMessageTime: Date.now()
+    });
+    
+    setLocationInput('');
+    setShowLocationModal(false);
+    setShowToolbar(false);
   };
 
   // 处理图片上传（支持多图）
@@ -5330,40 +5409,6 @@ ${doc.content}`;
             <Search className="w-5 h-5 text-gray-700" />
           </button>
           
-          {/* 💬 子聊天按钮 */}
-          {conversation.type === 'private' && (
-            <button
-              onClick={() => setShowSubChatManager(true)}
-              className="p-2 hover:bg-gray-100 rounded-lg transition-colors relative"
-              title="子聊天"
-            >
-              <MessageCircle className="w-5 h-5 text-gray-700" />
-              {/* 未读数角标 */}
-              {subChatUnreadCount > 0 && (
-                <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs px-1.5 py-0.5 rounded-full min-w-[18px] text-center">
-                  {subChatUnreadCount > 99 ? '99+' : subChatUnreadCount}
-                </span>
-              )}
-              {/* 待处理请求角标 */}
-              {pendingSubChatsCount > 0 && subChatUnreadCount === 0 && (
-                <span className="absolute -top-1 -right-1 bg-yellow-500 text-white text-xs px-1.5 py-0.5 rounded-full min-w-[18px] text-center">
-                  {pendingSubChatsCount}
-                </span>
-              )}
-            </button>
-          )}
-          
-          {/* 视频通话按钮 (仅私聊) */}
-          {conversation.type === 'private' && (
-            <button
-              onClick={() => setShowVideoCall(true)}
-              className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
-              title="视频通话"
-            >
-              <Video className="w-5 h-5 text-gray-700" />
-            </button>
-          )}
-          
           {/* 免打扰按钮 */}
           <button
             onClick={() => {
@@ -5381,35 +5426,108 @@ ${doc.content}`;
             )}
           </button>
           
-          {/* 设置按钮 */}
-          {conversation.type === 'private' && (
+          {/* 更多菜单按钮 */}
+          <div className="relative">
             <button
-              onClick={onOpenCharacterSettings}
-              className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
-              title="角色设置"
+              onClick={() => setShowMoreMenu(!showMoreMenu)}
+              className="p-2 hover:bg-gray-100 rounded-lg transition-colors relative"
+              title="更多"
             >
               <svg className="w-5 h-5 text-gray-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <circle cx="12" cy="5" r="1.5" fill="currentColor"/>
                 <circle cx="12" cy="12" r="1.5" fill="currentColor"/>
                 <circle cx="12" cy="19" r="1.5" fill="currentColor"/>
               </svg>
+              {/* 子聊天未读/待处理红点提示（仅私聊） */}
+              {conversation.type === 'private' && (subChatUnreadCount > 0 || pendingSubChatsCount > 0) && (
+                <span className="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full"></span>
+              )}
             </button>
-          )}
-          
-          {/* 群聊设置按钮 */}
-          {conversation.type === 'group' && (
-            <button
-              onClick={() => setShowGroupSettings(true)}
-              className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
-              title="群聊设置"
-            >
-              <svg className="w-5 h-5 text-gray-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <circle cx="12" cy="5" r="1.5" fill="currentColor"/>
-                <circle cx="12" cy="12" r="1.5" fill="currentColor"/>
-                <circle cx="12" cy="19" r="1.5" fill="currentColor"/>
-              </svg>
-            </button>
-          )}
+            
+            {/* 更多菜单下拉 */}
+            {showMoreMenu && (
+              <>
+                {/* 遮罩层 */}
+                <div 
+                  className="fixed inset-0 z-40" 
+                  onClick={() => setShowMoreMenu(false)}
+                ></div>
+                
+                {/* 菜单内容 */}
+                <div className="absolute right-0 top-full mt-2 w-48 bg-white rounded-lg shadow-lg border border-gray-200 py-1 z-50">
+                  {/* 私聊菜单项 */}
+                  {conversation.type === 'private' && (
+                    <>
+                      {/* 子聊天 */}
+                      <button
+                        onClick={() => {
+                          setShowSubChatManager(true);
+                          setShowMoreMenu(false);
+                        }}
+                        className="w-full px-4 py-2.5 text-left hover:bg-gray-50 transition-colors flex items-center justify-between"
+                      >
+                        <div className="flex items-center gap-3">
+                          <MessageCircle className="w-4 h-4 text-gray-600" />
+                          <span className="text-sm text-gray-700">子聊天</span>
+                        </div>
+                        {(subChatUnreadCount > 0 || pendingSubChatsCount > 0) && (
+                          <span className="text-xs text-red-500 font-medium">
+                            {subChatUnreadCount > 0 ? subChatUnreadCount : pendingSubChatsCount}
+                          </span>
+                        )}
+                      </button>
+                      
+                      {/* 视频/语音通话 */}
+                      <button
+                        onClick={() => {
+                          setShowCallTypeSelector(true);
+                          setShowMoreMenu(false);
+                        }}
+                        className="w-full px-4 py-2.5 text-left hover:bg-gray-50 transition-colors flex items-center gap-3"
+                      >
+                        <Phone className="w-4 h-4 text-gray-600" />
+                        <span className="text-sm text-gray-700">通话</span>
+                      </button>
+                      
+                      <div className="border-t border-gray-100 my-1"></div>
+                      
+                      {/* 角色设置 */}
+                      <button
+                        onClick={() => {
+                          onOpenCharacterSettings();
+                          setShowMoreMenu(false);
+                        }}
+                        className="w-full px-4 py-2.5 text-left hover:bg-gray-50 transition-colors flex items-center gap-3"
+                      >
+                        <svg className="w-4 h-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                        </svg>
+                        <span className="text-sm text-gray-700">角色设置</span>
+                      </button>
+                    </>
+                  )}
+                  
+                  {/* 群聊菜单项 */}
+                  {conversation.type === 'group' && (
+                    <button
+                      onClick={() => {
+                        setShowGroupSettings(true);
+                        setShowMoreMenu(false);
+                      }}
+                      className="w-full px-4 py-2.5 text-left hover:bg-gray-50 transition-colors flex items-center gap-3"
+                    >
+                      <svg className="w-4 h-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                      </svg>
+                      <span className="text-sm text-gray-700">群聊设置</span>
+                    </button>
+                  )}
+                </div>
+              </>
+            )}
+          </div>
         </div>
       </div>
 
