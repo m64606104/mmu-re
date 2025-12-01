@@ -181,23 +181,26 @@ function parseAIResponse(
   const sanitized = cleanAIMessage(content.trim());
   const sourceText = sanitized;
   
-  // 检测各种媒体类型
-  const imageMatches = [...sourceText.matchAll(/\[图片[:：]([^\]]+)\]/g)];
-  const videoMatches = [...sourceText.matchAll(/\[视频[:：]([^\]]+)\]/g)];
-  const voiceMatches = [...sourceText.matchAll(/\[语音[:：](.+?)(?:[，,]\s*(?:时长)?(\d+)秒?)?\]/g)];
-  const stickerMatches = [...sourceText.matchAll(/\[表情包[:：]([^\]]+)\]/g)];
+  // 检测各种媒体类型（修复：正则表达式优化，避免嵌套括号导致匹配失败）
+  // 使用非贪婪匹配 .+? 并确保匹配到闭合的中括号
+  // 兼容处理：支持 "[图片:...]" 和 "[发送了图片:...]" (防止AI模仿用户格式)
+  const imageMatches = [...sourceText.matchAll(/\[(?:发送了)?图片[:：](.+?)\]/g)];
+  const videoMatches = [...sourceText.matchAll(/\[(?:发送了)?视频[:：](.+?)\]/g)];
+  // 语音匹配修复：支持 [语音:内容] 和 [语音:内容,时长] 两种格式，且内容中允许包含标点符号
+  const voiceMatches = [...sourceText.matchAll(/\[(?:发送了)?语音[:：](.+?)(?:[，,]\s*(?:时长)?(\d+)秒?)?\]/g)];
+  const stickerMatches = [...sourceText.matchAll(/\[(?:发送了)?表情包[:：](.+?)\]/g)];
   // 支持两种格式：
   // 1. 标准格式：[发群红包:类型:金额:数量:留言] 例如 [发群红包:random:10:5:大家抢红包啦]
   // 2. 简化格式：[发群红包:描述] 或 [群红包]
-  const redPacketMatches = [...sourceText.matchAll(/\[(?:发)?群红包(?:[:：]([^\]]+))?\]/g)];
+  const redPacketMatches = [...sourceText.matchAll(/\[(?:发送了)?(?:发)?群红包(?:[:：](.+?))?\]/g)];
   
   // 移除所有媒体标记，得到纯文本内容
   let cleanText = sourceText
-    .replace(/\[图片[:：][^\]]+\]/g, '')
-    .replace(/\[视频[:：][^\]]+\]/g, '')
-    .replace(/\[语音[:：].+?\]/g, '')
-    .replace(/\[表情包[:：][^\]]+\]/g, '')
-    .replace(/\[(?:发)?群红包(?:[:：][^\]]+)?\]/g, '')
+    .replace(/\[(?:发送了)?图片[:：].+?\]/g, '')
+    .replace(/\[(?:发送了)?视频[:：].+?\]/g, '')
+    .replace(/\[(?:发送了)?语音[:：].+?\]/g, '')
+    .replace(/\[(?:发送了)?表情包[:：].+?\]/g, '')
+    .replace(/\[(?:发送了)?(?:发)?群红包(?:[:：].+?)?\]/g, '')
     .trim();
   
   const messages: Message[] = [];
