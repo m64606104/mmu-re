@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { groupToPrivateMemoryService } from '../utils/groupToPrivateMemoryService';
-import { ChevronLeft, Send, Mic, Sparkles, Smile, BellOff, Bell, Pause, Play, Image as ImageIcon, Video, Phone, MapPin, FileText, Plus, Search, MessageCircle, MessageSquare, Eye, Music } from 'lucide-react';
+import { ChevronLeft, Send, Mic, Sparkles, Smile, BellOff, Bell, Pause, Play, Image as ImageIcon, Video, Phone, MapPin, FileText, Plus, Search, MessageCircle, MessageSquare, Eye, Music, Gift } from 'lucide-react';
 import { Conversation, Message, ApiConfig, UserProfile, DocumentMessage } from '../types';
 import MoneyTransferModal from './MoneyTransferModal';
 import GroupRedPacketModal from './GroupRedPacketModal';
@@ -753,14 +753,6 @@ export default function ChatScreen({
   const [atFilterText, setAtFilterText] = useState('');
   const [atCursorPosition, setAtCursorPosition] = useState(0);
   
-  // 更多菜单
-  const [showMoreMenu, setShowMoreMenu] = useState(false);
-  
-  // 位置功能
-  const [showLocationModal, setShowLocationModal] = useState(false);
-  const [locationInput, setLocationInput] = useState('');
-  const [isGettingLocation, setIsGettingLocation] = useState(false);
-  
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -1271,8 +1263,20 @@ ${recentMessages}
   const [showVoiceConfirmModal, setShowVoiceConfirmModal] = useState(false);
   const [voiceTranscript, setVoiceTranscript] = useState('');
   const [isTranscribing, setIsTranscribing] = useState(false);
+  
+  // Web Speech 识别器状态
+  const [isSpeechRecognizing, setIsSpeechRecognizing] = useState(false);
+  const [speechRecognitionSupported, setSpeechRecognitionSupported] = useState(false);
+  const speechRecognitionRef = useRef<any>(null);
+  
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const recordingTimerRef = useRef<NodeJS.Timeout | null>(null);
+  
+  // 检测Web Speech API支持
+  useEffect(() => {
+    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    setSpeechRecognitionSupported(!!SpeechRecognition);
+  }, []);
   
   // 旧的消息操作状态已移除，使用新的实现（selectedMessageId, menuPosition等）
   
@@ -2294,77 +2298,6 @@ ${characterInfo?.languageStyle ? `语言风格：${characterInfo.languageStyle}`
     }
   };
 
-  // 📍 位置功能：自动定位
-  const handleAutoLocation = async () => {
-    setIsGettingLocation(true);
-    try {
-      if (!navigator.geolocation) {
-        alert('您的浏览器不支持定位功能');
-        setIsGettingLocation(false);
-        return;
-      }
-      
-      navigator.geolocation.getCurrentPosition(
-        (position) => {
-          const { latitude, longitude } = position.coords;
-          const locationText = `📍 位置：${latitude.toFixed(6)}, ${longitude.toFixed(6)}`;
-          
-          const newMessage: Message = {
-            id: Date.now().toString(),
-            role: 'user',
-            content: locationText,
-            timestamp: Date.now()
-          };
-          
-          onUpdateConversation(conversation.id, {
-            messages: [...conversation.messages, newMessage],
-            lastMessageTime: Date.now()
-          });
-          
-          setShowLocationModal(false);
-          setIsGettingLocation(false);
-          setShowToolbar(false);
-        },
-        (error) => {
-          console.error('定位失败:', error);
-          alert('定位失败，请尝试手动输入位置');
-          setIsGettingLocation(false);
-        },
-        { timeout: 10000, enableHighAccuracy: true }
-      );
-    } catch (error) {
-      console.error('定位错误:', error);
-      alert('定位出错，请尝试手动输入位置');
-      setIsGettingLocation(false);
-    }
-  };
-
-  // 📍 位置功能：手动输入
-  const handleManualLocation = () => {
-    if (!locationInput.trim()) {
-      alert('请输入位置信息');
-      return;
-    }
-    
-    const locationText = `📍 位置：${locationInput.trim()}`;
-    
-    const newMessage: Message = {
-      id: Date.now().toString(),
-      role: 'user',
-      content: locationText,
-      timestamp: Date.now()
-    };
-    
-    onUpdateConversation(conversation.id, {
-      messages: [...conversation.messages, newMessage],
-      lastMessageTime: Date.now()
-    });
-    
-    setLocationInput('');
-    setShowLocationModal(false);
-    setShowToolbar(false);
-  };
-
   // 处理图片上传（支持多图）
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
@@ -2916,9 +2849,93 @@ ${characterInfo?.languageStyle ? `语言风格：${characterInfo.languageStyle}`
     }
   };
 
+  // 开始Web Speech语音识别
+  const startSpeechRecognition = () => {
+    if (!speechRecognitionSupported) {
+      console.warn('浏览器不支持Web Speech API');
+      return;
+    }
+
+    try {
+      const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+      const recognition = new SpeechRecognition();
+      
+      recognition.lang = 'zh-CN';
+      recognition.interimResults = true;
+      recognition.continuous = true;
+      recognition.maxAlternatives = 1;
+
+      recognition.onstart = () => {
+        setIsSpeechRecognizing(true);
+        console.log('🎤 语音识别已开始');
+      };
+
+      recognition.onresult = (event: any) => {
+        let interimTranscript = '';
+        let finalTranscript = '';
+
+        for (let i = event.resultIndex; i < event.results.length; i++) {
+          const transcript = event.results[i][0].transcript;
+          if (event.results[i].isFinal) {
+            finalTranscript += transcript;
+          } else {
+            interimTranscript += transcript;
+          }
+        }
+
+        // 实时更新文本框内容
+        const currentText = finalTranscript || interimTranscript;
+        if (currentText) {
+          setVoiceTranscript(prev => {
+            // 如果有最终结果，追加；否则替换临时结果
+            if (finalTranscript) {
+              return prev + finalTranscript;
+            }
+            return prev.replace(/[^\n]*$/, interimTranscript);
+          });
+        }
+      };
+
+      recognition.onerror = (event: any) => {
+        console.error('🎤 语音识别错误:', event.error);
+        setIsSpeechRecognizing(false);
+        
+        if (event.error === 'no-speech') {
+          console.log('未检测到语音，请重试');
+        } else if (event.error === 'network') {
+          console.log('网络错误，语音识别服务不可用');
+        } else if (event.error === 'not-allowed') {
+          alert('麦克风权限被拒绝，请在浏览器设置中允许麦克风访问');
+        }
+      };
+
+      recognition.onend = () => {
+        setIsSpeechRecognizing(false);
+        console.log('🎤 语音识别已结束');
+      };
+
+      speechRecognitionRef.current = recognition;
+      recognition.start();
+    } catch (error) {
+      console.error('启动语音识别失败:', error);
+      setIsSpeechRecognizing(false);
+    }
+  };
+
+  // 停止Web Speech语音识别
+  const stopSpeechRecognition = () => {
+    if (speechRecognitionRef.current) {
+      speechRecognitionRef.current.stop();
+      speechRecognitionRef.current = null;
+    }
+    setIsSpeechRecognizing(false);
+  };
+
   // 语音录音功能
   const handleVoiceClick = async () => {
-    startRecording();
+    // 直接打开弹窗，让用户选择输入或语音识别
+    setVoiceTranscript('');
+    setShowVoiceConfirmModal(true);
   };
 
   // 开始录音
@@ -5409,6 +5426,40 @@ ${doc.content}`;
             <Search className="w-5 h-5 text-gray-700" />
           </button>
           
+          {/* 💬 子聊天按钮 */}
+          {conversation.type === 'private' && (
+            <button
+              onClick={() => setShowSubChatManager(true)}
+              className="p-2 hover:bg-gray-100 rounded-lg transition-colors relative"
+              title="子聊天"
+            >
+              <MessageCircle className="w-5 h-5 text-gray-700" />
+              {/* 未读数角标 */}
+              {subChatUnreadCount > 0 && (
+                <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs px-1.5 py-0.5 rounded-full min-w-[18px] text-center">
+                  {subChatUnreadCount > 99 ? '99+' : subChatUnreadCount}
+                </span>
+              )}
+              {/* 待处理请求角标 */}
+              {pendingSubChatsCount > 0 && subChatUnreadCount === 0 && (
+                <span className="absolute -top-1 -right-1 bg-yellow-500 text-white text-xs px-1.5 py-0.5 rounded-full min-w-[18px] text-center">
+                  {pendingSubChatsCount}
+                </span>
+              )}
+            </button>
+          )}
+          
+          {/* 视频通话按钮 (仅私聊) */}
+          {conversation.type === 'private' && (
+            <button
+              onClick={() => setShowVideoCall(true)}
+              className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+              title="视频通话"
+            >
+              <Video className="w-5 h-5 text-gray-700" />
+            </button>
+          )}
+          
           {/* 免打扰按钮 */}
           <button
             onClick={() => {
@@ -5426,108 +5477,35 @@ ${doc.content}`;
             )}
           </button>
           
-          {/* 更多菜单按钮 */}
-          <div className="relative">
+          {/* 设置按钮 */}
+          {conversation.type === 'private' && (
             <button
-              onClick={() => setShowMoreMenu(!showMoreMenu)}
-              className="p-2 hover:bg-gray-100 rounded-lg transition-colors relative"
-              title="更多"
+              onClick={onOpenCharacterSettings}
+              className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+              title="角色设置"
             >
               <svg className="w-5 h-5 text-gray-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <circle cx="12" cy="5" r="1.5" fill="currentColor"/>
                 <circle cx="12" cy="12" r="1.5" fill="currentColor"/>
                 <circle cx="12" cy="19" r="1.5" fill="currentColor"/>
               </svg>
-              {/* 子聊天未读/待处理红点提示（仅私聊） */}
-              {conversation.type === 'private' && (subChatUnreadCount > 0 || pendingSubChatsCount > 0) && (
-                <span className="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full"></span>
-              )}
             </button>
-            
-            {/* 更多菜单下拉 */}
-            {showMoreMenu && (
-              <>
-                {/* 遮罩层 */}
-                <div 
-                  className="fixed inset-0 z-40" 
-                  onClick={() => setShowMoreMenu(false)}
-                ></div>
-                
-                {/* 菜单内容 */}
-                <div className="absolute right-0 top-full mt-2 w-48 bg-white rounded-lg shadow-lg border border-gray-200 py-1 z-50">
-                  {/* 私聊菜单项 */}
-                  {conversation.type === 'private' && (
-                    <>
-                      {/* 子聊天 */}
-                      <button
-                        onClick={() => {
-                          setShowSubChatManager(true);
-                          setShowMoreMenu(false);
-                        }}
-                        className="w-full px-4 py-2.5 text-left hover:bg-gray-50 transition-colors flex items-center justify-between"
-                      >
-                        <div className="flex items-center gap-3">
-                          <MessageCircle className="w-4 h-4 text-gray-600" />
-                          <span className="text-sm text-gray-700">子聊天</span>
-                        </div>
-                        {(subChatUnreadCount > 0 || pendingSubChatsCount > 0) && (
-                          <span className="text-xs text-red-500 font-medium">
-                            {subChatUnreadCount > 0 ? subChatUnreadCount : pendingSubChatsCount}
-                          </span>
-                        )}
-                      </button>
-                      
-                      {/* 视频/语音通话 */}
-                      <button
-                        onClick={() => {
-                          setShowCallTypeSelector(true);
-                          setShowMoreMenu(false);
-                        }}
-                        className="w-full px-4 py-2.5 text-left hover:bg-gray-50 transition-colors flex items-center gap-3"
-                      >
-                        <Phone className="w-4 h-4 text-gray-600" />
-                        <span className="text-sm text-gray-700">通话</span>
-                      </button>
-                      
-                      <div className="border-t border-gray-100 my-1"></div>
-                      
-                      {/* 角色设置 */}
-                      <button
-                        onClick={() => {
-                          onOpenCharacterSettings();
-                          setShowMoreMenu(false);
-                        }}
-                        className="w-full px-4 py-2.5 text-left hover:bg-gray-50 transition-colors flex items-center gap-3"
-                      >
-                        <svg className="w-4 h-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                        </svg>
-                        <span className="text-sm text-gray-700">角色设置</span>
-                      </button>
-                    </>
-                  )}
-                  
-                  {/* 群聊菜单项 */}
-                  {conversation.type === 'group' && (
-                    <button
-                      onClick={() => {
-                        setShowGroupSettings(true);
-                        setShowMoreMenu(false);
-                      }}
-                      className="w-full px-4 py-2.5 text-left hover:bg-gray-50 transition-colors flex items-center gap-3"
-                    >
-                      <svg className="w-4 h-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                      </svg>
-                      <span className="text-sm text-gray-700">群聊设置</span>
-                    </button>
-                  )}
-                </div>
-              </>
-            )}
-          </div>
+          )}
+          
+          {/* 群聊设置按钮 */}
+          {conversation.type === 'group' && (
+            <button
+              onClick={() => setShowGroupSettings(true)}
+              className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+              title="群聊设置"
+            >
+              <svg className="w-5 h-5 text-gray-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <circle cx="12" cy="5" r="1.5" fill="currentColor"/>
+                <circle cx="12" cy="12" r="1.5" fill="currentColor"/>
+                <circle cx="12" cy="19" r="1.5" fill="currentColor"/>
+              </svg>
+            </button>
+          )}
         </div>
       </div>
 
@@ -6595,171 +6573,106 @@ ${doc.content}`;
           </div>
         )}
 
-        {/* 底部抽屉工具栏 */}
+        {/* Toolbar */}
         {showToolbar && (
-          <>
-            {/* 遮罩层 */}
-            <div 
-              className="fixed inset-0 bg-black/30 z-40"
-              onClick={() => setShowToolbar(false)}
-            ></div>
-            
-            {/* 抽屉内容 */}
-            <div className="absolute bottom-0 left-0 right-0 bg-white rounded-t-3xl shadow-2xl z-50 max-h-[70vh] overflow-y-auto">
-              {/* 拖动条 */}
-              <div className="flex justify-center pt-3 pb-2">
-                <div className="w-12 h-1 bg-gray-300 rounded-full"></div>
-              </div>
-              
-              {/* 常用动作 */}
-              <div className="px-4 pt-2 pb-4">
-                <div className="text-xs text-gray-500 mb-3 font-medium">常用</div>
-                <div className="grid grid-cols-6 gap-4">
-                  {/* 语音 */}
-                  <button 
-                    onClick={handleVoiceClick}
-                    className="flex flex-col items-center gap-2"
-                  >
-                    <div className="w-14 h-14 rounded-full bg-gradient-to-br from-purple-400 to-purple-600 flex items-center justify-center shadow-md active:scale-95 transition-transform">
-                      <Mic className="w-6 h-6 text-white" />
-                    </div>
-                    <span className="text-xs text-gray-700">语音</span>
-                  </button>
-                  
-                  {/* 图片 */}
-                  <button 
-                    onClick={() => imageInputRef.current?.click()}
-                    className="flex flex-col items-center gap-2"
-                  >
-                    <div className="w-14 h-14 rounded-full bg-gradient-to-br from-blue-400 to-blue-600 flex items-center justify-center shadow-md active:scale-95 transition-transform">
-                      <ImageIcon className="w-6 h-6 text-white" />
-                    </div>
-                    <span className="text-xs text-gray-700">图片</span>
-                  </button>
-                  <input
-                    ref={imageInputRef}
-                    type="file"
-                    accept="image/*"
-                    multiple
-                    className="hidden"
-                    onChange={handleImageUpload}
-                  />
-                  
-                  {/* 视频 */}
-                  <button 
-                    onClick={() => videoInputRef.current?.click()}
-                    className="flex flex-col items-center gap-2"
-                  >
-                    <div className="w-14 h-14 rounded-full bg-gradient-to-br from-green-400 to-green-600 flex items-center justify-center shadow-md active:scale-95 transition-transform">
-                      <Video className="w-6 h-6 text-white" />
-                    </div>
-                    <span className="text-xs text-gray-700">视频</span>
-                  </button>
-                  <input
-                    ref={videoInputRef}
-                    type="file"
-                    accept="video/*"
-                    className="hidden"
-                    onChange={handleVideoUpload}
-                  />
-                  
-                  {/* 🧧红包 */}
-                  <button 
-                    onClick={() => {
-                      if (conversation.type === 'group') {
-                        setShowGroupRedPacketModal(true);
-                        setShowToolbar(false);
-                      } else {
-                        setShowMoneyTransferModal(true);
-                        setShowToolbar(false);
-                      }
-                    }}
-                    className="flex flex-col items-center gap-2"
-                  >
-                    <div className="w-14 h-14 rounded-full bg-gradient-to-br from-red-500 to-red-600 flex items-center justify-center shadow-md active:scale-95 transition-transform">
-                      <span className="text-2xl">🧧</span>
-                    </div>
-                    <span className="text-xs text-gray-700">红包</span>
-                  </button>
-                  
-                  {/* 文档 */}
-                  <button 
-                    onClick={() => {
-                      setShowSendDocumentModal(true);
-                      setShowToolbar(false);
-                    }}
-                    className="flex flex-col items-center gap-2"
-                  >
-                    <div className="w-14 h-14 rounded-full bg-gradient-to-br from-orange-400 to-orange-600 flex items-center justify-center shadow-md active:scale-95 transition-transform">
-                      <FileText className="w-6 h-6 text-white" />
-                    </div>
-                    <span className="text-xs text-gray-700">文档</span>
-                  </button>
-                  
-                  {/* 位置 */}
-                  <button 
-                    onClick={() => setShowLocationModal(true)}
-                    className="flex flex-col items-center gap-2"
-                  >
-                    <div className="w-14 h-14 rounded-full bg-gradient-to-br from-teal-400 to-teal-600 flex items-center justify-center shadow-md active:scale-95 transition-transform">
-                      <MapPin className="w-6 h-6 text-white" />
-                    </div>
-                    <span className="text-xs text-gray-700">位置</span>
-                  </button>
+          <div className="px-3 py-2 bg-white border-b border-gray-200">
+            <div className="flex gap-2 items-center overflow-x-auto">
+              <button onClick={() => imageInputRef.current?.click()} className="flex-shrink-0">
+                <div className="w-9 h-9 rounded-full bg-white border border-gray-300 flex items-center justify-center hover:border-gray-400 transition-colors">
+                  <ImageIcon className="w-4 h-4 text-gray-600" />
                 </div>
-              </div>
-              
-              {/* 其他功能 */}
-              <div className="px-4 pb-6 pt-2 border-t border-gray-100">
-                <div className="text-xs text-gray-500 mb-3 font-medium">更多</div>
-                <div className="grid grid-cols-4 gap-4">
-                  {/* 音乐 */}
-                  <button 
-                    onClick={() => {
-                      setShowRealMusicModal(true);
-                      setShowToolbar(false);
-                    }}
-                    className="flex flex-col items-center gap-2"
-                  >
-                    <div className="w-12 h-12 rounded-full bg-gray-100 flex items-center justify-center active:bg-gray-200 transition-colors">
-                      <Music className="w-5 h-5 text-gray-600" />
-                    </div>
-                    <span className="text-xs text-gray-700">音乐</span>
-                  </button>
-                  
-                  {/* 表情 */}
-                  <button 
-                    onClick={() => {
-                      handleStickerClick();
-                      setShowToolbar(false);
-                    }}
-                    className="flex flex-col items-center gap-2"
-                  >
-                    <div className="w-12 h-12 rounded-full bg-gray-100 flex items-center justify-center active:bg-gray-200 transition-colors">
-                      <Smile className="w-5 h-5 text-gray-600" />
-                    </div>
-                    <span className="text-xs text-gray-700">表情</span>
-                  </button>
-                  
-                  {/* 子聊天（仅私聊） */}
-                  {conversation.type === 'private' && (
-                    <button 
-                      onClick={() => {
-                        setShowSubChatManager(true);
-                        setShowToolbar(false);
-                      }}
-                      className="flex flex-col items-center gap-2"
-                    >
-                      <div className="w-12 h-12 rounded-full bg-gray-100 flex items-center justify-center active:bg-gray-200 transition-colors">
-                        <MessageCircle className="w-5 h-5 text-gray-600" />
-                      </div>
-                      <span className="text-xs text-gray-700">子聊天</span>
-                    </button>
-                  )}
+              </button>
+              <input
+                ref={imageInputRef}
+                type="file"
+                accept="image/*"
+                multiple
+                className="hidden"
+                onChange={handleImageUpload}
+              />
+              <button onClick={() => videoInputRef.current?.click()} className="flex-shrink-0">
+                <div className="w-9 h-9 rounded-full bg-white border border-gray-300 flex items-center justify-center hover:border-gray-400 transition-colors">
+                  <Video className="w-4 h-4 text-gray-600" />
                 </div>
-              </div>
+              </button>
+              <input
+                ref={videoInputRef}
+                type="file"
+                accept="video/*"
+                className="hidden"
+                onChange={handleVideoUpload}
+              />
+              <button 
+                className="flex-shrink-0"
+                onClick={handleVoiceClick}
+              >
+                <div className="w-9 h-9 rounded-full bg-white border border-gray-300 flex items-center justify-center hover:border-gray-400 transition-colors">
+                  <Mic className="w-4 h-4 text-gray-600" />
+                </div>
+              </button>
+              <button 
+                className="flex-shrink-0"
+                onClick={handleStickerClick}
+              >
+                <div className="w-9 h-9 rounded-full bg-white border border-gray-300 flex items-center justify-center hover:border-gray-400 transition-colors">
+                  <Smile className="w-4 h-4 text-gray-600" />
+                </div>
+              </button>
+              <button 
+                className="flex-shrink-0"
+                onClick={() => setShowRealMusicModal(true)}
+                title="搜索真实音乐"
+              >
+                <div className="w-9 h-9 rounded-full bg-white border border-gray-300 flex items-center justify-center hover:border-gray-400 transition-colors">
+                  <Music className="w-4 h-4 text-gray-600" />
+                </div>
+              </button>
+              <button 
+                className="flex-shrink-0"
+                onClick={() => setShowCallTypeSelector(true)}
+              >
+                <div className="w-9 h-9 rounded-full bg-white border border-gray-300 flex items-center justify-center hover:border-gray-400 transition-colors">
+                  <Phone className="w-4 h-4 text-gray-600" />
+                </div>
+              </button>
+              <button className="flex-shrink-0">
+                <div className="w-9 h-9 rounded-full bg-white border border-gray-300 flex items-center justify-center hover:border-gray-400 transition-colors">
+                  <MapPin className="w-4 h-4 text-gray-600" />
+                </div>
+              </button>
+              {/* 红包按钮 - 私聊打开普通红包，群聊打开群红包 */}
+              <button 
+                className="flex-shrink-0"
+                onClick={() => {
+                  if (conversation.type === 'group') {
+                    setShowGroupRedPacketModal(true);
+                  } else {
+                    setShowMoneyTransferModal(true);
+                  }
+                }}
+              >
+                <div className="w-9 h-9 rounded-full bg-white border border-gray-300 flex items-center justify-center hover:border-gray-400 transition-colors">
+                  <Gift className="w-4 h-4 text-gray-600" />
+                </div>
+              </button>
+              <button 
+                className="flex-shrink-0"
+                onClick={() => setShowSendDocumentModal(true)}
+              >
+                <div className="w-9 h-9 rounded-full bg-white border border-gray-300 flex items-center justify-center hover:border-gray-400 transition-colors">
+                  <FileText className="w-4 h-4 text-gray-600" />
+                </div>
+              </button>
+              <button 
+                className="flex-shrink-0"
+                onClick={() => setShowSubChatManager(true)}
+              >
+                <div className="w-9 h-9 rounded-full bg-white border border-purple-300 flex items-center justify-center hover:border-purple-400 transition-colors hover:bg-purple-50">
+                  <MessageCircle className="w-4 h-4 text-purple-600" />
+                </div>
+              </button>
             </div>
-          </>
+          </div>
         )}
 
         {/* 引用提示 */}
@@ -7031,82 +6944,6 @@ ${doc.content}`;
       </div>
     )}
 
-    {/* 📍 位置发送弹窗 */}
-    {showLocationModal && (
-      <div className="absolute inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-        <div className="bg-white rounded-2xl p-6 w-full max-w-sm shadow-2xl">
-          <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
-            <MapPin className="w-5 h-5 text-teal-500" />
-            发送位置
-          </h3>
-          <p className="text-sm text-gray-600 mb-4">
-            选择自动定位或手动输入位置信息
-          </p>
-          
-          {/* 自动定位按钮 */}
-          <button
-            onClick={handleAutoLocation}
-            disabled={isGettingLocation}
-            className="w-full mb-3 px-4 py-3 bg-gradient-to-r from-teal-500 to-teal-600 text-white rounded-xl hover:from-teal-600 hover:to-teal-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed font-medium flex items-center justify-center gap-2"
-          >
-            {isGettingLocation ? (
-              <>
-                <svg className="animate-spin h-5 w-5" viewBox="0 0 24 24">
-                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none"></circle>
-                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                </svg>
-                定位中...
-              </>
-            ) : (
-              <>
-                <MapPin className="w-5 h-5" />
-                自动定位
-              </>
-            )}
-          </button>
-          
-          {/* 分隔线 */}
-          <div className="flex items-center gap-3 mb-3">
-            <div className="flex-1 border-t border-gray-200"></div>
-            <span className="text-xs text-gray-400">或</span>
-            <div className="flex-1 border-t border-gray-200"></div>
-          </div>
-          
-          {/* 手动输入 */}
-          <div className="mb-4">
-            <label className="block text-sm font-medium text-gray-700 mb-2">手动输入位置</label>
-            <input
-              type="text"
-              value={locationInput}
-              onChange={(e) => setLocationInput(e.target.value)}
-              placeholder="例如：上海市浦东新区陆家嘴"
-              className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-teal-500 text-sm"
-            />
-          </div>
-          
-          <div className="flex gap-3">
-            <button
-              onClick={() => {
-                setShowLocationModal(false);
-                setLocationInput('');
-                setIsGettingLocation(false);
-              }}
-              className="flex-1 px-4 py-2.5 border border-gray-300 text-gray-700 rounded-xl hover:bg-gray-50 transition-colors font-medium"
-            >
-              取消
-            </button>
-            <button
-              onClick={handleManualLocation}
-              disabled={!locationInput.trim()}
-              className="flex-1 px-4 py-2.5 bg-teal-500 text-white rounded-xl hover:bg-teal-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed font-medium"
-            >
-              发送
-            </button>
-          </div>
-        </div>
-      </div>
-    )}
-
     {/* 视频描述弹窗 */}
     {showVideoDescModal && (
       <div className="absolute inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
@@ -7188,27 +7025,69 @@ ${doc.content}`;
       </div>
     )}
 
-    {/* 语音识别确认弹窗 */}
+    {/* 语音转文字弹窗（EVE风格） */}
     {showVoiceConfirmModal && (
       <div className="absolute inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
         <div className="bg-white rounded-2xl p-6 w-full max-w-sm shadow-2xl">
-          <h3 className="text-lg font-semibold text-gray-900 mb-4">
-            ✍️ 输入语音内容
+          <h3 className="text-lg font-semibold text-gray-900 mb-2 text-center">
+            语音转文字
           </h3>
-          <p className="text-sm text-gray-600 mb-4">
-            请输入这条语音消息的文字内容（录音时长：{recordingTime}秒）
+          <p className="text-sm text-gray-500 mb-4 text-center">
+            请输入您想说的内容：
           </p>
+          
+          {/* 文本输入框 */}
           <textarea
             value={voiceTranscript}
             onChange={(e) => setVoiceTranscript(e.target.value)}
-            placeholder={voiceTranscript ? "识别的文字内容..." : "请输入语音内容..."}
+            placeholder="在这里输入语音内容..."
             rows={4}
-            className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none text-sm"
-            autoFocus
+            className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none text-sm mb-4"
+            disabled={isSpeechRecognizing}
           />
-          <div className="flex gap-3 mt-4">
+          
+          {/* 麦克风按钮 */}
+          <div className="flex justify-center mb-4">
+            {speechRecognitionSupported ? (
+              <button
+                onClick={() => {
+                  if (isSpeechRecognizing) {
+                    stopSpeechRecognition();
+                  } else {
+                    startSpeechRecognition();
+                  }
+                }}
+                className={`w-14 h-14 rounded-full flex items-center justify-center transition-all ${
+                  isSpeechRecognizing 
+                    ? 'bg-red-500 hover:bg-red-600 animate-pulse' 
+                    : 'bg-blue-500 hover:bg-blue-600'
+                } shadow-lg`}
+                title={isSpeechRecognizing ? '停止识别' : '开始语音识别'}
+              >
+                <Mic className="w-6 h-6 text-white" />
+              </button>
+            ) : (
+              <div className="text-xs text-gray-400 text-center">
+                当前浏览器不支持语音识别<br/>
+                请手动输入或使用Chrome/Edge
+              </div>
+            )}
+          </div>
+          
+          {/* 识别状态提示 */}
+          {isSpeechRecognizing && (
+            <div className="mb-4 text-center">
+              <p className="text-sm text-blue-600 animate-pulse">
+                🎤 正在监听中...
+              </p>
+            </div>
+          )}
+          
+          {/* 底部按钮 */}
+          <div className="flex gap-3">
             <button
               onClick={() => {
+                stopSpeechRecognition();
                 setShowVoiceConfirmModal(false);
                 setVoiceTranscript('');
                 setAudioBlob(null);
@@ -7217,24 +7096,27 @@ ${doc.content}`;
             >
               取消
             </button>
-            {!voiceTranscript && (
-              <button
-                onClick={() => {
+            <button
+              onClick={() => {
+                stopSpeechRecognition();
+                if (voiceTranscript.trim()) {
+                  // 发送为文本消息而不是语音消息
+                  const textMessage: Message = {
+                    id: Date.now().toString(),
+                    role: 'user',
+                    content: voiceTranscript.trim(),
+                    timestamp: Date.now()
+                  };
+                  
+                  onUpdateConversation(conversation.id, {
+                    messages: [...conversation.messages, textMessage],
+                    lastMessageTime: Date.now()
+                  });
+                  
                   setShowVoiceConfirmModal(false);
                   setVoiceTranscript('');
-                  setAudioBlob(null);
-                  // 重新录音
-                  setTimeout(() => {
-                    handleVoiceClick();
-                  }, 300);
-                }}
-                className="flex-1 px-4 py-2.5 border border-blue-500 text-blue-500 rounded-xl hover:bg-blue-50 transition-colors font-medium"
-              >
-                重新录音
-              </button>
-            )}
-            <button
-              onClick={handleSendVoice}
+                }
+              }}
               disabled={!voiceTranscript.trim()}
               className="flex-1 px-4 py-2.5 bg-blue-500 text-white rounded-xl hover:bg-blue-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed font-medium"
             >
