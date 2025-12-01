@@ -298,22 +298,33 @@ const backgroundTaskManager = {
         if (redPacketMatch) {
           const amount = parseFloat(redPacketMatch[1]);
           const redPacketMsg = redPacketMatch[2];
-          finalContent = finalContent.replace(redPacketMatch[0], '').trim();
           
-          console.log(`🧧 AI发红包: ¥${amount}, 留言: ${redPacketMsg}`);
+          // 🔥 冷静期检测：检查最近10条消息中是否有AI发送的红包/转账/礼物
+          const recentMessages = conversation.messages.slice(-10);
+          const hasRecentMoneyTransfer = recentMessages.some(msg => 
+            msg.role === 'assistant' && msg.moneyTransfer
+          );
           
-          allExtraMessages.push({
-            id: `${baseId}_redpacket`,
-            role: 'assistant',
-            content: '', // AI发送红包时也不显示文本，只显示红包卡片
-            timestamp: Date.now() + 100 + allExtraMessages.length * 10,
-            moneyTransfer: {
-              type: 'redPacket',
-              amount,
-              message: redPacketMsg,
-              status: 'pending'
-            }
-          });
+          if (hasRecentMoneyTransfer) {
+            console.warn('⏰ 冷静期限制：AI在最近10条消息内已发送过红包/转账/礼物，本次红包被过滤');
+            finalContent = finalContent.replace(redPacketMatch[0], '').trim();
+          } else {
+            finalContent = finalContent.replace(redPacketMatch[0], '').trim();
+            console.log(`🧧 AI发红包: ¥${amount}, 留言: ${redPacketMsg}`);
+            
+            allExtraMessages.push({
+              id: `${baseId}_redpacket`,
+              role: 'assistant',
+              content: '', // AI发送红包时也不显示文本，只显示红包卡片
+              timestamp: Date.now() + 100 + allExtraMessages.length * 10,
+              moneyTransfer: {
+                type: 'redPacket',
+                amount,
+                message: redPacketMsg,
+                status: 'pending'
+              }
+            });
+          }
         }
 
         // 🔥 智能识别转账（支持多种格式）
@@ -340,22 +351,33 @@ const backgroundTaskManager = {
         if (transferMatch) {
           const amount = parseFloat(transferMatch[1]);
           const transferMsg = transferMatch[2];
-          finalContent = finalContent.replace(transferMatch[0], '').trim();
           
-          console.log(`💸 AI转账: ¥${amount}, 备注: ${transferMsg}`);
+          // 🔥 冷静期检测：检查最近10条消息中是否有AI发送的红包/转账/礼物
+          const recentMessages = conversation.messages.slice(-10);
+          const hasRecentMoneyTransfer = recentMessages.some(msg => 
+            msg.role === 'assistant' && msg.moneyTransfer
+          );
           
-          allExtraMessages.push({
-            id: `${baseId}_transfer`,
-            role: 'assistant',
-            content: '', // AI转账时也不显示文本，只显示转账卡片
-            timestamp: Date.now() + 100 + allExtraMessages.length * 10,
-            moneyTransfer: {
-              type: 'transfer',
-              amount,
-              message: transferMsg,
-              status: 'pending'
-            }
-          });
+          if (hasRecentMoneyTransfer) {
+            console.warn('⏰ 冷静期限制：AI在最近10条消息内已发送过红包/转账/礼物，本次转账被过滤');
+            finalContent = finalContent.replace(transferMatch[0], '').trim();
+          } else {
+            finalContent = finalContent.replace(transferMatch[0], '').trim();
+            console.log(`💸 AI转账: ¥${amount}, 备注: ${transferMsg}`);
+            
+            allExtraMessages.push({
+              id: `${baseId}_transfer`,
+              role: 'assistant',
+              content: '', // AI转账时也不显示文本，只显示转账卡片
+              timestamp: Date.now() + 100 + allExtraMessages.length * 10,
+              moneyTransfer: {
+                type: 'transfer',
+                amount,
+                message: transferMsg,
+                status: 'pending'
+              }
+            });
+          }
         }
 
         // 检测引用消息：[回复 我/你 说的"xxx"]
@@ -454,61 +476,72 @@ ${summary}`;
           const productName = giftMatch[1];
           const price = parseFloat(giftMatch[2]);
           const giftMessage = giftMatch[3];
-          finalContent = finalContent.replace(giftMatch[0], '').trim();
           
-          console.log(`🎁 AI送礼物: ${productName} ¥${price}`);
+          // 🔥 冷静期检测：检查最近10条消息中是否有AI发送的红包/转账/礼物
+          const recentMessages = conversation.messages.slice(-10);
+          const hasRecentMoneyTransfer = recentMessages.some(msg => 
+            msg.role === 'assistant' && (msg.moneyTransfer || msg.order?.type === 'gift')
+          );
           
-          // 💰 检查AI余额（使用新财务系统）
-          const aiFinanceData = await getAIFinanceData(conversation.id);
-          if (aiFinanceData.balance >= price) {
-            // 余额足够，扣款并创建订单（同步到新财务系统）
-            const success = await addAIFinanceTransaction(
-              conversation.id,
-              'expense',
-              price,
-              '购物支出',
-              `送礼物给用户: ${productName}`,
-              'user',
-              `gift_${Date.now()}`,
-              false
-            );
-            
-            if (success) {
-              console.log(`✅ AI智能财务扣款成功: ¥${price}, 原余额: ¥${aiFinanceData.balance}`);
-            } else {
-              console.error(`❌ AI智能财务扣款失败`);
-              return; // 扣款失败，不创建礼物
-            }
-            
-            // 创建礼物订单消息
-            allExtraMessages.push({
-              id: `${baseId}_gift`,
-              role: 'assistant',
-              content: '', // AI送礼物时不显示默认文本，只显示礼物卡片
-              timestamp: Date.now() + 100 + allExtraMessages.length * 10,
-              order: {
-                type: 'gift',
-                source: 'taobao', // AI发起的礼物默认为淘宝商品
-                products: [{
-                  id: `product_${Date.now()}`,
-                  name: productName,
-                  price: price,
-                  quantity: 1,
-                  image: '🎁' // 默认礼物图标
-                }],
-                totalAmount: price,
-                status: 'pending',
-                orderNumber: `ORDER${Date.now()}`,
-                message: giftMessage,
-                recipientId: 'user',
-                recipientName: '你'
-              }
-            });
+          if (hasRecentMoneyTransfer) {
+            console.warn('⏰ 冷静期限制：AI在最近10条消息内已发送过红包/转账/礼物，本次礼物被过滤');
+            finalContent = finalContent.replace(giftMatch[0], '').trim();
           } else {
-            // 余额不足，创建提示消息而不是订单
-            console.log(`❌ AI智能财务余额不足: 需要¥${price}, 仅有¥${aiFinanceData.balance}`);
-            // AI会在回复中说明余额不足，不创建订单
-            // 标记已被移除，不会显示[送礼物:xxx]
+            finalContent = finalContent.replace(giftMatch[0], '').trim();
+            console.log(`🎁 AI送礼物: ${productName} ¥${price}`);
+            
+            // 💰 检查AI余额（使用新财务系统）
+            const aiFinanceData = await getAIFinanceData(conversation.id);
+            if (aiFinanceData.balance >= price) {
+              // 余额足够，扣款并创建订单（同步到新财务系统）
+              const success = await addAIFinanceTransaction(
+                conversation.id,
+                'expense',
+                price,
+                '购物支出',
+                `送礼物给用户: ${productName}`,
+                'user',
+                `gift_${Date.now()}`,
+                false
+              );
+              
+              if (success) {
+                console.log(`✅ AI智能财务扣款成功: ¥${price}, 原余额: ¥${aiFinanceData.balance}`);
+              } else {
+                console.error(`❌ AI智能财务扣款失败`);
+                return; // 扣款失败，不创建礼物
+              }
+              
+              // 创建礼物订单消息
+              allExtraMessages.push({
+                id: `${baseId}_gift`,
+                role: 'assistant',
+                content: '', // AI送礼物时不显示默认文本，只显示礼物卡片
+                timestamp: Date.now() + 100 + allExtraMessages.length * 10,
+                order: {
+                  type: 'gift',
+                  source: 'taobao', // AI发起的礼物默认为淘宝商品
+                  products: [{
+                    id: `product_${Date.now()}`,
+                    name: productName,
+                    price: price,
+                    quantity: 1,
+                    image: '🎁' // 默认礼物图标
+                  }],
+                  totalAmount: price,
+                  status: 'pending',
+                  orderNumber: `ORDER${Date.now()}`,
+                  message: giftMessage,
+                  recipientId: 'user',
+                  recipientName: '你'
+                }
+              });
+            } else {
+              // 余额不足，创建提示消息而不是订单
+              console.log(`❌ AI智能财务余额不足: 需要¥${price}, 仅有¥${aiFinanceData.balance}`);
+              // AI会在回复中说明余额不足，不创建订单
+              // 标记已被移除，不会显示[送礼物:xxx]
+            }
           }
         }
         
@@ -3679,6 +3712,12 @@ ${SmartHTMLGenerator.getModuleInstructions()}
 - 根据对话氛围和情感自然决定
 - 不要过度频繁（显得刻意），但也不要太吝啬
 - 金额/礼物价值要符合你的角色身份和关系亲密度
+
+**⏰ 冷静期规则（重要）**：
+- 🚫 **连续发送限制**：发送红包/转账/礼物后，必须间隔**至少10条对话消息**才能再次发送
+- 🚫 **单次对话限制**：一次回复中**最多只能发送1个**红包/转账/礼物
+- ✅ **场景判断**：只在真正需要表达情感的场景才发送，不要随意发送
+- ✅ **自然融入**：红包/转账/礼物应该是对话的自然延伸，不是主要内容
 
 【👤 头像更换功能】：
 当用户发送图片并要求你换头像时，你可以使用以下格式：
@@ -6962,16 +7001,19 @@ ${doc.content}`;
               onClick={() => {
                 stopSpeechRecognition();
                 if (voiceTranscript.trim()) {
-                  // 发送为文本消息而不是语音消息
-                  const textMessage: Message = {
+                  // 发送为语音消息（带转写文字）
+                  const voiceMessage: Message = {
                     id: Date.now().toString(),
                     role: 'user',
-                    content: voiceTranscript.trim(),
-                    timestamp: Date.now()
+                    content: '[语音]', // 显示[语音]标识
+                    timestamp: Date.now(),
+                    mediaType: 'voice',
+                    mediaDescription: voiceTranscript.trim(), // 转写文字
+                    voiceDuration: 3 // 默认3秒
                   };
                   
                   onUpdateConversation(conversation.id, {
-                    messages: [...conversation.messages, textMessage],
+                    messages: [...conversation.messages, voiceMessage],
                     lastMessageTime: Date.now()
                   });
                   
