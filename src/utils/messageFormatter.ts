@@ -117,15 +117,18 @@ export const splitMessages = (message: string): string[] => {
   if (docMatch) {
     const tagIndex = docMatch.index!;
     const tagEndIndex = tagIndex + docMatch[0].length;
-    const contentAfter = message.substring(tagEndIndex).trim();
+    // 🔥 关键修复：获取标记后的所有内容（包括换行），不trim()
+    const contentAfter = message.substring(tagEndIndex);
     
-    if (contentAfter) {
-      // 格式：[发文档:xxx] 内容在后面
-      // 将整个文档（标记+内容）作为一个整体保护
-      documentPart = message.substring(tagIndex).trim();
+    // 只要标记后面有任何非空字符（忽略开头的空白），就认为是完整文档
+    if (contentAfter.trim().length > 0) {
+      // 格式：[发文档:xxx] 内容在后面（可能有换行）
+      // 将整个文档（标记+内容）作为一个整体保护，不做任何trim
+      documentPart = message.substring(tagIndex); // 保留原始格式
       messageWithoutProtected = message.substring(0, tagIndex).trim();
       // 从已保护列表中移除单独的文档标记
       protectedParts = protectedParts.filter(p => !p.match(documentPattern));
+      console.log('📄 [分割器] 检测到文档标记，整体保护长度:', documentPart.length);
     }
   }
   

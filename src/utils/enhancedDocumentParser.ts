@@ -194,32 +194,27 @@ function tryExtractNaturalLanguage(content: string): DocumentMessage | null {
       }
     }
     
-    // 🚨 检测到AI只发送了文档标题但没有正文内容的情况
-    if (docContent.length <= 10) {
-      console.warn(`⚠️ [文档解析] AI发送了文档标题"${title}"但缺少正文内容 (长度: ${docContent.length})`);
-      console.warn(`💡 [文档解析] 建议在系统提示中强调文档发送格式要求`);
-      
-      // 创建一个特殊的文档对象，包含错误提示
-      return {
-        title,
-        content: sanitizeHTML(`
-          <div style="color: #ff6b6b; background: #fff3f3; padding: 12px; border-radius: 8px; border-left: 4px solid #ff6b6b; margin: 8px 0;">
-            <h4 style="margin: 0 0 8px 0;">⚠️ 文档内容缺失</h4>
-            <p style="margin: 0 0 8px 0;">AI发送了文档标题但未提供正文内容。</p>
-            <p style="margin: 0; font-size: 12px; opacity: 0.8;">请要求AI重新发送完整的文档内容。</p>
-          </div>
-        `),
-        type: 'text',
-        greeting: greeting || '内容缺失'
-      };
-    }
-    
-    if (docContent.length > 10) {
+    // 🔥 放宽限制：只要有内容就认为是有效文档
+    if (docContent.length > 0) {
       return {
         title,
         content: sanitizeHTML(`<p>${escapeHTML(docContent)}</p>`),
         type: 'text',
         greeting
+      };
+    } else {
+      // 内容完全为空时才提示
+      console.warn(`⚠️ [文档解析] AI发送了文档标题"${title}"但内容为空`);
+      return {
+        title,
+        content: sanitizeHTML(`
+          <div style="color: #ff6b6b; background: #fff3f3; padding: 12px; border-radius: 8px; border-left: 4px solid #ff6b6b;">
+            <h4 style="margin: 0 0 8px 0;">⚠️ 文档内容为空</h4>
+            <p style="margin: 0; font-size: 14px;">AI发送了文档标题但未提供内容。</p>
+          </div>
+        `),
+        type: 'text',
+        greeting: greeting || '内容缺失'
       };
     }
   }
@@ -231,7 +226,7 @@ function tryExtractNaturalLanguage(content: string): DocumentMessage | null {
     const title = match2[1].trim();
     const docContent = match2[2].trim();
     
-    if (docContent.length > 10) {
+    if (docContent.length > 0) {
       return {
         title,
         content: sanitizeHTML(`<p>${escapeHTML(docContent)}</p>`),
@@ -247,7 +242,7 @@ function tryExtractNaturalLanguage(content: string): DocumentMessage | null {
     const title = match3[1].trim();
     const docContent = match3[2].trim();
     
-    if (docContent.length > 10) {
+    if (docContent.length > 0) {
       return {
         title,
         content: sanitizeHTML(`<p>${escapeHTML(docContent)}</p>`),
@@ -275,11 +270,26 @@ function tryParseLegacy(content: string): DocumentMessage | null {
       typeStr === 'markdown' ? 'markdown' :
       typeStr === 'code' ? 'code' : 'text';
     
-    if (docContent.length > 10) {
+    // 🔥 放宽限制：只要有内容就认为是有效文档（不再要求>10字符）
+    if (docContent.length > 0) {
       return {
         title,
         content: sanitizeHTML(`<p>${escapeHTML(docContent)}</p>`),
         type
+      };
+    } else {
+      // 如果标记存在但内容为空，返回一个提示文档
+      console.warn(`⚠️ [文档解析] 检测到文档标记"${title}"但内容为空`);
+      return {
+        title,
+        content: sanitizeHTML(`
+          <div style="color: #ff6b6b; background: #fff3f3; padding: 12px; border-radius: 8px; border-left: 4px solid #ff6b6b;">
+            <h4 style="margin: 0 0 8px 0;">⚠️ 文档内容为空</h4>
+            <p style="margin: 0; font-size: 14px;">AI发送了文档标记但未提供内容。</p>
+          </div>
+        `),
+        type,
+        greeting: '内容缺失'
       };
     }
   }
