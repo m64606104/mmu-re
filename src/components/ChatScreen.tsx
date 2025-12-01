@@ -1286,26 +1286,26 @@ ${recentMessages}
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   };
 
-  // 消息点击处理 - 显示胶囊菜单
-  const handleMessageClick = (messageId: string, event: React.MouseEvent) => {
-    // 如果点击的是操作按钮或语音/视频/图片等媒体控件，不处理
-    const target = event.target as HTMLElement;
-    if (target.closest('.message-action-btn') || 
-        target.closest('audio') || 
-        target.closest('video') || 
-        target.closest('button') ||
-        target.tagName === 'IMG') {
-      return;
-    }
+  // 消息点击处理 - 显示胶囊菜单（预留，暂未使用）
+  // const handleMessageClick = (messageId: string, event: React.MouseEvent) => {
+  //   // 如果点击的是操作按钮或语音/视频/图片等媒体控件，不处理
+  //   const target = event.target as HTMLElement;
+  //   if (target.closest('.message-action-btn') || 
+  //       target.closest('audio') || 
+  //       target.closest('video') || 
+  //       target.closest('button') ||
+  //       target.tagName === 'IMG') {
+  //     return;
+  //   }
     
-    // 获取点击位置，显示菜单
-    const rect = (event.currentTarget as HTMLElement).getBoundingClientRect();
-    const x = rect.left + rect.width / 2;
-    const y = rect.top;
+  //   // 获取点击位置，显示菜单
+  //   const rect = (event.currentTarget as HTMLElement).getBoundingClientRect();
+  //   const x = rect.left + rect.width / 2;
+  //   const y = rect.top;
     
-    setSelectedMessageId(messageId);
-    setMenuPosition({ x, y });
-  };
+  //   setSelectedMessageId(messageId);
+  //   setMenuPosition({ x, y });
+  // };
 
   // 关闭菜单
   const handleCloseMenu = () => {
