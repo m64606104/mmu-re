@@ -1256,21 +1256,12 @@ ${recentMessages}
     return () => clearInterval(checkInterval);
   }, [conversation.id, conversation.messages, onUpdateConversation]);
   
-  // 语音相关state
-  const [isRecording, setIsRecording] = useState(false);
-  const [recordingTime, setRecordingTime] = useState(0);
-  const [audioBlob, setAudioBlob] = useState<Blob | null>(null);
+  // 语音转文字相关state（Web Speech API）
   const [showVoiceConfirmModal, setShowVoiceConfirmModal] = useState(false);
   const [voiceTranscript, setVoiceTranscript] = useState('');
-  const [isTranscribing, setIsTranscribing] = useState(false);
-  
-  // Web Speech 识别器状态
   const [isSpeechRecognizing, setIsSpeechRecognizing] = useState(false);
   const [speechRecognitionSupported, setSpeechRecognitionSupported] = useState(false);
   const speechRecognitionRef = useRef<any>(null);
-  
-  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
-  const recordingTimerRef = useRef<NodeJS.Timeout | null>(null);
   
   // 检测Web Speech API支持
   useEffect(() => {
@@ -2938,99 +2929,7 @@ ${characterInfo?.languageStyle ? `语言风格：${characterInfo.languageStyle}`
     setShowVoiceConfirmModal(true);
   };
 
-  // 开始录音
-  const startRecording = async () => {
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const mediaRecorder = new MediaRecorder(stream);
-      const audioChunks: BlobPart[] = [];
-      
-      mediaRecorder.ondataavailable = (event) => {
-        audioChunks.push(event.data);
-      };
-      
-      mediaRecorder.onstop = async () => {
-        const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
-        setAudioBlob(audioBlob);
-        
-        // 停止所有音轨
-        stream.getTracks().forEach(track => track.stop());
-        
-        // 直接显示手动输入弹窗，不使用语音识别
-        setVoiceTranscript('');
-        setShowVoiceConfirmModal(true);
-      };
-      
-      mediaRecorder.start();
-      mediaRecorderRef.current = mediaRecorder;
-      setIsRecording(true);
-      
-      // 开始计时
-      setRecordingTime(0);
-      recordingTimerRef.current = setInterval(() => {
-        setRecordingTime(prev => prev + 1);
-      }, 1000);
-      
-    } catch (error) {
-      console.error('启动录音失败:', error);
-      alert('无法访问麦克风，请检查权限设置');
-    }
-  };
-
-  // 停止录音
-  const stopRecording = () => {
-    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
-      mediaRecorderRef.current.stop();
-    }
-    
-    if (recordingTimerRef.current) {
-      clearInterval(recordingTimerRef.current);
-      recordingTimerRef.current = null;
-    }
-    
-    setIsRecording(false);
-  };
-
-  // 发送语音消息
-  const handleSendVoice = () => {
-    if (!voiceTranscript.trim() || !audioBlob) {
-      alert('请输入语音内容');
-      return;
-    }
-    
-    try {
-      // 转换音频为URL
-      const audioUrl = URL.createObjectURL(audioBlob);
-      
-      // 创建语音消息
-      const voiceMessage: Message = {
-        id: `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-        role: 'user',
-        content: `[语音]`,
-        timestamp: Date.now(),
-        mediaType: 'voice',
-        mediaUrl: audioUrl,
-        mediaDescription: voiceTranscript,
-        voiceDuration: recordingTime // 使用录音时长
-      };
-      
-      // 保存到聊天记录
-      onUpdateConversation(conversation.id, {
-        messages: [...conversation.messages, voiceMessage],
-        lastMessageTime: Date.now()
-      });
-      
-      // 重置状态
-      setShowVoiceConfirmModal(false);
-      setVoiceTranscript('');
-      setAudioBlob(null);
-      setRecordingTime(0);
-      
-    } catch (error) {
-      console.error('发送语音失败:', error);
-      alert('发送语音失败');
-    }
-  };
+  // 旧的录音功能已移除，现在使用Web Speech API直接识别
 
   // AI自动领取群红包函数
   const handleAIAutoClaimRedPacket = async (
@@ -6984,47 +6883,6 @@ ${doc.content}`;
       </div>
     )}
 
-    {/* 录音中弹窗 */}
-    {(isRecording || isTranscribing) && (
-      <div className="absolute inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-        <div className="bg-white rounded-2xl p-8 w-full max-w-sm shadow-2xl text-center">
-          <div className="mb-4">
-            <div className="w-16 h-16 mx-auto bg-red-100 rounded-full flex items-center justify-center">
-              <Mic className={`w-8 h-8 text-red-500 ${isRecording ? 'animate-pulse' : ''}`} />
-            </div>
-          </div>
-          <h3 className="text-lg font-semibold text-gray-900 mb-2">
-            {isTranscribing ? '正在识别...' : '正在录音...'}
-          </h3>
-          <p className="text-3xl font-bold text-gray-900 mb-4">
-            {Math.floor(recordingTime / 60).toString().padStart(2, '0')}:{(recordingTime % 60).toString().padStart(2, '0')}
-          </p>
-          <p className="text-sm text-gray-600 mb-2">
-            {isTranscribing ? '正在转换为文字，请稍候...' : '请说出您想发送的内容'}
-          </p>
-          {!isTranscribing && (
-            <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 mb-4">
-              <p className="text-xs text-blue-700">
-                💡 <span className="font-semibold">温馨提示：</span>录音结束后，您需要手动输入这段语音的文字内容。如需自动识别，请在<span className="font-semibold">设置</span>中开启语音识别功能。
-              </p>
-            </div>
-          )}
-          {!isTranscribing && (
-            <button
-              onClick={() => {
-                stopRecording();
-                setIsRecording(false);
-                setIsTranscribing(false);
-              }}
-              className="px-6 py-2.5 bg-red-500 text-white rounded-xl hover:bg-red-600 transition-colors font-medium"
-            >
-              停止录音
-            </button>
-          )}
-        </div>
-      </div>
-    )}
-
     {/* 语音转文字弹窗（EVE风格） */}
     {showVoiceConfirmModal && (
       <div className="absolute inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
@@ -7090,7 +6948,6 @@ ${doc.content}`;
                 stopSpeechRecognition();
                 setShowVoiceConfirmModal(false);
                 setVoiceTranscript('');
-                setAudioBlob(null);
               }}
               className="flex-1 px-4 py-2.5 border border-gray-300 text-gray-700 rounded-xl hover:bg-gray-50 transition-colors font-medium"
             >
