@@ -2217,8 +2217,47 @@ ${characterInfo?.languageStyle ? `语言风格：${characterInfo.languageStyle}`
     });
 
     // 🔧 修复：用户领取AI红包时，不应该有AI的自动回复
-    // AI接收/退回用户红包的回复通过 [接收红包:留言] 标记处理
-    // 所以这里不需要自动回复了
+    // AI发红包时已经带有自己的回复，不需要再次生成
+  };
+  
+  // 点击头像 @ 对方
+  const handleAvatarClick = (senderName: string) => {
+    if (conversation.type !== 'group') return;
+    const atText = `@${senderName} `;
+    setCurrentInput(prev => prev + atText);
+    // 聚焦输入框
+    if (inputRef.current) {
+      (inputRef.current as unknown as HTMLTextAreaElement).focus();
+    }
+  };
+
+  // 双击头像拍一拍
+  const handleAvatarDoubleClick = (messageId: string, _senderId: string, senderName: string) => {
+    if (conversation.type !== 'group') return;
+    
+    // 添加拍一拍reaction到消息
+    const updatedMessages = conversation.messages.map(m => {
+      if (m.id === messageId) {
+        const existingReactions = m.reactions || [];
+        return {
+          ...m,
+          reactions: [...existingReactions, { from: 'user' as const, type: 'pat' }]
+        };
+      }
+      return m;
+    });
+    
+    // 显示拍一拍提示
+    const patMessage: Message = {
+      id: `pat_${Date.now()}`,
+      role: 'system',
+      content: `你拍了拍 ${senderName}`,
+      timestamp: Date.now()
+    };
+    
+    onUpdateConversation(conversation.id, {
+      messages: [...updatedMessages, patMessage]
+    });
   };
 
   // 处理图片上传（支持多图）
@@ -5428,11 +5467,19 @@ ${doc.content}`;
                     {/* 群聊：显示发送者的头像 */}
                     {conversation.type === 'group' ? (
                       (message as any).senderAvatar ? (
-                        <div className="w-11 h-11 rounded-full overflow-hidden border-2 border-white shadow-md">
+                        <div 
+                          className="w-11 h-11 rounded-full overflow-hidden border-2 border-white shadow-md cursor-pointer hover:ring-2 hover:ring-blue-400 transition-all"
+                          onClick={() => handleAvatarClick((message as any).senderName || 'AI')}
+                          onDoubleClick={() => handleAvatarDoubleClick(message.id, (message as any).senderId || '', (message as any).senderName || 'AI')}
+                        >
                           <img src={(message as any).senderAvatar} alt={(message as any).senderName || 'AI'} className="w-full h-full object-cover" />
                         </div>
                       ) : (
-                        <div className="w-11 h-11 rounded-full bg-gradient-to-br from-blue-400 to-purple-500 flex items-center justify-center border-2 border-white shadow-md">
+                        <div 
+                          className="w-11 h-11 rounded-full bg-gradient-to-br from-blue-400 to-purple-500 flex items-center justify-center border-2 border-white shadow-md cursor-pointer hover:ring-2 hover:ring-blue-400 transition-all"
+                          onClick={() => handleAvatarClick((message as any).senderName || 'AI')}
+                          onDoubleClick={() => handleAvatarDoubleClick(message.id, (message as any).senderId || '', (message as any).senderName || 'AI')}
+                        >
                           <span className="text-white font-semibold text-sm">{((message as any).senderName || 'AI').charAt(0)}</span>
                         </div>
                       )

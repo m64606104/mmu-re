@@ -315,6 +315,7 @@ export interface Conversation {
     enabled: boolean; // 是否启用自定义上下文数量
     messageCount: number; // 上下文消息数量（1-100，默认30）
   };
+  groupTemperature?: number; // 群聊生成温度 (0-1)
   pinned?: boolean; // 是否置顶
   isHidden?: boolean; // 是否隐藏（不显示在列表，直到有新消息）
   isBlocked?: boolean; // 是否拉黑（AI会感知到被拉黑，且不会显示在列表）

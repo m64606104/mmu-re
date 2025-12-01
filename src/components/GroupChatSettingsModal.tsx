@@ -31,6 +31,12 @@ const GroupChatSettingsModal: React.FC<GroupChatSettingsModalProps> = ({
   // 上下文配置状态
   const [contextEnabled, setContextEnabled] = useState(conversation.groupContextConfig?.enabled || false);
   const [contextMessageCount, setContextMessageCount] = useState(conversation.groupContextConfig?.messageCount || 30);
+  // 生成温度（0-1）
+  const [groupTemperature, setGroupTemperature] = useState<number>(
+    typeof conversation.groupTemperature === 'number'
+      ? Math.max(0, Math.min(1, conversation.groupTemperature))
+      : ((conversation.groupChatMode || 'sequential') === 'free' ? 0.6 : 0.8)
+  );
   
   const imageInputRef = React.useRef<HTMLInputElement>(null);
 
@@ -40,6 +46,7 @@ const GroupChatSettingsModal: React.FC<GroupChatSettingsModalProps> = ({
       groupRemark: groupRemark,
       avatar: groupAvatar,
       groupChatMode: groupChatMode,
+      groupTemperature: groupTemperature,
       groupContextConfig: {
         enabled: contextEnabled,
         messageCount: contextMessageCount,
@@ -99,6 +106,16 @@ const GroupChatSettingsModal: React.FC<GroupChatSettingsModalProps> = ({
       .map(memberId => conversations.find(c => c.id === memberId))
       .filter(c => c) as Conversation[];
   };
+
+  // 温度标签与描述（与私聊页风格一致的分层说明）
+  const getTempLabel = (t: number) => (t <= 0.3 ? '稳重聚焦' : t <= 0.6 ? '均衡自然' : '灵感活跃');
+  const getTempDesc = (t: number) => (
+    t <= 0.3
+      ? '更保守、连贯性最强，可能略显平淡'
+      : t <= 0.6
+      ? '连贯与变化平衡，适合日常群聊（推荐）'
+      : '更有创意与惊喜，可能偶尔跑题或炫技'
+  );
 
   // 获取可添加的联系人（排除已在群内的）
   const getAvailableContacts = () => {
@@ -242,12 +259,15 @@ const GroupChatSettingsModal: React.FC<GroupChatSettingsModalProps> = ({
           {/* 回复模式标签页 */}
           {activeTab === 'mode' && (
             <div className="space-y-4">
-            <div className="flex items-center gap-2">
-              <MessageCircle className="w-5 h-5 text-blue-500" />
-              <h3 className="font-semibold text-gray-900">回复模式</h3>
-            </div>
-            
-            <div className="space-y-3">
+            {/* 对话行为 */}
+            <div className="bg-white rounded-lg shadow-sm overflow-hidden border border-gray-100">
+              <div className="px-4 py-3 flex items-center justify-between bg-gray-50 border-b border-gray-100">
+                <div className="flex items-center gap-2">
+                  <MessageCircle className="w-5 h-5 text-blue-500" />
+                  <h3 className="text-sm font-medium text-gray-900">对话行为</h3>
+                </div>
+              </div>
+              <div className="p-4 space-y-3">
               {/* 顺序模式 */}
               <button
                 onClick={() => setGroupChatMode('sequential')}
@@ -291,26 +311,62 @@ const GroupChatSettingsModal: React.FC<GroupChatSettingsModalProps> = ({
                   随机选择0到全部AI回复，AI之间可以自由对话
                 </div>
               </button>
-            </div>
-
-          {/* 自由模式说明 */}
-          {groupChatMode === 'free' && (
-            <div className="bg-purple-50 rounded-xl p-4 border border-purple-200">
-              <div className="flex items-start gap-2">
-                <Info className="w-5 h-5 text-purple-500 flex-shrink-0 mt-0.5" />
-                <div className="text-sm text-gray-700">
-                  <div className="font-medium text-purple-900 mb-2">自由模式特性：</div>
-                  <ul className="space-y-1 list-disc list-inside">
-                    <li>每次生成时随机选择参与回复的AI数量</li>
-                    <li>AI可以根据其他AI的消息进行回复</li>
-                    <li>AI可以引入新话题，保持对话活跃</li>
-                    <li>即使没有新消息，AI也会继续聊天</li>
-                    <li>如果没有AI回复，会显示提示信息</li>
-                  </ul>
+              {/* 自由模式说明 */}
+              {groupChatMode === 'free' && (
+                <div className="bg-purple-50 rounded-xl p-4 border border-purple-200">
+                  <div className="flex items-start gap-2">
+                    <Info className="w-5 h-5 text-purple-500 flex-shrink-0 mt-0.5" />
+                    <div className="text-sm text-gray-700">
+                      <div className="font-medium text-purple-900 mb-2">自由模式特性：</div>
+                      <ul className="space-y-1 list-disc list-inside">
+                        <li>每次生成时随机选择参与回复的AI数量</li>
+                        <li>AI可以根据其他AI的消息进行回复</li>
+                        <li>AI可以引入新话题，保持对话活跃</li>
+                        <li>即使没有新消息，AI也会继续聊天</li>
+                        <li>如果没有AI回复，会显示提示信息</li>
+                      </ul>
+                    </div>
+                  </div>
                 </div>
+              )}
               </div>
             </div>
-          )}
+
+          {/* 生成温度设置 */}
+          <div className="bg-white rounded-lg shadow-sm overflow-hidden border border-gray-100">
+            <div className="px-4 py-3 flex items-center justify-between bg-gray-50 border-b border-gray-100">
+              <div className="flex items-center gap-2">
+                <MessageCircle className="w-5 h-5 text-orange-500" />
+                <h3 className="text-sm font-medium text-gray-900">生成温度</h3>
+              </div>
+              <div className="text-sm font-medium text-orange-600 pr-1">
+                {getTempLabel(groupTemperature)} · {groupTemperature.toFixed(1)}
+              </div>
+            </div>
+            <div className="flex items-center justify-between mb-3">
+              <div className="text-sm text-gray-600">控制创意与连贯性的平衡</div>
+              <div className="text-xs text-gray-500">0.0 - 1.0</div>
+            </div>
+            <div className="bg-orange-50 rounded-lg mx-4 mb-4 p-3 border border-orange-200">
+              <input
+                type="range"
+                min="0"
+                max="1"
+                step="0.1"
+                value={groupTemperature}
+                onChange={(e) => setGroupTemperature(parseFloat(e.target.value))}
+                className="w-full h-2 bg-orange-200 rounded-lg appearance-none cursor-pointer"
+              />
+              <div className="flex justify-between text-xs text-gray-500 mt-1">
+                <span>稳重</span>
+                <span>均衡</span>
+                <span>活跃</span>
+              </div>
+              <div className="text-xs text-gray-600 bg-white/70 rounded-md p-2 mt-3">
+                {getTempDesc(groupTemperature)}
+              </div>
+            </div>
+          </div>
 
           {/* 自定义上下文数量 */}
           <div className="border-t pt-4 mt-4">

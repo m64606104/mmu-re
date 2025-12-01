@@ -503,13 +503,17 @@ async function generateAIReply(
 - 请充分发挥文学创作能力，生动刻画角色`;
     }
 
-    // 构建消息历史（使用自定义上下文数量或默认30条）
+    // 构建消息历史（支持：关闭=全部上下文；开启=自定义条数）
     const contextEnabled = groupConversation.groupContextConfig?.enabled || false;
-    const contextCount = contextEnabled 
-      ? (groupConversation.groupContextConfig?.messageCount || 30)
-      : 30;
-    const recentMessages = groupConversation.messages.slice(-contextCount);
-    console.log(`📝 群聊上下文：${contextEnabled ? '自定义' : '默认'} ${contextCount} 条消息`);
+    let recentMessages: Message[];
+    if (contextEnabled) {
+      const contextCount = groupConversation.groupContextConfig?.messageCount || 30;
+      recentMessages = groupConversation.messages.slice(-contextCount);
+      console.log(`📝 群聊上下文：自定义 ${contextCount} 条消息`);
+    } else {
+      recentMessages = groupConversation.messages;
+      console.log('📝 群聊上下文：全部消息（未开启自定义上限）');
+    }
     
     // 🕐 添加时间感知
     const lastUserMessage = recentMessages
@@ -526,7 +530,73 @@ async function generateAIReply(
       );
       systemPrompt += timeAwarePrompt;
     }
-   // 1. 格式化最近消息（保留媒体标记）
+    
+    // 🔕 红包冷却与防炫技（动态约束）
+    const WINDOW_MS = 10 * 60 * 1000; // 10分钟窗口
+    const scanWindowMessages = groupConversation.messages.slice(-100);
+    const nowTs = Date.now();
+    let lastRedPacketTs = 0;
+    let redPacketCountInWindow = 0;
+    scanWindowMessages.forEach(m => {
+      if (m.moneyTransfer?.type === 'groupRedPacket' && (m as any).timestamp) {
+        const ts = (m as any).timestamp as number;
+        if (nowTs - ts <= WINDOW_MS) redPacketCountInWindow++;
+        if (ts > lastRedPacketTs) lastRedPacketTs = ts;
+      }
+    });
+    if (redPacketCountInWindow > 0) {
+      systemPrompt += `
+【⛔ 使用约束（动态）】：
+- 最近10分钟内已出现红包${redPacketCountInWindow}次，本轮请不要再主动发红包（除非被明确 @ 或非常合适的场景）
+- 可以用表情包或简短文字表达祝贺，避免频繁发红包`;
+    }
+
+    // 🧵 互动引导：识别最近的“接力链”，鼓励基于他人回复继续讨论
+    // 查找最近一条“用户相关”的消息位置（用户消息或无 senderId 的 assistant）
+    let lastUserIdx = -1;
+    for (let i = recentMessages.length - 1; i >= 0; i--) {
+      const m: any = recentMessages[i];
+      if (m.role === 'user' || (m.role === 'assistant' && !m.senderId)) {
+        lastUserIdx = i;
+        break;
+      }
+    }
+    const threadAIs: string[] = [];
+    if (lastUserIdx !== -1) {
+      for (let i = lastUserIdx + 1; i < recentMessages.length; i++) {
+        const m: any = recentMessages[i];
+        if (m.role === 'assistant' && m.senderId && m.senderId !== aiMember.id) {
+          const sender = allConversations.find(c => c.id === m.senderId);
+          const name = sender?.characterSettings?.nickname || sender?.name || 'AI';
+          if (!threadAIs.includes(name)) threadAIs.push(name);
+        }
+      }
+    }
+    if (threadAIs.length >= 1 && isFreeMode) {
+      const focusName = threadAIs[threadAIs.length - 1];
+      systemPrompt += `
+【🤝 互动引导】：
+- 最近接力发言：${threadAIs.join('、')}
+- 优先基于「${focusName}」的观点进行互动（认同/补充/不同意见/追问）
+- 避免再次单独回应最初发言者；更像群聊中的“接力讨论”`;
+    }
+    
+    // 拍一拍感知：检测最近针对自己的拍一拍
+    const recentPats = recentMessages
+      .filter(m => m.reactions && m.reactions.some(r => r.type === 'pat' && r.from === 'user'))
+      .filter(m => (m as any).senderId === aiMember.id);
+    
+    if (recentPats.length > 0) {
+      const patCount = recentPats.reduce((sum, m) => 
+        sum + (m.reactions?.filter(r => r.type === 'pat' && r.from === 'user').length || 0), 0);
+      systemPrompt += `
+【👋 拍一拍提示】：
+- 最近你被 ${userName || '用户'} 拍了拍（${patCount}次）
+- 可以选择简短回应（如表情包、"干嘛～"等），避免强行展开话题
+- 也可以不回应，保持自然`;
+    }
+    
+    // 1. 格式化最近消息（保留媒体标记）
     const apiMessages = recentMessages.map(msg => {
       if (msg.role === 'system') {
         return null; // 跳过系统消息
@@ -589,13 +659,17 @@ async function generateAIReply(
     // 调用API
     reply.status = 'typing';
     
+    // 读取群聊自定义温度；若未设置，则自由模式0.6、顺序模式0.8
+    const temperature = (typeof groupConversation.groupTemperature === 'number')
+      ? groupConversation.groupTemperature
+      : (isFreeMode ? 0.6 : 0.8);
     const requestBody = {
       model: apiConfig.modelName,
       messages: [
         { role: 'system', content: systemPrompt },
         ...apiMessages
       ],
-      temperature: 0.8,
+      temperature,
       max_tokens: 2000, // 提升限制，避免回复被截断
     };
     
