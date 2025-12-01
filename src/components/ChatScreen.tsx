@@ -5159,14 +5159,14 @@ ${doc.content}`;
       {customCss && <style>{customCss}</style>}
       {/* 如果开启了隐藏尾巴，注入隐藏样式 */}
       {hideBubbleTail && <style>{`.message-tail { display: none !important; }`}</style>}
-      {/* 注入气泡装饰样式 */}
+      {/* 注入气泡装饰样式 - 只针对纯文本气泡 (.text-message-bubble) */}
       {decorationConfig?.show && (
         <style>{`
-          .message-bubble {
+          .message-bubble.text-message-bubble {
             position: relative !important;
             overflow: visible !important;
           }
-          .message-bubble::after {
+          .message-bubble.text-message-bubble::after {
             content: ${decorationConfig.type === 'text' ? `"${decorationConfig.content}"` : '""'} !important;
             position: absolute !important;
             z-index: 10 !important;
@@ -5473,25 +5473,16 @@ ${doc.content}`;
                     </div>
                   )}
                   
-                  <div
-                    onClick={(e) => {
-                      if (isMultiSelectMode) {
-                        toggleMessageSelection(message.id);
-                      } else {
-                        handleMessageClick(message.id, e);
-                      }
-                    }}
-                    className={`message-bubble ${message.role === 'user' ? 'user' : 'ai'} rounded-2xl shadow-sm cursor-pointer ${
-                      message.moneyTransfer 
-                        ? 'p-0 overflow-hidden'
-                        : message.role === 'user'
-                        ? 'bg-white text-gray-900 border border-gray-200'
-                        : 'bg-white text-gray-900 border border-gray-200'
-                    } ${message.mediaType || message.moneyTransfer ? 'p-0 overflow-hidden' : message.replyTo ? 'pb-2.5' : 'px-4 py-2.5'} ${
-                      isMultiSelectMode && selectedMessages.includes(message.id) ? 'ring-2 ring-purple-500' : ''
-                    }`}
+                  <div 
+                    className={`message-bubble relative max-w-[85%] md:max-w-[75%] rounded-2xl shadow-sm 
+                    ${!message.mediaType && !message.moneyTransfer && !message.document && !message.order ? 'text-message-bubble' : 'media-message-bubble'}
+                    ${
+                      message.role === 'user' 
+                        ? 'bg-gradient-to-br from-blue-500 to-blue-600 text-white rounded-tr-sm' 
+                        : 'bg-white text-gray-800 rounded-tl-sm border border-gray-100'
+                    } ${message.replyTo ? 'pt-2' : 'p-3'}`}
                   >
-                    {/* 引用消息显示（只在非特殊消息时显示在这里） */}
+                    {/* 引用消息（在气泡内部显示，适用于普通文本消息） */}
                     {message.replyTo && !message.moneyTransfer && !message.document && !message.order && (
                       <div className="pt-3">
                         {/* 被引用的原消息 */}
@@ -6167,8 +6158,12 @@ ${doc.content}`;
                       </div>
                     )}
                     
-                    {/* 纯文字内容 */}
-                    {!message.mediaType && !message.moneyTransfer && !message.document && !message.order && message.content && message.content.trim() && (
+                    {/* 纯文字内容 - 只在没有多媒体内容或者有混合内容时显示 */}
+                    {!message.moneyTransfer && !message.document && !message.order && message.content && message.content.trim() && (
+                      !message.mediaType || 
+                      // 对于多媒体消息，如果内容不等于多媒体标记，说明有混合文本，需要显示
+                      (message.mediaType && message.content !== '[图片]' && message.content !== '[视频]' && message.content !== '[语音]' && message.content !== '[表情包]')
+                    ) && (
                       <p className={`message-content content text-[15px] leading-relaxed whitespace-pre-wrap break-words ${message.replyTo ? 'px-4' : ''}`}>{message.content}</p>
                     )}
                     {/* 用户媒体的描述文字（排除语音和表情包） */}

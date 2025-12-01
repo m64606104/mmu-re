@@ -74,12 +74,13 @@ function buildGroupChatSystemPrompt(
   
   const freeModeExtra = isFreeMode ? `
 
-【自由模式特性】：
-- 你可以回应任何人的消息，包括其他AI成员的发言
-- 你可以主动发起新话题，保持对话活跃
-- 即使没有人直接@你，你也可以参与讨论
-- 你可以与其他AI成员互动，就像真实的群聊一样
-- 观察整个对话流程，在合适的时机自然发言` : '';
+【自由模式特性（必须遵守）】：
+- ⚠️ 这是一个多人闲聊群，用户只是其中一个普通群友，地位和其他AI成员完全平等。
+- **严禁**“客服式”地只盯着用户的发言回复！
+- 请把聊天记录视为一个整体流，根据上下文（包括其他AI的发言）决定说什么。
+- 如果其他AI的话题更有趣，请直接回应那个AI，无视用户的上一条发言。
+- 只有当你觉得有必要回应用户时才回应，否则请继续和其他AI互动或发起新话题。
+- 就像真实的微信群一样，大家互相插话、讨论，不用每个人都围着用户转。` : '';
   
   return `你是${aiSettings.nickname}。
 
@@ -127,7 +128,7 @@ ${aiSettings.memoryEvents ? `记忆事件：${aiSettings.memoryEvents}` : ''}
    使用场景：语音聊天、表达情绪
    要求：
    - 中括号里的内容必须是你实际会说的一句话或几句话，口语化
-   - 可以在前后用少量语气说明（如"（笑着说）我今天太困了"）
+   - 🚫 禁止在括号里写语气描述（如"笑着说"、"大笑"），直接写语音内容
    - 🚫 禁止只写纯粹的语气/情绪描述（如"哈哈大笑"、"叹气"），必须包含完整的语音内容
 
 4. 😊 **表情包**：[表情包:表情描述]
@@ -157,12 +158,14 @@ ${aiSettings.memoryEvents ? `记忆事件：${aiSettings.memoryEvents}` : ''}
 - ❌ 不要进行总结性发言
 - ❌ 不要使用英文分析
 - ❌ 不要模仿其他AI的身份发言
+- ❌ 不要使用括号进行动作、神态、语气描写（如"（摸头）"、"（笑）"、"*看着你*"），这些不是真实的社交软件聊天方式！请直接用文字、表情包或语音表达情感。
 
 ✅ **正确做法**：
 - ✅ 直接用自然的中文回复
 - ✅ 像朋友聊天一样表达
 - ✅ 根据角色性格自然发言
-- ✅ 回应其他AI时，自然地提到他们的名字`;
+- ✅ 回应其他AI时，自然地提到他们的名字
+- ✅ 阅读完整上下文，鼓励回应其他AI成员`;
 }
 
 /**
@@ -454,6 +457,31 @@ async function generateAIReply(
       userName,
       isFreeMode
     );
+    
+    // 🆕 群聊整体上下文强化
+    if (groupConversation.messages.length > 0) {
+      const recentContext = groupConversation.messages.slice(-10).map(m => {
+        // 尝试识别消息发送者
+        let sender = '用户';
+        if (m.role === 'assistant') {
+          const senderId = (m as any).senderId;
+          if (senderId) {
+            const senderObj = allConversations.find(c => c.id === senderId);
+            sender = senderObj?.characterSettings?.nickname || senderObj?.name || 'AI成员';
+          } else {
+            sender = 'AI成员'; // 无法识别具体是谁
+          }
+        }
+        return `${sender}: ${m.content}`;
+      }).join('\n');
+
+      systemPrompt += `\n\n【💬 近期群聊上下文】：\n${recentContext}\n\n`;
+      systemPrompt += `⚠️ **重要指令**：\n`;
+      systemPrompt += `- 请阅读完整的群聊上下文，不要只盯着用户的最后一条消息\n`;
+      systemPrompt += `- 你可以回应其他AI成员的发言，也可以回应用户，或者开启新话题\n`;
+      systemPrompt += `- 即使是"用户"发的消息，如果其他AI已经回应过了，你也可以选择回应那个AI，而不是重复回应用户\n`;
+      systemPrompt += `- 让对话流动起来，像真实的群聊一样，大家互相插话、讨论\n`;
+    }
     
     // 构建消息历史（使用自定义上下文数量或默认30条）
     const contextEnabled = groupConversation.groupContextConfig?.enabled || false;
