@@ -771,7 +771,7 @@ export default function ChatScreen({
   
   // 消息操作相关状态
   const [selectedMessageId, setSelectedMessageId] = useState<string | null>(null);
-  const [menuPosition, setMenuPosition] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
+  // const [menuPosition, setMenuPosition] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
   const [quotedMessage, setQuotedMessage] = useState<Message | null>(null);
   const [messageBeingEdited, setMessageBeingEdited] = useState<Message | null>(null);
   const [isDeleting, setIsDeleting] = useState(false); // 标记是否正在删除消息
