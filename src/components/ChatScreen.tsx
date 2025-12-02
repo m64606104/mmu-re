@@ -91,6 +91,9 @@ import { generateGroupChatReplies, generateGroupChatRepliesFreeMode } from '../u
 import GroupChatSettingsModal from './GroupChatSettingsModal';
 import VideoCallModal from './VideoCallModal'; // 导入视频通话组件
 import { CallLog } from '../types';
+import WorldbookMountSettings from './WorldbookMountSettings';
+import { WorldbookMountConfig } from '../types/worldbook';
+import { buildWorldbookPrompt } from '../utils/worldbookPrompt';
 
 // import { backgroundTaskManager } from '../utils/backgroundTaskManager';
 // 直接在这里定义一个简化版的backgroundTaskManager作为替代
@@ -787,6 +790,7 @@ export default function ChatScreen({
   const [showVideoCall, setShowVideoCall] = useState(false); // 视频通话状态
   const [callType, setCallType] = useState<'video' | 'voice'>('video');
   const [showCallTypeSelector, setShowCallTypeSelector] = useState(false);
+  const [showWorldbookMount, setShowWorldbookMount] = useState(false); // 世界书挂载设置
   
   // 头像交互相关状态
   const [avatarMenuOpen, setAvatarMenuOpen] = useState<{ messageId: string; senderId: string; name: string; avatar?: string } | null>(null);
@@ -3635,14 +3639,17 @@ ${groupContext.contextSummary}
         }
       }
       
+      // 📚 获取世界书内容
+      const worldbookSections = await buildWorldbookPrompt(conversation);
+      
       let systemPrompt = conversation.characterSettings
-        ? `你是${conversation.characterSettings.nickname}。
+        ? `${worldbookSections.before}你是${conversation.characterSettings.nickname}。
 ${conversation.characterSettings.systemPrompt ? `人物设定：${conversation.characterSettings.systemPrompt}` : ''}
 ${conversation.characterSettings.personality ? `性格特征：${conversation.characterSettings.personality}` : ''}
 ${conversation.characterSettings.languageStyle ? `语言风格：${conversation.characterSettings.languageStyle}` : ''}
 ${conversation.characterSettings.languageExample ? `语言示例：${conversation.characterSettings.languageExample}` : ''}
 ${conversation.characterSettings.memoryEvents ? `记忆事件：${conversation.characterSettings.memoryEvents}` : ''}${knowledgeBaseContent}${groupContextContent}
-
+${worldbookSections.middle}
 【重要表达规范】：
 - 使用真人自然口语表达，不要使用斜杠（/）来表示"或"，例如：
   ❌ 错误："地铁/公交"、"学习/工作"  
@@ -7779,6 +7786,20 @@ ${doc.content}`;
           // 返回社交页面
           onBack();
         }}
+      />
+    )}
+
+    {/* 📚 世界书挂载设置弹窗 */}
+    {showWorldbookMount && (
+      <WorldbookMountSettings
+        currentConfig={conversation.worldbookMount}
+        onSave={(config: WorldbookMountConfig) => {
+          onUpdateConversation(conversation.id, {
+            worldbookMount: config
+          });
+          setShowWorldbookMount(false);
+        }}
+        onClose={() => setShowWorldbookMount(false)}
       />
     )}
 
