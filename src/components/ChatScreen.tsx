@@ -789,9 +789,7 @@ export default function ChatScreen({
   const [showCallTypeSelector, setShowCallTypeSelector] = useState(false);
   
   // 头像交互相关状态
-  const [avatarClickTimer, setAvatarClickTimer] = useState<NodeJS.Timeout | null>(null);
-  const [isLongPressing, setIsLongPressing] = useState(false);
-  const [longPressTimer, setLongPressTimer] = useState<NodeJS.Timeout | null>(null);
+  const [avatarMenuOpen, setAvatarMenuOpen] = useState<{ messageId: string; senderId: string; name: string; avatar?: string } | null>(null);
   
   // @ 成员列表相关状态
   const [showAtMemberList, setShowAtMemberList] = useState(false);
@@ -2275,35 +2273,15 @@ ${characterInfo?.languageStyle ? `语言风格：${characterInfo.languageStyle}`
     // AI发红包时已经带有自己的回复，不需要再次生成
   };
   
-  // 单击头像 - 进入私聊
-  const handleAvatarClick = (senderName: string) => {
+  // 单击头像 - 打开操作菜单
+  const handleAvatarClick = (messageId: string, senderId: string, senderName: string, senderAvatar?: string) => {
     if (conversation.type !== 'group') return;
-    
-    // 清除之前的定时器
-    if (avatarClickTimer) {
-      clearTimeout(avatarClickTimer);
-      setAvatarClickTimer(null);
-    }
-    
-    // 设置定时器，如果在300ms内没有第二次点击，则执行单击逻辑
-    const timer = setTimeout(() => {
-      if (onNavigateToPrivateChat) {
-        onNavigateToPrivateChat(senderName);
-      }
-    }, 300);
-    
-    setAvatarClickTimer(timer);
+    setAvatarMenuOpen({ messageId, senderId, name: senderName, avatar: senderAvatar });
   };
 
-  // 双击头像拍一拍
-  const handleAvatarDoubleClick = (messageId: string, _senderId: string, senderName: string) => {
+  // 拍一拍（从菜单触发）
+  const handlePatAction = (messageId: string, senderName: string) => {
     if (conversation.type !== 'group') return;
-    
-    // 清除单击定时器，防止触发单击逻辑
-    if (avatarClickTimer) {
-      clearTimeout(avatarClickTimer);
-      setAvatarClickTimer(null);
-    }
     
     // 添加拍一拍reaction到消息
     const updatedMessages = conversation.messages.map(m => {
@@ -2328,10 +2306,13 @@ ${characterInfo?.languageStyle ? `语言风格：${characterInfo.languageStyle}`
     onUpdateConversation(conversation.id, {
       messages: [...updatedMessages, patMessage]
     });
+    
+    // 关闭菜单
+    setAvatarMenuOpen(null);
   };
 
-  // 长按头像 @ 对方
-  const handleAvatarLongPress = (senderName: string) => {
+  // @对方（从菜单触发）
+  const handleAtAction = (senderName: string) => {
     if (conversation.type !== 'group') return;
     
     const atText = `@${senderName} `;
@@ -2340,37 +2321,22 @@ ${characterInfo?.languageStyle ? `语言风格：${characterInfo.languageStyle}`
     if (inputRef.current) {
       (inputRef.current as unknown as HTMLTextAreaElement).focus();
     }
+    
+    // 关闭菜单
+    setAvatarMenuOpen(null);
   };
 
-  // 头像按下事件
-  const handleAvatarMouseDown = (senderName: string) => {
+  // 发消息（从菜单触发）
+  const handleSendMessageAction = (senderName: string) => {
     if (conversation.type !== 'group') return;
     
-    setIsLongPressing(false);
-    
-    // 设置长按定时器
-    const timer = setTimeout(() => {
-      setIsLongPressing(true);
-      handleAvatarLongPress(senderName);
-    }, 500); // 500ms长按
-    
-    setLongPressTimer(timer);
-  };
-
-  // 头像释放事件
-  const handleAvatarMouseUp = () => {
-    // 清除长按定时器
-    if (longPressTimer) {
-      clearTimeout(longPressTimer);
-      setLongPressTimer(null);
+    // 导航到私聊
+    if (onNavigateToPrivateChat) {
+      onNavigateToPrivateChat(senderName);
     }
     
-    // 如果不是长按，且没有单击定时器，则等待双击判断
-    if (!isLongPressing && !avatarClickTimer) {
-      // 这里不执行任何操作，等待onClick或onDoubleClick
-    }
-    
-    setIsLongPressing(false);
+    // 关闭菜单
+    setAvatarMenuOpen(null);
   };
 
   // 点击@成员列表中的成员
@@ -5654,22 +5620,14 @@ ${doc.content}`;
                       (message as any).senderAvatar ? (
                         <div 
                           className="w-11 h-11 rounded-full overflow-hidden border-2 border-white shadow-md cursor-pointer hover:ring-2 hover:ring-blue-400 transition-all"
-                          onClick={() => handleAvatarClick((message as any).senderName || 'AI')}
-                          onDoubleClick={() => handleAvatarDoubleClick(message.id, (message as any).senderId || '', (message as any).senderName || 'AI')}
-                          onMouseDown={() => handleAvatarMouseDown((message as any).senderName || 'AI')}
-                          onMouseUp={handleAvatarMouseUp}
-                          onMouseLeave={handleAvatarMouseUp}
+                          onClick={() => handleAvatarClick(message.id, (message as any).senderId || '', (message as any).senderName || 'AI', (message as any).senderAvatar)}
                         >
                           <img src={(message as any).senderAvatar} alt={(message as any).senderName || 'AI'} className="w-full h-full object-cover" />
                         </div>
                       ) : (
                         <div 
                           className="w-11 h-11 rounded-full bg-gradient-to-br from-blue-400 to-purple-500 flex items-center justify-center border-2 border-white shadow-md cursor-pointer hover:ring-2 hover:ring-blue-400 transition-all"
-                          onClick={() => handleAvatarClick((message as any).senderName || 'AI')}
-                          onDoubleClick={() => handleAvatarDoubleClick(message.id, (message as any).senderId || '', (message as any).senderName || 'AI')}
-                          onMouseDown={() => handleAvatarMouseDown((message as any).senderName || 'AI')}
-                          onMouseUp={handleAvatarMouseUp}
-                          onMouseLeave={handleAvatarMouseUp}
+                          onClick={() => handleAvatarClick(message.id, (message as any).senderId || '', (message as any).senderName || 'AI', undefined)}
                         >
                           <span className="text-white font-semibold text-sm">{((message as any).senderName || 'AI').charAt(0)}</span>
                         </div>
@@ -7822,6 +7780,60 @@ ${doc.content}`;
           onBack();
         }}
       />
+    )}
+
+    {/* 头像操作菜单弹窗 */}
+    {avatarMenuOpen && (
+      <div 
+        className="fixed inset-0 bg-black bg-opacity-30 z-50 flex items-center justify-center"
+        onClick={() => setAvatarMenuOpen(null)}
+      >
+        <div 
+          className="bg-white rounded-2xl shadow-2xl overflow-hidden w-72 animate-scale-in"
+          onClick={(e) => e.stopPropagation()}
+        >
+          {/* 头像和昵称 */}
+          <div className="flex flex-col items-center py-6 bg-gradient-to-b from-blue-50 to-white">
+            {avatarMenuOpen.avatar ? (
+              <div className="w-16 h-16 rounded-full overflow-hidden border-4 border-white shadow-lg mb-3">
+                <img src={avatarMenuOpen.avatar} alt={avatarMenuOpen.name} className="w-full h-full object-cover" />
+              </div>
+            ) : (
+              <div className="w-16 h-16 rounded-full bg-gradient-to-br from-blue-400 to-purple-500 flex items-center justify-center border-4 border-white shadow-lg mb-3">
+                <span className="text-white font-bold text-2xl">{avatarMenuOpen.name.charAt(0)}</span>
+              </div>
+            )}
+            <div className="text-lg font-semibold text-gray-800">{avatarMenuOpen.name}</div>
+          </div>
+
+          {/* 操作选项 */}
+          <div className="divide-y divide-gray-100">
+            <button
+              onClick={() => handleSendMessageAction(avatarMenuOpen.name)}
+              className="w-full py-4 px-6 text-left hover:bg-blue-50 transition-colors flex items-center gap-3"
+            >
+              <MessageCircle className="w-5 h-5 text-blue-500" />
+              <span className="text-gray-700 font-medium">发消息</span>
+            </button>
+            
+            <button
+              onClick={() => handlePatAction(avatarMenuOpen.messageId, avatarMenuOpen.name)}
+              className="w-full py-4 px-6 text-left hover:bg-purple-50 transition-colors flex items-center gap-3"
+            >
+              <span className="text-2xl">👋</span>
+              <span className="text-gray-700 font-medium">拍一拍</span>
+            </button>
+            
+            <button
+              onClick={() => handleAtAction(avatarMenuOpen.name)}
+              className="w-full py-4 px-6 text-left hover:bg-green-50 transition-colors flex items-center gap-3"
+            >
+              <span className="text-xl font-bold text-green-600">@</span>
+              <span className="text-gray-700 font-medium">@对方</span>
+            </button>
+          </div>
+        </div>
+      </div>
     )}
     </>
   );
