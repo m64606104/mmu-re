@@ -3481,6 +3481,22 @@ ${characterInfo?.languageStyle ? `语言风格：${characterInfo.languageStyle}`
         return formatMessageForAI(msg);
       };
 
+      // 🕐 辅助函数：根据时间戳获取时间标签（今天/昨天/前天/几天前）
+      const getTimeLabel = (timestamp: number): string => {
+        const now = new Date();
+        const msgDate = new Date(timestamp);
+        const nowDay = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+        const msgDay = new Date(msgDate.getFullYear(), msgDate.getMonth(), msgDate.getDate());
+        const daysDiff = Math.floor((nowDay.getTime() - msgDay.getTime()) / (1000 * 60 * 60 * 24));
+        
+        if (daysDiff === 0) return '今天';
+        if (daysDiff === 1) return '昨天';
+        if (daysDiff === 2) return '前天';
+        if (daysDiff < 7) return `${daysDiff}天前`;
+        const weeksDiff = Math.floor(daysDiff / 7);
+        return `${weeksDiff}周前`;
+      };
+
       // 获取最近的用户消息（支持混合消息类型）
       const userMessages = conversation.messages.filter(m => m.role === 'user');
       const lastUserMsgForTime = userMessages[userMessages.length - 1];
@@ -4305,12 +4321,16 @@ ${SmartHTMLGenerator.getModuleInstructions()}
           });
         });
         
-        // 再添加文字消息
-        const combinedText = textMessages.map(m => m.content).filter(Boolean).join('\n');
-        if (combinedText) {
+        // 再添加文字消息（带时间前缀）
+        const textMessagesWithTime = textMessages.map(m => {
+          const timeLabel = getTimeLabel(m.timestamp);
+          return `【${timeLabel}】${m.content}`;
+        }).filter(Boolean).join('\n');
+        
+        if (textMessagesWithTime) {
           contentParts.push({
             type: 'text',
-            text: combinedText
+            text: textMessagesWithTime
           });
         } else {
           // 如果没有文字，根据图片数量添加提示
@@ -4347,12 +4367,23 @@ ${SmartHTMLGenerator.getModuleInstructions()}
             content: formatHistoryMessageContent(m)
           }));
 
-        // 组合视频描述和文字消息
+        // 组合视频描述和文字消息（带时间前缀）
         const videoMessage = unhandledUserMessages.find(m => m.mediaType === 'video');
-        const combinedText = textMessages.map(m => m.content).filter(Boolean).join('\n');
-        const videoContent = videoMessage?.mediaDescription 
-          ? `（分享了视频：${videoMessage.mediaDescription}）${combinedText ? '\n' + combinedText : ''}`
-          : combinedText;
+        const textWithTime = textMessages.map(m => {
+          const timeLabel = getTimeLabel(m.timestamp);
+          return `【${timeLabel}】${m.content}`;
+        }).filter(Boolean).join('\n');
+        
+        let videoContent = '';
+        if (videoMessage) {
+          const videoTimeLabel = getTimeLabel(videoMessage.timestamp);
+          videoContent = `【${videoTimeLabel}】（分享了视频：${videoMessage.mediaDescription}）`;
+          if (textWithTime) {
+            videoContent += '\n' + textWithTime;
+          }
+        } else {
+          videoContent = textWithTime;
+        }
 
         messages = [
           { role: 'system', content: systemPrompt + '\n\n【视频内容理解规则】：\n- 用户分享了视频，根据提供的内容描述自然回复\n- 像朋友间日常聊天一样对视频内容做出反应\n- 不要说"我看不到视频"、"无法观看"等话\n- 基于描述内容自然地评论、提问或互动\n- 可以回复文字，也可以回复图片/视频/语音/表情包/红包等\n- 如果用户除了视频还发了文字消息，一起回复所有内容' },
@@ -4379,11 +4410,17 @@ ${SmartHTMLGenerator.getModuleInstructions()}
             content: formatHistoryMessageContent(m)
           }));
 
-        // 组合语音转文字和其他文字消息
+        // 组合语音转文字和其他文字消息（带时间前缀）
         const voiceMessages = unhandledUserMessages.filter(m => m.mediaType === 'voice');
-        const voiceTexts = voiceMessages.map(m => m.mediaDescription).filter(Boolean);
-        const textContents = textMessages.map(m => m.content).filter(Boolean);
-        const combinedContent = [...voiceTexts, ...textContents].join('\n');
+        const voiceTextsWithTime = voiceMessages.map(m => {
+          const timeLabel = getTimeLabel(m.timestamp);
+          return `【${timeLabel}】${m.mediaDescription}`;
+        }).filter(Boolean);
+        const textContentsWithTime = textMessages.map(m => {
+          const timeLabel = getTimeLabel(m.timestamp);
+          return `【${timeLabel}】${m.content}`;
+        }).filter(Boolean);
+        const combinedContent = [...voiceTextsWithTime, ...textContentsWithTime].join('\n');
 
         messages = [
           { role: 'system', content: systemPrompt + '\n\n【语音消息理解规则】：\n- 用户发送了语音消息，根据语音转文字的内容自然回复\n- 像朋友间日常聊天一样对语音内容做出反应\n- 不要说"我听不到语音"、"无法播放"等话\n- 基于转录的文字内容自然回复即可\n- 可以回复文字，也可以回复语音/图片/视频/表情包/红包等\n- 如果用户除了语音还发了文字消息，一起回复所有内容' },
@@ -4410,11 +4447,17 @@ ${SmartHTMLGenerator.getModuleInstructions()}
             content: formatHistoryMessageContent(m)
           }));
 
-        // 组合表情包和文字消息
+        // 组合表情包和文字消息（带时间前缀）
         const stickerMessages = unhandledUserMessages.filter(m => m.mediaType === 'sticker');
-        const stickerContents = stickerMessages.map(m => `[表情包:${m.mediaDescription}]`).filter(Boolean);
-        const textContents = textMessages.map(m => m.content).filter(Boolean);
-        const combinedContent = [...stickerContents, ...textContents].join('\n');
+        const stickerContentsWithTime = stickerMessages.map(m => {
+          const timeLabel = getTimeLabel(m.timestamp);
+          return `【${timeLabel}】[表情包:${m.mediaDescription}]`;
+        }).filter(Boolean);
+        const textContentsWithTime = textMessages.map(m => {
+          const timeLabel = getTimeLabel(m.timestamp);
+          return `【${timeLabel}】${m.content}`;
+        }).filter(Boolean);
+        const combinedContent = [...stickerContentsWithTime, ...textContentsWithTime].join('\n');
 
         messages = [
           { role: 'system', content: systemPrompt + '\n\n【表情包理解规则】：\n- 用户发送了表情包，根据描述的内容理解用户的情绪和意图\n- 像朋友间日常聊天一样对表情包做出自然反应\n- 可以回复文字、也可以回复表情包（使用[表情包:描述内容]格式）\n- 根据表情包内容判断是否要发送图片/视频/语音/表情包回复\n- 如果用户除了表情包还发了文字消息，一起回复所有内容\n\n【发送多媒体消息格式】：\n- 发送图片：[图片:详细的画面描述，50-100字，必须包含光影/氛围/动态细节]\n- 发送视频：[视频:电影级画面描述，50-100字，必须包含环境/动作/神态/声音氛围]\n- 发送语音：[语音:语音内容的文字，时长X秒]\n- 发送表情包：[表情包:表情包的详细描述]\n\n示例：\n用户：[表情包:一只猫咪害羞捂脸]\nAI：哈哈哈好可爱！[表情包:小狗狗笑得很开心的样子]' },
