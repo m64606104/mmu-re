@@ -124,6 +124,31 @@ const formatTimeGap = (minutes: number): string => {
 };
 
 /**
+ * 检查消息是否包含行为关键词（用于判断是否需要做时长分析）
+ * @param message 消息内容
+ * @returns 是否包含行为关键词
+ */
+export const hasActionKeywords = (message: string): boolean => {
+  if (!message) return false;
+  
+  for (const action of COMMON_ACTIONS) {
+    // 检查是否包含行为关键词
+    const hasKeyword = action.keywords.some(keyword => message.includes(keyword));
+    if (!hasKeyword) continue;
+    
+    // 检查是否是"即将要做"的语境
+    const willDoPatterns = [
+      '我要', '要去', '准备', '去', '得', '该', '快', '马上', '等会', '一会', '待会儿', '先'
+    ];
+    const isGoingToDo = willDoPatterns.some(pattern => message.includes(pattern));
+    
+    if (isGoingToDo) return true;
+  }
+  
+  return false;
+};
+
+/**
  * 分析用户消息中的行为
  */
 const analyzeUserAction = (message: string, timeGapMinutes: number): string | null => {
@@ -359,15 +384,35 @@ export interface UnrepliedMessageInfo {
  * @param lastAIMessageTimestamp 最后一条AI消息的时间戳（新增）
  * @param oldestUnrepliedTimestamp 最早未回复消息的时间戳（可选）
  * @param unrepliedMessages 所有待回复消息的列表（新增）
+ * @param actionMessageContent 用于行为分析的消息内容（可选，默认用lastUserMessageContent）
+ * @param actionMessageTimestamp 用于行为分析的消息时间戳（可选，默认用lastUserMessageTimestamp）
  */
 export const buildTimeAwarePrompt = (
   lastUserMessageTimestamp?: number, 
   lastUserMessageContent?: string,
   lastAIMessageTimestamp?: number,
   oldestUnrepliedTimestamp?: number,
-  unrepliedMessages?: UnrepliedMessageInfo[]
+  unrepliedMessages?: UnrepliedMessageInfo[],
+  actionMessageContent?: string,
+  actionMessageTimestamp?: number
 ): string => {
-  const context = buildTimeContext(lastUserMessageTimestamp, lastUserMessageContent);
+  // 使用指定的行为消息（如果有），否则用最后一条用户消息
+  const contentForAction = actionMessageContent || lastUserMessageContent;
+  const timestampForAction = actionMessageTimestamp || lastUserMessageTimestamp;
+  
+  // 为时间显示构建基础上下文（不含行为分析）
+  const context = buildTimeContext(lastUserMessageTimestamp, undefined);
+  
+  // 单独计算行为分析（使用指定的消息）
+  let actionAnalysis: string | null = null;
+  if (contentForAction && timestampForAction) {
+    const now = new Date();
+    const timeGapMinutes = (now.getTime() - timestampForAction) / (1000 * 60);
+    actionAnalysis = analyzeUserAction(contentForAction, timeGapMinutes);
+  }
+  if (actionAnalysis) {
+    context.actionAnalysis = actionAnalysis;
+  }
   
   let prompt = `\n\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`;
   prompt += `【🕐 时间感知系统 - 强制遵守】\n`;

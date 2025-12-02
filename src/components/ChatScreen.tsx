@@ -80,7 +80,7 @@ import {
 } from '../utils/memorySystem';
 // import { detectMemes } from '../utils/memeSystem'; // 已删除热梗系统
 import { messagePerceptionService } from '../utils/messagePerceptionService';
-import { buildTimeAwarePrompt, UnrepliedMessageInfo } from '../utils/timeAwareness';
+import { buildTimeAwarePrompt, UnrepliedMessageInfo, hasActionKeywords } from '../utils/timeAwareness';
 import { getMomentsData } from '../utils/aiMomentsGenerator';
 import { getAIStatus } from '../utils/aiStatusManager';
 import { getErrorFromResponse, formatErrorMessage } from '../utils/apiErrorHandler';
@@ -3536,13 +3536,25 @@ ${characterInfo?.languageStyle ? `语言风格：${characterInfo.languageStyle}`
       const lastAIMessage = aiMessages[aiMessages.length - 1];
       const lastAITimestamp = lastAIMessage?.timestamp;
       
-      // 🕐 生成增强的时间感知提示词（包含时间跨度分析+AI消息时间感知）
+      // 🔍 扫描未回复消息，找到最近一条包含行为关键词的消息（用于增强的短时间预估）
+      let actionMessage: Message | undefined;
+      for (let i = unhandledUserMessages.length - 1; i >= 0; i--) {
+        const msg = unhandledUserMessages[i];
+        if (msg.content && hasActionKeywords(msg.content)) {
+          actionMessage = msg;
+          break; // 找到最近的一条就停止
+        }
+      }
+      
+      // 🕐 生成增强的时间感知提示词（包含时间跨度分析+AI消息时间感知+行为时长分析）
       const timeAwarePrompt = buildTimeAwarePrompt(
         lastUserTimestamp, 
         lastUserMsgForTime?.content,
         lastAITimestamp, // 🆕 添加AI消息时间戳
         oldestUnrepliedTimestamp,
-        unrepliedMessagesInfo
+        unrepliedMessagesInfo,
+        actionMessage?.content, // 🆕 用于行为分析的消息内容
+        actionMessage?.timestamp // 🆕 用于行为分析的消息时间戳
       );
       
       // 构建用户资料提示
