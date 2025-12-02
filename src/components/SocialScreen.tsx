@@ -1,7 +1,8 @@
 import { useState } from 'react';
-import { ChevronLeft, Users, Search, MessageCircle, Camera, User, BellOff, Plus, UserPlus, Scan } from 'lucide-react';
+import { ChevronLeft, Users, Search, MessageCircle, Camera, User, BellOff, Plus, UserPlus, Scan, Book } from 'lucide-react';
 import { Conversation, Screen } from '../types';
 import StatusSelector from './StatusSelector';
+import WorldbookScreen from './WorldbookScreen';
 
 interface SocialScreenProps {
   conversations: Conversation[];
@@ -18,6 +19,7 @@ export default function SocialScreen({ conversations, onNavigate, onImportCharac
   const [isDarkMode, setIsDarkMode] = useState(true);
   const [showMenu, setShowMenu] = useState(false);
   const [showStatusSelector, setShowStatusSelector] = useState(false);
+  const [showWorldbook, setShowWorldbook] = useState(false);
   
   // 左滑菜单状态
   const [swipedId, setSwipedId] = useState<string | null>(null);
@@ -219,6 +221,11 @@ export default function SocialScreen({ conversations, onNavigate, onImportCharac
     return gradients[index];
   };
 
+  // 如果显示世界书界面，直接渲染WorldbookScreen
+  if (showWorldbook) {
+    return <WorldbookScreen onBack={() => setShowWorldbook(false)} />;
+  }
+
   return (
     <div className={`h-full flex flex-col ${isDarkMode ? 'bg-[#1a1a1a]' : 'bg-[#EDEDED]'}`}>
       {/* Header - 微信风格 */}
@@ -318,6 +325,16 @@ export default function SocialScreen({ conversations, onNavigate, onImportCharac
                   >
                     <Scan className={`w-5 h-5 ${isDarkMode ? 'text-white' : 'text-gray-700'}`} />
                     <span className={`text-sm ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>扫一扫</span>
+                  </button>
+                  <button
+                    onClick={() => {
+                      setShowMenu(false);
+                      setShowWorldbook(true);
+                    }}
+                    className={`w-full px-4 py-3 flex items-center gap-3 transition-colors ${isDarkMode ? 'hover:bg-gray-700' : 'hover:bg-gray-50'}`}
+                  >
+                    <Book className={`w-5 h-5 ${isDarkMode ? 'text-white' : 'text-gray-700'}`} />
+                    <span className={`text-sm ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>世界书</span>
                   </button>
                 </div>
               </>

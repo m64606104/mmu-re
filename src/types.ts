@@ -320,6 +320,11 @@ export interface Conversation {
   isHidden?: boolean; // 是否隐藏（不显示在列表，直到有新消息）
   isBlocked?: boolean; // 是否拉黑（AI会感知到被拉黑，且不会显示在列表）
   aiChildData?: AIChildData; // AI儿童数据（仅AI幼儿园角色）
+  worldbookMount?: { // 世界书挂载配置
+    enabled: boolean;
+    selectedIds: string[];
+    categoryFilter?: string;
+  };
 }
 
 export interface UserProfile {
