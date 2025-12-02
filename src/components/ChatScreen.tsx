@@ -5462,6 +5462,24 @@ ${doc.content}`;
             <Search className="w-5 h-5 text-gray-700" />
           </button>
           
+          {/* 📚 世界书挂载按钮 (仅私聊) */}
+          {conversation.type === 'private' && (
+            <button
+              onClick={() => setShowWorldbookMount(true)}
+              className="p-2 hover:bg-gray-100 rounded-lg transition-colors relative"
+              title="世界书设定"
+            >
+              <svg className="w-5 h-5 text-gray-700" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+                <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" />
+                <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" />
+              </svg>
+              {/* 启用标记 */}
+              {conversation.worldbookMount?.enabled && conversation.worldbookMount.selectedIds.length > 0 && (
+                <span className="absolute -top-0.5 -right-0.5 w-2 h-2 bg-blue-500 rounded-full"></span>
+              )}
+            </button>
+          )}
+          
           {/* 💬 子聊天按钮 */}
           {conversation.type === 'private' && (
             <button
