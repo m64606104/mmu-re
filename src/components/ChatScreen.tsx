@@ -649,6 +649,7 @@ interface ChatScreenProps {
   onBack: () => void;
   onOpenCharacterSettings: () => void;
   onRequestAIMoment?: () => Promise<void>;
+  onNavigateToPrivateChat?: (aiName: string) => void; // 新增：导航到与AI的私聊
 }
 
 export default function ChatScreen({
@@ -661,6 +662,7 @@ export default function ChatScreen({
   onBack,
   onOpenCharacterSettings,
   onRequestAIMoment,
+  onNavigateToPrivateChat,
 }: ChatScreenProps) {
   const { showToast } = useToast();
   
@@ -785,6 +787,11 @@ export default function ChatScreen({
   const [showVideoCall, setShowVideoCall] = useState(false); // 视频通话状态
   const [callType, setCallType] = useState<'video' | 'voice'>('video');
   const [showCallTypeSelector, setShowCallTypeSelector] = useState(false);
+  
+  // 头像交互相关状态
+  const [avatarClickTimer, setAvatarClickTimer] = useState<NodeJS.Timeout | null>(null);
+  const [isLongPressing, setIsLongPressing] = useState(false);
+  const [longPressTimer, setLongPressTimer] = useState<NodeJS.Timeout | null>(null);
   
   // @ 成员列表相关状态
   const [showAtMemberList, setShowAtMemberList] = useState(false);
@@ -2268,20 +2275,35 @@ ${characterInfo?.languageStyle ? `语言风格：${characterInfo.languageStyle}`
     // AI发红包时已经带有自己的回复，不需要再次生成
   };
   
-  // 点击头像 @ 对方
+  // 单击头像 - 进入私聊
   const handleAvatarClick = (senderName: string) => {
     if (conversation.type !== 'group') return;
-    const atText = `@${senderName} `;
-    setCurrentInput(prev => prev + atText);
-    // 聚焦输入框
-    if (inputRef.current) {
-      (inputRef.current as unknown as HTMLTextAreaElement).focus();
+    
+    // 清除之前的定时器
+    if (avatarClickTimer) {
+      clearTimeout(avatarClickTimer);
+      setAvatarClickTimer(null);
     }
+    
+    // 设置定时器，如果在300ms内没有第二次点击，则执行单击逻辑
+    const timer = setTimeout(() => {
+      if (onNavigateToPrivateChat) {
+        onNavigateToPrivateChat(senderName);
+      }
+    }, 300);
+    
+    setAvatarClickTimer(timer);
   };
 
   // 双击头像拍一拍
   const handleAvatarDoubleClick = (messageId: string, _senderId: string, senderName: string) => {
     if (conversation.type !== 'group') return;
+    
+    // 清除单击定时器，防止触发单击逻辑
+    if (avatarClickTimer) {
+      clearTimeout(avatarClickTimer);
+      setAvatarClickTimer(null);
+    }
     
     // 添加拍一拍reaction到消息
     const updatedMessages = conversation.messages.map(m => {
@@ -2306,6 +2328,49 @@ ${characterInfo?.languageStyle ? `语言风格：${characterInfo.languageStyle}`
     onUpdateConversation(conversation.id, {
       messages: [...updatedMessages, patMessage]
     });
+  };
+
+  // 长按头像 @ 对方
+  const handleAvatarLongPress = (senderName: string) => {
+    if (conversation.type !== 'group') return;
+    
+    const atText = `@${senderName} `;
+    setCurrentInput(prev => prev + atText);
+    // 聚焦输入框
+    if (inputRef.current) {
+      (inputRef.current as unknown as HTMLTextAreaElement).focus();
+    }
+  };
+
+  // 头像按下事件
+  const handleAvatarMouseDown = (senderName: string) => {
+    if (conversation.type !== 'group') return;
+    
+    setIsLongPressing(false);
+    
+    // 设置长按定时器
+    const timer = setTimeout(() => {
+      setIsLongPressing(true);
+      handleAvatarLongPress(senderName);
+    }, 500); // 500ms长按
+    
+    setLongPressTimer(timer);
+  };
+
+  // 头像释放事件
+  const handleAvatarMouseUp = () => {
+    // 清除长按定时器
+    if (longPressTimer) {
+      clearTimeout(longPressTimer);
+      setLongPressTimer(null);
+    }
+    
+    // 如果不是长按，且没有单击定时器，则等待双击判断
+    if (!isLongPressing && !avatarClickTimer) {
+      // 这里不执行任何操作，等待onClick或onDoubleClick
+    }
+    
+    setIsLongPressing(false);
   };
 
   // 点击@成员列表中的成员
@@ -5591,6 +5656,9 @@ ${doc.content}`;
                           className="w-11 h-11 rounded-full overflow-hidden border-2 border-white shadow-md cursor-pointer hover:ring-2 hover:ring-blue-400 transition-all"
                           onClick={() => handleAvatarClick((message as any).senderName || 'AI')}
                           onDoubleClick={() => handleAvatarDoubleClick(message.id, (message as any).senderId || '', (message as any).senderName || 'AI')}
+                          onMouseDown={() => handleAvatarMouseDown((message as any).senderName || 'AI')}
+                          onMouseUp={handleAvatarMouseUp}
+                          onMouseLeave={handleAvatarMouseUp}
                         >
                           <img src={(message as any).senderAvatar} alt={(message as any).senderName || 'AI'} className="w-full h-full object-cover" />
                         </div>
@@ -5599,6 +5667,9 @@ ${doc.content}`;
                           className="w-11 h-11 rounded-full bg-gradient-to-br from-blue-400 to-purple-500 flex items-center justify-center border-2 border-white shadow-md cursor-pointer hover:ring-2 hover:ring-blue-400 transition-all"
                           onClick={() => handleAvatarClick((message as any).senderName || 'AI')}
                           onDoubleClick={() => handleAvatarDoubleClick(message.id, (message as any).senderId || '', (message as any).senderName || 'AI')}
+                          onMouseDown={() => handleAvatarMouseDown((message as any).senderName || 'AI')}
+                          onMouseUp={handleAvatarMouseUp}
+                          onMouseLeave={handleAvatarMouseUp}
                         >
                           <span className="text-white font-semibold text-sm">{((message as any).senderName || 'AI').charAt(0)}</span>
                         </div>

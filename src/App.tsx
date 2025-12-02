@@ -676,6 +676,33 @@ function App() {
     setUserProfile(profile);
   }, []);
 
+  // 从群聊导航到与AI的私聊
+  const handleNavigateToPrivateChat = useCallback((aiName: string) => {
+    // 查找是否已经存在与该AI的私聊
+    const existingPrivateChat = conversations.find(conv => 
+      conv.type === 'private' && conv.name === aiName
+    );
+
+    if (existingPrivateChat) {
+      // 如果已存在私聊，直接导航到该对话
+      navigateTo('chat', existingPrivateChat.id);
+    } else {
+      // 如果不存在，创建新的私聊对话
+      const newConversation: Conversation = {
+        id: `conv_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+        name: aiName,
+        type: 'private',
+        messages: [],
+        lastMessageTime: Date.now(),
+        unreadCount: 0
+      };
+
+      // 添加到对话列表并导航到新对话
+      setConversations(prev => [...prev, newConversation]);
+      navigateTo('chat', newConversation.id);
+    }
+  }, [conversations, navigateTo]);
+
   // 更新主题
   const updateTheme = useCallback((newTheme: ThemeSettings) => {
     setTheme(newTheme);
@@ -875,6 +902,7 @@ function App() {
             onBack={() => navigateTo(previousScreen === 'contacts' ? 'contacts' : 'social')}
             onOpenCharacterSettings={() => navigateTo('character-settings')}
             onRequestAIMoment={handleRequestAIMoment}
+            onNavigateToPrivateChat={handleNavigateToPrivateChat}
           />
         ) : (
           <HomeScreen onNavigate={navigateTo} />
