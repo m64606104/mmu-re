@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { MessageCircle, Settings, Music, Phone, Heart, Bell, Play, Pause, SkipBack, SkipForward, MapPin, Sun, Palette, Upload, BookOpen, Mailbox, X, Database, Users, GraduationCap } from 'lucide-react';
+import { MessageCircle, Settings, Music, Phone, Heart, Bell, Play, Pause, SkipBack, SkipForward, MapPin, Sun, Palette, Upload, BookOpen, Mailbox, X, Database, Users, GraduationCap, Book } from 'lucide-react';
 import { Screen, ThemeSettings } from '../types';
 
 interface HomeScreenProps {
@@ -51,7 +51,7 @@ export default function HomeScreen({ onNavigate, theme }: HomeScreenProps) {
   // 应用布局状态
   const [appLayout, setAppLayout] = useState<string[]>(() => {
     const saved = localStorage.getItem('appLayout');
-    return saved ? JSON.parse(saved) : ['settings', 'social', 'kindergarten', 'theme', 'music', 'phone', 'bell', 'mail', 'database'];
+    return saved ? JSON.parse(saved) : ['settings', 'social', 'kindergarten', 'theme', 'worldbook', 'music', 'phone', 'bell', 'mail', 'database'];
   });
   const [quickLayout, setQuickLayout] = useState<string[]>(() => {
     const saved = localStorage.getItem('quickLayout');
@@ -408,6 +408,7 @@ export default function HomeScreen({ onNavigate, theme }: HomeScreenProps) {
     social: { icon: MessageCircle, name: '聊天', onClick: () => onNavigate('social') },
     'user-system': { icon: Users, name: '好友', onClick: () => onNavigate('user-system') },
     theme: { icon: Palette, name: '主题', onClick: () => onNavigate('theme') },
+    worldbook: { icon: Book, name: '世界书', onClick: () => onNavigate('worldbook') },
     music: { icon: Music, name: '音乐' },
     phone: { icon: Phone, name: '电话' },
     bell: { icon: BookOpen, name: '使用说明', onClick: () => onNavigate('guide') },

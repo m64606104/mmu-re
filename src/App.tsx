@@ -31,6 +31,7 @@ import RecycleBinScreen from './components/RecycleBinScreen';
 import BottleFishingScreen from './components/BottleFishingScreen';
 import FavoriteRepliesScreen from './components/FavoriteRepliesScreen';
 import AIKindergartenScreen from './components/AIKindergartenScreen';
+import WorldbookScreen from './components/WorldbookScreen';
 import BottomNavBar from './components/BottomNavBar';
 import UnrepliedLettersScreen from './components/UnrepliedLettersScreen';
 import ToastContainer from './components/ToastContainer';
@@ -1185,6 +1186,12 @@ function App() {
               navigateTo('chat');
             }}
             apiConfig={apiConfig}
+          />
+        );
+      case 'worldbook':
+        return (
+          <WorldbookScreen
+            onBack={() => navigateTo('home')}
           />
         );
       default:
