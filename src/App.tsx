@@ -32,7 +32,7 @@ import BottleFishingScreen from './components/BottleFishingScreen';
 import FavoriteRepliesScreen from './components/FavoriteRepliesScreen';
 import AIKindergartenScreen from './components/AIKindergartenScreen';
 import WorldbookScreen from './components/WorldbookScreen';
-import EasyChatScreen from './components/EasyChatScreen';
+import { EasyChatApp } from './components/EasyChatApp';
 import BottomNavBar from './components/BottomNavBar';
 import UnrepliedLettersScreen from './components/UnrepliedLettersScreen';
 import ToastContainer from './components/ToastContainer';
@@ -1199,7 +1199,7 @@ function App() {
         );
       case 'easy-chat':
         return (
-          <EasyChatScreen
+          <EasyChatApp
             onBack={() => navigateTo('home')}
           />
         );

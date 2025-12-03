@@ -1,0 +1,268 @@
+import { useState, useEffect } from 'react';
+import { ArrowLeft } from 'lucide-react';
+import { EasyChatContact, EasyChatConversation, EasyChatUser, GlobalCallState } from '../types';
+import { EasyChatSplash } from './EasyChatSplash';
+import { EasyChatIntro } from './EasyChatIntro';
+import { EasyChatHome } from './EasyChatHome';
+import { EasyChatList } from './EasyChatList';
+import { EasyChatRoom } from './EasyChatRoom';
+import { EasyChatContactsManager } from './EasyChatContactsManager';
+import { EasyChatSettings } from './EasyChatSettings';
+import { EasyChatUserSettings } from './EasyChatUserSettings';
+import { FloatingCallWindow } from './FloatingCallWindow';
+
+interface EasyChatAppProps {
+  onBack: () => void;
+}
+
+export function EasyChatApp({ onBack }: EasyChatAppProps) {
+  const [showSplash, setShowSplash] = useState(true);
+  const [showIntro, setShowIntro] = useState(false);
+  const [currentView, setCurrentView] = useState<'home' | 'chatList' | 'chatRoom' | 'contactsManager' | 'settings' | 'userSettings'>('home');
+  const [contacts, setContacts] = useState<EasyChatContact[]>([]);
+  const [conversations, setConversations] = useState<EasyChatConversation[]>([]);
+  const [selectedConversation, setSelectedConversation] = useState<EasyChatConversation | null>(null);
+  const [user, setUser] = useState<EasyChatUser>({ id: 'me', name: '我', avatar: '😊', bubbleColor: 'blue' });
+  const [globalCallState, setGlobalCallState] = useState<GlobalCallState | null>(null);
+
+  // 检查是否首次启动
+  useEffect(() => {
+    const isFirstLaunch = !localStorage.getItem('easychat_launched');
+    if (isFirstLaunch) {
+      setShowIntro(true);
+    }
+  }, []);
+
+  // 从本地存储加载数据
+  useEffect(() => {
+    const loadData = () => {
+      try {
+        const savedContacts = localStorage.getItem('easychat_contacts');
+        const savedConversations = localStorage.getItem('easychat_conversations');
+        const savedUser = localStorage.getItem('easychat_user');
+        
+        if (savedContacts) {
+          setContacts(JSON.parse(savedContacts));
+        }
+        
+        if (savedConversations) {
+          setConversations(JSON.parse(savedConversations));
+        }
+
+        if (savedUser) {
+          setUser(JSON.parse(savedUser));
+        }
+      } catch (error) {
+        console.error('加载数据失败:', error);
+      }
+    };
+
+    loadData();
+  }, []);
+
+  // 保存联系人到本地存储
+  useEffect(() => {
+    localStorage.setItem('easychat_contacts', JSON.stringify(contacts));
+  }, [contacts]);
+
+  // 保存会话到本地存储
+  useEffect(() => {
+    localStorage.setItem('easychat_conversations', JSON.stringify(conversations));
+  }, [conversations]);
+
+  // 保存用户到本地存储
+  useEffect(() => {
+    localStorage.setItem('easychat_user', JSON.stringify(user));
+  }, [user]);
+
+  // 开屏动画结束后
+  const handleSplashEnd = () => {
+    setShowSplash(false);
+  };
+
+  // 介绍页结束后
+  const handleIntroFinish = () => {
+    setShowIntro(false);
+    localStorage.setItem('easychat_launched', 'true');
+  };
+
+  // 打开聊天列表
+  const handleOpenChatList = () => {
+    setCurrentView('chatList');
+  };
+
+  // 打开联系人管理
+  const handleOpenContactsManager = () => {
+    setCurrentView('contactsManager');
+  };
+
+  // 打开用户设置
+  const handleOpenUserSettings = () => {
+    setCurrentView('userSettings');
+  };
+
+  // 返回主页
+  const handleBackToHome = () => {
+    setCurrentView('home');
+    setSelectedConversation(null);
+  };
+
+  // 打开聊天室
+  const handleOpenChatRoom = (conversation: EasyChatConversation) => {
+    setSelectedConversation(conversation);
+    setCurrentView('chatRoom');
+  };
+
+  // 返回聊天列表
+  const handleBackToChatList = () => {
+    setCurrentView('chatList');
+    setSelectedConversation(null);
+  };
+
+  // 打开设置
+  const handleOpenSettings = () => {
+    setCurrentView('settings');
+  };
+
+  // 从设置返回聊天室
+  const handleBackFromSettings = () => {
+    setCurrentView('chatRoom');
+  };
+
+  // 从用户设置返回主页
+  const handleBackFromUserSettings = () => {
+    setCurrentView('home');
+  };
+
+  // 更新会话
+  const handleUpdateConversation = (updatedConversation: EasyChatConversation) => {
+    setConversations(conversations.map(c => 
+      c.id === updatedConversation.id ? updatedConversation : c
+    ));
+    setSelectedConversation(updatedConversation);
+  };
+
+  // 更新联系人
+  const handleUpdateContact = (updatedContact: EasyChatContact) => {
+    setContacts(contacts.map(c => 
+      c.id === updatedContact.id ? updatedContact : c
+    ));
+  };
+
+  // 删除会话
+  const handleDeleteConversation = (conversationId: string) => {
+    setConversations(conversations.filter(c => c.id !== conversationId));
+    setSelectedConversation(null);
+    // 删除后返回聊天列表
+    setCurrentView('chatList');
+  };
+
+  // 更新用户
+  const handleUpdateUser = (updatedUser: EasyChatUser) => {
+    setUser(updatedUser);
+  };
+
+  // 显示开屏页
+  if (showSplash) {
+    return <EasyChatSplash onFinish={handleSplashEnd} userBubbleColor={user.bubbleColor} />;
+  }
+
+  // 显示介绍页（仅首次启动）
+  if (showIntro) {
+    return <EasyChatIntro onFinish={handleIntroFinish} />;
+  }
+
+  // 显示主页
+  // 渲染当前视图的内容
+  let currentViewContent = null;
+  
+  if (currentView === 'home') {
+    currentViewContent = (
+      <EasyChatHome
+        onBack={onBack}
+        onOpenChatList={handleOpenChatList}
+        onOpenContactsManager={handleOpenContactsManager}
+        onOpenUserSettings={handleOpenUserSettings}
+        userName={user.name}
+        userAvatar={user.avatar}
+        userBubbleColor={user.bubbleColor}
+      />
+    );
+  } else if (currentView === 'chatList') {
+    currentViewContent = (
+      <EasyChatList
+        onBack={handleBackToHome}
+        conversations={conversations}
+        setConversations={setConversations}
+        contacts={contacts}
+        setContacts={setContacts}
+        onOpenChatRoom={handleOpenChatRoom}
+      />
+    );
+  } else if (currentView === 'chatRoom' && selectedConversation) {
+    currentViewContent = (
+      <EasyChatRoom
+        conversation={selectedConversation}
+        contacts={contacts}
+        user={user}
+        onBack={handleBackToChatList}
+        onUpdateConversation={handleUpdateConversation}
+        onOpenSettings={handleOpenSettings}
+        onStartGlobalCall={setGlobalCallState}
+      />
+    );
+  } else if (currentView === 'contactsManager') {
+    currentViewContent = (
+      <EasyChatContactsManager
+        onBack={handleBackToHome}
+        contacts={contacts}
+        setContacts={setContacts}
+      />
+    );
+  } else if (currentView === 'settings' && selectedConversation) {
+    currentViewContent = (
+      <EasyChatSettings
+        conversation={selectedConversation}
+        contacts={contacts}
+        onBack={handleBackFromSettings}
+        onUpdateConversation={handleUpdateConversation}
+        onDeleteConversation={handleDeleteConversation}
+        onUpdateContact={handleUpdateContact}
+      />
+    );
+  } else if (currentView === 'userSettings') {
+    currentViewContent = (
+      <EasyChatUserSettings
+        user={user}
+        onBack={handleBackFromUserSettings}
+        onUpdateUser={handleUpdateUser}
+      />
+    );
+  }
+
+  return (
+    <>
+      {currentViewContent}
+      
+      {/* 全局悬浮窗 - 在所有页面都显示 */}
+      {globalCallState && (
+        <FloatingCallWindow
+          callState={globalCallState}
+          contacts={contacts}
+          user={user}
+          onClose={() => setGlobalCallState(null)}
+          onOpenChat={(conversationId) => {
+            // 找到对应的会话并打开
+            const conv = conversations.find(c => c.id === conversationId);
+            if (conv) {
+              setSelectedConversation(conv);
+              setCurrentView('chatRoom');
+            }
+          }}
+          onUpdateCallState={setGlobalCallState}
+          onUpdateConversation={handleUpdateConversation}
+        />
+      )}
+    </>
+  );
+}

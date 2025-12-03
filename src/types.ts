@@ -765,3 +765,104 @@ export interface AIChildData {
   lastLessonTime?: number;         // 上次上课时间
   lastReadingTime?: number;        // 上次阅读时间
 }
+
+// ==========================================
+// 🎯 Easy Chat 系统
+// ==========================================
+
+// Easy Chat 联系人
+export interface EasyChatContact {
+  id: string;
+  name: string;
+  avatar: string;
+  bubbleColor?: string; // 气泡颜色主题
+}
+
+// 私聊通话数据
+export interface PrivateCallData {
+  type: 'voice' | 'video'; // 通话类型
+  duration: number; // 通话时长（秒）
+  isActive: boolean; // 是否正在进行
+}
+
+// Easy Chat 消息
+export interface EasyChatMessage {
+  id: string;
+  text: string;
+  senderId: string;
+  senderName: string;
+  senderAvatar: string;
+  timestamp: string;
+  type?: 'text' | 'image' | 'video' | 'voice' | 'emojipack' | 'livestream' | 'groupcall' | 'privatecall'; // 消息类型
+  imageUrl?: string; // 图片URL
+  videoUrl?: string; // 视频URL
+  voiceText?: string; // 语音转文字内容
+  voiceDuration?: number; // 语音时长（秒）
+  emojipackDescription?: string; // 表情包描述
+  livestreamData?: LivestreamData; // 直播数据
+  groupcallData?: GroupCallData; // 群通话数据
+  privatecallData?: PrivateCallData; // 私聊通话数据
+}
+
+// 直播数据
+export interface LivestreamData {
+  id: string; // 直播ID
+  hostId: string; // 主播ID
+  hostName: string; // 主播名称
+  title: string; // 直播标题
+  startTime: string; // 开播时间
+  isActive: boolean; // 是否正在直播
+  viewers: string[]; // 观众ID列表
+  coHosts: string[]; // 一起直播的人ID列表
+}
+
+// 群通话数据
+export interface GroupCallData {
+  id: string; // 通话ID
+  type: 'voice' | 'video'; // 通话类型
+  initiatorId: string; // 发起人ID
+  initiatorName: string; // 发起人名称
+  startTime: string; // 开始时间
+  isActive: boolean; // 是否正在进行
+  participants: string[]; // 参与者ID列表
+}
+
+// Easy Chat 会话
+export interface EasyChatConversation {
+  id: string;
+  type: 'private' | 'group';
+  name: string;
+  avatar: string;
+  participants: string[]; // 联系人ID数组
+  messages: EasyChatMessage[];
+  lastMessage?: string;
+  lastMessageTime?: string;
+}
+
+// Easy Chat 用户（自己）
+export interface EasyChatUser {
+  id: string;
+  name: string;
+  avatar: string;
+  bubbleColor?: string; // 气泡颜色主题
+}
+
+// 全局通话状态（用于悬浮窗）
+export interface GlobalCallState {
+  type: 'private' | 'group' | 'livestream';
+  callType: 'voice' | 'video'; // 通话类型
+  conversationId: string; // 关联的会话ID
+  contactName: string; // 联系人名称或群名
+  contactAvatar: string; // 联系人头像或群头像
+  isMinimized: boolean; // 是否最小化
+  // 私聊通话专用
+  privateCallData?: {
+    contactId: string;
+  };
+  // 群通话/直播专用
+  groupData?: {
+    data: GroupCallData | LivestreamData;
+    currentUserId: string;
+    participantIds: string[];
+  };
+}
