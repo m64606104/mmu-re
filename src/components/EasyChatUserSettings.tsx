@@ -5,7 +5,7 @@ import { Input } from './ui/input';
 import { Label } from './ui/label';
 import { toast } from 'sonner';
 import { BUBBLE_COLOR_THEMES, getBubbleColorTheme } from '../utils/bubbleColors';
-import { compressImage } from '../utils/imageCompression';
+import { cropAndCompressAvatar } from '../utils/imageCompression';
 
 interface EasyChatUserSettingsProps {
   user: EasyChatUser;
@@ -40,11 +40,11 @@ export function EasyChatUserSettings({ user, onBack, onUpdateUser }: EasyChatUse
 
     try {
       toast.loading('正在处理图片...');
-      // 使用统一的压缩工具，压缩到 200x200 用于头像
-      const result = await compressImage(file, 200, 200, 0.8);
+      // 自动居中裁剪为正方形并压缩
+      const result = await cropAndCompressAvatar(file, 200, 0.8);
       setEditAvatar(result.dataUrl);
       toast.dismiss();
-      toast.success('头像已上传');
+      toast.success('头像已更新');
     } catch (error) {
       console.error('头像上传失败:', error);
       toast.dismiss();
@@ -114,6 +114,7 @@ export function EasyChatUserSettings({ user, onBack, onUpdateUser }: EasyChatUse
                 className="hidden"
               />
             </label>
+            <p className="text-xs text-gray-400 mb-4">建议使用正方形图片 (系统会自动裁剪)</p>
 
             <p className="text-xs text-gray-500 mb-2">或选择 Emoji</p>
             <div className="flex gap-2 flex-wrap justify-center max-w-xs mb-4">

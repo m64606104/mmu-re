@@ -6,6 +6,7 @@ import { Input } from './ui/input';
 import { Label } from './ui/label';
 import { toast } from 'sonner';
 import { BUBBLE_COLOR_THEMES } from '../utils/bubbleColors';
+import { cropAndCompressAvatar } from '../utils/imageCompression';
 
 interface EasyChatContactsManagerProps {
   onBack: () => void;
@@ -24,58 +25,35 @@ export function EasyChatContactsManager({ onBack, contacts, setContacts }: EasyC
   const emojiList = ['👤', '👩', '👨', '🧑', '👶', '👦', '👧', '🐶', '🐱', '🐭', '🐹', '🐰', '🦊', '🐻', '🐼'];
 
   // 处理图片上传
-  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+
+    // 重置 input
+    e.target.value = '';
 
     if (!file.type.startsWith('image/')) {
       toast.error('请上传图片文件');
       return;
     }
 
-    if (file.size > 5 * 1024 * 1024) {
-      toast.error('图片大小不能超过5MB');
+    if (file.size > 10 * 1024 * 1024) {
+      toast.error('图片大小不能超过10MB');
       return;
     }
 
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      const base64String = event.target?.result as string;
-      
-      const img = new Image();
-      img.onload = () => {
-        const canvas = document.createElement('canvas');
-        const MAX_SIZE = 200;
-        let width = img.width;
-        let height = img.height;
-        
-        if (width > height) {
-          if (width > MAX_SIZE) {
-            height = (height * MAX_SIZE) / width;
-            width = MAX_SIZE;
-          }
-        } else {
-          if (height > MAX_SIZE) {
-            width = (width * MAX_SIZE) / height;
-            height = MAX_SIZE;
-          }
-        }
-        
-        canvas.width = width;
-        canvas.height = height;
-        const ctx = canvas.getContext('2d');
-        ctx?.drawImage(img, 0, 0, width, height);
-        
-        const compressedBase64 = canvas.toDataURL('image/jpeg', 0.8);
-        setNewContact({ ...newContact, avatar: compressedBase64 });
-        toast.success('头像已上传');
-      };
-      img.src = base64String;
-    };
-    reader.onerror = () => {
-      toast.error('图片读取失败');
-    };
-    reader.readAsDataURL(file);
+    try {
+      toast.loading('正在处理图片...');
+      // 自动居中裁剪为正方形并压缩
+      const result = await cropAndCompressAvatar(file, 200, 0.8);
+      setNewContact({ ...newContact, avatar: result.dataUrl });
+      toast.dismiss();
+      toast.success('头像已上传');
+    } catch (error) {
+      console.error('头像上传失败:', error);
+      toast.dismiss();
+      toast.error('图片处理失败，请重试');
+    }
   };
 
   // 添加联系人
@@ -219,6 +197,7 @@ export function EasyChatContactsManager({ onBack, contacts, setContacts }: EasyC
                       className="hidden"
                     />
                   </label>
+                  <p className="text-xs text-gray-400 mb-4">建议使用正方形图片 (系统会自动裁剪)</p>
 
                   {/* Emoji选择 */}
                   <p className="text-xs text-gray-500 mb-2">或选择 Emoji</p>
