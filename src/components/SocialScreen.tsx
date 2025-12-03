@@ -223,7 +223,13 @@ export default function SocialScreen({ conversations, onNavigate, onImportCharac
 
   // 如果显示世界书界面，直接渲染WorldbookScreen
   if (showWorldbook) {
-    return <WorldbookScreen onBack={() => setShowWorldbook(false)} />;
+    return (
+      <WorldbookScreen 
+        onBack={() => setShowWorldbook(false)} 
+        conversations={conversations}
+        onUpdateConversation={onUpdateConversation}
+      />
+    );
   }
 
   return (

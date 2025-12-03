@@ -3581,7 +3581,14 @@ ${characterInfo?.languageStyle ? `语言风格：${characterInfo.languageStyle}`
         }
       }
       
-      // 🕐 生成增强的时间感知提示词（包含时间跨度分析+AI消息时间感知+行为时长分析）
+      // 🕐 生成增强的时间感知提示词（包含时间跨度分析+AI消息时间感知+行为时长分析+通话时间）
+      // 最近一次通话（视频/语音），用于避免几天后还说“你刚刚给我打的视频/电话”
+      const lastCall = conversation.callHistory && conversation.callHistory.length > 0
+        ? conversation.callHistory[conversation.callHistory.length - 1]
+        : undefined;
+      const lastCallEndTimestamp = lastCall?.endTime;
+      const lastCallType = lastCall?.type;
+
       const timeAwarePrompt = buildTimeAwarePrompt(
         lastUserTimestamp, 
         lastUserMsgForTime?.content,
@@ -3589,7 +3596,9 @@ ${characterInfo?.languageStyle ? `语言风格：${characterInfo.languageStyle}`
         oldestUnrepliedTimestamp,
         unrepliedMessagesInfo,
         actionMessage?.content, // 🆕 用于行为分析的消息内容
-        actionMessage?.timestamp // 🆕 用于行为分析的消息时间戳
+        actionMessage?.timestamp, // 🆕 用于行为分析的消息时间戳
+        lastCallEndTimestamp,
+        lastCallType
       );
       
       // 构建用户资料提示

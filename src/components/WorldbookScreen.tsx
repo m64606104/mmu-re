@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { ArrowLeft, Plus, Edit2, Trash2, Globe, MessageCircle, Code, FileText, Tag, Settings } from 'lucide-react';
+import { ArrowLeft, Plus, Edit2, Trash2, Globe, MessageCircle, Code, FileText, Tag, Settings, Users, X, Check } from 'lucide-react';
 import { WorldbookItem, WorldbookCategory } from '../types/worldbook';
+import { Conversation } from '../types';
 import { getAllWorldbooks, saveWorldbook, deleteWorldbook } from '../utils/worldbookStorage';
 import { getAllCategories } from '../utils/worldbookCategories';
 import WorldbookForm from './WorldbookForm';
@@ -8,11 +9,13 @@ import WorldbookCategoryManager from './WorldbookCategoryManager';
 
 interface WorldbookScreenProps {
   onBack: () => void;
+  conversations?: Conversation[];
+  onUpdateConversation?: (id: string, updates: Partial<Conversation>) => void;
 }
 
 type TabType = 'global' | 'local';
 
-const WorldbookScreen: React.FC<WorldbookScreenProps> = ({ onBack }) => {
+const WorldbookScreen: React.FC<WorldbookScreenProps> = ({ onBack, conversations, onUpdateConversation }) => {
   const [worldbooks, setWorldbooks] = useState<WorldbookItem[]>([]);
   const [activeTab, setActiveTab] = useState<TabType>('global');
   const [showForm, setShowForm] = useState(false);
@@ -21,6 +24,11 @@ const WorldbookScreen: React.FC<WorldbookScreenProps> = ({ onBack }) => {
   const [categories, setCategories] = useState<WorldbookCategory[]>([]);
   const [selectedCategoryId, setSelectedCategoryId] = useState<string>('all');
   const [showCategoryManager, setShowCategoryManager] = useState(false);
+  
+  // 批量应用到AI的状态
+  const [showApplyModal, setShowApplyModal] = useState(false);
+  const [applyTargetWorldbook, setApplyTargetWorldbook] = useState<WorldbookItem | null>(null);
+  const [selectedConversationIds, setSelectedConversationIds] = useState<string[]>([]);
 
   useEffect(() => {
     loadWorldbooks();
@@ -76,6 +84,86 @@ const WorldbookScreen: React.FC<WorldbookScreenProps> = ({ onBack }) => {
   const handleNew = () => {
     setEditingWorldbook(undefined);
     setShowForm(true);
+  };
+
+  // 打开应用到AI弹窗
+  const handleOpenApplyModal = (worldbook: WorldbookItem) => {
+    if (!conversations || !onUpdateConversation) return;
+    
+    // 找出当前已经挂载了这条世界书的私聊AI
+    const initialSelected = conversations
+      .filter(c => c.type === 'private' && c.worldbookMount?.selectedIds?.includes(worldbook.id))
+      .map(c => c.id);
+    
+    setApplyTargetWorldbook(worldbook);
+    setSelectedConversationIds(initialSelected);
+    setShowApplyModal(true);
+  };
+
+  // 切换AI勾选状态
+  const toggleConversationSelection = (convId: string) => {
+    setSelectedConversationIds(prev => 
+      prev.includes(convId) 
+        ? prev.filter(id => id !== convId)
+        : [...prev, convId]
+    );
+  };
+
+  // 确认批量应用
+  const handleConfirmApply = () => {
+    if (!applyTargetWorldbook || !conversations || !onUpdateConversation) return;
+    
+    const wbId = applyTargetWorldbook.id;
+    const privateConvs = conversations.filter(c => c.type === 'private');
+    
+    // 找出之前已经挂载的AI
+    const previouslyAppliedIds = privateConvs
+      .filter(c => c.worldbookMount?.selectedIds?.includes(wbId))
+      .map(c => c.id);
+    
+    const targetIds = selectedConversationIds;
+    
+    // 计算新增和移除的AI
+    const addedIds = targetIds.filter(id => !previouslyAppliedIds.includes(id));
+    const removedIds = previouslyAppliedIds.filter(id => !targetIds.includes(id));
+    
+    // 新增挂载
+    addedIds.forEach(convId => {
+      const conv = privateConvs.find(c => c.id === convId);
+      if (!conv) return;
+      
+      const existing = conv.worldbookMount ?? { enabled: true, selectedIds: [] };
+      const updatedIds = Array.from(new Set([...existing.selectedIds, wbId]));
+      
+      onUpdateConversation(convId, {
+        worldbookMount: {
+          ...existing,
+          enabled: true,
+          selectedIds: updatedIds,
+        },
+      });
+    });
+    
+    // 取消挂载
+    removedIds.forEach(convId => {
+      const conv = privateConvs.find(c => c.id === convId);
+      if (!conv || !conv.worldbookMount) return;
+      
+      const remainingIds = conv.worldbookMount.selectedIds.filter(id => id !== wbId);
+      
+      onUpdateConversation(convId, {
+        worldbookMount: {
+          ...conv.worldbookMount,
+          selectedIds: remainingIds,
+          enabled: remainingIds.length > 0,
+        },
+      });
+    });
+    
+    // 关闭弹窗
+    setShowApplyModal(false);
+    setApplyTargetWorldbook(null);
+    setSelectedConversationIds([]);
   };
 
   // 筛选世界书（范围 + 分类）
@@ -240,6 +328,16 @@ const WorldbookScreen: React.FC<WorldbookScreenProps> = ({ onBack }) => {
                   </div>
                   
                   <div className="flex items-center gap-2 ml-4">
+                    {/* 只在局部世界书 tab 显示「应用到AI」按钮 */}
+                    {activeTab === 'local' && conversations && onUpdateConversation && (
+                      <button
+                        onClick={() => handleOpenApplyModal(wb)}
+                        className="p-2 text-purple-600 hover:bg-purple-50 rounded-lg transition-colors"
+                        title="应用到AI"
+                      >
+                        <Users className="w-5 h-5" />
+                      </button>
+                    )}
                     <button
                       onClick={() => handleEdit(wb)}
                       className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
@@ -268,6 +366,122 @@ const WorldbookScreen: React.FC<WorldbookScreenProps> = ({ onBack }) => {
             loadCategories(); // 重新加载分类
           }}
         />
+      )}
+
+      {/* 应用到AI弹窗 */}
+      {showApplyModal && applyTargetWorldbook && conversations && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full max-h-[80vh] flex flex-col">
+            {/* Header */}
+            <div className="p-4 border-b border-gray-200 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Users className="w-5 h-5 text-purple-600" />
+                <h3 className="text-lg font-semibold text-gray-900">应用到 AI</h3>
+              </div>
+              <button
+                onClick={() => {
+                  setShowApplyModal(false);
+                  setApplyTargetWorldbook(null);
+                  setSelectedConversationIds([]);
+                }}
+                className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+              >
+                <X className="w-5 h-5 text-gray-500" />
+              </button>
+            </div>
+
+            {/* 世界书信息 */}
+            <div className="px-4 py-3 bg-purple-50 border-b border-purple-100">
+              <div className="flex items-start gap-2">
+                <FileText className="w-4 h-4 text-purple-600 flex-shrink-0 mt-0.5" />
+                <div className="flex-1 min-w-0">
+                  <div className="font-medium text-purple-900 truncate">{applyTargetWorldbook.title}</div>
+                  <div className="text-xs text-purple-700 mt-1">选择要应用此世界书的AI角色</div>
+                </div>
+              </div>
+            </div>
+
+            {/* AI列表 */}
+            <div className="flex-1 overflow-y-auto p-4">
+              {conversations.filter(c => c.type === 'private').length === 0 ? (
+                <div className="text-center py-8 text-gray-400">
+                  <Users className="w-12 h-12 mx-auto mb-2 opacity-30" />
+                  <p className="text-sm">暂无私聊AI</p>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {conversations
+                    .filter(c => c.type === 'private')
+                    .sort((a, b) => b.lastMessageTime - a.lastMessageTime)
+                    .map(conv => {
+                      const isSelected = selectedConversationIds.includes(conv.id);
+                      return (
+                        <button
+                          key={conv.id}
+                          onClick={() => toggleConversationSelection(conv.id)}
+                          className={`w-full p-3 rounded-lg border-2 transition-all flex items-center gap-3 ${
+                            isSelected
+                              ? 'border-purple-500 bg-purple-50'
+                              : 'border-gray-200 hover:border-gray-300 bg-white'
+                          }`}
+                        >
+                          {/* 头像 */}
+                          <div className="w-10 h-10 rounded-full flex items-center justify-center bg-gradient-to-br from-blue-400 to-purple-500 text-white text-lg flex-shrink-0">
+                            {conv.avatar || conv.name[0]}
+                          </div>
+                          
+                          {/* 名称和状态 */}
+                          <div className="flex-1 text-left min-w-0">
+                            <div className="font-medium text-gray-900 truncate">{conv.name}</div>
+                            <div className="text-xs text-gray-500 truncate">
+                              {conv.worldbookMount?.selectedIds?.length ? 
+                                `已挂载 ${conv.worldbookMount.selectedIds.length} 个世界书` : 
+                                '未挂载世界书'
+                              }
+                            </div>
+                          </div>
+
+                          {/* 勾选标记 */}
+                          <div className={`w-6 h-6 rounded-full border-2 flex items-center justify-center flex-shrink-0 transition-all ${
+                            isSelected
+                              ? 'border-purple-500 bg-purple-500'
+                              : 'border-gray-300'
+                          }`}>
+                            {isSelected && <Check className="w-4 h-4 text-white" />}
+                          </div>
+                        </button>
+                      );
+                    })}
+                </div>
+              )}
+            </div>
+
+            {/* Footer */}
+            <div className="p-4 border-t border-gray-200 flex items-center justify-between">
+              <div className="text-sm text-gray-600">
+                已选择 <span className="font-semibold text-purple-600">{selectedConversationIds.length}</span> 个AI
+              </div>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => {
+                    setShowApplyModal(false);
+                    setApplyTargetWorldbook(null);
+                    setSelectedConversationIds([]);
+                  }}
+                  className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors"
+                >
+                  取消
+                </button>
+                <button
+                  onClick={handleConfirmApply}
+                  className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors font-medium"
+                >
+                  确认应用
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

@@ -1702,8 +1702,8 @@ export default function CharacterSettingsScreen({
                 ) : (
                   <div className="text-center py-6 text-gray-400">
                     <Book className="w-12 h-12 mx-auto mb-2 opacity-30" />
-                    <p className="text-sm">未挂载世界书，点击配置按钮添加</p>
-                    <p className="text-xs mt-1 text-gray-500">世界书作为背景知识影响AI回复</p>
+                    <p className="text-sm">未挂载局部世界书，点击配置按钮为本会话添加</p>
+                    <p className="text-xs mt-1 text-gray-500">世界书是本角色的重要设定，全局世界书会自动生效，这里只管理本会话的局部挂载</p>
                   </div>
                 )}
               </div>

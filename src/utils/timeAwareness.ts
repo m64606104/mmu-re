@@ -394,7 +394,9 @@ export const buildTimeAwarePrompt = (
   oldestUnrepliedTimestamp?: number,
   unrepliedMessages?: UnrepliedMessageInfo[],
   actionMessageContent?: string,
-  actionMessageTimestamp?: number
+  actionMessageTimestamp?: number,
+  lastCallEndTimestamp?: number,
+  lastCallType?: 'video' | 'voice'
 ): string => {
   // 使用指定的行为消息（如果有），否则用最后一条用户消息
   const contentForAction = actionMessageContent || lastUserMessageContent;
@@ -458,7 +460,37 @@ export const buildTimeAwarePrompt = (
       prompt += `💡 可以自然地提及这个时间差（如"终于等到你回复了"、"还以为你忙忘了"等）\n\n`;
     }
   }
-  
+
+  // 🆕 通话时间感知（视频/语音）
+  if (lastCallEndTimestamp) {
+    const nowForCall = new Date();
+    const diffMinutes = (nowForCall.getTime() - lastCallEndTimestamp) / (1000 * 60);
+    // 对不同时间跨度的通话给出用词建议
+    // 1) 1-6 小时内的通话：可以说「刚才/前面的通话」，但不要假装还在通话
+    if (diffMinutes >= 60 && diffMinutes < 360) {
+      const callTypeLabel = lastCallType === 'voice' ? '语音通话' : '视频通话';
+      const hours = Math.floor(diffMinutes / 60);
+      const gapText = formatTimeGap(diffMinutes);
+      prompt += `\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`;
+      prompt += `【📞 最近一次通话时间】\n`;
+      prompt += `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n`;
+      prompt += `- 最近一次${callTypeLabel}是在 ${gapText}（约${hours}小时）前结束的。\n`;
+      prompt += `- 你可以自然地说"刚才/前面的${callTypeLabel}"、"之前的那次${callTypeLabel}"。\n`;
+      prompt += `- ❌ 不要假装通话还在进行，比如"现在的视频通话里"、"现在打着电话"之类说法。\n\n`;
+    }
+    // 2) 超过 1 天的通话：绝对不能说成「刚刚打的视频/电话」
+    else if (diffMinutes >= 1440) {
+      const callTypeLabel = lastCallType === 'voice' ? '语音通话' : '视频通话';
+      const gapText = formatTimeGap(diffMinutes);
+      prompt += `\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`;
+      prompt += `【📞 最近一次通话时间】\n`;
+      prompt += `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n`;
+      prompt += `- 最近一次${callTypeLabel}是在 ${gapText} 结束的，并不是刚刚发生。\n`;
+      prompt += `- 如果你在回复中提到这次通话，请使用"那次${callTypeLabel}"、"之前的${callTypeLabel}"等表述。\n`;
+      prompt += `- ❌ 严禁说"你刚刚给我打的视频"、"刚刚打的电话"这类表达，因为通话并不是刚刚发生的。\n\n`;
+    }
+  }
+
   if (context.lastMessageTime && context.timeGap && context.timeGapMinutes !== undefined) {
     prompt += `📨 对方最新消息发送时间: ${context.lastMessageTime}\n`;
     prompt += `⏱️ 时间间隔: ${context.timeGap}（${context.timeGapMinutes.toFixed(0)}分钟）\n\n`;

@@ -1192,6 +1192,8 @@ function App() {
         return (
           <WorldbookScreen
             onBack={() => navigateTo('home')}
+            conversations={conversations}
+            onUpdateConversation={updateConversation}
           />
         );
       default:

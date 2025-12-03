@@ -31,8 +31,8 @@ const WorldbookMountSettings: React.FC<WorldbookMountSettingsProps> = ({
     setLoading(true);
     try {
       const items = await getAllWorldbooks();
-      // 只显示文本类型的世界书（HTML类型用于模板渲染）
-      setWorldbooks(items.filter(wb => wb.type === 'text'));
+      // 这里只管理局部世界书（scope = 'local'），全局世界书会自动应用到所有会话
+      setWorldbooks(items.filter(wb => wb.scope === 'local'));
     } catch (error) {
       console.error('Failed to load worldbooks:', error);
     } finally {
@@ -80,8 +80,8 @@ const WorldbookMountSettings: React.FC<WorldbookMountSettingsProps> = ({
             <div className="flex items-center gap-3">
               <Book className="w-5 h-5 text-blue-600" />
               <div>
-                <div className="font-medium text-gray-900">启用世界书</div>
-                <div className="text-xs text-gray-600">将世界书内容作为背景知识</div>
+                <div className="font-medium text-gray-900">启用本会话的局部世界书</div>
+                <div className="text-xs text-gray-600">局部世界书作为设定的一部分影响本角色的行为和说话方式</div>
               </div>
             </div>
             <label className="relative inline-flex items-center cursor-pointer">
@@ -171,10 +171,10 @@ const WorldbookMountSettings: React.FC<WorldbookMountSettingsProps> = ({
               {/* 说明 */}
               <div className="bg-gray-50 rounded-lg p-3 text-xs text-gray-600 space-y-1">
                 <div className="font-medium text-gray-700">💡 功能说明：</div>
-                <div>• 世界书内容将作为背景知识注入到AI提示词中</div>
-                <div>• 可同时挂载多个世界书，内容会按注入位置合并</div>
-                <div>• 优先级：世界书 &lt; 角色设定 &lt; 历史消息</div>
-                <div>• 如有冲突，以角色设定为准</div>
+                <div>• 这里配置的是<strong>局部世界书</strong>，只对当前会话生效；全局世界书会自动应用到所有角色</div>
+                <div>• 世界书条目会作为角色设定的一部分注入到AI提示词中，与角色设定同等重要</div>
+                <div>• 可同时挂载多个局部世界书，内容会按注入位置合并</div>
+                <div>• 如有明显冲突，AI需要用自然方式统一设定（而不是直接否认之前的设定）</div>
               </div>
             </>
           )}

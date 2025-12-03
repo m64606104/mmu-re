@@ -1,7 +1,7 @@
 // 世界书Prompt注入工具
 import { Conversation } from '../types';
 import { WorldbookItem } from '../types/worldbook';
-import { getWorldbookById } from './worldbookStorage';
+import { getAllWorldbooks } from './worldbookStorage';
 
 interface WorldbookPromptSections {
   before: string; // 角色设定之前
@@ -21,20 +21,36 @@ export const buildWorldbookPrompt = async (conversation: Conversation): Promise<
     after: ''
   };
 
-  // 如果未启用世界书挂载，直接返回空
-  if (!conversation.worldbookMount?.enabled || !conversation.worldbookMount.selectedIds.length) {
-    return sections;
-  }
-
   try {
-    // 获取所有已选世界书
-    const worldbooks: WorldbookItem[] = [];
-    for (const id of conversation.worldbookMount.selectedIds) {
-      const wb = await getWorldbookById(id);
-      if (wb && wb.type === 'text') { // 只处理text类型
-        worldbooks.push(wb);
-      }
+    // 获取所有世界书（用于自动应用全局 + 按挂载配置应用局部）
+    const allWorldbooks = await getAllWorldbooks();
+    if (!allWorldbooks || allWorldbooks.length === 0) {
+      return sections;
     }
+
+    // 1) 全局世界书：scope = 'global'，自动应用到所有会话
+    const globalWorldbooks = allWorldbooks.filter(wb => wb.scope === 'global');
+
+    // 2) 局部世界书：scope = 'local'，仅按当前会话的挂载配置启用
+    let localWorldbooks: WorldbookItem[] = [];
+    const mountConfig = conversation.worldbookMount;
+    if (mountConfig?.enabled && mountConfig.selectedIds.length > 0) {
+      const selectedIdsSet = new Set(mountConfig.selectedIds);
+      localWorldbooks = allWorldbooks.filter(
+        wb => wb.scope === 'local' && selectedIdsSet.has(wb.id)
+      );
+    }
+
+    // 合并全局 + 局部，并按id去重
+    const worldbookMap = new Map<string, WorldbookItem>();
+    for (const wb of globalWorldbooks) {
+      worldbookMap.set(wb.id, wb);
+    }
+    for (const wb of localWorldbooks) {
+      worldbookMap.set(wb.id, wb);
+    }
+
+    const worldbooks = Array.from(worldbookMap.values());
 
     if (worldbooks.length === 0) {
       return sections;
@@ -45,17 +61,17 @@ export const buildWorldbookPrompt = async (conversation: Conversation): Promise<
     const middleItems = worldbooks.filter(wb => wb.insertion === 'middle');
     const afterItems = worldbooks.filter(wb => wb.insertion === 'after');
 
-    // 构建prompt文本
+    // 构建prompt文本（将世界书视为“设定”，与角色设定同等重要）
     if (beforeItems.length > 0) {
       sections.before = `
-===【世界书背景设定】===
-以下是背景知识，请在对话中自然地参考这些信息（不要刻意提及"世界书"或"背景设定"）：
+===【世界书设定】===
+以下是与你的角色设定同等重要的“世界书设定”，请在对话中严格遵守，并在行为和用语中自然体现（不要刻意提及"世界书"或"设定"这些词）：
 
 ${beforeItems.map((wb, index) => `## ${index + 1}. ${wb.title}\n${wb.content}`).join('\n\n')}
 
 重要提示：
-- 以上内容为背景知识，优先级低于你的角色设定
-- 如与角色设定冲突，以角色设定为准
+- 这些世界书条目与角色设定一起构成你的世界观和行为边界
+- 避免与这些设定明显自相矛盾，如有出入要用自然方式统一（例如解释为角色成长/改变，而不是直接否认）
 - 自然融入对话，不要刻意提及来源
 ===========================
 `;
