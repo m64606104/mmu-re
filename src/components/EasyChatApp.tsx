@@ -78,25 +78,37 @@ export function EasyChatApp({ onBack }: EasyChatAppProps) {
     loadData();
   }, []);
 
-  // 保存联系人到存储
+  // 保存联系人到存储（带防抖）
   useEffect(() => {
-    if (isLoaded) {
+    if (!isLoaded) return;
+
+    const timer = setTimeout(() => {
       save('easychat_contacts', contacts).catch(console.error);
-    }
+    }, 1000); // 1秒内无变化才保存
+
+    return () => clearTimeout(timer);
   }, [contacts, isLoaded]);
 
-  // 保存会话到存储
+  // 保存会话到存储（带防抖）
   useEffect(() => {
-    if (isLoaded) {
+    if (!isLoaded) return;
+
+    const timer = setTimeout(() => {
       save('easychat_conversations', conversations).catch(console.error);
-    }
+    }, 1000); // 1秒内无变化才保存
+
+    return () => clearTimeout(timer);
   }, [conversations, isLoaded]);
 
-  // 保存用户到存储
+  // 保存用户到存储（带防抖）
   useEffect(() => {
-    if (isLoaded) {
+    if (!isLoaded) return;
+
+    const timer = setTimeout(() => {
       save('easychat_user', user).catch(console.error);
-    }
+    }, 1000); // 1秒内无变化才保存
+
+    return () => clearTimeout(timer);
   }, [user, isLoaded]);
 
   // 开屏动画结束后
