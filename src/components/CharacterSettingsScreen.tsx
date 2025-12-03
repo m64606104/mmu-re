@@ -1,7 +1,10 @@
 import { useState, useRef, useEffect } from 'react';
-import { ChevronLeft, Upload, Brain, Trash2, Download, FileUp, Zap, X, Camera, RefreshCw, BookOpen, Plus, Edit, FileText, Users, Video, Image as ImageIcon } from 'lucide-react';
+import { ChevronLeft, Upload, Brain, Trash2, Download, FileUp, Zap, X, Camera, RefreshCw, BookOpen, Plus, Edit, FileText, Users, Video, Image as ImageIcon, Book } from 'lucide-react';
 import { Conversation, ApiConfig, KnowledgeBaseItem, BubbleDecoration } from '../types';
+import { WorldbookMountConfig } from '../types/worldbook';
 import MemoryManager from './MemoryManager';
+import WorldbookMountSettings from './WorldbookMountSettings';
+import { getAllWorldbooks } from '../utils/worldbookStorage';
 import CallHistoryModal from './CallHistoryModal';
 import RelationshipManagementScreen from './RelationshipManagementScreen';
 import { addMomentPost } from '../utils/aiMomentsGenerator';
@@ -57,6 +60,8 @@ export default function CharacterSettingsScreen({
   const [showMigration, setShowMigration] = useState(false);
   const [includeMessages, setIncludeMessages] = useState(false);
   const [includeSubChats, setIncludeSubChats] = useState(false);
+  const [showWorldbookMount, setShowWorldbookMount] = useState(false);
+  const [worldbookNames, setWorldbookNames] = useState<{[id: string]: string}>({});
   const fileInputRef = useRef<HTMLInputElement>(null);
   const chatImportRef = useRef<HTMLInputElement>(null);
   const documentInputRef = useRef<HTMLInputElement>(null);
@@ -93,6 +98,23 @@ export default function CharacterSettingsScreen({
       setCurrentRuleInfo('');
     }
   }, [momentsFrequencyDescription]);
+  
+  // 📚 加载世界书名称
+  useEffect(() => {
+    const loadWorldbookNames = async () => {
+      try {
+        const worldbooks = await getAllWorldbooks();
+        const names: {[id: string]: string} = {};
+        worldbooks.forEach(wb => {
+          names[wb.id] = wb.title;
+        });
+        setWorldbookNames(names);
+      } catch (error) {
+        console.error('Failed to load worldbook names:', error);
+      }
+    };
+    loadWorldbookNames();
+  }, []);
   
   // 📝 自定义上下文配置
   const [contextConfigEnabled, setContextConfigEnabled] = useState(settings.contextConfig?.enabled || false);
@@ -1644,6 +1666,48 @@ export default function CharacterSettingsScreen({
                 )}
               </div>
 
+              {/* 📚 世界书配置 */}
+              <div className="bg-white rounded-lg border border-gray-100 p-3">
+                <div className="flex items-center justify-between mb-3">
+                  <div className="flex items-center gap-2">
+                    <Book className="w-5 h-5 text-blue-500" />
+                    <h3 className="text-sm font-medium text-gray-900">世界书设定</h3>
+                  </div>
+                  <button
+                    onClick={() => setShowWorldbookMount(true)}
+                    className="flex items-center gap-1 px-3 py-1.5 bg-blue-500 hover:bg-blue-600 text-white text-xs rounded-lg transition-colors"
+                  >
+                    <Edit className="w-4 h-4" />
+                    <span>配置</span>
+                  </button>
+                </div>
+
+                {conversation.worldbookMount?.enabled && conversation.worldbookMount.selectedIds.length > 0 ? (
+                  <div className="space-y-2">
+                    <div className="bg-blue-50 border border-blue-100 rounded-lg p-3 mb-2">
+                      <p className="text-xs text-blue-700 flex items-center gap-1">
+                        <span className="font-medium">✅ 已启用</span>
+                        <span>- 已挂载 {conversation.worldbookMount.selectedIds.length} 个世界书</span>
+                      </p>
+                    </div>
+                    {conversation.worldbookMount.selectedIds.map(id => (
+                      <div key={id} className="bg-gray-50 border border-gray-200 rounded-lg p-3">
+                        <div className="flex items-center gap-2">
+                          <Book className="w-4 h-4 text-blue-500" />
+                          <span className="text-sm text-gray-900">{worldbookNames[id] || '未知世界书'}</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="text-center py-6 text-gray-400">
+                    <Book className="w-12 h-12 mx-auto mb-2 opacity-30" />
+                    <p className="text-sm">未挂载世界书，点击配置按钮添加</p>
+                    <p className="text-xs mt-1 text-gray-500">世界书作为背景知识影响AI回复</p>
+                  </div>
+                )}
+              </div>
+
             </div>
           </details>
         )}
@@ -2178,6 +2242,28 @@ export default function CharacterSettingsScreen({
             </div>
           </div>
         </div>
+      )}
+
+      {/* 📚 世界书挂载设置弹窗 */}
+      {showWorldbookMount && (
+        <WorldbookMountSettings
+          currentConfig={conversation.worldbookMount}
+          onSave={(config: WorldbookMountConfig) => {
+            onUpdateConversation(conversation.id, {
+              worldbookMount: config
+            });
+            setShowWorldbookMount(false);
+            // 重新加载世界书名称以更新显示
+            getAllWorldbooks().then(worldbooks => {
+              const names: {[id: string]: string} = {};
+              worldbooks.forEach(wb => {
+                names[wb.id] = wb.title;
+              });
+              setWorldbookNames(names);
+            });
+          }}
+          onClose={() => setShowWorldbookMount(false)}
+        />
       )}
     </div>
   );
