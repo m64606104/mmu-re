@@ -202,7 +202,7 @@ function buildIntelligentPrompt(
 - 话题类别：${topic.name} - ${topic.description}
 - 情感基调：${emotion}
 - 场景类型：${scenario}
-- 字数范围：150-300字（要有足够细节，让人能理解具体情况）
+- 字数范围：200-400字（必须详细描述具体情况，不要简略概括）
 
 【重要规则】：
 1. 必须完全符合${age}岁年龄段的语言习惯和思维方式
