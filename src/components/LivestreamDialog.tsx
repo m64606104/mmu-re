@@ -22,12 +22,12 @@ export function LivestreamDialog({
   currentUserId,
   contacts,
   user,
-  conversationId,
+  conversationId: _conversationId,
   onClose,
   onOpenChat,
   onJoinAsViewer,
   onJoinAsCoHost,
-  onJoinLivestream,
+  onJoinLivestream: _onJoinLivestream,
   onEndLivestream,
   initialMinimized = false
 }: LivestreamDialogProps) {
@@ -281,7 +281,7 @@ export function LivestreamDialog({
                 <>
                   <button
                     onClick={() => {
-                      onJoinAsViewer();
+                      onJoinAsViewer?.();
                       onClose();
                     }}
                     className="w-full py-3 bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white rounded-xl transition-all active:scale-98"
@@ -290,7 +290,7 @@ export function LivestreamDialog({
                   </button>
                   <button
                     onClick={() => {
-                      onJoinAsCoHost();
+                      onJoinAsCoHost?.();
                       onClose();
                     }}
                     className="w-full py-3 bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 text-white rounded-xl transition-all active:scale-98"

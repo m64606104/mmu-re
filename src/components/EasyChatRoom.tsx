@@ -161,12 +161,8 @@ export function EasyChatRoom({ conversation, contacts, user, onBack, onUpdateCon
 
     try {
       toast.loading('正在压缩图片...');
-      const compressedBase64 = await compressImage(file, {
-        maxWidth: 1200,
-        maxHeight: 1200,
-        quality: 0.8,
-        mimeType: 'image/jpeg'
-      });
+      const result = await compressImage(file, 1200, 1200, 0.8);
+      const compressedBase64 = result.dataUrl;
       
       toast.dismiss();
       handleSendMessage('image', { imageUrl: compressedBase64 });
@@ -743,7 +739,8 @@ export function EasyChatRoom({ conversation, contacts, user, onBack, onUpdateCon
                                   isMinimized: false,
                                   groupData: {
                                     data: msg.groupcallData,
-                                    currentUserId: currentSenderId
+                                    currentUserId: currentSenderId,
+                                    participantIds: msg.groupcallData?.participants || []
                                   }
                                 });
                               }

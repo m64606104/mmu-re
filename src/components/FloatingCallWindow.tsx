@@ -20,8 +20,8 @@ export function FloatingCallWindow({
   user,
   onClose,
   onOpenChat,
-  onUpdateCallState,
-  onUpdateConversation
+  onUpdateCallState: _onUpdateCallState,
+  onUpdateConversation: _onUpdateConversation
 }: FloatingCallWindowProps) {
   
   const handleEndPrivateCall = () => {

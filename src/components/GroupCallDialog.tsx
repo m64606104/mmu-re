@@ -20,7 +20,7 @@ export function GroupCallDialog({
   currentUserId,
   contacts,
   user,
-  conversationId,
+  conversationId: _conversationId,
   onClose,
   onOpenChat,
   onJoinCall,

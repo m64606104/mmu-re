@@ -351,7 +351,6 @@ export const shouldGenerateMoment = async (contactId: string): Promise<{shouldGe
  * 
  * @deprecated 使用 SmartMomentsGenerator.buildSmartPrompt 代替
  */
-// @ts-expect-error - 保留用于紧急回退，暂时未使用
 const buildMomentPrompt = (conversation: Conversation, todayPosts: MomentPost[]): string => {
   const now = new Date();
   const hour = now.getHours();
