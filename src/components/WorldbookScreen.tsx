@@ -1,8 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { ArrowLeft, Plus, Edit2, Trash2, Globe, MessageCircle, Code, FileText } from 'lucide-react';
-import { WorldbookItem } from '../types/worldbook';
+import { ArrowLeft, Plus, Edit2, Trash2, Globe, MessageCircle, Code, FileText, Tag, Settings } from 'lucide-react';
+import { WorldbookItem, WorldbookCategory } from '../types/worldbook';
 import { getAllWorldbooks, saveWorldbook, deleteWorldbook } from '../utils/worldbookStorage';
+import { getAllCategories } from '../utils/worldbookCategories';
 import WorldbookForm from './WorldbookForm';
+import WorldbookCategoryManager from './WorldbookCategoryManager';
 
 interface WorldbookScreenProps {
   onBack: () => void;
@@ -16,10 +18,19 @@ const WorldbookScreen: React.FC<WorldbookScreenProps> = ({ onBack }) => {
   const [showForm, setShowForm] = useState(false);
   const [editingWorldbook, setEditingWorldbook] = useState<WorldbookItem | undefined>();
   const [loading, setLoading] = useState(true);
+  const [categories, setCategories] = useState<WorldbookCategory[]>([]);
+  const [selectedCategoryId, setSelectedCategoryId] = useState<string>('all');
+  const [showCategoryManager, setShowCategoryManager] = useState(false);
 
   useEffect(() => {
     loadWorldbooks();
+    loadCategories();
   }, []);
+
+  const loadCategories = () => {
+    const cats = getAllCategories();
+    setCategories(cats);
+  };
 
   const loadWorldbooks = async () => {
     setLoading(true);
@@ -67,7 +78,12 @@ const WorldbookScreen: React.FC<WorldbookScreenProps> = ({ onBack }) => {
     setShowForm(true);
   };
 
-  const filteredWorldbooks = worldbooks.filter(wb => wb.scope === activeTab);
+  // 筛选世界书（范围 + 分类）
+  const filteredWorldbooks = worldbooks.filter(wb => {
+    if (wb.scope !== activeTab) return false;
+    if (selectedCategoryId === 'all') return true;
+    return wb.categories.includes(selectedCategoryId);
+  });
 
   if (showForm) {
     return (
@@ -90,12 +106,22 @@ const WorldbookScreen: React.FC<WorldbookScreenProps> = ({ onBack }) => {
           <ArrowLeft className="w-6 h-6" />
         </button>
         <h1 className="text-xl font-bold">世界书</h1>
-        <button
-          onClick={handleNew}
-          className="p-2 hover:bg-white/20 rounded-lg transition-colors"
-        >
-          <Plus className="w-6 h-6" />
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setShowCategoryManager(true)}
+            className="p-2 hover:bg-white/20 rounded-lg transition-colors"
+            title="分类管理"
+          >
+            <Settings className="w-6 h-6" />
+          </button>
+          <button
+            onClick={handleNew}
+            className="p-2 hover:bg-white/20 rounded-lg transition-colors"
+            title="新建世界书"
+          >
+            <Plus className="w-6 h-6" />
+          </button>
+        </div>
       </div>
 
       {/* Tabs */}
@@ -122,6 +148,41 @@ const WorldbookScreen: React.FC<WorldbookScreenProps> = ({ onBack }) => {
           <MessageCircle className="w-5 h-5 inline-block mr-2" />
           局部设定
         </button>
+      </div>
+
+      {/* Category Filter */}
+      <div className="bg-gray-50 border-b border-gray-200 p-3">
+        <div className="flex items-center gap-2 overflow-x-auto">
+          <Tag className="w-4 h-4 text-gray-500 flex-shrink-0" />
+          <button
+            onClick={() => setSelectedCategoryId('all')}
+            className={`px-3 py-1.5 rounded-full text-sm font-medium transition-colors whitespace-nowrap ${
+              selectedCategoryId === 'all'
+                ? 'bg-blue-500 text-white'
+                : 'bg-white text-gray-700 hover:bg-gray-100 border border-gray-200'
+            }`}
+          >
+            全部
+          </button>
+          {categories.map(cat => (
+            <button
+              key={cat.id}
+              onClick={() => setSelectedCategoryId(cat.id)}
+              className={`px-3 py-1.5 rounded-full text-sm font-medium transition-colors whitespace-nowrap border-2 ${
+                selectedCategoryId === cat.id
+                  ? 'text-white'
+                  : 'bg-white text-gray-700 hover:opacity-80'
+              }`}
+              style={{
+                backgroundColor: selectedCategoryId === cat.id ? cat.color : 'white',
+                borderColor: cat.color,
+                color: selectedCategoryId === cat.id ? 'white' : cat.color,
+              }}
+            >
+              {cat.name}
+            </button>
+          ))}
+        </div>
       </div>
 
       {/* List */}
@@ -198,6 +259,16 @@ const WorldbookScreen: React.FC<WorldbookScreenProps> = ({ onBack }) => {
           </div>
         )}
       </div>
+
+      {/* Category Manager Modal */}
+      {showCategoryManager && (
+        <WorldbookCategoryManager
+          onClose={() => {
+            setShowCategoryManager(false);
+            loadCategories(); // 重新加载分类
+          }}
+        />
+      )}
     </div>
   );
 };

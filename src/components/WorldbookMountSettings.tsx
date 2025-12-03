@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { X, Book, Check } from 'lucide-react';
 import { WorldbookItem, WorldbookMountConfig } from '../types/worldbook';
-import { getAllWorldbooks, getAllCategories } from '../utils/worldbookStorage';
+import { getAllWorldbooks } from '../utils/worldbookStorage';
+import { getAllCategories } from '../utils/worldbookCategories';
 
 interface WorldbookMountSettingsProps {
   currentConfig?: WorldbookMountConfig;

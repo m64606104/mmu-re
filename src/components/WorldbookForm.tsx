@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { ArrowLeft, Save } from 'lucide-react';
 import { WorldbookItem, WorldbookContentType, WorldbookScope, WorldbookInsertionPosition } from '../types/worldbook';
-import { getAllCategories } from '../utils/worldbookStorage';
+import { getAllCategories } from '../utils/worldbookCategories';
 
 interface WorldbookFormProps {
   worldbook?: WorldbookItem;
