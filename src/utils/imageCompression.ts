@@ -31,6 +31,9 @@ export const compressImage = (
       const img = new Image();
 
       img.onload = () => {
+        // 释放 object URL 内存
+        URL.revokeObjectURL(img.src);
+
         // 计算压缩后的尺寸
         let { width, height } = img;
         
@@ -79,6 +82,8 @@ export const compressImage = (
       };
 
       img.onerror = () => {
+        // 释放 object URL 内存
+        URL.revokeObjectURL(img.src);
         reject(new Error('图片加载失败'));
       };
 
@@ -129,6 +134,9 @@ export const cropAndCompressAvatar = (
       const img = new Image();
 
       img.onload = () => {
+        // 释放 object URL 内存，关键修复！
+        URL.revokeObjectURL(img.src);
+
         // 1. 计算居中裁剪区域
         let sourceX = 0;
         let sourceY = 0;
@@ -182,6 +190,8 @@ export const cropAndCompressAvatar = (
       };
 
       img.onerror = () => {
+        // 释放 object URL 内存
+        URL.revokeObjectURL(img.src);
         reject(new Error('头像加载失败'));
       };
 

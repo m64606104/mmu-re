@@ -53,21 +53,34 @@ export function EasyChatUserSettings({ user, onBack, onUpdateUser }: EasyChatUse
   };
 
   // 保存修改
-  const handleSave = () => {
+  const handleSave = async () => {
     if (!editName.trim()) {
       toast.error('请输入用户名');
       return;
     }
 
-    const updatedUser = {
-      ...user,
-      name: editName,
-      avatar: editAvatar,
-      bubbleColor: editBubbleColor
-    };
-    onUpdateUser(updatedUser);
-    toast.success('保存成功');
-    onBack();
+    try {
+      toast.loading('正在保存...');
+      
+      // 使用 setTimeout 让 UI 有机会更新 Loading 状态
+      await new Promise(resolve => setTimeout(resolve, 100));
+
+      const updatedUser = {
+        ...user,
+        name: editName,
+        avatar: editAvatar,
+        bubbleColor: editBubbleColor
+      };
+      
+      onUpdateUser(updatedUser);
+      toast.dismiss();
+      toast.success('保存成功');
+      onBack();
+    } catch (error) {
+      console.error('保存设置失败:', error);
+      toast.dismiss();
+      toast.error('保存失败，请重试');
+    }
   };
 
   return (
