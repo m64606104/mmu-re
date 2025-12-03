@@ -41,7 +41,10 @@ const INDEXED_DB_KEYS = [
   'user_data',          // 用户扩展数据
   'app_cache',          // 应用缓存
   'slow_letters',       // 慢邮件/信件数据
-  'custom_pen_pals'     // 自定义笔友数据
+  'custom_pen_pals',    // 自定义笔友数据
+  'easychat_contacts',      // EasyChat 联系人
+  'easychat_conversations', // EasyChat 会话（含图片）
+  'easychat_user'           // EasyChat 用户数据（含头像）
 ];
 
 /**

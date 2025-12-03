@@ -10,6 +10,8 @@ import { EasyChatContactsManager } from './EasyChatContactsManager';
 import { EasyChatSettings } from './EasyChatSettings';
 import { EasyChatUserSettings } from './EasyChatUserSettings';
 import { FloatingCallWindow } from './FloatingCallWindow';
+import { load, save, checkMigrationNeeded, migrateData } from '../utils/storage';
+import { toast } from 'sonner';
 
 interface EasyChatAppProps {
   onBack: () => void;
@@ -24,6 +26,7 @@ export function EasyChatApp({ onBack }: EasyChatAppProps) {
   const [selectedConversation, setSelectedConversation] = useState<EasyChatConversation | null>(null);
   const [user, setUser] = useState<EasyChatUser>({ id: 'me', name: '我', avatar: '😊', bubbleColor: 'blue' });
   const [globalCallState, setGlobalCallState] = useState<GlobalCallState | null>(null);
+  const [isLoaded, setIsLoaded] = useState(false);
 
   // 检查是否首次启动
   useEffect(() => {
@@ -33,47 +36,68 @@ export function EasyChatApp({ onBack }: EasyChatAppProps) {
     }
   }, []);
 
-  // 从本地存储加载数据
+  // 从存储加载数据（迁移至 IndexedDB）
   useEffect(() => {
-    const loadData = () => {
+    const loadData = async () => {
       try {
-        const savedContacts = localStorage.getItem('easychat_contacts');
-        const savedConversations = localStorage.getItem('easychat_conversations');
-        const savedUser = localStorage.getItem('easychat_user');
+        // 1. 检查是否需要迁移数据 (localStorage -> IndexedDB)
+        if (checkMigrationNeeded()) {
+          console.log('检测到旧数据，开始迁移...');
+          const result = await migrateData();
+          if (result.success) {
+            console.log('EasyChat 数据迁移成功');
+          } else {
+            console.warn('EasyChat 数据迁移部分失败', result.errors);
+          }
+        }
+
+        // 2. 从 IndexedDB 加载数据
+        const savedContacts = await load('easychat_contacts');
+        const savedConversations = await load('easychat_conversations');
+        const savedUser = await load('easychat_user');
         
         if (savedContacts) {
-          setContacts(JSON.parse(savedContacts));
+          setContacts(savedContacts);
         }
         
         if (savedConversations) {
-          setConversations(JSON.parse(savedConversations));
+          setConversations(savedConversations);
         }
 
         if (savedUser) {
-          setUser(JSON.parse(savedUser));
+          setUser(savedUser);
         }
       } catch (error) {
         console.error('加载数据失败:', error);
+        toast.error('数据加载出错，请尝试刷新');
+      } finally {
+        setIsLoaded(true);
       }
     };
 
     loadData();
   }, []);
 
-  // 保存联系人到本地存储
+  // 保存联系人到存储
   useEffect(() => {
-    localStorage.setItem('easychat_contacts', JSON.stringify(contacts));
-  }, [contacts]);
+    if (isLoaded) {
+      save('easychat_contacts', contacts).catch(console.error);
+    }
+  }, [contacts, isLoaded]);
 
-  // 保存会话到本地存储
+  // 保存会话到存储
   useEffect(() => {
-    localStorage.setItem('easychat_conversations', JSON.stringify(conversations));
-  }, [conversations]);
+    if (isLoaded) {
+      save('easychat_conversations', conversations).catch(console.error);
+    }
+  }, [conversations, isLoaded]);
 
-  // 保存用户到本地存储
+  // 保存用户到存储
   useEffect(() => {
-    localStorage.setItem('easychat_user', JSON.stringify(user));
-  }, [user]);
+    if (isLoaded) {
+      save('easychat_user', user).catch(console.error);
+    }
+  }, [user, isLoaded]);
 
   // 开屏动画结束后
   const handleSplashEnd = () => {
