@@ -30,6 +30,7 @@ export function EasyChatRoom({ conversation, contacts, user, onBack, onUpdateCon
   const [showMediaMenu, setShowMediaMenu] = useState(false);
   const [showVoiceDialog, setShowVoiceDialog] = useState(false);
   const [playingVoice, setPlayingVoice] = useState<string | null>(null);
+  const [expandedVoiceMessages, setExpandedVoiceMessages] = useState<Set<string>>(new Set());
   const [showMessageActionDialog, setShowMessageActionDialog] = useState(false);
   const [selectedMessage, setSelectedMessage] = useState<EasyChatMessage | null>(null);
   const [selectedLivestream, setSelectedLivestream] = useState<LivestreamData | null>(null);
@@ -668,14 +669,20 @@ export function EasyChatRoom({ conversation, contacts, user, onBack, onUpdateCon
                         ) : msg.type === 'voice' ? (
                           <div className="flex flex-col">
                             <div
-                              className={`px-3 py-2 relative min-w-[80px] ${
+                              className={`px-3 py-2 relative min-w-[80px] cursor-pointer ${
                                 isMe
                                   ? 'bg-[#95ec69] rounded-tl-[4px] rounded-tr-[4px] rounded-bl-[4px] self-end'
                                   : 'bg-white rounded-tl-[4px] rounded-tr-[4px] rounded-br-[4px] self-start'
                               }`}
                               onClick={(e) => {
                                 e.stopPropagation();
-                                handleVoicePlayback(msg.id);
+                                const newExpanded = new Set(expandedVoiceMessages);
+                                if (newExpanded.has(msg.id)) {
+                                  newExpanded.delete(msg.id);
+                                } else {
+                                  newExpanded.add(msg.id);
+                                }
+                                setExpandedVoiceMessages(newExpanded);
                               }}
                             >
                               {/* 小尖角 */}
@@ -685,26 +692,26 @@ export function EasyChatRoom({ conversation, contacts, user, onBack, onUpdateCon
                                   : 'left-[-6px] border-r-[6px] border-r-white border-t-[5px] border-t-transparent border-b-[5px] border-b-transparent'
                               }`}></div>
                               
-                              {/* 语音内容 - 严格参考图3：图标在左，时长在右 */}
-                              <div className="flex items-center gap-1 justify-start">
-                                {/* 图标 - 空心三角形，指向右 */}
-                                <div className="w-4 h-4 flex items-center justify-center">
-                                  <div className={`w-0 h-0 border-t-[5px] border-t-transparent border-b-[5px] border-b-transparent border-l-[8px] ${isMe ? 'border-l-black' : 'border-l-gray-700'}`}></div>
-                                  <div className={`absolute w-0 h-0 border-t-[3px] border-t-transparent border-b-[3px] border-b-transparent border-l-[6px] ${isMe ? 'border-l-[#95ec69]' : 'border-l-white'} ml-[-2px]`}></div>
-                                </div>
-
-                                <span className={`text-[15px] ${isMe ? 'text-black' : 'text-black'}`}>
+                              {/* 语音内容 */}
+                              <div className={`flex items-center gap-2 ${isMe ? 'flex-row-reverse' : 'flex-row'}`}>
+                                <span className="text-[17px] font-medium text-black">
                                   {msg.voiceDuration}"
                                 </span>
+                                {/* WiFi样式的声波图标 */}
+                                <div className="flex items-center gap-[2px]">
+                                  <div className={`w-[3px] h-[8px] rounded-full ${isMe ? 'bg-black' : 'bg-gray-700'}`}></div>
+                                  <div className={`w-[3px] h-[12px] rounded-full ${isMe ? 'bg-black' : 'bg-gray-700'}`}></div>
+                                  <div className={`w-[3px] h-[16px] rounded-full ${isMe ? 'bg-black' : 'bg-gray-700'}`}></div>
+                                </div>
                               </div>
                             </div>
 
-                            {/* 语音转文字 - 独立显示在气泡下方 */}
-                            {msg.voiceText && (
-                              <div className={`mt-1 p-2 bg-[#1e1e1e] rounded-[4px] max-w-[200px] shadow-sm relative z-0 ${isMe ? 'self-end' : 'self-start'}`}>
-                                {/* 小尖角 - 指向语音气泡 */}
-                                <div className={`absolute top-[-5px] w-0 h-0 border-l-[5px] border-l-transparent border-r-[5px] border-r-transparent border-b-[5px] border-b-[#1e1e1e] ${isMe ? 'right-[12px]' : 'left-[12px]'}`}></div>
-                                <p className="text-white text-[14px] leading-snug break-words">{msg.voiceText}</p>
+                            {/* 语音转文字 - 点击后展开 */}
+                            {msg.voiceText && expandedVoiceMessages.has(msg.id) && (
+                              <div className={`mt-1 p-2.5 bg-white rounded-[4px] max-w-[200px] shadow-md border border-gray-200 relative z-0 ${isMe ? 'self-end' : 'self-start'}`}>
+                                {/* 小尖角 */}
+                                <div className={`absolute top-[-5px] w-0 h-0 border-l-[5px] border-l-transparent border-r-[5px] border-r-transparent border-b-[5px] border-b-white ${isMe ? 'right-[12px]' : 'left-[12px]'}`}></div>
+                                <p className="text-gray-800 text-[14px] leading-relaxed break-words">{msg.voiceText}</p>
                               </div>
                             )}
                           </div>
