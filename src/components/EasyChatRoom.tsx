@@ -593,6 +593,134 @@ export function EasyChatRoom({ conversation, contacts, user, onBack, onUpdateCon
 
 
 
+  // 微信风格UI渲染
+  if (isWechatStyle) {
+    return (
+      <div className="w-full h-full bg-[#ededed] flex flex-col">
+        {/* 顶部导航栏 - 微信风格 */}
+        <div className="px-3 py-2 flex items-center justify-between bg-[#ededed]">
+          <button onClick={onBack} className="p-1 text-black">
+            <ArrowLeft size={24} strokeWidth={2} />
+          </button>
+          <h2 className="text-[17px] flex-1 text-center text-black">{conversation.name}</h2>
+          <button onClick={onOpenSettings} className="p-1 text-black">
+            <MoreHorizontal size={24} strokeWidth={2} />
+          </button>
+        </div>
+
+        {/* 消息列表 - 微信风格 */}
+        <div className="flex-1 overflow-y-auto px-3 py-3 bg-[#ededed]">
+          {conversation.messages.length === 0 ? (
+            <div className="flex justify-center pt-4">
+              <span className="text-xs text-[#999]">{formatDate(new Date().toTimeString())}</span>
+            </div>
+          ) : (
+            <div>
+              {conversation.messages.map((msg, index) => {
+                const sender = getContact(msg.senderId);
+                if (!sender) return null;
+
+                const isMe = msg.senderId === user.id;
+                const showTime = shouldShowTime(index);
+
+                return (
+                  <div key={msg.id}>
+                    {/* 时间戳 */}
+                    {showTime && (
+                      <div className="text-center my-3">
+                        <span className="text-[#999] text-xs">{msg.timestamp}</span>
+                      </div>
+                    )}
+
+                    {/* 消息 */}
+                    <div className={`flex gap-2 mb-3 ${isMe ? 'flex-row-reverse' : 'flex-row'}`}>
+                      {/* 头像 */}
+                      <div className="w-10 h-10 rounded-[5px] bg-blue-500 flex items-center justify-center overflow-hidden flex-shrink-0">
+                        {sender.avatar.startsWith('data:') ? (
+                          <img src={sender.avatar} alt="头像" className="w-full h-full object-cover" />
+                        ) : (
+                          <span className="text-xl text-white">{sender.avatar}</span>
+                        )}
+                      </div>
+
+                      {/* 消息气泡 */}
+                      <div className={`flex flex-col ${isMe ? 'items-end' : 'items-start'}`}>
+                        {msg.type === 'text' || !msg.type ? (
+                          <div
+                            className={`max-w-[240px] px-3 py-2 break-words text-[16px] leading-[1.4] relative ${
+                              isMe
+                                ? 'bg-[#95ec69] text-black rounded-tl-[4px] rounded-tr-[4px] rounded-bl-[4px]'
+                                : 'bg-white text-black rounded-tl-[4px] rounded-tr-[4px] rounded-br-[4px]'
+                            }`}
+                            onClick={() => handleLongPressMessage(msg)}
+                          >
+                            {/* 小尖角 */}
+                            <div className={`absolute top-[10px] w-0 h-0 ${
+                              isMe 
+                                ? 'right-[-8px] border-l-[8px] border-l-[#95ec69] border-t-[6px] border-t-transparent border-b-[6px] border-b-transparent'
+                                : 'left-[-8px] border-r-[8px] border-r-white border-t-[6px] border-t-transparent border-b-[6px] border-b-transparent'
+                            }`}></div>
+                            {msg.text}
+                          </div>
+                        ) : msg.type === 'image' ? (
+                          <div className="rounded-[4px] overflow-hidden max-w-[200px]">
+                            <img src={msg.imageUrl} alt="图片" className="w-full h-auto" />
+                          </div>
+                        ) : msg.type === 'video' ? (
+                          <div className="bg-black rounded-[4px] overflow-hidden max-w-[200px]">
+                            <video src={msg.videoUrl} controls className="w-full h-auto" />
+                          </div>
+                        ) : null}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+              <div ref={messagesEndRef} />
+            </div>
+          )}
+        </div>
+
+        {/* 底部输入栏 - 微信风格 */}
+        <div className="border-t bg-[#f7f7f7] border-[#d1d1d1]">
+          <div className="px-2 py-2 flex items-center gap-2">
+            <button className="p-1 text-[#181818]">
+              <Mic size={28} strokeWidth={1.5} />
+            </button>
+            <div className="flex-1 rounded-[6px] px-2 py-1.5 flex items-center gap-1 border bg-white border-[#c7c7c7]">
+              <input
+                value={message}
+                onChange={(e) => setMessage(e.target.value)}
+                onKeyPress={(e) => {
+                  if (e.key === 'Enter' && message.trim()) {
+                    handleSendMessage();
+                  }
+                }}
+                placeholder=""
+                className="flex-1 bg-transparent outline-none text-[16px] placeholder:text-[#999] text-black"
+              />
+              <button className="text-[#181818]">
+                <Smile size={24} strokeWidth={1.5} />
+              </button>
+              <button className="text-[#181818]">
+                <Plus size={24} strokeWidth={2} />
+              </button>
+            </div>
+            {message.trim() && (
+              <button
+                onClick={() => handleSendMessage()}
+                className="bg-[#07c160] text-white px-4 py-1.5 rounded-[4px] text-[15px]"
+              >
+                发送
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // 默认风格UI渲染
   return (
     <div className="w-full h-full bg-[#f5f5f5] flex flex-col">
       {/* 顶部导航栏 */}
