@@ -197,13 +197,9 @@ export function EasyChatList({
         return;
       }
       
-      // 生成默认群名，最多显示3个人名
-      const selectedContactsData = contacts.filter(c => selectedContacts.includes(c.id));
-      const displayNames = selectedContactsData.slice(0, 3).map(c => c.name);
-      const groupName = displayNames.join('、') + (selectedContactsData.length > 3 ? '...' : '');
-      
+      // 让用户完全自定义群名
       setGroupInfo({
-        name: groupName,
+        name: '',
         avatar: '👥'
       });
       setCreateStep('customizeGroup');

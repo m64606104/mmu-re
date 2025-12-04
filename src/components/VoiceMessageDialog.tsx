@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
-import { X, Mic, Send } from 'lucide-react';
+import { X, Mic, Send, AlertCircle } from 'lucide-react';
 
 interface VoiceMessageDialogProps {
   onClose: () => void;
@@ -10,68 +10,123 @@ export function VoiceMessageDialog({ onClose, onSend }: VoiceMessageDialogProps)
   const [voiceText, setVoiceText] = useState('');
   const [isRecording, setIsRecording] = useState(false);
   const [recordDuration, setRecordDuration] = useState(0);
+  const [speechSupported, setSpeechSupported] = useState(true);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
+  const recognitionRef = useRef<any>(null);
+  const finalTranscriptRef = useRef('');
 
-  // 开始录音
+  // 检测语音识别支持
+  useEffect(() => {
+    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    setSpeechSupported(!!SpeechRecognition);
+  }, []);
+
+  // 开始录音（真实语音识别）
   const startRecording = () => {
-    setIsRecording(true);
-    setRecordDuration(0);
+    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
     
-    // 开始计时
-    timerRef.current = setInterval(() => {
-      setRecordDuration(prev => {
-        if (prev >= 60) {
-          stopRecording();
-          return 60;
+    if (!SpeechRecognition) {
+      alert('您的浏览器不支持语音识别，请使用 Chrome 或 Edge 浏览器');
+      return;
+    }
+
+    try {
+      const recognition = new SpeechRecognition();
+      
+      recognition.lang = 'zh-CN';
+      recognition.interimResults = true;
+      recognition.continuous = true;
+      recognition.maxAlternatives = 1;
+
+      recognition.onstart = () => {
+        setIsRecording(true);
+        setRecordDuration(0);
+        finalTranscriptRef.current = '';
+        
+        // 开始计时
+        timerRef.current = setInterval(() => {
+          setRecordDuration(prev => {
+            if (prev >= 60) {
+              stopRecording();
+              return 60;
+            }
+            return prev + 1;
+          });
+        }, 1000);
+      };
+
+      recognition.onresult = (event: any) => {
+        let interimTranscript = '';
+        let finalTranscript = '';
+
+        for (let i = event.resultIndex; i < event.results.length; i++) {
+          const transcript = event.results[i][0].transcript;
+          if (event.results[i].isFinal) {
+            finalTranscript += transcript;
+          } else {
+            interimTranscript += transcript;
+          }
         }
-        return prev + 1;
-      });
-    }, 1000);
 
-    // 模拟实时转文字（每秒添加一些文字）
-    let textIndex = 0;
-    const simulatedTexts = [
-      '嗯',
-      '今天',
-      '天气',
-      '真不错',
-      '要不要',
-      '一起',
-      '出去',
-      '玩'
-    ];
-    
-    const textTimer = setInterval(() => {
-      if (textIndex < simulatedTexts.length) {
-        setVoiceText(prev => prev + (prev ? ' ' : '') + simulatedTexts[textIndex]);
-        textIndex++;
-      }
-    }, 800);
+        // 只追加新的最终文本
+        if (finalTranscript) {
+          finalTranscriptRef.current += finalTranscript;
+          setVoiceText(finalTranscriptRef.current);
+        } else if (interimTranscript) {
+          // 只有临时结果，显示在已确认文本后面
+          setVoiceText(finalTranscriptRef.current + interimTranscript);
+        }
+      };
 
-    // 保存计时器引用以便清理
-    (timerRef.current as any).textTimer = textTimer;
+      recognition.onerror = (event: any) => {
+        console.error('语音识别错误:', event.error);
+        
+        if (event.error === 'not-allowed') {
+          alert('麦克风权限被拒绝，请在浏览器设置中允许麦克风访问');
+        } else if (event.error === 'network') {
+          alert('网络错误，语音识别服务不可用');
+        }
+        
+        stopRecording();
+      };
+
+      recognition.onend = () => {
+        setIsRecording(false);
+        if (timerRef.current) {
+          clearInterval(timerRef.current);
+          timerRef.current = null;
+        }
+      };
+
+      recognitionRef.current = recognition;
+      recognition.start();
+    } catch (error) {
+      console.error('启动语音识别失败:', error);
+      alert('语音识别启动失败，请重试');
+    }
   };
 
   // 停止录音
   const stopRecording = () => {
+    if (recognitionRef.current) {
+      recognitionRef.current.stop();
+      recognitionRef.current = null;
+    }
     setIsRecording(false);
     if (timerRef.current) {
       clearInterval(timerRef.current);
-      if ((timerRef.current as any).textTimer) {
-        clearInterval((timerRef.current as any).textTimer);
-      }
       timerRef.current = null;
     }
   };
 
-  // 清理定时器
+  // 清理
   useEffect(() => {
     return () => {
+      if (recognitionRef.current) {
+        recognitionRef.current.stop();
+      }
       if (timerRef.current) {
         clearInterval(timerRef.current);
-        if ((timerRef.current as any).textTimer) {
-          clearInterval((timerRef.current as any).textTimer);
-        }
       }
     };
   }, []);
@@ -95,6 +150,17 @@ export function VoiceMessageDialog({ onClose, onSend }: VoiceMessageDialogProps)
             <X className="w-5 h-5 text-gray-500" />
           </button>
         </div>
+
+        {/* 浏览器不支持提示 */}
+        {!speechSupported && (
+          <div className="mx-6 mt-4 p-3 bg-yellow-50 border border-yellow-200 rounded-xl flex items-start gap-2">
+            <AlertCircle className="w-5 h-5 text-yellow-600 flex-shrink-0 mt-0.5" />
+            <div className="flex-1 text-sm text-yellow-800">
+              <p className="font-medium mb-1">语音识别不可用</p>
+              <p className="text-xs">请使用 Chrome 或 Edge 浏览器以获得最佳体验</p>
+            </div>
+          </div>
+        )}
 
         {/* 文字编辑区 */}
         <div className="px-6 py-5">
@@ -130,7 +196,12 @@ export function VoiceMessageDialog({ onClose, onSend }: VoiceMessageDialogProps)
               <>
                 <button
                   onClick={startRecording}
-                  className="w-16 h-16 rounded-full bg-gradient-to-br from-red-500 to-red-600 hover:from-red-600 hover:to-red-700 shadow-lg hover:shadow-xl flex items-center justify-center transition-all active:scale-95"
+                  disabled={!speechSupported}
+                  className={`w-16 h-16 rounded-full shadow-lg flex items-center justify-center transition-all ${
+                    speechSupported
+                      ? 'bg-gradient-to-br from-red-500 to-red-600 hover:from-red-600 hover:to-red-700 hover:shadow-xl active:scale-95'
+                      : 'bg-gray-300 cursor-not-allowed'
+                  }`}
                 >
                   <Mic className="w-7 h-7 text-white" strokeWidth={2.5} />
                 </button>
@@ -157,7 +228,11 @@ export function VoiceMessageDialog({ onClose, onSend }: VoiceMessageDialogProps)
 
           {/* 提示文字 */}
           <div className="text-center text-xs text-gray-400">
-            {isRecording ? '松开停止录音' : '点击麦克风开始录音，录音完成后可编辑文字'}
+            {!speechSupported 
+              ? '浏览器不支持语音识别，请手动输入文字'
+              : isRecording 
+                ? '点击停止结束录音' 
+                : '点击麦克风开始录音，说话会实时转文字，录音完成后可编辑'}
           </div>
         </div>
       </div>
