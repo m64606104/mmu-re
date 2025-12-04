@@ -27,6 +27,10 @@ export function EasyChatApp({ onBack }: EasyChatAppProps) {
   const [user, setUser] = useState<EasyChatUser>({ id: 'me', name: '我', avatar: '😊', bubbleColor: 'blue' });
   const [globalCallState, setGlobalCallState] = useState<GlobalCallState | null>(null);
   const [isLoaded, setIsLoaded] = useState(false);
+  
+  // 底部导航栏Tab状态
+  type TabType = 'chat' | 'contacts' | 'settings';
+  const [activeTab, setActiveTab] = useState<TabType>('chat');
 
   // 检查是否首次启动
   useEffect(() => {
@@ -212,30 +216,8 @@ export function EasyChatApp({ onBack }: EasyChatAppProps) {
   // 渲染当前视图的内容
   let currentViewContent = null;
   
-  if (currentView === 'home') {
-    currentViewContent = (
-      <EasyChatHome
-        onBack={onBack}
-        onOpenChatList={handleOpenChatList}
-        onOpenContactsManager={handleOpenContactsManager}
-        onOpenUserSettings={handleOpenUserSettings}
-        userName={user.name}
-        userAvatar={user.avatar}
-        userBubbleColor={user.bubbleColor}
-      />
-    );
-  } else if (currentView === 'chatList') {
-    currentViewContent = (
-      <EasyChatList
-        onBack={handleBackToHome}
-        conversations={conversations}
-        setConversations={setConversations}
-        contacts={contacts}
-        setContacts={setContacts}
-        onOpenChatRoom={handleOpenChatRoom}
-      />
-    );
-  } else if (currentView === 'chatRoom' && selectedConversation) {
+  // 聊天室和设置页面需要全屏显示
+  if (currentView === 'chatRoom' && selectedConversation) {
     currentViewContent = (
       <EasyChatRoom
         conversation={selectedConversation}
@@ -245,14 +227,6 @@ export function EasyChatApp({ onBack }: EasyChatAppProps) {
         onUpdateConversation={handleUpdateConversation}
         onOpenSettings={handleOpenSettings}
         onStartGlobalCall={setGlobalCallState}
-      />
-    );
-  } else if (currentView === 'contactsManager') {
-    currentViewContent = (
-      <EasyChatContactsManager
-        onBack={handleBackToHome}
-        contacts={contacts}
-        setContacts={setContacts}
       />
     );
   } else if (currentView === 'settings' && selectedConversation) {
@@ -266,15 +240,87 @@ export function EasyChatApp({ onBack }: EasyChatAppProps) {
         onUpdateContact={handleUpdateContact}
       />
     );
-  } else if (currentView === 'userSettings') {
+  } else {
+    // 主界面 - 带底部导航栏
     currentViewContent = (
-      <EasyChatUserSettings
-        user={user}
-        onBack={handleBackFromUserSettings}
-        onUpdateUser={handleUpdateUser}
-      />
+      <div className="w-full h-full flex flex-col bg-white">
+        {/* 主内容区 */}
+        <div className="flex-1 overflow-hidden">
+          {activeTab === 'chat' && (
+            <EasyChatList
+              onBack={() => {}} // 不再需要返回
+              conversations={conversations}
+              setConversations={setConversations}
+              contacts={contacts}
+              setContacts={setContacts}
+              onOpenChatRoom={handleOpenChatRoom}
+            />
+          )}
+          {activeTab === 'contacts' && (
+            <EasyChatContactsManager
+              onBack={() => {}} // 不再需要返回
+              contacts={contacts}
+              setContacts={setContacts}
+            />
+          )}
+          {activeTab === 'settings' && (
+            <EasyChatUserSettings
+              user={user}
+              onBack={() => {}} // 不再需要返回
+              onUpdateUser={handleUpdateUser}
+            />
+          )}
+        </div>
+
+        {/* 底部导航栏 */}
+        <div className="flex-shrink-0 h-16 bg-white border-t border-gray-200 flex items-center justify-around px-4">
+          <button
+            onClick={() => setActiveTab('chat')}
+            className={`flex flex-col items-center justify-center flex-1 h-full transition-colors ${
+              activeTab === 'chat' ? 'text-blue-500' : 'text-gray-500'
+            }`}
+          >
+            <svg className="w-6 h-6 mb-1" fill={activeTab === 'chat' ? 'currentColor' : 'none'} stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+            </svg>
+            <span className="text-xs">聊天</span>
+          </button>
+          <button
+            onClick={() => setActiveTab('contacts')}
+            className={`flex flex-col items-center justify-center flex-1 h-full transition-colors ${
+              activeTab === 'contacts' ? 'text-blue-500' : 'text-gray-500'
+            }`}
+          >
+            <svg className="w-6 h-6 mb-1" fill={activeTab === 'contacts' ? 'currentColor' : 'none'} stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
+            </svg>
+            <span className="text-xs">联系人</span>
+          </button>
+          <button
+            onClick={() => setActiveTab('settings')}
+            className={`flex flex-col items-center justify-center flex-1 h-full transition-colors ${
+              activeTab === 'settings' ? 'text-blue-500' : 'text-gray-500'
+            }`}
+          >
+            <svg className="w-6 h-6 mb-1" fill={activeTab === 'settings' ? 'currentColor' : 'none'} stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+            </svg>
+            <span className="text-xs">设置</span>
+          </button>
+        </div>
+      </div>
     );
   }
+
+  // 打开聊天的回调（从悬浮窗）
+  const handleOpenChatFromCall = (conversationId: string) => {
+    const conversation = conversations.find(c => c.id === conversationId);
+    if (conversation) {
+      setSelectedConversation(conversation);
+      setCurrentView('chatRoom');
+    }
+  };
 
   return (
     <>
@@ -287,14 +333,7 @@ export function EasyChatApp({ onBack }: EasyChatAppProps) {
           contacts={contacts}
           user={user}
           onClose={() => setGlobalCallState(null)}
-          onOpenChat={(conversationId) => {
-            // 找到对应的会话并打开
-            const conv = conversations.find(c => c.id === conversationId);
-            if (conv) {
-              setSelectedConversation(conv);
-              setCurrentView('chatRoom');
-            }
-          }}
+          onOpenChat={handleOpenChatFromCall}
           onUpdateCallState={setGlobalCallState}
           onUpdateConversation={handleUpdateConversation}
         />

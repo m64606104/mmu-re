@@ -162,57 +162,29 @@ export function EasyChatSettings({
       {/* 内容区域 */}
       <div className="flex-1 overflow-y-auto">
         {/* 头像和名称区域 - 美化版 */}
-        <div className="bg-gradient-to-br from-white via-blue-50/30 to-purple-50/30 px-4 py-8 mb-2">
+        <div className="bg-gradient-to-b from-blue-50 to-white px-4 py-6 border-b border-gray-100">
           <div className="flex flex-col items-center">
-            {/* 头像 */}
-            <div className="relative group mb-5">
-              <div className="w-28 h-28 rounded-full bg-gradient-to-br from-blue-400 via-blue-500 to-purple-500 flex items-center justify-center overflow-hidden shadow-xl ring-4 ring-white">
-                {editAvatar.startsWith('data:') ? (
-                  <img src={editAvatar} alt="头像" className="w-full h-full object-cover" />
-                ) : (
-                  <span className="text-5xl">{editAvatar}</span>
-                )}
+            {/* 头像显示区 */}
+            <label className="relative w-24 h-24 rounded-full overflow-hidden shadow-lg mb-4 cursor-pointer group">
+              {editAvatar.startsWith('data:') ? (
+                <img src={editAvatar} alt="头像" className="w-full h-full object-cover" />
+              ) : (
+                <div className="w-full h-full bg-gradient-to-br from-blue-400 via-blue-500 to-purple-500 flex items-center justify-center">
+                  <span className="text-4xl">{editAvatar}</span>
+                </div>
+              )}
+              {/* 悬浮遮罩 */}
+              <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                <Upload className="w-6 h-6 text-white" />
               </div>
-              <div className="absolute -bottom-2 left-1/2 -translate-x-1/2 px-3 py-1 bg-white rounded-full shadow-md border border-gray-100">
-                <span className="text-xs text-gray-600">点击下方编辑</span>
-              </div>
-            </div>
-
-            {/* 编辑头像 */}
-            <>
-              <label className="group inline-flex items-center justify-center gap-2 px-6 py-3 bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white rounded-full cursor-pointer transition-all shadow-lg hover:shadow-xl active:scale-95 mb-4">
-                <Upload className="w-4 h-4 group-hover:scale-110 transition-transform" />
-                <span className="text-sm">上传头像</span>
-                <input
-                  type="file"
-                  accept="image/*"
-                  onChange={handleImageUpload}
-                  className="hidden"
-                />
-              </label>
-
-              <div className="flex items-center gap-2 mb-3">
-                <div className="h-px w-8 bg-gradient-to-r from-transparent to-gray-300"></div>
-                <p className="text-xs text-gray-500">或选择 Emoji</p>
-                <div className="h-px w-8 bg-gradient-to-l from-transparent to-gray-300"></div>
-              </div>
-              
-              <div className="flex gap-2.5 flex-wrap justify-center max-w-xs mb-6">
-                {emojiList.map((emoji) => (
-                  <button
-                    key={emoji}
-                    onClick={() => setEditAvatar(emoji)}
-                    className={`w-11 h-11 rounded-full flex items-center justify-center transition-all transform hover:scale-110 ${
-                      editAvatar === emoji
-                        ? 'bg-gradient-to-br from-blue-400 to-blue-500 ring-2 ring-blue-500 ring-offset-2 shadow-lg scale-110'
-                        : 'bg-white hover:bg-gray-50 shadow-sm border border-gray-200'
-                    }`}
-                  >
-                    <span className="text-xl">{emoji}</span>
-                  </button>
-                ))}
-              </div>
-            </>
+              <input
+                type="file"
+                accept="image/*"
+                onChange={handleImageUpload}
+                className="hidden"
+              />
+            </label>
+            <p className="text-xs text-gray-400">点击头像更换图片</p>
 
             {/* 名称 */}
             <div className="w-full max-w-xs space-y-2">

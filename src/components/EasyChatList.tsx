@@ -671,17 +671,19 @@ export function EasyChatList({
               <div className="flex-1 overflow-y-auto">
                 <div className="bg-gradient-to-b from-blue-50 to-white px-4 py-6 border-b border-gray-100">
                   <div className="flex flex-col items-center">
-                    <div className="w-24 h-24 bg-gradient-to-br from-blue-400 via-blue-500 to-purple-500 rounded-full flex items-center justify-center flex-shrink-0 overflow-hidden shadow-lg mb-4">
+                    {/* 头像上传区 */}
+                    <label className="relative w-24 h-24 rounded-full overflow-hidden shadow-lg mb-4 cursor-pointer group">
                       {groupInfo.avatar.startsWith('data:') ? (
                         <img src={groupInfo.avatar} alt="头像" className="w-full h-full object-cover" />
                       ) : (
-                        <span className="text-4xl">{groupInfo.avatar}</span>
+                        <div className="w-full h-full bg-gradient-to-br from-blue-400 via-blue-500 to-purple-500 flex items-center justify-center">
+                          <span className="text-4xl">{groupInfo.avatar}</span>
+                        </div>
                       )}
-                    </div>
-
-                    <label className="inline-flex items-center justify-center gap-2 px-6 py-2.5 bg-blue-500 hover:bg-blue-600 text-white rounded-full cursor-pointer transition-colors shadow-sm mb-3">
-                      <Upload className="w-4 h-4" />
-                      <span className="text-sm">上传头像</span>
+                      {/* 悬浮遮罩 */}
+                      <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                        <Upload className="w-6 h-6 text-white" />
+                      </div>
                       <input
                         type="file"
                         accept="image/*"
@@ -689,23 +691,7 @@ export function EasyChatList({
                         className="hidden"
                       />
                     </label>
-
-                    <p className="text-xs text-gray-500 mb-2">或选择 Emoji</p>
-                    <div className="flex gap-2 flex-wrap justify-center max-w-xs">
-                      {emojiList.map((emoji) => (
-                        <button
-                          key={emoji}
-                          onClick={() => setGroupInfo({ ...groupInfo, avatar: emoji })}
-                          className={`w-10 h-10 rounded-full flex items-center justify-center transition-all ${
-                            groupInfo.avatar === emoji
-                              ? 'bg-blue-100 ring-2 ring-blue-500'
-                              : 'bg-gray-100 hover:bg-gray-200'
-                          }`}
-                        >
-                          <span className="text-xl">{emoji}</span>
-                        </button>
-                      ))}
-                    </div>
+                    <p className="text-xs text-gray-400">点击头像上传图片（可选）</p>
                   </div>
                 </div>
 
