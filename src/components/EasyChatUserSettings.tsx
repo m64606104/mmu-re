@@ -1,11 +1,11 @@
 import { useState } from 'react';
 import { ArrowLeft, Upload } from 'lucide-react';
-import { EasyChatUser } from '../types';
+import { EasyChatUser, ChatStyle } from '../types';
 import { Input } from './ui/input';
 import { Label } from './ui/label';
 import { toast } from 'sonner';
-import { BUBBLE_COLOR_THEMES, getBubbleColorTheme } from '../utils/bubbleColors';
-import { cropAndCompressAvatar } from '../utils/imageCompression';
+import { getBubbleColorTheme, BUBBLE_COLOR_THEMES } from '../utils/bubbleColors';
+import { compressImage } from '../utils/imageCompression';
 
 interface EasyChatUserSettingsProps {
   user: EasyChatUser;
@@ -17,6 +17,7 @@ export function EasyChatUserSettings({ user, onBack, onUpdateUser }: EasyChatUse
   const [editName, setEditName] = useState(user.name);
   const [editAvatar, setEditAvatar] = useState(user.avatar);
   const [editBubbleColor, setEditBubbleColor] = useState(user.bubbleColor || 'blue');
+  const [editChatStyle, setEditChatStyle] = useState<ChatStyle>(user.chatStyle || 'default');
 
   const emojiList = ['😊', '😎', '🥰', '😄', '🤗', '😇', '🙂', '😉', '🤓', '😺', '🐶', '🐼', '🦁', '🐯', '🦊'];
 
@@ -40,8 +41,8 @@ export function EasyChatUserSettings({ user, onBack, onUpdateUser }: EasyChatUse
 
     try {
       toast.loading('正在处理图片...');
-      // 自动居中裁剪为正方形并压缩
-      const result = await cropAndCompressAvatar(file, 200, 0.8);
+      // 压缩图片
+      const result = await compressImage(file, 200);
       setEditAvatar(result.dataUrl);
       toast.dismiss();
       toast.success('头像已更新');
@@ -69,7 +70,8 @@ export function EasyChatUserSettings({ user, onBack, onUpdateUser }: EasyChatUse
         ...user,
         name: editName,
         avatar: editAvatar,
-        bubbleColor: editBubbleColor
+        bubbleColor: editBubbleColor,
+        chatStyle: editChatStyle
       };
       
       onUpdateUser(updatedUser);
@@ -182,6 +184,75 @@ export function EasyChatUserSettings({ user, onBack, onUpdateUser }: EasyChatUse
                 )}
               </button>
             ))}
+          </div>
+        </div>
+
+        {/* 聊天风格 */}
+        <div className="bg-white mt-2">
+          <div className="px-4 py-3 border-b border-gray-100">
+            <h3 className="text-sm font-medium text-gray-900">聊天风格</h3>
+            <p className="text-xs text-gray-500 mt-0.5">选择聊天页面的显示风格</p>
+          </div>
+          <div className="px-4 py-3 space-y-2">
+            {/* 默认风格 */}
+            <button
+              onClick={() => setEditChatStyle('default')}
+              className={`w-full flex items-center gap-3 p-3 rounded-lg transition-all ${
+                editChatStyle === 'default'
+                  ? 'bg-blue-50 ring-1 ring-blue-500'
+                  : 'bg-gray-50 hover:bg-gray-100'
+              }`}
+            >
+              <div className="flex-1 text-left">
+                <p className="text-sm font-medium text-gray-900">默认风格</p>
+                <p className="text-xs text-gray-500 mt-0.5">简洁现代的聊天界面</p>
+              </div>
+              {editChatStyle === 'default' && (
+                <div className="w-4 h-4 rounded-full bg-blue-500 flex items-center justify-center flex-shrink-0">
+                  <div className="w-1.5 h-1.5 bg-white rounded-full" />
+                </div>
+              )}
+            </button>
+
+            {/* QQ风格 */}
+            <button
+              onClick={() => setEditChatStyle('qq')}
+              className={`w-full flex items-center gap-3 p-3 rounded-lg transition-all ${
+                editChatStyle === 'qq'
+                  ? 'bg-blue-50 ring-1 ring-blue-500'
+                  : 'bg-gray-50 hover:bg-gray-100'
+              }`}
+            >
+              <div className="flex-1 text-left">
+                <p className="text-sm font-medium text-gray-900">QQ 风格</p>
+                <p className="text-xs text-gray-500 mt-0.5">深色背景，绿色气泡，显示昵称</p>
+              </div>
+              {editChatStyle === 'qq' && (
+                <div className="w-4 h-4 rounded-full bg-blue-500 flex items-center justify-center flex-shrink-0">
+                  <div className="w-1.5 h-1.5 bg-white rounded-full" />
+                </div>
+              )}
+            </button>
+
+            {/* 微信风格 */}
+            <button
+              onClick={() => setEditChatStyle('wechat')}
+              className={`w-full flex items-center gap-3 p-3 rounded-lg transition-all ${
+                editChatStyle === 'wechat'
+                  ? 'bg-blue-50 ring-1 ring-blue-500'
+                  : 'bg-gray-50 hover:bg-gray-100'
+              }`}
+            >
+              <div className="flex-1 text-left">
+                <p className="text-sm font-medium text-gray-900">微信风格</p>
+                <p className="text-xs text-gray-500 mt-0.5">白色背景，绿色气泡（自己）</p>
+              </div>
+              {editChatStyle === 'wechat' && (
+                <div className="w-4 h-4 rounded-full bg-blue-500 flex items-center justify-center flex-shrink-0">
+                  <div className="w-1.5 h-1.5 bg-white rounded-full" />
+                </div>
+              )}
+            </button>
           </div>
         </div>
       </div>
