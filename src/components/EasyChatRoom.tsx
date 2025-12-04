@@ -1349,55 +1349,65 @@ export function EasyChatRoom({ conversation, contacts, user, onBack, onUpdateCon
         </div>
       </div>
 
-      {/* 群聊发送者选择器弹窗 */}
+      {/* 群聊发送者快速切换 - 隐蔽设计 */}
       {showSenderPicker && conversation.type === 'group' && (
-        <div className="absolute inset-0 bg-black/40 z-50 flex items-center justify-center animate-in fade-in duration-200">
-          <div className="w-[90%] max-w-sm bg-white rounded-2xl shadow-2xl overflow-hidden animate-in slide-in-from-bottom duration-300">
-            <div className="px-6 py-4 border-b border-gray-100">
-              <h3 className="text-center">选择发送者</h3>
+        <div 
+          className="absolute inset-0 z-50 flex items-end animate-in fade-in duration-150"
+          onClick={() => setShowSenderPicker(false)}
+        >
+          <div 
+            className="w-full bg-white/95 backdrop-blur-md shadow-2xl animate-in slide-in-from-bottom duration-200 pb-safe"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* 拖动指示条 */}
+            <div className="flex justify-center pt-2 pb-1">
+              <div className="w-10 h-1 bg-gray-300 rounded-full"></div>
             </div>
 
-            <div className="px-4 py-3 max-h-[400px] overflow-y-auto">
-              {getAllSenders().map(sender => {
-                const isSelected = sender.id === currentSenderId;
+            {/* 横向滚动的角色列表 */}
+            <div className="px-4 py-3 overflow-x-auto scrollbar-hide">
+              <div className="flex gap-6 min-w-min pb-1">
+                {getAllSenders().map(sender => {
+                  const isSelected = sender.id === currentSenderId;
 
-                return (
-                  <button
-                    key={sender.id}
-                    onClick={() => handleSelectSender(sender.id)}
-                    className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-colors ${
-                      isSelected ? 'bg-blue-50 ring-2 ring-blue-500' : 'hover:bg-gray-50'
-                    }`}
-                  >
-                    <div className="w-12 h-12 rounded-full bg-gradient-to-br from-gray-200 to-gray-300 flex items-center justify-center overflow-hidden flex-shrink-0">
-                      {sender.avatar.startsWith('data:') ? (
-                        <img src={sender.avatar} alt="头像" className="w-full h-full object-cover" />
-                      ) : (
-                        <span className="text-2xl">{sender.avatar}</span>
-                      )}
-                    </div>
-
-                    <div className="flex-1 text-left">
-                      <p className="text-[15px]">{sender.name}</p>
-                    </div>
-
-                    {isSelected && (
-                      <div className="w-6 h-6 rounded-full bg-blue-500 flex items-center justify-center flex-shrink-0">
-                        <div className="w-3 h-3 bg-white rounded-full" />
+                  return (
+                    <button
+                      key={sender.id}
+                      onClick={() => handleSelectSender(sender.id)}
+                      className="flex flex-col items-center gap-2 min-w-[60px] active:scale-95 transition-transform"
+                    >
+                      {/* 头像 */}
+                      <div className={`relative w-14 h-14 rounded-full overflow-hidden transition-all ${
+                        isSelected 
+                          ? 'ring-2 ring-blue-500 ring-offset-2 shadow-lg' 
+                          : 'opacity-60 shadow-sm'
+                      }`}>
+                        <div className="w-full h-full bg-gradient-to-br from-gray-200 to-gray-300 flex items-center justify-center">
+                          {sender.avatar.startsWith('data:') ? (
+                            <img src={sender.avatar} alt="" className="w-full h-full object-cover" />
+                          ) : (
+                            <span className="text-2xl">{sender.avatar}</span>
+                          )}
+                        </div>
+                        
+                        {/* 选中指示器 */}
+                        {isSelected && (
+                          <div className="absolute bottom-0 right-0 w-5 h-5 bg-blue-500 rounded-full flex items-center justify-center border-2 border-white">
+                            <div className="w-2 h-2 bg-white rounded-full"></div>
+                          </div>
+                        )}
                       </div>
-                    )}
-                  </button>
-                );
-              })}
-            </div>
 
-            <div className="px-4 pb-4">
-              <button
-                onClick={() => setShowSenderPicker(false)}
-                className="w-full py-3 bg-gray-100 hover:bg-gray-200 active:bg-gray-300 rounded-xl transition-colors"
-              >
-                取消
-              </button>
+                      {/* 名称 */}
+                      <span className={`text-xs max-w-[60px] truncate transition-all ${
+                        isSelected ? 'text-blue-600 font-medium' : 'text-gray-500'
+                      }`}>
+                        {sender.name}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
             </div>
           </div>
         </div>
