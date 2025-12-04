@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { ArrowLeft, Plus, User, Users, Upload, Search } from 'lucide-react';
-import { EasyChatContact, EasyChatConversation } from '../types';
+import { EasyChatContact, EasyChatConversation, ChatStyle } from '../types';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { Label } from './ui/label';
@@ -13,6 +13,7 @@ interface EasyChatListProps {
   contacts: EasyChatContact[];
   setContacts: (contacts: EasyChatContact[]) => void;
   onOpenChatRoom: (conversation: EasyChatConversation) => void;
+  chatStyle?: ChatStyle;
 }
 
 export function EasyChatList({ 
@@ -21,7 +22,8 @@ export function EasyChatList({
   setConversations, 
   contacts, 
   setContacts,
-  onOpenChatRoom 
+  onOpenChatRoom,
+  chatStyle = 'default'
 }: EasyChatListProps) {
   const [showCreateDialog, setShowCreateDialog] = useState(false);
   const [createStep, setCreateStep] = useState<'choose' | 'type' | 'selectContact' | 'newContact' | 'customizeGroup'>('choose');
@@ -303,29 +305,82 @@ export function EasyChatList({
     }
   };
 
+  // 根据风格获取样式配置
+  const getStyleConfig = () => {
+    switch (chatStyle) {
+      case 'qq':
+        return {
+          containerBg: 'bg-[#1a1a1a]',
+          headerBg: 'bg-[#2a2a2a]',
+          headerBorder: 'border-[#3a3a3a]',
+          headerText: 'text-white',
+          listBg: 'bg-[#1a1a1a]',
+          listItemBg: 'hover:bg-[#2a2a2a] active:bg-[#3a3a3a]',
+          textPrimary: 'text-white',
+          textSecondary: 'text-gray-400',
+          avatarBg: 'bg-gray-700',
+          iconColor: 'text-gray-300'
+        };
+      case 'wechat':
+        return {
+          containerBg: 'bg-white',
+          headerBg: 'bg-[#ededed]',
+          headerBorder: 'border-gray-200',
+          headerText: 'text-black',
+          listBg: 'bg-white',
+          listItemBg: 'hover:bg-gray-50 active:bg-gray-100',
+          textPrimary: 'text-black',
+          textSecondary: 'text-gray-500',
+          avatarBg: 'bg-gray-300',
+          iconColor: 'text-gray-600'
+        };
+      default:
+        return {
+          containerBg: 'bg-gray-50',
+          headerBg: 'bg-white',
+          headerBorder: 'border-gray-200',
+          headerText: 'text-gray-900',
+          listBg: 'bg-white',
+          listItemBg: 'hover:bg-gray-50 active:bg-gray-100',
+          textPrimary: 'text-gray-900',
+          textSecondary: 'text-gray-500',
+          avatarBg: 'bg-blue-500',
+          iconColor: 'text-blue-500'
+        };
+    }
+  };
+
+  const styleConfig = getStyleConfig();
+
   return (
-    <div className="w-full h-full bg-gray-50 flex flex-col">
-      {/* 顶部导航栏 - 统一设计 */}
-      <div className="flex items-center justify-between h-14 px-4 bg-white border-b border-gray-200 flex-shrink-0">
+    <div className={`w-full h-full ${styleConfig.containerBg} flex flex-col`}>
+      {/* 顶部导航栏 */}
+      <div className={`flex items-center justify-between h-14 px-4 ${styleConfig.headerBg} border-b ${styleConfig.headerBorder} flex-shrink-0`}>
         <div className="flex items-center gap-2">
           <button
             onClick={onBack}
-            className="p-2 -ml-2 rounded-full hover:bg-gray-100 active:bg-gray-200 transition-colors"
+            className={`p-2 -ml-2 rounded-full transition-colors ${
+              chatStyle === 'qq' ? 'hover:bg-[#3a3a3a]' : 'hover:bg-gray-100 active:bg-gray-200'
+            }`}
           >
-            <ArrowLeft className="w-5 h-5 text-gray-700" />
+            <ArrowLeft className={`w-5 h-5 ${styleConfig.iconColor}`} />
           </button>
-          <h1 className="text-lg font-semibold text-gray-900">消息</h1>
+          <h1 className={`text-lg font-semibold ${styleConfig.headerText}`}>
+            {chatStyle === 'wechat' ? `微信(${conversations.length})` : '消息'}
+          </h1>
         </div>
         <button
           onClick={handleStartCreate}
-          className="p-2 rounded-full hover:bg-gray-100 active:bg-gray-200 transition-colors"
+          className={`p-2 rounded-full transition-colors ${
+            chatStyle === 'qq' ? 'hover:bg-[#3a3a3a]' : 'hover:bg-gray-100 active:bg-gray-200'
+          }`}
         >
-          <Plus className="w-5 h-5 text-blue-500" strokeWidth={2.5} />
+          <Plus className={`w-5 h-5 ${styleConfig.iconColor}`} strokeWidth={2.5} />
         </button>
       </div>
 
       {/* 聊天列表 */}
-      <div className="flex-1 overflow-y-auto bg-white">
+      <div className={`flex-1 overflow-y-auto ${styleConfig.listBg}`}>
         {conversations.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full text-gray-400 px-8">
             <div className="relative mb-6">
@@ -353,11 +408,15 @@ export function EasyChatList({
               <button
                 key={conv.id}
                 onClick={() => onOpenChatRoom(conv)}
-                className="w-full flex items-center gap-3 px-3 py-3 rounded-xl hover:bg-gray-50 active:bg-gray-100 transition-colors"
+                className={`w-full flex items-center gap-3 px-3 py-3 ${
+                  chatStyle === 'qq' || chatStyle === 'wechat' ? '' : 'rounded-xl'
+                } ${styleConfig.listItemBg} transition-colors`}
               >
                 {/* 头像 */}
                 <div className="relative flex-shrink-0">
-                  <div className="w-12 h-12 rounded-xl bg-blue-500 flex items-center justify-center shadow-sm overflow-hidden">
+                  <div className={`w-12 h-12 ${
+                    chatStyle === 'wechat' ? 'rounded-md' : chatStyle === 'qq' ? 'rounded-lg' : 'rounded-xl'
+                  } ${styleConfig.avatarBg} flex items-center justify-center shadow-sm overflow-hidden`}>
                     {conv.avatar.startsWith('data:') ? (
                       <img src={conv.avatar} alt="头像" className="w-full h-full object-cover" />
                     ) : (
@@ -374,14 +433,14 @@ export function EasyChatList({
                 {/* 信息 */}
                 <div className="flex-1 min-w-0 text-left">
                   <div className="flex items-center justify-between mb-0.5">
-                    <span className="truncate font-medium text-gray-900">{conv.name}</span>
+                    <span className={`truncate font-medium ${styleConfig.textPrimary}`}>{conv.name}</span>
                     {conv.lastMessageTime && (
-                      <span className="text-xs text-gray-400 ml-2 flex-shrink-0">
+                      <span className={`text-xs ${styleConfig.textSecondary} ml-2 flex-shrink-0`}>
                         {conv.lastMessageTime}
                       </span>
                     )}
                   </div>
-                  <p className="text-sm text-gray-500 truncate">
+                  <p className={`text-sm ${styleConfig.textSecondary} truncate`}>
                     {conv.lastMessage || '暂无消息'}
                   </p>
                 </div>

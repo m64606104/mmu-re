@@ -254,6 +254,7 @@ export function EasyChatApp({ onBack }: EasyChatAppProps) {
               contacts={contacts}
               setContacts={setContacts}
               onOpenChatRoom={handleOpenChatRoom}
+              chatStyle={user.chatStyle || 'default'}
             />
           )}
           {activeTab === 'contacts' && (
