@@ -597,10 +597,10 @@ export function EasyChatRoom({ conversation, contacts, user, onBack, onUpdateCon
           headerBg: 'bg-[#2a2a2a]',
           headerText: 'text-white',
           headerIcon: 'text-gray-300',
-          myBubbleBg: 'bg-[#95ec69]',
-          myBubbleText: 'text-black',
-          otherBubbleBg: 'bg-white',
-          otherBubbleText: 'text-black',
+          myBubbleBg: 'bg-[#4A90E2]', // QQ蓝色
+          myBubbleText: 'text-white',
+          otherBubbleBg: 'bg-[#4a4a4a]', // 深灰色气泡
+          otherBubbleText: 'text-white',
           inputBg: 'bg-[#3a3a3a]',
           inputText: 'text-white',
           inputPlaceholder: 'placeholder-gray-400',
@@ -608,16 +608,16 @@ export function EasyChatRoom({ conversation, contacts, user, onBack, onUpdateCon
         };
       case 'wechat':
         return {
-          containerBg: 'bg-[#ededed]',
-          headerBg: 'bg-[#ededed]',
-          headerText: 'text-black',
-          headerIcon: 'text-gray-700',
-          myBubbleBg: 'bg-[#95ec69]',
+          containerBg: 'bg-[#1c1c1c]', // 微信深色背景
+          headerBg: 'bg-[#2a2a2a]',
+          headerText: 'text-white',
+          headerIcon: 'text-gray-300',
+          myBubbleBg: 'bg-[#95ec69]', // 微信绿色
           myBubbleText: 'text-black',
-          otherBubbleBg: 'bg-white',
-          otherBubbleText: 'text-black',
-          inputBg: 'bg-white',
-          inputText: 'text-black',
+          otherBubbleBg: 'bg-[#4a4a4a]', // 深灰色气泡
+          otherBubbleText: 'text-white',
+          inputBg: 'bg-[#3a3a3a]',
+          inputText: 'text-white',
           inputPlaceholder: 'placeholder-gray-400',
           showNickname: false
         };
@@ -627,7 +627,7 @@ export function EasyChatRoom({ conversation, contacts, user, onBack, onUpdateCon
           headerBg: 'bg-white/80',
           headerText: 'text-gray-900',
           headerIcon: 'text-gray-700',
-          myBubbleBg: getBubbleColorTheme(user.bubbleColor || 'blue').bgClass,
+          myBubbleBg: 'bg-[#1e90ff]', // 默认蓝色
           myBubbleText: 'text-white',
           otherBubbleBg: 'bg-white',
           otherBubbleText: 'text-gray-900',

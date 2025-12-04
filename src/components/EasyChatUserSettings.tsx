@@ -153,40 +153,6 @@ export function EasyChatUserSettings({ user, onBack, onUpdateUser }: EasyChatUse
           </div>
         </div>
 
-        {/* 消息气泡颜色 */}
-        <div className="bg-white mt-2">
-          <div className="px-4 py-3 border-b border-gray-100">
-            <h3 className="text-sm font-medium text-gray-900">消息气泡颜色</h3>
-          </div>
-          <div className="px-4 py-3 grid grid-cols-2 gap-2">
-            {BUBBLE_COLOR_THEMES.map((theme) => (
-              <button
-                key={theme.id}
-                onClick={() => setEditBubbleColor(theme.id)}
-                className={`flex items-center gap-2 p-2.5 rounded-lg transition-all ${
-                  editBubbleColor === theme.id
-                    ? 'bg-blue-50 ring-1 ring-blue-500'
-                    : 'bg-gray-50 hover:bg-gray-100'
-                }`}
-              >
-                <div
-                  className="w-10 h-10 rounded-lg flex-shrink-0"
-                  style={{ background: theme.preview }}
-                />
-                <div className="flex-1 text-left">
-                  <p className="text-xs font-medium text-gray-900">{theme.name}</p>
-                  <p className="text-xs text-gray-500">{theme.emoji}</p>
-                </div>
-                {editBubbleColor === theme.id && (
-                  <div className="w-4 h-4 rounded-full bg-blue-500 flex items-center justify-center flex-shrink-0">
-                    <div className="w-1.5 h-1.5 bg-white rounded-full" />
-                  </div>
-                )}
-              </button>
-            ))}
-          </div>
-        </div>
-
         {/* 聊天风格 */}
         <div className="bg-white mt-2">
           <div className="px-4 py-3 border-b border-gray-100">
@@ -225,7 +191,7 @@ export function EasyChatUserSettings({ user, onBack, onUpdateUser }: EasyChatUse
             >
               <div className="flex-1 text-left">
                 <p className="text-sm font-medium text-gray-900">QQ 风格</p>
-                <p className="text-xs text-gray-500 mt-0.5">深色背景，绿色气泡，显示昵称</p>
+                <p className="text-xs text-gray-500 mt-0.5">深色背景，蓝色气泡（自己），显示昵称</p>
               </div>
               {editChatStyle === 'qq' && (
                 <div className="w-4 h-4 rounded-full bg-blue-500 flex items-center justify-center flex-shrink-0">
@@ -245,7 +211,7 @@ export function EasyChatUserSettings({ user, onBack, onUpdateUser }: EasyChatUse
             >
               <div className="flex-1 text-left">
                 <p className="text-sm font-medium text-gray-900">微信风格</p>
-                <p className="text-xs text-gray-500 mt-0.5">白色背景，绿色气泡（自己）</p>
+                <p className="text-xs text-gray-500 mt-0.5">深色模式，绿色气泡（自己）</p>
               </div>
               {editChatStyle === 'wechat' && (
                 <div className="w-4 h-4 rounded-full bg-blue-500 flex items-center justify-center flex-shrink-0">

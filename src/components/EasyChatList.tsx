@@ -323,16 +323,16 @@ export function EasyChatList({
         };
       case 'wechat':
         return {
-          containerBg: 'bg-white',
-          headerBg: 'bg-[#ededed]',
-          headerBorder: 'border-gray-200',
-          headerText: 'text-black',
-          listBg: 'bg-white',
-          listItemBg: 'hover:bg-gray-50 active:bg-gray-100',
-          textPrimary: 'text-black',
-          textSecondary: 'text-gray-500',
-          avatarBg: 'bg-gray-300',
-          iconColor: 'text-gray-600'
+          containerBg: 'bg-[#1c1c1c]', // 微信深色背景
+          headerBg: 'bg-[#2a2a2a]',
+          headerBorder: 'border-[#3a3a3a]',
+          headerText: 'text-white',
+          listBg: 'bg-[#1c1c1c]',
+          listItemBg: 'hover:bg-[#2a2a2a] active:bg-[#3a3a3a]',
+          textPrimary: 'text-white',
+          textSecondary: 'text-gray-400',
+          avatarBg: 'bg-gray-700',
+          iconColor: 'text-gray-300'
         };
       default:
         return {
@@ -366,7 +366,7 @@ export function EasyChatList({
             <ArrowLeft className={`w-5 h-5 ${styleConfig.iconColor}`} />
           </button>
           <h1 className={`text-lg font-semibold ${styleConfig.headerText}`}>
-            {chatStyle === 'wechat' ? `微信(${conversations.length})` : '消息'}
+            {chatStyle === 'wechat' ? '微信' : '消息'}
           </h1>
         </div>
         <button
