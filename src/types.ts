@@ -839,16 +839,12 @@ export interface EasyChatConversation {
   lastMessageTime?: string;
 }
 
-// Easy Chat 聊天风格
-export type ChatStyle = 'default' | 'qq' | 'wechat';
-
 // Easy Chat 用户（自己）
 export interface EasyChatUser {
   id: string;
   name: string;
   avatar: string;
   bubbleColor?: string; // 气泡颜色主题
-  chatStyle?: ChatStyle; // 聊天风格：默认、QQ风、微信风
 }
 
 // 全局通话状态（用于悬浮窗）

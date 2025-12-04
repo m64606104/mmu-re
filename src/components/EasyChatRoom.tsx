@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
 import { ArrowLeft, Send, MoreHorizontal, Plus, Image as ImageIcon, Video, Mic, Play, Pause, Smile, Radio, Phone, PhoneOff } from 'lucide-react';
-import { EasyChatConversation, EasyChatContact, EasyChatMessage, EasyChatUser, LivestreamData, GroupCallData, GlobalCallState, ChatStyle } from '../types';
+import { EasyChatConversation, EasyChatContact, EasyChatMessage, EasyChatUser, LivestreamData, GroupCallData, GlobalCallState } from '../types';
 import { VoiceMessageDialog } from './VoiceMessageDialog';
 import { MessageActionDialog } from './MessageActionDialog';
 import { EmojiPackDialog } from './EmojiPackDialog';
@@ -18,10 +18,13 @@ interface EasyChatRoomProps {
   onUpdateConversation: (conversation: EasyChatConversation) => void;
   onOpenSettings: () => void;
   onStartGlobalCall?: (callState: GlobalCallState) => void;
-  chatStyle?: ChatStyle;
 }
 
-export function EasyChatRoom({ conversation, contacts, user, onBack, onUpdateConversation, onOpenSettings, onStartGlobalCall, chatStyle = 'default' }: EasyChatRoomProps) {
+export function EasyChatRoom({ conversation, contacts, user, onBack, onUpdateConversation, onOpenSettings, onStartGlobalCall }: EasyChatRoomProps) {
+  // 检测UI风格
+  const uiStyle = localStorage.getItem('easychat_ui_style') || 'default';
+  const isWechatStyle = uiStyle === 'wechat';
+
   const [message, setMessage] = useState('');
   const [currentSenderId, setCurrentSenderId] = useState<string>(user.id);
   const [showSenderPicker, setShowSenderPicker] = useState(false);
@@ -588,131 +591,24 @@ export function EasyChatRoom({ conversation, contacts, user, onBack, onUpdateCon
     }
   };
 
-  // 根据风格获取样式配置
-  const getChatStyleConfig = () => {
-    switch (chatStyle) {
-      case 'qq':
-        return {
-          containerBg: 'bg-[#2c2c2c]',
-          headerBg: 'bg-[#2a2a2a]',
-          headerText: 'text-white',
-          headerIcon: 'text-gray-300',
-          myBubbleBg: 'bg-[#4A90E2]', // QQ蓝色
-          myBubbleText: 'text-white',
-          otherBubbleBg: 'bg-[#4a4a4a]', // 深灰色气泡
-          otherBubbleText: 'text-white',
-          inputBg: 'bg-[#3a3a3a]',
-          inputText: 'text-white',
-          inputPlaceholder: 'placeholder-gray-400',
-          showNickname: true
-        };
-      case 'wechat':
-        return {
-          containerBg: 'bg-[#191919]', // 微信模拟器背景
-          headerBg: 'bg-[#1a1a1a]',
-          headerText: 'text-white',
-          headerIcon: 'text-white',
-          myBubbleBg: 'bg-[#047c4b]', // 微信模拟器深绿色
-          myBubbleText: 'text-white',
-          otherBubbleBg: 'bg-[#3a3a3a]', // 微信模拟器深灰色
-          otherBubbleText: 'text-white',
-          inputBg: 'bg-[#2a2a2a]',
-          inputText: 'text-white',
-          inputPlaceholder: 'placeholder-[#999]',
-          showNickname: false
-        };
-      default:
-        return {
-          containerBg: 'bg-[#f5f5f5]',
-          headerBg: 'bg-white/80',
-          headerText: 'text-gray-900',
-          headerIcon: 'text-gray-700',
-          myBubbleBg: 'bg-[#1e90ff]', // 默认蓝色
-          myBubbleText: 'text-white',
-          otherBubbleBg: 'bg-white',
-          otherBubbleText: 'text-gray-900',
-          inputBg: 'bg-white',
-          inputText: 'text-gray-900',
-          inputPlaceholder: 'placeholder-gray-400',
-          showNickname: false
-        };
-    }
-  };
 
-  const chatStyleConfig = getChatStyleConfig();
-
-  const myBubbleRounded = chatStyle === 'wechat' 
-    ? 'rounded-tl-[4px] rounded-tr-[4px] rounded-bl-[4px]' 
-    : chatStyle === 'qq' 
-      ? 'rounded-lg' 
-      : 'rounded-2xl rounded-tr-sm';
-
-  const otherBubbleRounded = chatStyle === 'wechat' 
-    ? 'rounded-tl-[4px] rounded-tr-[4px] rounded-br-[4px]' 
-    : chatStyle === 'qq' 
-      ? 'rounded-lg' 
-      : 'rounded-2xl rounded-tl-sm';
 
   return (
-    <>
-      {/* 气泡小尾巴样式 */}
-      <style>{`
-        /* 微信风格 - 用户气泡右侧小尾巴 */
-        ${chatStyle === 'wechat' ? `
-          .message-bubble-my::after {
-            content: '';
-            position: absolute;
-            right: -8px;
-            top: 10px;
-            width: 0;
-            height: 0;
-            border-left: 8px solid #047c4b;
-            border-top: 6px solid transparent;
-            border-bottom: 6px solid transparent;
-          }
-        ` : ''}
-
-        /* 微信风格 - 对方气泡左侧小尾巴 */
-        ${chatStyle === 'wechat' ? `
-          .message-bubble-other::after {
-            content: '';
-            position: absolute;
-            left: -8px;
-            top: 10px;
-            width: 0;
-            height: 0;
-            border-right: 8px solid #3a3a3a;
-            border-top: 6px solid transparent;
-            border-bottom: 6px solid transparent;
-          }
-        ` : ''}
-
-        /* QQ风格 - 用户气泡（无尾巴，圆角矩形） */
-        ${chatStyle === 'qq' ? `
-          /* QQ不需要伪元素尾巴 */
-        ` : ''}
-
-        /* QQ风格 - 对方气泡（无尾巴，圆角矩形） */
-        ${chatStyle === 'qq' ? `
-          /* QQ不需要伪元素尾巴 */
-        ` : ''}
-      `}</style>
-      
-      <div className={`w-full h-full ${chatStyleConfig.containerBg} flex flex-col`}>
+    <div className="w-full h-full bg-[#f5f5f5] flex flex-col">
       {/* 顶部导航栏 */}
-      <div className={`flex items-center justify-between h-20 px-4 ${chatStyleConfig.headerBg} ${chatStyle === 'default' ? 'backdrop-blur-xl' : ''} border-b ${chatStyle === 'qq' ? 'border-[#3a3a3a]' : 'border-gray-100'} flex-shrink-0`}>
+      <div className="flex items-center justify-between h-20 px-4 bg-white/80 backdrop-blur-xl border-b border-gray-100 flex-shrink-0">
         <button
           onClick={onBack}
           className="p-2 -ml-2 active:opacity-60 transition-opacity"
         >
-          <ArrowLeft className={`w-6 h-6 ${chatStyleConfig.headerIcon}`} strokeWidth={2.5} />
+          <ArrowLeft className="w-6 h-6 text-gray-700" strokeWidth={2.5} />
         </button>
-        <h1 className={`tracking-tight ${chatStyleConfig.headerText}`}>{conversation.name}</h1>
+        <h1 className="tracking-tight">{conversation.name}</h1>
         <button 
           onClick={onOpenSettings}
           className="p-2 -mr-2 active:opacity-60 transition-opacity"
         >
-          <MoreHorizontal className={`w-6 h-6 ${chatStyleConfig.headerIcon}`} />
+          <MoreHorizontal className="w-6 h-6 text-gray-700" />
         </button>
       </div>
 
@@ -748,14 +644,14 @@ export function EasyChatRoom({ conversation, contacts, user, onBack, onUpdateCon
                   )}
 
                   {isMe ? (
-                    // 我发的消息 - 右侧气泡 + 头像
+                    // 我发的消息 - 右侧蓝色气泡 + 头像
                     <div className="flex justify-end items-start gap-2">
                       <div 
                         className="flex flex-col items-end max-w-[75%]"
                         onClick={() => handleLongPressMessage(msg)}
                       >
                         {msg.type === 'voice' ? (
-                          <div className={`relative ${chatStyleConfig.myBubbleBg} ${myBubbleRounded} px-3 py-2.5 shadow-sm message-bubble-my`}>
+                          <div className="bg-[#1e90ff] rounded-lg rounded-tr-sm px-3 py-2.5 shadow-sm">
                             <button
                               onClick={(e) => {
                                 e.stopPropagation();
@@ -768,20 +664,20 @@ export function EasyChatRoom({ conversation, contacts, user, onBack, onUpdateCon
                               ) : (
                                 <Play className="w-5 h-5 text-white" />
                               )}
-                              <span className={`${chatStyleConfig.myBubbleText} text-sm`}>{msg.voiceDuration}"</span>
+                              <span className="text-white text-sm">{msg.voiceDuration}"</span>
                             </button>
                             {msg.voiceText && (
-                              <p className={`${chatStyleConfig.myBubbleText} text-xs mt-1 opacity-80`}>
+                              <p className="text-white text-xs mt-1 opacity-80">
                                 {msg.voiceText}
                               </p>
                             )}
                           </div>
                         ) : msg.type === 'image' ? (
-                          <div className={`${myBubbleRounded} overflow-hidden shadow-sm max-w-[200px]`}>
+                          <div className="rounded-lg rounded-tr-sm overflow-hidden shadow-sm max-w-[200px]">
                             <img src={msg.imageUrl} alt="图片" className="w-full h-auto" />
                           </div>
                         ) : msg.type === 'video' ? (
-                          <div className={`bg-black ${myBubbleRounded} overflow-hidden shadow-sm max-w-[200px]`}>
+                          <div className="bg-black rounded-lg rounded-tr-sm overflow-hidden shadow-sm max-w-[200px]">
                             <video src={msg.videoUrl} controls className="w-full h-auto" />
                           </div>
                         ) : msg.type === 'emojipack' ? (
@@ -954,8 +850,8 @@ export function EasyChatRoom({ conversation, contacts, user, onBack, onUpdateCon
                             </div>
                           </button>
                         ) : (
-                          <div className={`relative ${chatStyleConfig.myBubbleBg} ${myBubbleRounded} px-3 py-2.5 shadow-sm message-bubble-my`}>
-                            <p className={`${chatStyleConfig.myBubbleText} text-[15px] leading-relaxed whitespace-pre-wrap break-words`}>
+                          <div className={`${getBubbleColorTheme(sender.bubbleColor).bgClass} rounded-lg rounded-tr-sm px-3 py-2.5 shadow-sm`}>
+                            <p className={`${getBubbleColorTheme(sender.bubbleColor).textClass} text-[15px] leading-relaxed whitespace-pre-wrap break-words`}>
                               {msg.text}
                             </p>
                           </div>
@@ -985,8 +881,8 @@ export function EasyChatRoom({ conversation, contacts, user, onBack, onUpdateCon
 
                       {/* 消息���容 */}
                       <div className="flex-1 min-w-0 max-w-[75%]">
-                        {(isGroupChat || chatStyleConfig.showNickname) && (
-                          <div className={`text-xs ${chatStyle === 'qq' ? 'text-gray-400' : 'text-gray-500'} mb-1`}>{sender.name}</div>
+                        {isGroupChat && (
+                          <div className="text-xs text-gray-500 mb-1">{sender.name}</div>
                         )}
                         
                         <div 
@@ -994,7 +890,7 @@ export function EasyChatRoom({ conversation, contacts, user, onBack, onUpdateCon
                           onClick={() => handleLongPressMessage(msg)}
                         >
                           {msg.type === 'voice' ? (
-                            <div className={`relative ${chatStyleConfig.otherBubbleBg} ${otherBubbleRounded} px-3 py-2.5 shadow-sm message-bubble-other`}>
+                            <div className="bg-white rounded-lg rounded-tl-sm px-3 py-2.5 shadow-sm">
                               <button
                                 onClick={(e) => {
                                   e.stopPropagation();
@@ -1003,11 +899,11 @@ export function EasyChatRoom({ conversation, contacts, user, onBack, onUpdateCon
                                 className="flex items-center gap-2"
                               >
                                 {playingVoice === msg.id ? (
-                                  <Pause className={`w-5 h-5 ${chatStyle === 'qq' || chatStyle === 'wechat' ? 'text-gray-700' : 'text-gray-700'}`} />
+                                  <Pause className="w-5 h-5 text-gray-700" />
                                 ) : (
-                                  <Play className={`w-5 h-5 ${chatStyle === 'qq' || chatStyle === 'wechat' ? 'text-gray-700' : 'text-gray-700'}`} />
+                                  <Play className="w-5 h-5 text-gray-700" />
                                 )}
-                                <span className={`${chatStyle === 'qq' || chatStyle === 'wechat' ? 'text-gray-700' : 'text-gray-700'} text-sm`}>{msg.voiceDuration}"</span>
+                                <span className="text-gray-700 text-sm">{msg.voiceDuration}"</span>
                               </button>
                               {msg.voiceText && (
                                 <p className="text-gray-600 text-xs mt-1">
@@ -1016,11 +912,11 @@ export function EasyChatRoom({ conversation, contacts, user, onBack, onUpdateCon
                               )}
                             </div>
                           ) : msg.type === 'image' ? (
-                            <div className={`relative ${otherBubbleRounded} overflow-hidden shadow-sm max-w-[200px] message-bubble-other`}>
+                            <div className="rounded-lg rounded-tl-sm overflow-hidden shadow-sm max-w-[200px]">
                               <img src={msg.imageUrl} alt="图片" className="w-full h-auto" />
                             </div>
                           ) : msg.type === 'video' ? (
-                            <div className={`bg-black ${otherBubbleRounded} overflow-hidden shadow-sm max-w-[200px] message-bubble-other`}>
+                            <div className="bg-black rounded-lg rounded-tl-sm overflow-hidden shadow-sm max-w-[200px]">
                               <video src={msg.videoUrl} controls className="w-full h-auto" />
                             </div>
                           ) : msg.type === 'emojipack' ? (
@@ -1193,8 +1089,8 @@ export function EasyChatRoom({ conversation, contacts, user, onBack, onUpdateCon
                               </div>
                             </button>
                           ) : (
-                            <div className={`relative ${chatStyleConfig.otherBubbleBg} ${otherBubbleRounded} px-3 py-2.5 shadow-sm message-bubble-other`}>
-                              <p className={`${chatStyleConfig.otherBubbleText} text-[15px] leading-relaxed whitespace-pre-wrap break-words`}>
+                            <div className="bg-white rounded-lg rounded-tl-sm px-3 py-2.5 shadow-sm">
+                              <p className="text-gray-900 text-[15px] leading-relaxed whitespace-pre-wrap break-words">
                                 {msg.text}
                               </p>
                             </div>
@@ -1212,10 +1108,10 @@ export function EasyChatRoom({ conversation, contacts, user, onBack, onUpdateCon
       </div>
 
       {/* 输入框区域 */}
-      <div className={`${chatStyleConfig.inputBg} border-t ${chatStyle === 'qq' || chatStyle === 'wechat' ? 'border-[#3a3a3a]' : 'border-gray-200'} px-4 py-2.5 flex-shrink-0`}>
+      <div className="bg-white border-t border-gray-200 px-4 py-2.5 flex-shrink-0">
         <div className="flex items-center gap-2">{/* 改为 items-center 让按钮在一条线上 */}
           {/* 输入框容器 */}
-          <div className={`flex-1 flex items-center ${chatStyleConfig.inputBg} border ${chatStyle === 'qq' || chatStyle === 'wechat' ? 'border-[#4a4a4a]' : 'border-gray-200'} rounded-lg overflow-hidden`}>
+          <div className="flex-1 flex items-center bg-white border border-gray-200 rounded-lg overflow-hidden">
             {/* 圆形角色切换按钮 */}
             <button
               onClick={handleToggleSender}
@@ -1236,7 +1132,7 @@ export function EasyChatRoom({ conversation, contacts, user, onBack, onUpdateCon
               onChange={(e) => setMessage(e.target.value)}
               onKeyPress={handleKeyPress}
               placeholder="输入消息..."
-              className={`flex-1 resize-none outline-none bg-transparent px-2 py-2 min-h-[36px] max-h-[120px] text-[15px] ${chatStyleConfig.inputText} ${chatStyleConfig.inputPlaceholder}`}
+              className="flex-1 resize-none outline-none bg-transparent px-2 py-2 min-h-[36px] max-h-[120px] text-[15px]"
               rows={1}
               style={{
                 height: 'auto',
@@ -1578,6 +1474,5 @@ export function EasyChatRoom({ conversation, contacts, user, onBack, onUpdateCon
         />
       )}
     </div>
-    </>
   );
 }

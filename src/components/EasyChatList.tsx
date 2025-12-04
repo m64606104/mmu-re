@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { ArrowLeft, Plus, User, Users, Upload, Search } from 'lucide-react';
-import { EasyChatContact, EasyChatConversation, ChatStyle } from '../types';
+import { EasyChatContact, EasyChatConversation } from '../types';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { Label } from './ui/label';
@@ -13,7 +13,6 @@ interface EasyChatListProps {
   contacts: EasyChatContact[];
   setContacts: (contacts: EasyChatContact[]) => void;
   onOpenChatRoom: (conversation: EasyChatConversation) => void;
-  chatStyle?: ChatStyle;
 }
 
 export function EasyChatList({ 
@@ -22,9 +21,12 @@ export function EasyChatList({
   setConversations, 
   contacts, 
   setContacts,
-  onOpenChatRoom,
-  chatStyle = 'default'
+  onOpenChatRoom 
 }: EasyChatListProps) {
+  // 检测UI风格
+  const uiStyle = localStorage.getItem('easychat_ui_style') || 'default';
+  const isWechatStyle = uiStyle === 'wechat';
+
   const [showCreateDialog, setShowCreateDialog] = useState(false);
   const [createStep, setCreateStep] = useState<'choose' | 'type' | 'selectContact' | 'newContact' | 'customizeGroup'>('choose');
   const [chatType, setChatType] = useState<'private' | 'group'>('private');
@@ -305,82 +307,118 @@ export function EasyChatList({
     }
   };
 
-  // 根据风格获取样式配置
-  const getStyleConfig = () => {
-    switch (chatStyle) {
-      case 'qq':
-        return {
-          containerBg: 'bg-[#1a1a1a]',
-          headerBg: 'bg-[#2a2a2a]',
-          headerBorder: 'border-[#3a3a3a]',
-          headerText: 'text-white',
-          listBg: 'bg-[#1a1a1a]',
-          listItemBg: 'hover:bg-[#2a2a2a] active:bg-[#3a3a3a]',
-          textPrimary: 'text-white',
-          textSecondary: 'text-gray-400',
-          avatarBg: 'bg-gray-700',
-          iconColor: 'text-gray-300'
-        };
-      case 'wechat':
-        return {
-          containerBg: 'bg-[#1c1c1c]', // 微信深色背景
-          headerBg: 'bg-[#2a2a2a]',
-          headerBorder: 'border-[#3a3a3a]',
-          headerText: 'text-white',
-          listBg: 'bg-[#1c1c1c]',
-          listItemBg: 'hover:bg-[#2a2a2a] active:bg-[#3a3a3a]',
-          textPrimary: 'text-white',
-          textSecondary: 'text-gray-400',
-          avatarBg: 'bg-gray-700',
-          iconColor: 'text-gray-300'
-        };
-      default:
-        return {
-          containerBg: 'bg-gray-50',
-          headerBg: 'bg-white',
-          headerBorder: 'border-gray-200',
-          headerText: 'text-gray-900',
-          listBg: 'bg-white',
-          listItemBg: 'hover:bg-gray-50 active:bg-gray-100',
-          textPrimary: 'text-gray-900',
-          textSecondary: 'text-gray-500',
-          avatarBg: 'bg-blue-500',
-          iconColor: 'text-blue-500'
-        };
-    }
-  };
+  // 微信风格的UI渲染
+  if (isWechatStyle) {
+    return (
+      <div className="w-full h-full bg-[#ededed] flex flex-col">
+        {/* 顶部导航栏 - 微信风格 */}
+        <div className="bg-[#ededed]">
+          <div className="flex items-center justify-between px-4 py-2">
+            <div className="w-8" />
+            <h1 className="text-[17px] font-medium text-black">微信</h1>
+            <button
+              onClick={handleStartCreate}
+              className="p-1 text-black"
+            >
+              <Plus size={24} strokeWidth={2} />
+            </button>
+          </div>
+        </div>
 
-  const styleConfig = getStyleConfig();
+        {/* 搜索框 - 微信风格 */}
+        <div className="px-3 pb-2 bg-[#ededed]">
+          <div className="rounded-md px-3 py-2 flex items-center gap-2 bg-white">
+            <Search size={16} className="text-[#999]" />
+            <span className="text-[#999] text-sm">搜索</span>
+          </div>
+        </div>
 
+        {/* 会话列表 - 微信风格 */}
+        <div className="flex-1 overflow-y-auto bg-[#fff]">
+          {conversations.length === 0 ? (
+            <div className="flex flex-col items-center justify-center h-full px-8">
+              <div className="w-20 h-20 rounded-full bg-gray-100 flex items-center justify-center mb-4">
+                <Plus className="w-10 h-10 text-gray-300" strokeWidth={1.5} />
+              </div>
+              <p className="text-center text-gray-500 mb-1">暂无聊天</p>
+              <p className="text-xs text-gray-400 text-center">点击右上角 + 开始聊天</p>
+            </div>
+          ) : (
+            <div>
+              {conversations
+                .sort((a, b) => {
+                  if (!a.lastMessageTime && !b.lastMessageTime) return 0;
+                  if (!a.lastMessageTime) return 1;
+                  if (!b.lastMessageTime) return -1;
+                  return b.lastMessageTime.localeCompare(a.lastMessageTime);
+                })
+                .map((conv) => (
+                  <div
+                    key={conv.id}
+                    onClick={() => onOpenChatRoom(conv)}
+                    className="flex items-center px-3 py-3 cursor-pointer border-b border-[#e5e5e5] active:bg-[#ececec] transition-colors"
+                  >
+                    {/* 头像 */}
+                    <div className="relative flex-shrink-0">
+                      <div className="w-[52px] h-[52px] rounded-[5px] bg-blue-500 flex items-center justify-center overflow-hidden">
+                        {conv.avatar.startsWith('data:') ? (
+                          <img src={conv.avatar} alt="头像" className="w-full h-full object-cover" />
+                        ) : (
+                          <span className="text-xl text-white">{conv.avatar}</span>
+                        )}
+                      </div>
+                      {conv.type === 'group' && (
+                        <div className="absolute -bottom-0.5 -right-0.5 w-4 h-4 bg-blue-600 rounded-full flex items-center justify-center border-2 border-white">
+                          <Users className="w-2 h-2 text-white" strokeWidth={3} />
+                        </div>
+                      )}
+                    </div>
+
+                    {/* 内容区域 */}
+                    <div className="flex-1 ml-3 min-w-0">
+                      <div className="flex items-center justify-between mb-1">
+                        <h3 className="text-[17px] font-normal text-black truncate">{conv.name}</h3>
+                        <span className="text-[#999] text-[13px] flex-shrink-0 ml-2">
+                          {conv.lastMessageTime || ''}
+                        </span>
+                      </div>
+                      <p className="text-[#999] text-[14px] truncate">
+                        {conv.lastMessage || '暂无消息'}
+                      </p>
+                    </div>
+                  </div>
+                ))}
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  // 默认风格的UI渲染
   return (
-    <div className={`w-full h-full ${styleConfig.containerBg} flex flex-col`}>
-      {/* 顶部导航栏 */}
-      <div className={`flex items-center justify-between h-14 px-4 ${styleConfig.headerBg} border-b ${styleConfig.headerBorder} flex-shrink-0`}>
+    <div className="w-full h-full bg-gray-50 flex flex-col">
+      {/* 顶部导航栏 - 统一设计 */}
+      <div className="flex items-center justify-between h-14 px-4 bg-white border-b border-gray-200 flex-shrink-0">
         <div className="flex items-center gap-2">
           <button
             onClick={onBack}
-            className={`p-2 -ml-2 rounded-full transition-colors ${
-              chatStyle === 'qq' ? 'hover:bg-[#3a3a3a]' : 'hover:bg-gray-100 active:bg-gray-200'
-            }`}
+            className="p-2 -ml-2 rounded-full hover:bg-gray-100 active:bg-gray-200 transition-colors"
           >
-            <ArrowLeft className={`w-5 h-5 ${styleConfig.iconColor}`} />
+            <ArrowLeft className="w-5 h-5 text-gray-700" />
           </button>
-          <h1 className={`text-lg font-semibold ${styleConfig.headerText}`}>
-            {chatStyle === 'wechat' ? '微信' : '消息'}
-          </h1>
+          <h1 className="text-lg font-semibold text-gray-900">消息</h1>
         </div>
         <button
           onClick={handleStartCreate}
-          className={`p-2 rounded-full transition-colors ${
-            chatStyle === 'qq' ? 'hover:bg-[#3a3a3a]' : 'hover:bg-gray-100 active:bg-gray-200'
-          }`}
+          className="p-2 rounded-full hover:bg-gray-100 active:bg-gray-200 transition-colors"
         >
-          <Plus className={`w-5 h-5 ${styleConfig.iconColor}`} strokeWidth={2.5} />
+          <Plus className="w-5 h-5 text-blue-500" strokeWidth={2.5} />
         </button>
       </div>
 
       {/* 聊天列表 */}
-      <div className={`flex-1 overflow-y-auto ${styleConfig.listBg}`}>
+      <div className="flex-1 overflow-y-auto bg-white">
         {conversations.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full text-gray-400 px-8">
             <div className="relative mb-6">
@@ -408,15 +446,11 @@ export function EasyChatList({
               <button
                 key={conv.id}
                 onClick={() => onOpenChatRoom(conv)}
-                className={`w-full flex items-center gap-3 px-3 py-3 ${
-                  chatStyle === 'qq' || chatStyle === 'wechat' ? '' : 'rounded-xl'
-                } ${styleConfig.listItemBg} transition-colors`}
+                className="w-full flex items-center gap-3 px-3 py-3 rounded-xl hover:bg-gray-50 active:bg-gray-100 transition-colors"
               >
                 {/* 头像 */}
                 <div className="relative flex-shrink-0">
-                  <div className={`w-12 h-12 ${
-                    chatStyle === 'wechat' ? 'rounded-md' : chatStyle === 'qq' ? 'rounded-lg' : 'rounded-xl'
-                  } ${styleConfig.avatarBg} flex items-center justify-center shadow-sm overflow-hidden`}>
+                  <div className="w-12 h-12 rounded-xl bg-blue-500 flex items-center justify-center shadow-sm overflow-hidden">
                     {conv.avatar.startsWith('data:') ? (
                       <img src={conv.avatar} alt="头像" className="w-full h-full object-cover" />
                     ) : (
@@ -433,14 +467,14 @@ export function EasyChatList({
                 {/* 信息 */}
                 <div className="flex-1 min-w-0 text-left">
                   <div className="flex items-center justify-between mb-0.5">
-                    <span className={`truncate font-medium ${styleConfig.textPrimary}`}>{conv.name}</span>
+                    <span className="truncate font-medium text-gray-900">{conv.name}</span>
                     {conv.lastMessageTime && (
-                      <span className={`text-xs ${styleConfig.textSecondary} ml-2 flex-shrink-0`}>
+                      <span className="text-xs text-gray-400 ml-2 flex-shrink-0">
                         {conv.lastMessageTime}
                       </span>
                     )}
                   </div>
-                  <p className={`text-sm ${styleConfig.textSecondary} truncate`}>
+                  <p className="text-sm text-gray-500 truncate">
                     {conv.lastMessage || '暂无消息'}
                   </p>
                 </div>

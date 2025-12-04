@@ -1,11 +1,11 @@
 import { useState } from 'react';
 import { ArrowLeft, Upload } from 'lucide-react';
-import { EasyChatUser, ChatStyle } from '../types';
+import { EasyChatUser } from '../types';
 import { Input } from './ui/input';
 import { Label } from './ui/label';
 import { toast } from 'sonner';
-import { getBubbleColorTheme, BUBBLE_COLOR_THEMES } from '../utils/bubbleColors';
-import { compressImage } from '../utils/imageCompression';
+import { BUBBLE_COLOR_THEMES, getBubbleColorTheme } from '../utils/bubbleColors';
+import { cropAndCompressAvatar } from '../utils/imageCompression';
 
 interface EasyChatUserSettingsProps {
   user: EasyChatUser;
@@ -17,7 +17,6 @@ export function EasyChatUserSettings({ user, onBack, onUpdateUser }: EasyChatUse
   const [editName, setEditName] = useState(user.name);
   const [editAvatar, setEditAvatar] = useState(user.avatar);
   const [editBubbleColor, setEditBubbleColor] = useState(user.bubbleColor || 'blue');
-  const [editChatStyle, setEditChatStyle] = useState<ChatStyle>(user.chatStyle || 'default');
 
   const emojiList = ['😊', '😎', '🥰', '😄', '🤗', '😇', '🙂', '😉', '🤓', '😺', '🐶', '🐼', '🦁', '🐯', '🦊'];
 
@@ -41,8 +40,8 @@ export function EasyChatUserSettings({ user, onBack, onUpdateUser }: EasyChatUse
 
     try {
       toast.loading('正在处理图片...');
-      // 压缩图片
-      const result = await compressImage(file, 200);
+      // 自动居中裁剪为正方形并压缩
+      const result = await cropAndCompressAvatar(file, 200, 0.8);
       setEditAvatar(result.dataUrl);
       toast.dismiss();
       toast.success('头像已更新');
@@ -70,8 +69,7 @@ export function EasyChatUserSettings({ user, onBack, onUpdateUser }: EasyChatUse
         ...user,
         name: editName,
         avatar: editAvatar,
-        bubbleColor: editBubbleColor,
-        chatStyle: editChatStyle
+        bubbleColor: editBubbleColor
       };
       
       onUpdateUser(updatedUser);
@@ -153,72 +151,105 @@ export function EasyChatUserSettings({ user, onBack, onUpdateUser }: EasyChatUse
           </div>
         </div>
 
-        {/* 聊天风格 */}
+        {/* 聊天风格选择 */}
         <div className="bg-white mt-2">
           <div className="px-4 py-3 border-b border-gray-100">
             <h3 className="text-sm font-medium text-gray-900">聊天风格</h3>
-            <p className="text-xs text-gray-500 mt-0.5">选择聊天页面的显示风格</p>
+            <p className="text-xs text-gray-500 mt-0.5">选择会话列表和聊天页面的UI风格</p>
           </div>
-          <div className="px-4 py-3 space-y-2">
-            {/* 默认风格 */}
-            <button
-              onClick={() => setEditChatStyle('default')}
-              className={`w-full flex items-center gap-3 p-3 rounded-lg transition-all ${
-                editChatStyle === 'default'
-                  ? 'bg-blue-50 ring-1 ring-blue-500'
-                  : 'bg-gray-50 hover:bg-gray-100'
-              }`}
-            >
-              <div className="flex-1 text-left">
-                <p className="text-sm font-medium text-gray-900">默认风格</p>
-                <p className="text-xs text-gray-500 mt-0.5">简洁现代的聊天界面</p>
-              </div>
-              {editChatStyle === 'default' && (
-                <div className="w-4 h-4 rounded-full bg-blue-500 flex items-center justify-center flex-shrink-0">
-                  <div className="w-1.5 h-1.5 bg-white rounded-full" />
+          <div className="px-4 py-3">
+            <div className="space-y-2">
+              <button
+                onClick={() => {
+                  localStorage.setItem('easychat_ui_style', 'default');
+                  window.location.reload();
+                }}
+                className={`w-full flex items-center justify-between p-3 rounded-lg transition-all ${
+                  localStorage.getItem('easychat_ui_style') !== 'wechat'
+                    ? 'bg-blue-50 ring-1 ring-blue-500'
+                    : 'bg-gray-50 hover:bg-gray-100'
+                }`}
+              >
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-blue-500 to-purple-500 flex items-center justify-center text-white font-bold">
+                    EC
+                  </div>
+                  <div className="text-left">
+                    <p className="text-sm font-medium text-gray-900">默认风格</p>
+                    <p className="text-xs text-gray-500">简洁现代的设计</p>
+                  </div>
                 </div>
-              )}
-            </button>
+                {localStorage.getItem('easychat_ui_style') !== 'wechat' && (
+                  <div className="w-5 h-5 rounded-full bg-blue-500 flex items-center justify-center">
+                    <div className="w-2 h-2 bg-white rounded-full" />
+                  </div>
+                )}
+              </button>
 
-            {/* QQ风格 */}
-            <button
-              onClick={() => setEditChatStyle('qq')}
-              className={`w-full flex items-center gap-3 p-3 rounded-lg transition-all ${
-                editChatStyle === 'qq'
-                  ? 'bg-blue-50 ring-1 ring-blue-500'
-                  : 'bg-gray-50 hover:bg-gray-100'
-              }`}
-            >
-              <div className="flex-1 text-left">
-                <p className="text-sm font-medium text-gray-900">QQ 风格</p>
-                <p className="text-xs text-gray-500 mt-0.5">深色背景，蓝色气泡（自己），显示昵称</p>
-              </div>
-              {editChatStyle === 'qq' && (
-                <div className="w-4 h-4 rounded-full bg-blue-500 flex items-center justify-center flex-shrink-0">
-                  <div className="w-1.5 h-1.5 bg-white rounded-full" />
+              <button
+                onClick={() => {
+                  localStorage.setItem('easychat_ui_style', 'wechat');
+                  window.location.reload();
+                }}
+                className={`w-full flex items-center justify-between p-3 rounded-lg transition-all ${
+                  localStorage.getItem('easychat_ui_style') === 'wechat'
+                    ? 'bg-green-50 ring-1 ring-green-500'
+                    : 'bg-gray-50 hover:bg-gray-100'
+                }`}
+              >
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-green-500 to-teal-500 flex items-center justify-center text-white font-bold">
+                    微信
+                  </div>
+                  <div className="text-left">
+                    <p className="text-sm font-medium text-gray-900">微信风格</p>
+                    <p className="text-xs text-gray-500">仿微信界面设计</p>
+                  </div>
                 </div>
-              )}
-            </button>
+                {localStorage.getItem('easychat_ui_style') === 'wechat' && (
+                  <div className="w-5 h-5 rounded-full bg-green-500 flex items-center justify-center">
+                    <div className="w-2 h-2 bg-white rounded-full" />
+                  </div>
+                )}
+              </button>
+            </div>
+            <p className="text-xs text-gray-400 mt-3 text-center">
+              切换风格后将自动刷新页面
+            </p>
+          </div>
+        </div>
 
-            {/* 微信风格 */}
-            <button
-              onClick={() => setEditChatStyle('wechat')}
-              className={`w-full flex items-center gap-3 p-3 rounded-lg transition-all ${
-                editChatStyle === 'wechat'
-                  ? 'bg-blue-50 ring-1 ring-blue-500'
-                  : 'bg-gray-50 hover:bg-gray-100'
-              }`}
-            >
-              <div className="flex-1 text-left">
-                <p className="text-sm font-medium text-gray-900">微信风格</p>
-                <p className="text-xs text-gray-500 mt-0.5">深色模式，绿色气泡（自己）</p>
-              </div>
-              {editChatStyle === 'wechat' && (
-                <div className="w-4 h-4 rounded-full bg-blue-500 flex items-center justify-center flex-shrink-0">
-                  <div className="w-1.5 h-1.5 bg-white rounded-full" />
+        {/* 消息气泡颜色 */}
+        <div className="bg-white mt-2">
+          <div className="px-4 py-3 border-b border-gray-100">
+            <h3 className="text-sm font-medium text-gray-900">消息气泡颜色</h3>
+          </div>
+          <div className="px-4 py-3 grid grid-cols-2 gap-2">
+            {BUBBLE_COLOR_THEMES.map((theme) => (
+              <button
+                key={theme.id}
+                onClick={() => setEditBubbleColor(theme.id)}
+                className={`flex items-center gap-2 p-2.5 rounded-lg transition-all ${
+                  editBubbleColor === theme.id
+                    ? 'bg-blue-50 ring-1 ring-blue-500'
+                    : 'bg-gray-50 hover:bg-gray-100'
+                }`}
+              >
+                <div
+                  className="w-10 h-10 rounded-lg flex-shrink-0"
+                  style={{ background: theme.preview }}
+                />
+                <div className="flex-1 text-left">
+                  <p className="text-xs font-medium text-gray-900">{theme.name}</p>
+                  <p className="text-xs text-gray-500">{theme.emoji}</p>
                 </div>
-              )}
-            </button>
+                {editBubbleColor === theme.id && (
+                  <div className="w-4 h-4 rounded-full bg-blue-500 flex items-center justify-center flex-shrink-0">
+                    <div className="w-1.5 h-1.5 bg-white rounded-full" />
+                  </div>
+                )}
+              </button>
+            ))}
           </div>
         </div>
       </div>

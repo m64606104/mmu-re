@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { MessageCircle, Settings, Music, Phone, Heart, Bell, Play, Pause, SkipBack, SkipForward, MapPin, Sun, Palette, Upload, BookOpen, Mailbox, X, Database, Users, GraduationCap, Book, MessageSquare, Plus } from 'lucide-react';
+import { MessageCircle, Settings, Music, Phone, Heart, Bell, Play, Pause, SkipBack, SkipForward, MapPin, Sun, Palette, Upload, BookOpen, Mailbox, X, Database, Users, GraduationCap, Book, MessageSquare } from 'lucide-react';
 import { Screen, ThemeSettings } from '../types';
 
 interface HomeScreenProps {
@@ -36,11 +36,8 @@ export default function HomeScreen({ onNavigate, theme }: HomeScreenProps) {
   const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState<{type: 'app' | 'quick' | 'dock', index: number} | null>(null);
   const [showQuickSelector, setShowQuickSelector] = useState(false);
-  const [showDockSelector, setShowDockSelector] = useState(false);
   const [showCountdownEditor, setShowCountdownEditor] = useState(false);
   const [showMusicUploader, setShowMusicUploader] = useState(false);
-  const [dockDraggedIndex, setDockDraggedIndex] = useState<number | null>(null);
-  const [dockDragOverIndex, setDockDragOverIndex] = useState<number | null>(null);
   const [tempCountdownDate, setTempCountdownDate] = useState('');
   const [tempCountdownName, setTempCountdownName] = useState('');
   
@@ -302,62 +299,6 @@ export default function HomeScreen({ onNavigate, theme }: HomeScreenProps) {
     setShowQuickSelector(false);
   };
 
-  // 添加Dock应用
-  const addDockApp = (appId: string) => {
-    if (dockLayout.includes(appId)) {
-      alert('该应用已在Dock中');
-      return;
-    }
-    if (dockLayout.length >= 4) {
-      alert('Dock最多4个应用');
-      return;
-    }
-    
-    saveHistory();
-    
-    const newLayout = [...dockLayout, appId];
-    setDockLayout(newLayout);
-    localStorage.setItem('dockLayout', JSON.stringify(newLayout));
-    setShowDockSelector(false);
-  };
-
-  // Dock拖拽开始
-  const handleDockDragStart = (index: number) => {
-    setDockDraggedIndex(index);
-  };
-
-  // Dock拖拽进入
-  const handleDockDragOver = (index: number) => {
-    setDockDragOverIndex(index);
-  };
-
-  // Dock拖拽结束
-  const handleDockDrop = () => {
-    if (dockDraggedIndex === null || dockDragOverIndex === null) {
-      setDockDraggedIndex(null);
-      setDockDragOverIndex(null);
-      return;
-    }
-
-    if (dockDraggedIndex === dockDragOverIndex) {
-      setDockDraggedIndex(null);
-      setDockDragOverIndex(null);
-      return;
-    }
-
-    saveHistory();
-
-    const newLayout = [...dockLayout];
-    const draggedItem = newLayout[dockDraggedIndex];
-    newLayout.splice(dockDraggedIndex, 1);
-    newLayout.splice(dockDragOverIndex, 0, draggedItem);
-
-    setDockLayout(newLayout);
-    localStorage.setItem('dockLayout', JSON.stringify(newLayout));
-    setDockDraggedIndex(null);
-    setDockDragOverIndex(null);
-  };
-
   // 触摸滑动处理
   const handleTouchStart = (e: React.TouchEvent) => {
     setTouchStartX(e.touches[0].clientX);
@@ -606,49 +547,6 @@ export default function HomeScreen({ onNavigate, theme }: HomeScreenProps) {
             </div>
             <button
               onClick={() => setShowQuickSelector(false)}
-              className="w-full px-4 py-3 bg-slate-700 hover:bg-slate-800 rounded-xl font-medium text-white transition active:scale-95"
-            >
-              关闭
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* Dock应用选择器 */}
-      {showDockSelector && (
-        <div className="absolute inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50">
-          <div className="bg-white/90 backdrop-blur-xl rounded-3xl p-6 shadow-2xl mx-6 max-w-md border border-white/50">
-            <h3 className="text-lg font-bold text-slate-800 mb-4">添加到 Dock</h3>
-            <p className="text-sm text-slate-600 mb-4">选择要添加到 Dock 的应用（最多4个）</p>
-            <div className="grid grid-cols-4 gap-4 mb-6 max-h-80 overflow-y-auto">
-              {Object.entries(iconConfig).map(([appId, config]) => {
-                const Icon = config.icon;
-                const isAdded = dockLayout.includes(appId);
-                
-                return (
-                  <button
-                    key={appId}
-                    onClick={() => !isAdded && addDockApp(appId)}
-                    disabled={isAdded}
-                    className={`flex flex-col items-center gap-2 p-3 rounded-xl transition active:scale-95 ${
-                      isAdded 
-                        ? 'bg-slate-200 opacity-50 cursor-not-allowed' 
-                        : 'bg-slate-100 hover:bg-slate-200'
-                    }`}
-                  >
-                    <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-teal-400 to-cyan-500 flex items-center justify-center">
-                      <Icon className="w-6 h-6 text-white" strokeWidth={2} />
-                    </div>
-                    <span className="text-xs text-slate-700 text-center">{config.name}</span>
-                    {isAdded && (
-                      <span className="text-xs text-teal-600 font-medium">已在Dock</span>
-                    )}
-                  </button>
-                );
-              })}
-            </div>
-            <button
-              onClick={() => setShowDockSelector(false)}
               className="w-full px-4 py-3 bg-slate-700 hover:bg-slate-800 rounded-xl font-medium text-white transition active:scale-95"
             >
               关闭
@@ -919,23 +817,9 @@ export default function HomeScreen({ onNavigate, theme }: HomeScreenProps) {
               const config = iconConfig[appId];
               if (!config) return null;
               const Icon = config.icon;
-              const isDragOver = dockDragOverIndex === index && isEditMode;
               
               return (
-                <div 
-                  key={appId} 
-                  className={`relative ${isDragOver ? 'scale-110' : ''} transition-transform`}
-                  draggable={isEditMode}
-                  onDragStart={() => handleDockDragStart(index)}
-                  onDragOver={(e) => {
-                    e.preventDefault();
-                    handleDockDragOver(index);
-                  }}
-                  onDrop={(e) => {
-                    e.preventDefault();
-                    handleDockDrop();
-                  }}
-                >
+                <div key={appId} className="relative">
                   <button 
                     onClick={isEditMode ? undefined : config.onClick}
                     onTouchStart={handleLongPressStart}
@@ -943,7 +827,7 @@ export default function HomeScreen({ onNavigate, theme }: HomeScreenProps) {
                     onMouseDown={handleLongPressStart}
                     onMouseUp={handleLongPressEnd}
                     onMouseLeave={handleLongPressEnd}
-                    className={`w-14 h-14 rounded-[18px] bg-white/30 backdrop-blur-md flex items-center justify-center hover:scale-110 active:scale-95 transition-transform ${isEditMode ? 'animate-wiggle cursor-move' : ''}`}
+                    className={`w-14 h-14 rounded-[18px] bg-white/30 backdrop-blur-md flex items-center justify-center hover:scale-110 active:scale-95 transition-transform ${isEditMode ? 'animate-wiggle' : ''}`}
                   >
                     <Icon className="w-6 h-6 text-white" strokeWidth={2} />
                   </button>
@@ -958,16 +842,6 @@ export default function HomeScreen({ onNavigate, theme }: HomeScreenProps) {
                 </div>
               );
             })}
-            
-            {/* 添加应用按钮 - 当Dock应用数量小于4时显示 */}
-            {dockLayout.length < 4 && (
-              <button
-                onClick={() => setShowDockSelector(true)}
-                className="w-14 h-14 rounded-[18px] bg-white/20 backdrop-blur-md flex items-center justify-center hover:scale-110 active:scale-95 transition-transform border-2 border-dashed border-white/40"
-              >
-                <Plus className="w-6 h-6 text-white" strokeWidth={2.5} />
-              </button>
-            )}
           </div>
         </div>
 
