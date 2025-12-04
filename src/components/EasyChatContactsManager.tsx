@@ -84,9 +84,9 @@ export function EasyChatContactsManager({ onBack, contacts, setContacts }: EasyC
 
   return (
     <div className="w-full h-full bg-gray-50 flex flex-col">
-      {/* 顶部导航栏 - 统一设计 */}
-      <div className="flex items-center justify-between h-14 px-4 bg-white border-b border-gray-200 flex-shrink-0">
-        <div className="flex items-center gap-2">
+      {/* 顶部导航栏 - 参考QQ */}
+      <div className="flex items-center justify-between h-14 px-4 bg-white border-b border-gray-100 flex-shrink-0">
+        <div className="flex items-center gap-3">
           <button
             onClick={onBack}
             className="p-2 -ml-2 rounded-full hover:bg-gray-100 active:bg-gray-200 transition-colors"
@@ -99,60 +99,56 @@ export function EasyChatContactsManager({ onBack, contacts, setContacts }: EasyC
           onClick={() => setShowAddDialog(true)}
           className="p-2 rounded-full hover:bg-gray-100 active:bg-gray-200 transition-colors"
         >
-          <UserPlus className="w-5 h-5 text-blue-500" strokeWidth={2.5} />
+          <UserPlus className="w-5 h-5 text-gray-900" strokeWidth={2} />
         </button>
       </div>
 
-      {/* 统计信息条 */}
-      <div className="px-4 py-2.5 bg-white border-b border-gray-200">
-        <p className="text-sm text-gray-600">
-          共 <span className="font-semibold text-blue-500">{contacts.length}</span> 位联系人
-        </p>
-      </div>
-
-      {/* 联系人网格 - 卡片式 */}
-      <div className="flex-1 overflow-y-auto bg-gray-50">
+      {/* 联系人列表 - QQ风格 */}
+      <div className="flex-1 overflow-y-auto">
         {contacts.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full text-gray-400 px-8">
-            <div className="relative mb-6">
-              <div className="w-24 h-24 rounded-full bg-blue-50 flex items-center justify-center border-4 border-dashed border-blue-200">
-                <UserPlus className="w-12 h-12 text-blue-300" strokeWidth={1.5} />
-              </div>
-              <div className="absolute -bottom-2 -right-2 w-10 h-10 rounded-full bg-blue-500 flex items-center justify-center shadow-lg">
-                <Plus className="w-5 h-5 text-white" strokeWidth={3} />
-              </div>
+            <div className="w-20 h-20 rounded-full bg-gray-100 flex items-center justify-center mb-4">
+              <UserPlus className="w-10 h-10 text-gray-300" strokeWidth={1.5} />
             </div>
-            <p className="text-center mb-2 font-medium text-gray-600">暂无联系人</p>
-            <p className="text-sm text-gray-400 text-center">点击右上角添加新联系人</p>
+            <p className="text-center mb-1 text-gray-500">暂无联系人</p>
+            <p className="text-xs text-gray-400 text-center">点击右上角添加新联系人</p>
           </div>
         ) : (
-          <div className="p-3 grid grid-cols-3 gap-3">
+          <div className="bg-white">
+            {/* 联系人列表头部 */}
+            <div className="px-4 py-2 flex items-center justify-between border-b border-gray-50">
+              <span className="text-xs text-gray-500">我的好友</span>
+              <span className="text-xs text-gray-400">{contacts.length}位联系人</span>
+            </div>
+
+            {/* 联系人列表项 */}
             {contacts.map((contact) => (
               <div 
                 key={contact.id} 
-                className="relative bg-white rounded-xl p-3 shadow-sm hover:shadow-md transition-all active:scale-95 group"
+                className="relative flex items-center gap-3 px-4 py-3 border-b border-gray-50 active:bg-gray-50 transition-colors group"
               >
-                {/* 删除按钮 - 卡片右上角 */}
-                <button
-                  onClick={() => handleDeleteContact(contact.id)}
-                  className="absolute -top-1 -right-1 w-6 h-6 bg-red-500 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity shadow-md z-10"
-                >
-                  <X className="w-3.5 h-3.5 text-white" strokeWidth={3} />
-                </button>
-
-                {/* 头像 - 圆形 */}
-                <div className="w-full aspect-square rounded-full bg-blue-500 flex items-center justify-center shadow-sm overflow-hidden mb-2">
+                {/* 头像 */}
+                <div className="w-11 h-11 rounded-full bg-blue-500 flex items-center justify-center shadow-sm overflow-hidden flex-shrink-0">
                   {contact.avatar.startsWith('data:') ? (
                     <img src={contact.avatar} alt="头像" className="w-full h-full object-cover" />
                   ) : (
-                    <span className="text-2xl text-white">{contact.avatar}</span>
+                    <span className="text-xl text-white">{contact.avatar}</span>
                   )}
                 </div>
 
-                {/* 名称 */}
-                <p className="text-center text-xs font-medium truncate text-gray-900">
-                  {contact.name}
-                </p>
+                {/* 信息 */}
+                <div className="flex-1 min-w-0">
+                  <p className="text-[15px] font-medium text-gray-900 truncate">{contact.name}</p>
+                  <p className="text-xs text-gray-400 truncate mt-0.5">Easy Chat 用户</p>
+                </div>
+
+                {/* 删除按钮 - 右侧滑出 */}
+                <button
+                  onClick={() => handleDeleteContact(contact.id)}
+                  className="opacity-0 group-hover:opacity-100 p-2 rounded-full hover:bg-red-50 active:bg-red-100 transition-all"
+                >
+                  <X className="w-4 h-4 text-red-500" strokeWidth={2.5} />
+                </button>
               </div>
             ))}
           </div>
