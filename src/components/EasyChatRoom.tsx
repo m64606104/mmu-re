@@ -667,12 +667,15 @@ export function EasyChatRoom({ conversation, contacts, user, onBack, onUpdateCon
                           </div>
                         ) : msg.type === 'voice' ? (
                           <div
-                            className={`px-3 py-2 relative ${
+                            className={`px-3 py-2 relative min-w-[80px] ${
                               isMe
                                 ? 'bg-[#95ec69] rounded-tl-[4px] rounded-tr-[4px] rounded-bl-[4px]'
                                 : 'bg-white rounded-tl-[4px] rounded-tr-[4px] rounded-br-[4px]'
                             }`}
-                            onClick={() => handleLongPressMessage(msg)}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleVoicePlayback(msg.id);
+                            }}
                           >
                             {/* 小尖角 */}
                             <div className={`absolute top-[10px] w-0 h-0 ${
@@ -680,20 +683,23 @@ export function EasyChatRoom({ conversation, contacts, user, onBack, onUpdateCon
                                 ? 'right-[-6px] border-l-[6px] border-l-[#95ec69] border-t-[5px] border-t-transparent border-b-[5px] border-b-transparent'
                                 : 'left-[-6px] border-r-[6px] border-r-white border-t-[5px] border-t-transparent border-b-[5px] border-b-transparent'
                             }`}></div>
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                handleVoicePlayback(msg.id);
-                              }}
-                              className="flex items-center gap-2"
-                            >
-                              <Play className={`w-4 h-4 ${isMe ? 'text-black' : 'text-gray-700'}`} />
-                              <span className={`text-sm font-medium ${isMe ? 'text-black' : 'text-gray-700'}`}>
+                            
+                            {/* 语音内容 - 严格参考图3：图标在左，时长在右 */}
+                            <div className="flex items-center gap-1 justify-start">
+                              {/* 图标 - 空心三角形，指向右 */}
+                              <div className="w-4 h-4 flex items-center justify-center">
+                                <div className={`w-0 h-0 border-t-[5px] border-t-transparent border-b-[5px] border-b-transparent border-l-[8px] ${isMe ? 'border-l-black' : 'border-l-gray-700'}`}></div>
+                                {/* 使用 CSS 绘制三角形更准确地模拟图3的样式，或者保留空心效果 */}
+                                <div className={`absolute w-0 h-0 border-t-[3px] border-t-transparent border-b-[3px] border-b-transparent border-l-[6px] ${isMe ? 'border-l-[#95ec69]' : 'border-l-white'} ml-[-2px]`}></div>
+                              </div>
+
+                              <span className={`text-[15px] ${isMe ? 'text-black' : 'text-black'}`}>
                                 {msg.voiceDuration}"
                               </span>
-                            </button>
+                            </div>
+
                             {msg.voiceText && (
-                              <p className={`text-xs mt-1 ${isMe ? 'text-black/80' : 'text-gray-600'}`}>
+                              <p className={`text-[15px] mt-1 leading-snug ${isMe ? 'text-black' : 'text-black'}`}>
                                 {msg.voiceText}
                               </p>
                             )}
@@ -740,7 +746,7 @@ export function EasyChatRoom({ conversation, contacts, user, onBack, onUpdateCon
             {/* 语音按钮 */}
             <button 
               onClick={() => setShowVoiceDialog(true)}
-              className="p-1 text-[#181818] flex-shrink-0"
+              className="p-1 text-[#181818] flex-shrink-0 relative z-10"
             >
               <Mic size={24} strokeWidth={1.5} />
             </button>

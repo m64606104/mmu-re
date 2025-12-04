@@ -314,7 +314,14 @@ export function EasyChatList({
         {/* 顶部导航栏 - 微信风格 */}
         <div className="bg-[#ededed]">
           <div className="flex items-center justify-between px-4 py-2">
-            <div className="w-8" />
+            {/* 添加返回按钮 */}
+            <button
+              onClick={onBack}
+              className="p-1 -ml-2 flex items-center text-black font-medium text-[16px]"
+            >
+              <ArrowLeft size={24} strokeWidth={2} />
+              <span className="ml-1">返回</span>
+            </button>
             <h1 className="text-[17px] font-medium text-black">微信</h1>
             <button
               onClick={handleStartCreate}
