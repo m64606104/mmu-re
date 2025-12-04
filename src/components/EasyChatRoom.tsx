@@ -608,17 +608,17 @@ export function EasyChatRoom({ conversation, contacts, user, onBack, onUpdateCon
         };
       case 'wechat':
         return {
-          containerBg: 'bg-[#1c1c1c]', // 微信深色背景
-          headerBg: 'bg-[#2a2a2a]',
+          containerBg: 'bg-[#191919]', // 微信模拟器背景
+          headerBg: 'bg-[#1a1a1a]',
           headerText: 'text-white',
-          headerIcon: 'text-gray-300',
-          myBubbleBg: 'bg-[#95ec69]', // 微信绿色
-          myBubbleText: 'text-black',
-          otherBubbleBg: 'bg-[#4a4a4a]', // 深灰色气泡
+          headerIcon: 'text-white',
+          myBubbleBg: 'bg-[#047c4b]', // 微信模拟器深绿色
+          myBubbleText: 'text-white',
+          otherBubbleBg: 'bg-[#3a3a3a]', // 微信模拟器深灰色
           otherBubbleText: 'text-white',
-          inputBg: 'bg-[#3a3a3a]',
+          inputBg: 'bg-[#2a2a2a]',
           inputText: 'text-white',
-          inputPlaceholder: 'placeholder-gray-400',
+          inputPlaceholder: 'placeholder-[#999]',
           showNickname: false
         };
       default:
@@ -641,6 +641,18 @@ export function EasyChatRoom({ conversation, contacts, user, onBack, onUpdateCon
 
   const chatStyleConfig = getChatStyleConfig();
 
+  const myBubbleRounded = chatStyle === 'wechat' 
+    ? 'rounded-tl-[4px] rounded-tr-[4px] rounded-bl-[4px]' 
+    : chatStyle === 'qq' 
+      ? 'rounded-lg' 
+      : 'rounded-2xl rounded-tr-sm';
+
+  const otherBubbleRounded = chatStyle === 'wechat' 
+    ? 'rounded-tl-[4px] rounded-tr-[4px] rounded-br-[4px]' 
+    : chatStyle === 'qq' 
+      ? 'rounded-lg' 
+      : 'rounded-2xl rounded-tl-sm';
+
   return (
     <>
       {/* 气泡小尾巴样式 */}
@@ -650,11 +662,11 @@ export function EasyChatRoom({ conversation, contacts, user, onBack, onUpdateCon
           .message-bubble-my::after {
             content: '';
             position: absolute;
-            right: -6px;
-            top: 12px;
+            right: -8px;
+            top: 10px;
             width: 0;
             height: 0;
-            border-left: 8px solid #95ec69;
+            border-left: 8px solid #047c4b;
             border-top: 6px solid transparent;
             border-bottom: 6px solid transparent;
           }
@@ -665,11 +677,11 @@ export function EasyChatRoom({ conversation, contacts, user, onBack, onUpdateCon
           .message-bubble-other::after {
             content: '';
             position: absolute;
-            left: -6px;
-            top: 12px;
+            left: -8px;
+            top: 10px;
             width: 0;
             height: 0;
-            border-right: 8px solid #4a4a4a;
+            border-right: 8px solid #3a3a3a;
             border-top: 6px solid transparent;
             border-bottom: 6px solid transparent;
           }
@@ -736,14 +748,14 @@ export function EasyChatRoom({ conversation, contacts, user, onBack, onUpdateCon
                   )}
 
                   {isMe ? (
-                    // 我发的消息 - 右侧蓝色气泡 + 头像
+                    // 我发的消息 - 右侧气泡 + 头像
                     <div className="flex justify-end items-start gap-2">
                       <div 
                         className="flex flex-col items-end max-w-[75%]"
                         onClick={() => handleLongPressMessage(msg)}
                       >
                         {msg.type === 'voice' ? (
-                          <div className="bg-[#1e90ff] rounded-lg rounded-tr-sm px-3 py-2.5 shadow-sm">
+                          <div className={`relative ${chatStyleConfig.myBubbleBg} ${myBubbleRounded} px-3 py-2.5 shadow-sm message-bubble-my`}>
                             <button
                               onClick={(e) => {
                                 e.stopPropagation();
@@ -756,20 +768,20 @@ export function EasyChatRoom({ conversation, contacts, user, onBack, onUpdateCon
                               ) : (
                                 <Play className="w-5 h-5 text-white" />
                               )}
-                              <span className="text-white text-sm">{msg.voiceDuration}"</span>
+                              <span className={`${chatStyleConfig.myBubbleText} text-sm`}>{msg.voiceDuration}"</span>
                             </button>
                             {msg.voiceText && (
-                              <p className="text-white text-xs mt-1 opacity-80">
+                              <p className={`${chatStyleConfig.myBubbleText} text-xs mt-1 opacity-80`}>
                                 {msg.voiceText}
                               </p>
                             )}
                           </div>
                         ) : msg.type === 'image' ? (
-                          <div className="rounded-lg rounded-tr-sm overflow-hidden shadow-sm max-w-[200px]">
+                          <div className={`${myBubbleRounded} overflow-hidden shadow-sm max-w-[200px]`}>
                             <img src={msg.imageUrl} alt="图片" className="w-full h-auto" />
                           </div>
                         ) : msg.type === 'video' ? (
-                          <div className="bg-black rounded-lg rounded-tr-sm overflow-hidden shadow-sm max-w-[200px]">
+                          <div className={`bg-black ${myBubbleRounded} overflow-hidden shadow-sm max-w-[200px]`}>
                             <video src={msg.videoUrl} controls className="w-full h-auto" />
                           </div>
                         ) : msg.type === 'emojipack' ? (
@@ -942,7 +954,7 @@ export function EasyChatRoom({ conversation, contacts, user, onBack, onUpdateCon
                             </div>
                           </button>
                         ) : (
-                          <div className={`relative ${chatStyleConfig.myBubbleBg} ${chatStyle === 'qq' ? 'rounded-lg' : 'rounded-2xl'} px-3 py-2.5 shadow-sm message-bubble-my`}>
+                          <div className={`relative ${chatStyleConfig.myBubbleBg} ${myBubbleRounded} px-3 py-2.5 shadow-sm message-bubble-my`}>
                             <p className={`${chatStyleConfig.myBubbleText} text-[15px] leading-relaxed whitespace-pre-wrap break-words`}>
                               {msg.text}
                             </p>
@@ -982,7 +994,7 @@ export function EasyChatRoom({ conversation, contacts, user, onBack, onUpdateCon
                           onClick={() => handleLongPressMessage(msg)}
                         >
                           {msg.type === 'voice' ? (
-                            <div className={`relative ${chatStyleConfig.otherBubbleBg} ${chatStyle === 'qq' ? 'rounded-lg' : 'rounded-2xl'} px-3 py-2.5 shadow-sm message-bubble-other`}>
+                            <div className={`relative ${chatStyleConfig.otherBubbleBg} ${otherBubbleRounded} px-3 py-2.5 shadow-sm message-bubble-other`}>
                               <button
                                 onClick={(e) => {
                                   e.stopPropagation();
@@ -1004,11 +1016,11 @@ export function EasyChatRoom({ conversation, contacts, user, onBack, onUpdateCon
                               )}
                             </div>
                           ) : msg.type === 'image' ? (
-                            <div className={`relative ${chatStyle === 'qq' ? 'rounded-lg' : 'rounded-2xl'} overflow-hidden shadow-sm max-w-[200px] message-bubble-other`}>
+                            <div className={`relative ${otherBubbleRounded} overflow-hidden shadow-sm max-w-[200px] message-bubble-other`}>
                               <img src={msg.imageUrl} alt="图片" className="w-full h-auto" />
                             </div>
                           ) : msg.type === 'video' ? (
-                            <div className="bg-black rounded-lg rounded-tl-sm overflow-hidden shadow-sm max-w-[200px]">
+                            <div className={`bg-black ${otherBubbleRounded} overflow-hidden shadow-sm max-w-[200px] message-bubble-other`}>
                               <video src={msg.videoUrl} controls className="w-full h-auto" />
                             </div>
                           ) : msg.type === 'emojipack' ? (
@@ -1181,7 +1193,7 @@ export function EasyChatRoom({ conversation, contacts, user, onBack, onUpdateCon
                               </div>
                             </button>
                           ) : (
-                            <div className={`relative ${chatStyleConfig.otherBubbleBg} ${chatStyle === 'qq' ? 'rounded-lg' : 'rounded-2xl'} px-3 py-2.5 shadow-sm message-bubble-other`}>
+                            <div className={`relative ${chatStyleConfig.otherBubbleBg} ${otherBubbleRounded} px-3 py-2.5 shadow-sm message-bubble-other`}>
                               <p className={`${chatStyleConfig.otherBubbleText} text-[15px] leading-relaxed whitespace-pre-wrap break-words`}>
                                 {msg.text}
                               </p>
@@ -1200,10 +1212,10 @@ export function EasyChatRoom({ conversation, contacts, user, onBack, onUpdateCon
       </div>
 
       {/* 输入框区域 */}
-      <div className="bg-white border-t border-gray-200 px-4 py-2.5 flex-shrink-0">
+      <div className={`${chatStyleConfig.inputBg} border-t ${chatStyle === 'qq' || chatStyle === 'wechat' ? 'border-[#3a3a3a]' : 'border-gray-200'} px-4 py-2.5 flex-shrink-0`}>
         <div className="flex items-center gap-2">{/* 改为 items-center 让按钮在一条线上 */}
           {/* 输入框容器 */}
-          <div className="flex-1 flex items-center bg-white border border-gray-200 rounded-lg overflow-hidden">
+          <div className={`flex-1 flex items-center ${chatStyleConfig.inputBg} border ${chatStyle === 'qq' || chatStyle === 'wechat' ? 'border-[#4a4a4a]' : 'border-gray-200'} rounded-lg overflow-hidden`}>
             {/* 圆形角色切换按钮 */}
             <button
               onClick={handleToggleSender}
@@ -1224,7 +1236,7 @@ export function EasyChatRoom({ conversation, contacts, user, onBack, onUpdateCon
               onChange={(e) => setMessage(e.target.value)}
               onKeyPress={handleKeyPress}
               placeholder="输入消息..."
-              className="flex-1 resize-none outline-none bg-transparent px-2 py-2 min-h-[36px] max-h-[120px] text-[15px]"
+              className={`flex-1 resize-none outline-none bg-transparent px-2 py-2 min-h-[36px] max-h-[120px] text-[15px] ${chatStyleConfig.inputText} ${chatStyleConfig.inputPlaceholder}`}
               rows={1}
               style={{
                 height: 'auto',
