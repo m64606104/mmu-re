@@ -82,8 +82,8 @@ function App() {
 
   // 桌面布局重置函数
   const resetDesktopLayout = useCallback(() => {
-    const defaultAppLayout = ['settings', 'social', 'theme', 'music', 'phone', 'bell', 'mail'];
-    const defaultQuickLayout = ['camera', 'social', 'heart', 'settings'];
+    const defaultAppLayout = ['settings', 'social', 'easy-chat', 'kindergarten', 'theme', 'worldbook', 'music', 'phone', 'bell', 'mail', 'database'];
+    const defaultQuickLayout = ['announcement', 'social', 'heart', 'settings'];
     const defaultDockLayout = ['phone', 'social', 'music', 'settings'];
     
     localStorage.setItem('appLayout', JSON.stringify(defaultAppLayout));
