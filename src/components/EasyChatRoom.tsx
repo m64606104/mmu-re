@@ -749,7 +749,8 @@ export function EasyChatRoom({ conversation, contacts, user, onBack, onUpdateCon
             {/* 语音按钮 */}
             <button 
               onClick={() => setShowVoiceDialog(true)}
-              className="p-1 text-[#181818] flex-shrink-0 relative z-10"
+              className="p-1 text-[#181818] flex-shrink-0"
+              title="发送语音"
             >
               <Mic size={24} strokeWidth={1.5} />
             </button>
@@ -774,13 +775,13 @@ export function EasyChatRoom({ conversation, contacts, user, onBack, onUpdateCon
               <>
                 <button 
                   onClick={() => setShowEmojiPack(true)}
-                  className="p-1 text-[#181818] flex-shrink-0 relative z-10"
+                  className="p-1 text-[#181818] flex-shrink-0"
                 >
                   <Smile size={24} strokeWidth={1.5} />
                 </button>
                 <button 
                   onClick={() => setShowMediaMenu(!showMediaMenu)}
-                  className="p-1 text-[#181818] flex-shrink-0 relative z-10"
+                  className="p-1 text-[#181818] flex-shrink-0"
                 >
                   <Plus size={24} strokeWidth={2} />
                 </button>
