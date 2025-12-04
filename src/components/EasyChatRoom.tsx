@@ -665,6 +665,39 @@ export function EasyChatRoom({ conversation, contacts, user, onBack, onUpdateCon
                             }`}></div>
                             {msg.text}
                           </div>
+                        ) : msg.type === 'voice' ? (
+                          <div
+                            className={`px-3 py-2 relative ${
+                              isMe
+                                ? 'bg-[#95ec69] rounded-tl-[4px] rounded-tr-[4px] rounded-bl-[4px]'
+                                : 'bg-white rounded-tl-[4px] rounded-tr-[4px] rounded-br-[4px]'
+                            }`}
+                            onClick={() => handleLongPressMessage(msg)}
+                          >
+                            {/* 小尖角 */}
+                            <div className={`absolute top-[10px] w-0 h-0 ${
+                              isMe 
+                                ? 'right-[-6px] border-l-[6px] border-l-[#95ec69] border-t-[5px] border-t-transparent border-b-[5px] border-b-transparent'
+                                : 'left-[-6px] border-r-[6px] border-r-white border-t-[5px] border-t-transparent border-b-[5px] border-b-transparent'
+                            }`}></div>
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleVoicePlayback(msg.id);
+                              }}
+                              className="flex items-center gap-2"
+                            >
+                              <Play className={`w-4 h-4 ${isMe ? 'text-black' : 'text-gray-700'}`} />
+                              <span className={`text-sm font-medium ${isMe ? 'text-black' : 'text-gray-700'}`}>
+                                {msg.voiceDuration}"
+                              </span>
+                            </button>
+                            {msg.voiceText && (
+                              <p className={`text-xs mt-1 ${isMe ? 'text-black/80' : 'text-gray-600'}`}>
+                                {msg.voiceText}
+                              </p>
+                            )}
+                          </div>
                         ) : msg.type === 'image' ? (
                           <div className="rounded-[4px] overflow-hidden max-w-[200px]">
                             <img src={msg.imageUrl} alt="图片" className="w-full h-auto" />
@@ -705,7 +738,10 @@ export function EasyChatRoom({ conversation, contacts, user, onBack, onUpdateCon
             )}
             
             {/* 语音按钮 */}
-            <button className="p-1 text-[#181818] flex-shrink-0">
+            <button 
+              onClick={() => setShowVoiceDialog(true)}
+              className="p-1 text-[#181818] flex-shrink-0"
+            >
               <Mic size={24} strokeWidth={1.5} />
             </button>
             
