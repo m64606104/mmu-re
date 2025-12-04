@@ -304,7 +304,17 @@ export function EasyChatRoom({ conversation, contacts, user, onBack, onUpdateCon
     const updatedMessages = conversation.messages.map(msg =>
       msg.id === messageId ? { ...msg, timestamp: newTime } : msg
     );
-    onUpdateConversation({ ...conversation, messages: updatedMessages });
+    
+    // 按时间排序消息（HH:MM格式）
+    const sortedMessages = updatedMessages.sort((a, b) => {
+      const [aHour, aMin] = a.timestamp.split(':').map(Number);
+      const [bHour, bMin] = b.timestamp.split(':').map(Number);
+      const aTime = aHour * 60 + aMin;
+      const bTime = bHour * 60 + bMin;
+      return aTime - bTime;
+    });
+    
+    onUpdateConversation({ ...conversation, messages: sortedMessages });
   };
 
   // 开始群直播
@@ -601,8 +611,8 @@ export function EasyChatRoom({ conversation, contacts, user, onBack, onUpdateCon
       {/* 消息列表 */}
       <div className="flex-1 overflow-y-auto px-4 py-4">
         {conversation.messages.length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-full">
-            <div className="flex justify-center mb-4">
+          <div className="flex flex-col h-full">
+            <div className="flex justify-center pt-4">
               <span className="text-xs text-gray-400 bg-gray-200/60 px-3 py-1 rounded-md">
                 {formatDate(new Date().toTimeString())}
               </span>

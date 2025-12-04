@@ -104,13 +104,16 @@ export function EasyChatList({
     setChatType(type);
     
     if (type === 'group') {
-      // 群聊：直接进入自定义群聊信息页面
-      setGroupInfo({
-        name: '',
-        avatar: '👥'
-      });
+      // 群聊：进入选择联系人页面（支持批量选择）
       setSelectedContacts([]);
-      setCreateStep('customizeGroup');
+      if (contacts.length === 0) {
+        // 没有联系人，提示先创建
+        toast.error('请先创建联系人');
+        setCreateStep('newContact');
+      } else {
+        // 有联系人，进入多选页面
+        setCreateStep('selectContact');
+      }
     } else if (contacts.length === 0) {
       // 私聊且没有联系人，直接进入新建联系人流程
       setCreateStep('newContact');
@@ -194,10 +197,13 @@ export function EasyChatList({
         return;
       }
       
-      // 生成默认群名
+      // 生成默认群名，最多显示3个人名
       const selectedContactsData = contacts.filter(c => selectedContacts.includes(c.id));
+      const displayNames = selectedContactsData.slice(0, 3).map(c => c.name);
+      const groupName = displayNames.join('、') + (selectedContactsData.length > 3 ? '...' : '');
+      
       setGroupInfo({
-        name: `${selectedContactsData.map(c => c.name).join('、')}`,
+        name: groupName,
         avatar: '👥'
       });
       setCreateStep('customizeGroup');
@@ -337,7 +343,15 @@ export function EasyChatList({
           </div>
         ) : (
           <div className="py-2 px-3 space-y-1">
-            {conversations.map((conv) => (
+            {conversations
+              .sort((a, b) => {
+                // 按最新消息时间降序排序
+                if (!a.lastMessageTime && !b.lastMessageTime) return 0;
+                if (!a.lastMessageTime) return 1;
+                if (!b.lastMessageTime) return -1;
+                return b.lastMessageTime.localeCompare(a.lastMessageTime);
+              })
+              .map((conv) => (
               <button
                 key={conv.id}
                 onClick={() => onOpenChatRoom(conv)}
@@ -487,18 +501,29 @@ export function EasyChatList({
             <>
               <div className="flex items-center justify-between px-4 h-14 border-b border-gray-100 flex-shrink-0">
                 <button
-                  onClick={() => setCreateStep('type')}
+                  onClick={() => chatType === 'group' ? setCreateStep('choose') : setCreateStep('type')}
                   className="text-blue-500 active:opacity-60 transition-opacity"
                 >
                   返回
                 </button>
-                <h2 className="tracking-tight">选择联系人</h2>
+                <h2 className="tracking-tight">
+                  选择联系人{chatType === 'group' && selectedContacts.length > 0 && ` (${selectedContacts.length})`}
+                </h2>
                 <button
                   onClick={handleCreateFromExisting}
-                  className="text-blue-500 active:opacity-60 transition-opacity"
-                  disabled={selectedContacts.length === 0}
+                  className={`text-blue-500 transition-opacity ${
+                    (chatType === 'private' && selectedContacts.length === 1) ||
+                    (chatType === 'group' && selectedContacts.length >= 2)
+                      ? 'active:opacity-60'
+                      : 'opacity-30'
+                  }`}
+                  disabled={
+                    chatType === 'private' 
+                      ? selectedContacts.length !== 1
+                      : selectedContacts.length < 2
+                  }
                 >
-                  完成
+                  {chatType === 'group' ? '下一步' : '完成'}
                 </button>
               </div>
 
@@ -633,7 +658,7 @@ export function EasyChatList({
             <>
               <div className="flex items-center justify-between px-4 h-14 border-b border-gray-100 flex-shrink-0">
                 <button
-                  onClick={() => setCreateStep('choose')}
+                  onClick={() => setCreateStep('selectContact')}
                   className="text-blue-500 active:opacity-60 transition-opacity"
                 >
                   返回

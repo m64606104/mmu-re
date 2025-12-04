@@ -45,62 +45,57 @@ export function MessageActionDialog({
 
   return (
     <div 
-      className="absolute inset-0 bg-black/40 z-50 flex items-center justify-center animate-in fade-in duration-200"
+      className="absolute inset-0 bg-black/40 z-50 flex items-end justify-center animate-in fade-in duration-200"
       onClick={onClose}
     >
       <div 
-        className="w-[90%] max-w-sm bg-white rounded-2xl shadow-2xl overflow-hidden animate-in slide-in-from-bottom duration-300"
+        className="w-full max-w-md bg-white rounded-t-3xl shadow-2xl overflow-hidden animate-in slide-in-from-bottom duration-300 pb-safe"
         onClick={(e) => e.stopPropagation()}
       >
         {action === 'menu' ? (
           <>
-            {/* 菜单 */}
-            <div className="px-6 py-4 border-b border-gray-100">
-              <h3 className="text-center">消息操作</h3>
+            {/* 拖动条 */}
+            <div className="flex justify-center pt-3 pb-2">
+              <div className="w-10 h-1 bg-gray-300 rounded-full"></div>
             </div>
 
-            <div className="p-4 space-y-2">
+            {/* 胶囊按钮组 */}
+            <div className="px-4 py-3 space-y-2">
               {/* 编辑按钮 */}
               {message.type === 'text' && (
                 <button
                   onClick={() => setAction('edit')}
-                  className="w-full flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-gray-50 active:bg-gray-100 transition-colors"
+                  className="w-full flex items-center justify-center gap-2 px-5 py-3.5 rounded-full bg-gradient-to-r from-blue-50 to-blue-100 hover:from-blue-100 hover:to-blue-200 active:scale-[0.98] transition-all shadow-sm"
                 >
-                  <div className="w-10 h-10 rounded-full bg-blue-500 flex items-center justify-center">
-                    <Edit className="w-5 h-5 text-white" />
-                  </div>
-                  <span className="flex-1 text-left">编辑消息</span>
+                  <Edit className="w-4 h-4 text-blue-600" strokeWidth={2.5} />
+                  <span className="text-blue-600 font-medium">编辑消息</span>
                 </button>
               )}
 
               {/* 修改时间按钮 */}
               <button
                 onClick={() => setAction('editTime')}
-                className="w-full flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-gray-50 active:bg-gray-100 transition-colors"
+                className="w-full flex items-center justify-center gap-2 px-5 py-3.5 rounded-full bg-gradient-to-r from-purple-50 to-purple-100 hover:from-purple-100 hover:to-purple-200 active:scale-[0.98] transition-all shadow-sm"
               >
-                <div className="w-10 h-10 rounded-full bg-purple-500 flex items-center justify-center">
-                  <Clock className="w-5 h-5 text-white" />
-                </div>
-                <span className="flex-1 text-left">修改时间</span>
+                <Clock className="w-4 h-4 text-purple-600" strokeWidth={2.5} />
+                <span className="text-purple-600 font-medium">修改时间</span>
               </button>
 
               {/* 删除按钮 */}
               <button
                 onClick={handleDelete}
-                className="w-full flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-red-50 active:bg-red-100 transition-colors"
+                className="w-full flex items-center justify-center gap-2 px-5 py-3.5 rounded-full bg-gradient-to-r from-red-50 to-red-100 hover:from-red-100 hover:to-red-200 active:scale-[0.98] transition-all shadow-sm"
               >
-                <div className="w-10 h-10 rounded-full bg-red-500 flex items-center justify-center">
-                  <Trash2 className="w-5 h-5 text-white" />
-                </div>
-                <span className="flex-1 text-left text-red-600">删除消息</span>
+                <Trash2 className="w-4 h-4 text-red-600" strokeWidth={2.5} />
+                <span className="text-red-600 font-medium">删除消息</span>
               </button>
             </div>
 
             {/* 取消按钮 */}
-            <div className="px-4 pb-4">
+            <div className="px-4 py-3">
               <button
                 onClick={onClose}
-                className="w-full py-3 bg-gray-100 hover:bg-gray-200 active:bg-gray-300 rounded-xl transition-colors"
+                className="w-full py-3.5 rounded-full bg-gray-100 hover:bg-gray-200 active:scale-[0.98] transition-all font-medium text-gray-700"
               >
                 取消
               </button>
