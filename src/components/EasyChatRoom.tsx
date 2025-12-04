@@ -598,7 +598,7 @@ export function EasyChatRoom({ conversation, contacts, user, onBack, onUpdateCon
     return (
       <div className="w-full h-full bg-[#ededed] flex flex-col">
         {/* 顶部导航栏 - 微信风格 */}
-        <div className="bg-[#ededed]">
+        <div className="bg-[#ededed] shadow-sm">
           <div className="px-3 py-2 flex items-center justify-between">
             <button onClick={onBack} className="p-1 text-black">
               <ArrowLeft size={24} strokeWidth={2} />
@@ -608,8 +608,8 @@ export function EasyChatRoom({ conversation, contacts, user, onBack, onUpdateCon
               <MoreHorizontal size={24} strokeWidth={2} />
             </button>
           </div>
-          {/* 分隔线 - 参考图2的绿色细线 */}
-          <div className="h-[1px] bg-gradient-to-r from-transparent via-[#b2e281]/30 to-transparent shadow-sm"></div>
+          {/* 分隔线 - 简洁的半透明灰色 */}
+          <div className="h-[0.5px] bg-black/10"></div>
         </div>
 
         {/* 消息列表 - 微信风格 */}
@@ -687,14 +687,14 @@ export function EasyChatRoom({ conversation, contacts, user, onBack, onUpdateCon
 
         {/* 底部输入栏 - 微信风格 */}
         <div className="border-t bg-[#f7f7f7] border-[#d1d1d1]">
-          <div className="px-2 py-2 flex items-center gap-1">
+          <div className="px-2 py-1.5 flex items-center gap-1">
             {/* 语音按钮 */}
-            <button className="p-1.5 text-[#181818] flex-shrink-0">
-              <Mic size={26} strokeWidth={1.5} />
+            <button className="p-1 text-[#181818] flex-shrink-0">
+              <Mic size={24} strokeWidth={1.5} />
             </button>
             
             {/* 输入框 */}
-            <div className="flex-1 min-w-0 rounded-[6px] px-3 py-1.5 border bg-white border-[#c7c7c7]">
+            <div className="flex-1 min-w-0 rounded-[6px] px-2.5 py-1.5 border bg-white border-[#c7c7c7]">
               <input
                 value={message}
                 onChange={(e) => setMessage(e.target.value)}
@@ -704,34 +704,34 @@ export function EasyChatRoom({ conversation, contacts, user, onBack, onUpdateCon
                   }
                 }}
                 placeholder=""
-                className="w-full bg-transparent outline-none text-[16px] placeholder:text-[#999] text-black"
+                className="w-full bg-transparent outline-none text-[15px] placeholder:text-[#999] text-black"
               />
             </div>
             
             {/* 右侧按钮组 */}
             {!message.trim() ? (
               <>
-                <button className="p-1.5 text-[#181818] flex-shrink-0">
-                  <Smile size={26} strokeWidth={1.5} />
+                <button className="p-1 text-[#181818] flex-shrink-0">
+                  <Smile size={24} strokeWidth={1.5} />
                 </button>
-                <button className="p-1.5 text-[#181818] flex-shrink-0">
-                  <Plus size={26} strokeWidth={2} />
+                <button className="p-1 text-[#181818] flex-shrink-0">
+                  <Plus size={24} strokeWidth={2} />
                 </button>
                 {/* 群聊切换用户按钮 */}
                 {conversation.type === 'group' && (
                   <button 
                     onClick={handleToggleSender}
-                    className="p-1.5 text-[#181818] hover:bg-gray-200 rounded-full transition-colors flex-shrink-0"
+                    className="p-1 text-[#181818] hover:bg-gray-200 rounded-full transition-colors flex-shrink-0"
                     title="切换发言者"
                   >
-                    <User size={22} strokeWidth={1.5} />
+                    <User size={20} strokeWidth={1.5} />
                   </button>
                 )}
               </>
             ) : (
               <button
                 onClick={() => handleSendMessage()}
-                className="bg-[#07c160] text-white px-3 py-1.5 rounded-[4px] text-[15px] flex-shrink-0"
+                className="bg-[#07c160] text-white px-2.5 py-1.5 rounded-[4px] text-[14px] font-medium flex-shrink-0 whitespace-nowrap"
               >
                 发送
               </button>
