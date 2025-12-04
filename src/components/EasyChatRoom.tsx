@@ -666,42 +666,46 @@ export function EasyChatRoom({ conversation, contacts, user, onBack, onUpdateCon
                             {msg.text}
                           </div>
                         ) : msg.type === 'voice' ? (
-                          <div
-                            className={`px-3 py-2 relative min-w-[80px] ${
-                              isMe
-                                ? 'bg-[#95ec69] rounded-tl-[4px] rounded-tr-[4px] rounded-bl-[4px]'
-                                : 'bg-white rounded-tl-[4px] rounded-tr-[4px] rounded-br-[4px]'
-                            }`}
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleVoicePlayback(msg.id);
-                            }}
-                          >
-                            {/* 小尖角 */}
-                            <div className={`absolute top-[10px] w-0 h-0 ${
-                              isMe 
-                                ? 'right-[-6px] border-l-[6px] border-l-[#95ec69] border-t-[5px] border-t-transparent border-b-[5px] border-b-transparent'
-                                : 'left-[-6px] border-r-[6px] border-r-white border-t-[5px] border-t-transparent border-b-[5px] border-b-transparent'
-                            }`}></div>
-                            
-                            {/* 语音内容 - 严格参考图3：图标在左，时长在右 */}
-                            <div className="flex items-center gap-1 justify-start">
-                              {/* 图标 - 空心三角形，指向右 */}
-                              <div className="w-4 h-4 flex items-center justify-center">
-                                <div className={`w-0 h-0 border-t-[5px] border-t-transparent border-b-[5px] border-b-transparent border-l-[8px] ${isMe ? 'border-l-black' : 'border-l-gray-700'}`}></div>
-                                {/* 使用 CSS 绘制三角形更准确地模拟图3的样式，或者保留空心效果 */}
-                                <div className={`absolute w-0 h-0 border-t-[3px] border-t-transparent border-b-[3px] border-b-transparent border-l-[6px] ${isMe ? 'border-l-[#95ec69]' : 'border-l-white'} ml-[-2px]`}></div>
-                              </div>
+                          <div className="flex flex-col">
+                            <div
+                              className={`px-3 py-2 relative min-w-[80px] ${
+                                isMe
+                                  ? 'bg-[#95ec69] rounded-tl-[4px] rounded-tr-[4px] rounded-bl-[4px] self-end'
+                                  : 'bg-white rounded-tl-[4px] rounded-tr-[4px] rounded-br-[4px] self-start'
+                              }`}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleVoicePlayback(msg.id);
+                              }}
+                            >
+                              {/* 小尖角 */}
+                              <div className={`absolute top-[10px] w-0 h-0 ${
+                                isMe 
+                                  ? 'right-[-6px] border-l-[6px] border-l-[#95ec69] border-t-[5px] border-t-transparent border-b-[5px] border-b-transparent'
+                                  : 'left-[-6px] border-r-[6px] border-r-white border-t-[5px] border-t-transparent border-b-[5px] border-b-transparent'
+                              }`}></div>
+                              
+                              {/* 语音内容 - 严格参考图3：图标在左，时长在右 */}
+                              <div className="flex items-center gap-1 justify-start">
+                                {/* 图标 - 空心三角形，指向右 */}
+                                <div className="w-4 h-4 flex items-center justify-center">
+                                  <div className={`w-0 h-0 border-t-[5px] border-t-transparent border-b-[5px] border-b-transparent border-l-[8px] ${isMe ? 'border-l-black' : 'border-l-gray-700'}`}></div>
+                                  <div className={`absolute w-0 h-0 border-t-[3px] border-t-transparent border-b-[3px] border-b-transparent border-l-[6px] ${isMe ? 'border-l-[#95ec69]' : 'border-l-white'} ml-[-2px]`}></div>
+                                </div>
 
-                              <span className={`text-[15px] ${isMe ? 'text-black' : 'text-black'}`}>
-                                {msg.voiceDuration}"
-                              </span>
+                                <span className={`text-[15px] ${isMe ? 'text-black' : 'text-black'}`}>
+                                  {msg.voiceDuration}"
+                                </span>
+                              </div>
                             </div>
 
+                            {/* 语音转文字 - 独立显示在气泡下方 */}
                             {msg.voiceText && (
-                              <p className={`text-[15px] mt-1 leading-snug ${isMe ? 'text-black' : 'text-black'}`}>
-                                {msg.voiceText}
-                              </p>
+                              <div className={`mt-1 p-2 bg-[#1e1e1e] rounded-[4px] max-w-[200px] shadow-sm relative z-0 ${isMe ? 'self-end' : 'self-start'}`}>
+                                {/* 小尖角 - 指向语音气泡 */}
+                                <div className={`absolute top-[-5px] w-0 h-0 border-l-[5px] border-l-transparent border-r-[5px] border-r-transparent border-b-[5px] border-b-[#1e1e1e] ${isMe ? 'right-[12px]' : 'left-[12px]'}`}></div>
+                                <p className="text-white text-[14px] leading-snug break-words">{msg.voiceText}</p>
+                              </div>
                             )}
                           </div>
                         ) : msg.type === 'image' ? (
@@ -725,13 +729,12 @@ export function EasyChatRoom({ conversation, contacts, user, onBack, onUpdateCon
 
         {/* 底部输入栏 - 微信风格 */}
         <div className="border-t bg-[#f7f7f7] border-[#d1d1d1]">
-          <div className="px-2 py-1.5 flex items-center gap-1">
+          <div className="px-4 py-2 flex items-center gap-2">
             {/* 当前发送者头像按钮 - 私聊和群聊都显示 */}
             {currentSender && (
               <button
                 onClick={handleToggleSender}
                 className="flex-shrink-0 w-8 h-8 rounded-[4px] overflow-hidden active:opacity-70 transition-opacity"
-                title={`当前: ${currentSender.name}`}
               >
                 {currentSender.avatar.startsWith('data:') ? (
                   <img src={currentSender.avatar} alt={currentSender.name} className="w-full h-full object-cover" />
@@ -769,22 +772,18 @@ export function EasyChatRoom({ conversation, contacts, user, onBack, onUpdateCon
             {/* 右侧按钮组 */}
             {!message.trim() ? (
               <>
-                <button className="p-1 text-[#181818] flex-shrink-0">
+                <button 
+                  onClick={() => setShowEmojiPack(true)}
+                  className="p-1 text-[#181818] flex-shrink-0 relative z-10"
+                >
                   <Smile size={24} strokeWidth={1.5} />
                 </button>
-                <button className="p-1 text-[#181818] flex-shrink-0">
+                <button 
+                  onClick={() => setShowMediaMenu(!showMediaMenu)}
+                  className="p-1 text-[#181818] flex-shrink-0 relative z-10"
+                >
                   <Plus size={24} strokeWidth={2} />
                 </button>
-                {/* 群聊切换用户按钮 */}
-                {conversation.type === 'group' && (
-                  <button 
-                    onClick={handleToggleSender}
-                    className="p-1 text-[#181818] hover:bg-gray-200 rounded-full transition-colors flex-shrink-0"
-                    title="切换发言者"
-                  >
-                    <User size={20} strokeWidth={1.5} />
-                  </button>
-                )}
               </>
             ) : (
               <button
