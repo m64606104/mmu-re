@@ -898,8 +898,8 @@ export function EasyChatRoom({ conversation, contacts, user, onBack, onUpdateCon
                             </div>
                           </button>
                         ) : (
-                          <div className={`${getBubbleColorTheme(sender.bubbleColor).bgClass} rounded-lg rounded-tr-sm px-3 py-2.5 shadow-sm`}>
-                            <p className={`${getBubbleColorTheme(sender.bubbleColor).textClass} text-[15px] leading-relaxed whitespace-pre-wrap break-words`}>
+                          <div className={`${chatStyleConfig.myBubbleBg} rounded-lg rounded-tr-sm px-3 py-2.5 shadow-sm`}>
+                            <p className={`${chatStyleConfig.myBubbleText} text-[15px] leading-relaxed whitespace-pre-wrap break-words`}>
                               {msg.text}
                             </p>
                           </div>
@@ -929,8 +929,8 @@ export function EasyChatRoom({ conversation, contacts, user, onBack, onUpdateCon
 
                       {/* 消息���容 */}
                       <div className="flex-1 min-w-0 max-w-[75%]">
-                        {isGroupChat && (
-                          <div className="text-xs text-gray-500 mb-1">{sender.name}</div>
+                        {(isGroupChat || chatStyleConfig.showNickname) && (
+                          <div className={`text-xs ${chatStyle === 'qq' ? 'text-gray-400' : 'text-gray-500'} mb-1`}>{sender.name}</div>
                         )}
                         
                         <div 
@@ -938,7 +938,7 @@ export function EasyChatRoom({ conversation, contacts, user, onBack, onUpdateCon
                           onClick={() => handleLongPressMessage(msg)}
                         >
                           {msg.type === 'voice' ? (
-                            <div className="bg-white rounded-lg rounded-tl-sm px-3 py-2.5 shadow-sm">
+                            <div className={`${chatStyleConfig.otherBubbleBg} rounded-lg rounded-tl-sm px-3 py-2.5 shadow-sm`}>
                               <button
                                 onClick={(e) => {
                                   e.stopPropagation();
@@ -947,11 +947,11 @@ export function EasyChatRoom({ conversation, contacts, user, onBack, onUpdateCon
                                 className="flex items-center gap-2"
                               >
                                 {playingVoice === msg.id ? (
-                                  <Pause className="w-5 h-5 text-gray-700" />
+                                  <Pause className={`w-5 h-5 ${chatStyle === 'qq' || chatStyle === 'wechat' ? 'text-gray-700' : 'text-gray-700'}`} />
                                 ) : (
-                                  <Play className="w-5 h-5 text-gray-700" />
+                                  <Play className={`w-5 h-5 ${chatStyle === 'qq' || chatStyle === 'wechat' ? 'text-gray-700' : 'text-gray-700'}`} />
                                 )}
-                                <span className="text-gray-700 text-sm">{msg.voiceDuration}"</span>
+                                <span className={`${chatStyle === 'qq' || chatStyle === 'wechat' ? 'text-gray-700' : 'text-gray-700'} text-sm`}>{msg.voiceDuration}"</span>
                               </button>
                               {msg.voiceText && (
                                 <p className="text-gray-600 text-xs mt-1">
@@ -1137,8 +1137,8 @@ export function EasyChatRoom({ conversation, contacts, user, onBack, onUpdateCon
                               </div>
                             </button>
                           ) : (
-                            <div className="bg-white rounded-lg rounded-tl-sm px-3 py-2.5 shadow-sm">
-                              <p className="text-gray-900 text-[15px] leading-relaxed whitespace-pre-wrap break-words">
+                            <div className={`${chatStyleConfig.otherBubbleBg} rounded-lg rounded-tl-sm px-3 py-2.5 shadow-sm`}>
+                              <p className={`${chatStyleConfig.otherBubbleText} text-[15px] leading-relaxed whitespace-pre-wrap break-words`}>
                                 {msg.text}
                               </p>
                             </div>
