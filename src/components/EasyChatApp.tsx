@@ -28,6 +28,11 @@ export function EasyChatApp({ onBack }: EasyChatAppProps) {
   const [globalCallState, setGlobalCallState] = useState<GlobalCallState | null>(null);
   const [isLoaded, setIsLoaded] = useState(false);
   
+  // UI风格状态管理
+  const [uiStyle, setUiStyle] = useState<'default' | 'wechat'>(() => {
+    return (localStorage.getItem('easychat_ui_style') as 'default' | 'wechat') || 'default';
+  });
+  
   // 底部导航栏Tab状态
   type TabType = 'chat' | 'contacts' | 'settings';
   const [activeTab, setActiveTab] = useState<TabType>('chat');
@@ -227,6 +232,7 @@ export function EasyChatApp({ onBack }: EasyChatAppProps) {
         onUpdateConversation={handleUpdateConversation}
         onOpenSettings={handleOpenSettings}
         onStartGlobalCall={setGlobalCallState}
+        uiStyle={uiStyle}
       />
     );
   } else if (currentView === 'settings' && selectedConversation) {
@@ -254,6 +260,7 @@ export function EasyChatApp({ onBack }: EasyChatAppProps) {
               contacts={contacts}
               setContacts={setContacts}
               onOpenChatRoom={handleOpenChatRoom}
+              uiStyle={uiStyle}
             />
           )}
           {activeTab === 'contacts' && (
@@ -268,6 +275,12 @@ export function EasyChatApp({ onBack }: EasyChatAppProps) {
               user={user}
               onBack={onBack}
               onUpdateUser={handleUpdateUser}
+              uiStyle={uiStyle}
+              onChangeUiStyle={(style) => {
+                setUiStyle(style);
+                localStorage.setItem('easychat_ui_style', style);
+                toast.success(`已切换到${style === 'wechat' ? '微信' : '默认'}风格`);
+              }}
             />
           )}
         </div>

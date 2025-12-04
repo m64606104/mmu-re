@@ -11,9 +11,11 @@ interface EasyChatUserSettingsProps {
   user: EasyChatUser;
   onBack: () => void;
   onUpdateUser: (user: EasyChatUser) => void;
+  uiStyle?: 'default' | 'wechat';
+  onChangeUiStyle?: (style: 'default' | 'wechat') => void;
 }
 
-export function EasyChatUserSettings({ user, onBack, onUpdateUser }: EasyChatUserSettingsProps) {
+export function EasyChatUserSettings({ user, onBack, onUpdateUser, uiStyle = 'default', onChangeUiStyle }: EasyChatUserSettingsProps) {
   const [editName, setEditName] = useState(user.name);
   const [editAvatar, setEditAvatar] = useState(user.avatar);
   const [editBubbleColor, setEditBubbleColor] = useState(user.bubbleColor || 'blue');
@@ -161,14 +163,12 @@ export function EasyChatUserSettings({ user, onBack, onUpdateUser }: EasyChatUse
             <div className="space-y-2">
               <button
                 onClick={() => {
-                  localStorage.setItem('easychat_ui_style', 'default');
-                  toast.success('已切换到默认风格', { duration: 1500 });
-                  setTimeout(() => {
-                    window.location.reload();
-                  }, 800);
+                  if (onChangeUiStyle) {
+                    onChangeUiStyle('default');
+                  }
                 }}
                 className={`w-full flex items-center justify-between p-3 rounded-lg transition-all ${
-                  localStorage.getItem('easychat_ui_style') !== 'wechat'
+                  uiStyle !== 'wechat'
                     ? 'bg-blue-50 ring-1 ring-blue-500'
                     : 'bg-gray-50 hover:bg-gray-100'
                 }`}
@@ -182,7 +182,7 @@ export function EasyChatUserSettings({ user, onBack, onUpdateUser }: EasyChatUse
                     <p className="text-xs text-gray-500">简洁现代的设计</p>
                   </div>
                 </div>
-                {localStorage.getItem('easychat_ui_style') !== 'wechat' && (
+                {uiStyle !== 'wechat' && (
                   <div className="w-5 h-5 rounded-full bg-blue-500 flex items-center justify-center">
                     <div className="w-2 h-2 bg-white rounded-full" />
                   </div>
@@ -191,14 +191,12 @@ export function EasyChatUserSettings({ user, onBack, onUpdateUser }: EasyChatUse
 
               <button
                 onClick={() => {
-                  localStorage.setItem('easychat_ui_style', 'wechat');
-                  toast.success('已切换到微信风格', { duration: 1500 });
-                  setTimeout(() => {
-                    window.location.reload();
-                  }, 800);
+                  if (onChangeUiStyle) {
+                    onChangeUiStyle('wechat');
+                  }
                 }}
                 className={`w-full flex items-center justify-between p-3 rounded-lg transition-all ${
-                  localStorage.getItem('easychat_ui_style') === 'wechat'
+                  uiStyle === 'wechat'
                     ? 'bg-green-50 ring-1 ring-green-500'
                     : 'bg-gray-50 hover:bg-gray-100'
                 }`}
@@ -212,7 +210,7 @@ export function EasyChatUserSettings({ user, onBack, onUpdateUser }: EasyChatUse
                     <p className="text-xs text-gray-500">仿微信界面设计</p>
                   </div>
                 </div>
-                {localStorage.getItem('easychat_ui_style') === 'wechat' && (
+                {uiStyle === 'wechat' && (
                   <div className="w-5 h-5 rounded-full bg-green-500 flex items-center justify-center">
                     <div className="w-2 h-2 bg-white rounded-full" />
                   </div>
@@ -220,7 +218,7 @@ export function EasyChatUserSettings({ user, onBack, onUpdateUser }: EasyChatUse
               </button>
             </div>
             <p className="text-xs text-gray-400 mt-3 text-center">
-              切换风格后页面将自动刷新
+              即时切换,无需刷新
             </p>
           </div>
         </div>

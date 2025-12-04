@@ -13,6 +13,7 @@ interface EasyChatListProps {
   contacts: EasyChatContact[];
   setContacts: (contacts: EasyChatContact[]) => void;
   onOpenChatRoom: (conversation: EasyChatConversation) => void;
+  uiStyle?: 'default' | 'wechat';
 }
 
 export function EasyChatList({ 
@@ -21,10 +22,9 @@ export function EasyChatList({
   setConversations, 
   contacts, 
   setContacts,
-  onOpenChatRoom 
+  onOpenChatRoom,
+  uiStyle = 'default'
 }: EasyChatListProps) {
-  // 检测UI风格
-  const uiStyle = localStorage.getItem('easychat_ui_style') || 'default';
   const isWechatStyle = uiStyle === 'wechat';
 
   const [showCreateDialog, setShowCreateDialog] = useState(false);

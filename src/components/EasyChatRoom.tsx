@@ -18,11 +18,10 @@ interface EasyChatRoomProps {
   onUpdateConversation: (conversation: EasyChatConversation) => void;
   onOpenSettings: () => void;
   onStartGlobalCall?: (callState: GlobalCallState) => void;
+  uiStyle?: 'default' | 'wechat';
 }
 
-export function EasyChatRoom({ conversation, contacts, user, onBack, onUpdateConversation, onOpenSettings, onStartGlobalCall }: EasyChatRoomProps) {
-  // 检测UI风格
-  const uiStyle = localStorage.getItem('easychat_ui_style') || 'default';
+export function EasyChatRoom({ conversation, contacts, user, onBack, onUpdateConversation, onOpenSettings, onStartGlobalCall, uiStyle = 'default' }: EasyChatRoomProps) {
   const isWechatStyle = uiStyle === 'wechat';
 
   const [message, setMessage] = useState('');
@@ -688,6 +687,23 @@ export function EasyChatRoom({ conversation, contacts, user, onBack, onUpdateCon
         {/* 底部输入栏 - 微信风格 */}
         <div className="border-t bg-[#f7f7f7] border-[#d1d1d1]">
           <div className="px-2 py-1.5 flex items-center gap-1">
+            {/* 当前发送者头像按钮 - 私聊和群聊都显示 */}
+            {currentSender && (
+              <button
+                onClick={handleToggleSender}
+                className="flex-shrink-0 w-8 h-8 rounded-[4px] overflow-hidden active:opacity-70 transition-opacity"
+                title={`当前: ${currentSender.name}`}
+              >
+                {currentSender.avatar.startsWith('data:') ? (
+                  <img src={currentSender.avatar} alt={currentSender.name} className="w-full h-full object-cover" />
+                ) : (
+                  <div className="w-full h-full bg-blue-500 flex items-center justify-center">
+                    <span className="text-base text-white">{currentSender.avatar}</span>
+                  </div>
+                )}
+              </button>
+            )}
+            
             {/* 语音按钮 */}
             <button className="p-1 text-[#181818] flex-shrink-0">
               <Mic size={24} strokeWidth={1.5} />
