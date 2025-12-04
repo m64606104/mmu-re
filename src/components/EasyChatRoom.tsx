@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
 import { ArrowLeft, Send, MoreHorizontal, Plus, Image as ImageIcon, Video, Mic, Play, Pause, Smile, Radio, Phone, PhoneOff } from 'lucide-react';
-import { EasyChatConversation, EasyChatContact, EasyChatMessage, EasyChatUser, LivestreamData, GroupCallData, GlobalCallState } from '../types';
+import { EasyChatConversation, EasyChatContact, EasyChatMessage, EasyChatUser, LivestreamData, GroupCallData, GlobalCallState, ChatStyle } from '../types';
 import { VoiceMessageDialog } from './VoiceMessageDialog';
 import { MessageActionDialog } from './MessageActionDialog';
 import { EmojiPackDialog } from './EmojiPackDialog';
@@ -18,9 +18,10 @@ interface EasyChatRoomProps {
   onUpdateConversation: (conversation: EasyChatConversation) => void;
   onOpenSettings: () => void;
   onStartGlobalCall?: (callState: GlobalCallState) => void;
+  chatStyle?: ChatStyle;
 }
 
-export function EasyChatRoom({ conversation, contacts, user, onBack, onUpdateConversation, onOpenSettings, onStartGlobalCall }: EasyChatRoomProps) {
+export function EasyChatRoom({ conversation, contacts, user, onBack, onUpdateConversation, onOpenSettings, onStartGlobalCall, chatStyle = 'default' }: EasyChatRoomProps) {
   const [message, setMessage] = useState('');
   const [currentSenderId, setCurrentSenderId] = useState<string>(user.id);
   const [showSenderPicker, setShowSenderPicker] = useState(false);
@@ -587,24 +588,75 @@ export function EasyChatRoom({ conversation, contacts, user, onBack, onUpdateCon
     }
   };
 
+  // 根据风格获取样式配置
+  const getChatStyleConfig = () => {
+    switch (chatStyle) {
+      case 'qq':
+        return {
+          containerBg: 'bg-[#2c2c2c]',
+          headerBg: 'bg-[#2a2a2a]',
+          headerText: 'text-white',
+          headerIcon: 'text-gray-300',
+          myBubbleBg: 'bg-[#95ec69]',
+          myBubbleText: 'text-black',
+          otherBubbleBg: 'bg-white',
+          otherBubbleText: 'text-black',
+          inputBg: 'bg-[#3a3a3a]',
+          inputText: 'text-white',
+          inputPlaceholder: 'placeholder-gray-400',
+          showNickname: true
+        };
+      case 'wechat':
+        return {
+          containerBg: 'bg-[#ededed]',
+          headerBg: 'bg-[#ededed]',
+          headerText: 'text-black',
+          headerIcon: 'text-gray-700',
+          myBubbleBg: 'bg-[#95ec69]',
+          myBubbleText: 'text-black',
+          otherBubbleBg: 'bg-white',
+          otherBubbleText: 'text-black',
+          inputBg: 'bg-white',
+          inputText: 'text-black',
+          inputPlaceholder: 'placeholder-gray-400',
+          showNickname: false
+        };
+      default:
+        return {
+          containerBg: 'bg-[#f5f5f5]',
+          headerBg: 'bg-white/80',
+          headerText: 'text-gray-900',
+          headerIcon: 'text-gray-700',
+          myBubbleBg: getBubbleColorTheme(user.bubbleColor || 'blue').bgClass,
+          myBubbleText: 'text-white',
+          otherBubbleBg: 'bg-white',
+          otherBubbleText: 'text-gray-900',
+          inputBg: 'bg-white',
+          inputText: 'text-gray-900',
+          inputPlaceholder: 'placeholder-gray-400',
+          showNickname: false
+        };
+    }
+  };
 
+  const chatStyleConfig = getChatStyleConfig();
 
   return (
-    <div className="w-full h-full bg-[#f5f5f5] flex flex-col">
+    <div className={`w-full h-full ${chatStyleConfig.containerBg} flex flex-col`}>
       {/* 顶部导航栏 */}
-      <div className="flex items-center justify-between h-20 px-4 bg-white/80 backdrop-blur-xl border-b border-gray-100 flex-shrink-0">
+      <div className={`flex items-center justify-between h-20 px-4 ${chatStyleConfig.headerBg} ${chatStyle === 'default' ? 'backdrop-blur-xl' : ''} border-b ${chatStyle === 'qq' ? 'border-[#3a3a3a]' : 'border-gray-100'} flex-shrink-0`}>
         <button
           onClick={onBack}
           className="p-2 -ml-2 active:opacity-60 transition-opacity"
         >
-          <ArrowLeft className="w-6 h-6 text-gray-700" strokeWidth={2.5} />
+          <ArrowLeft className={`w-6 h-6 ${chatStyleConfig.headerIcon}`} strokeWidth={2.5} />
         </button>
-        <h1 className="tracking-tight">{conversation.name}</h1>
+        <h1 className={`tracking-tight ${chatStyleConfig.headerText}`}>{conversation.name}</h1>
         <button 
           onClick={onOpenSettings}
           className="p-2 -mr-2 active:opacity-60 transition-opacity"
         >
-          <MoreHorizontal className="w-6 h-6 text-gray-700" />
+          <MoreHorizontal className={`w-6 h-6 ${chatStyleConfig.headerIcon}`} />
         </button>
       </div>
 

@@ -227,6 +227,7 @@ export function EasyChatApp({ onBack }: EasyChatAppProps) {
         onUpdateConversation={handleUpdateConversation}
         onOpenSettings={handleOpenSettings}
         onStartGlobalCall={setGlobalCallState}
+        chatStyle={user.chatStyle || 'default'}
       />
     );
   } else if (currentView === 'settings' && selectedConversation) {
