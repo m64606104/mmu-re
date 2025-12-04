@@ -37,99 +37,111 @@ export default function ThemeScreen({ onBack, theme, onThemeChange, onResetLayou
   };
 
   return (
-    <div className="w-full h-full bg-slate-50 flex flex-col">
-      {/* 顶部导航栏 */}
-      <div className="flex items-center gap-3 px-4 py-3 bg-white border-b">
+    <div className="w-full h-full bg-gray-50 flex flex-col">
+      {/* 顶部导航栏 - 统一设计 */}
+      <div className="flex items-center gap-2 h-14 px-4 bg-white border-b border-gray-200">
         <button 
           onClick={onBack}
-          className="p-2 hover:bg-slate-100 rounded-lg transition-colors active:scale-95"
+          className="p-2 -ml-2 rounded-full hover:bg-gray-100 active:bg-gray-200 transition-colors"
         >
-          <ChevronLeft className="w-5 h-5" />
+          <ChevronLeft className="w-5 h-5 text-gray-700" />
         </button>
-        <span className="font-medium">主题设置</span>
+        <h1 className="text-lg font-semibold text-gray-900">主题设置</h1>
       </div>
 
-      <div className="flex-1 overflow-y-auto p-4 space-y-6">
-        {/* 壁纸选择 */}
-        <div>
-          <h3 className="mb-3 text-slate-700 font-medium">选择壁纸</h3>
-          <div className="grid grid-cols-3 gap-3">
-            {wallpapers.map((wallpaper) => (
-              <button
-                key={wallpaper.id}
-                onClick={() => {
-                  onThemeChange({ ...theme, wallpaper: wallpaper.id });
-                  localStorage.setItem('theme', JSON.stringify({ ...theme, wallpaper: wallpaper.id }));
-                }}
-                className="relative group"
-              >
-                <div className={`w-full aspect-[9/19.5] ${wallpaper.preview} rounded-xl shadow-md group-active:scale-95 transition-transform overflow-hidden`}>
-                  {theme.wallpaper === wallpaper.id && (
+      <div className="flex-1 overflow-y-auto">
+        {/* 壁纸选择区块 */}
+        <div className="bg-white mb-2">
+          <div className="px-4 py-3 border-b border-gray-100">
+            <h3 className="text-sm font-medium text-gray-900">壁纸主题</h3>
+            <p className="text-xs text-gray-500 mt-0.5">选择您喜欢的主屏幕背景</p>
+          </div>
+          <div className="px-4 py-4">
+            <div className="grid grid-cols-3 gap-3">
+              {wallpapers.map((wallpaper) => (
+                <button
+                  key={wallpaper.id}
+                  onClick={() => {
+                    onThemeChange({ ...theme, wallpaper: wallpaper.id });
+                    localStorage.setItem('theme', JSON.stringify({ ...theme, wallpaper: wallpaper.id }));
+                  }}
+                  className="relative group"
+                >
+                  <div className={`w-full aspect-[9/19.5] ${wallpaper.preview} rounded-lg shadow-sm group-active:scale-95 transition-transform overflow-hidden`}>
+                    {theme.wallpaper === wallpaper.id && (
+                      <div className="absolute inset-0 bg-black/20 flex items-center justify-center">
+                        <div className="w-6 h-6 bg-white rounded-full flex items-center justify-center shadow-md">
+                          <Check className="w-4 h-4 text-blue-500" strokeWidth={3} />
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                  <p className="text-xs text-center mt-1.5 text-gray-700 truncate">{wallpaper.name}</p>
+                </button>
+              ))}
+
+              {/* 自定义壁纸 */}
+              <label className="relative group cursor-pointer">
+                <div className="w-full aspect-[9/19.5] rounded-lg shadow-sm group-active:scale-95 transition-transform overflow-hidden border-2 border-dashed border-gray-300 bg-gray-50 flex items-center justify-center"
+                  style={theme.customWallpaper ? { backgroundImage: `url(${theme.customWallpaper})`, backgroundSize: 'cover', backgroundPosition: 'center' } : {}}
+                >
+                  {theme.wallpaper === 'custom' && theme.customWallpaper && (
                     <div className="absolute inset-0 bg-black/20 flex items-center justify-center">
-                      <div className="w-8 h-8 bg-white rounded-full flex items-center justify-center">
-                        <Check className="w-5 h-5 text-green-500" />
+                      <div className="w-6 h-6 bg-white rounded-full flex items-center justify-center shadow-md">
+                        <Check className="w-4 h-4 text-blue-500" strokeWidth={3} />
                       </div>
                     </div>
                   )}
+                  {!theme.customWallpaper && (
+                    <Upload className="w-5 h-5 text-gray-400" />
+                  )}
                 </div>
-                <p className="text-xs text-center mt-1.5 text-slate-600">{wallpaper.name}</p>
-              </button>
-            ))}
-
-            {/* 自定义壁纸 */}
-            <label className="relative group cursor-pointer">
-              <div className="w-full aspect-[9/19.5] rounded-xl shadow-md group-active:scale-95 transition-transform overflow-hidden border-2 border-dashed border-slate-300 flex items-center justify-center"
-                style={theme.customWallpaper ? { backgroundImage: `url(${theme.customWallpaper})`, backgroundSize: 'cover', backgroundPosition: 'center' } : {}}
-              >
-                {theme.wallpaper === 'custom' && theme.customWallpaper && (
-                  <div className="absolute inset-0 bg-black/20 flex items-center justify-center">
-                    <div className="w-8 h-8 bg-white rounded-full flex items-center justify-center">
-                      <Check className="w-5 h-5 text-green-500" />
-                    </div>
-                  </div>
-                )}
-                {!theme.customWallpaper && (
-                  <Upload className="w-6 h-6 text-slate-400" />
-                )}
-              </div>
-              <p className="text-xs text-center mt-1.5 text-slate-600">上传壁纸</p>
-              <input
-                type="file"
-                accept="image/*"
-                onChange={handleWallpaperUpload}
-                className="hidden"
-              />
-            </label>
+                <p className="text-xs text-center mt-1.5 text-gray-700">自定义</p>
+                <input
+                  type="file"
+                  accept="image/*"
+                  onChange={handleWallpaperUpload}
+                  className="hidden"
+                />
+              </label>
+            </div>
           </div>
         </div>
 
-        {/* 预览提示 */}
-        <div className="bg-blue-50 border border-blue-200 rounded-xl p-4">
-          <p className="text-sm text-blue-700">
-            💡 返回主屏幕查看主题效果
-          </p>
-        </div>
-
-        {/* 恢复初始布局按钮 */}
+        {/* 桌面布局区块 */}
         {onResetLayout && (
-          <div>
-            <h3 className="mb-3 text-slate-700 font-medium">桌面布局</h3>
-            <button
-              onClick={() => {
-                if (confirm('确定要恢复到默认桌面布局吗？这将重置所有应用图标的位置。')) {
-                  onResetLayout();
-                  alert('桌面布局已恢复到初始状态');
-                }
-              }}
-              className="w-full px-4 py-3 bg-orange-500 hover:bg-orange-600 rounded-xl font-medium text-white transition active:scale-95 shadow-md"
-            >
-              🔄 恢复初始桌面布局
-            </button>
-            <p className="text-xs text-slate-500 mt-2 text-center">
-              恢复快捷应用、第二页应用和Dock栏到默认状态
-            </p>
+          <div className="bg-white">
+            <div className="px-4 py-3 border-b border-gray-100">
+              <h3 className="text-sm font-medium text-gray-900">桌面布局</h3>
+              <p className="text-xs text-gray-500 mt-0.5">管理主屏幕应用图标排列</p>
+            </div>
+            <div className="px-4 py-4">
+              <button
+                onClick={() => {
+                  if (confirm('确定要恢复到默认桌面布局吗？这将重置所有应用图标的位置。')) {
+                    onResetLayout();
+                    alert('桌面布局已恢复到初始状态');
+                  }
+                }}
+                className="w-full px-4 py-3 bg-orange-500 hover:bg-orange-600 active:bg-orange-700 rounded-lg font-medium text-white transition-colors text-sm"
+              >
+                恢复默认布局
+              </button>
+              <p className="text-xs text-gray-500 mt-2.5 text-center leading-relaxed">
+                将快捷应用、第二页应用和 Dock 栏恢复到默认状态
+              </p>
+            </div>
           </div>
         )}
+
+        {/* 提示区块 */}
+        <div className="px-4 py-3">
+          <div className="bg-blue-50 border border-blue-100 rounded-lg p-3">
+            <p className="text-xs text-blue-700 leading-relaxed">
+              💡 提示：返回主屏幕即可查看主题效果
+            </p>
+          </div>
+        </div>
       </div>
     </div>
   );

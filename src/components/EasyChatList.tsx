@@ -307,7 +307,15 @@ export function EasyChatList({
     <div className="w-full h-full bg-gray-50 flex flex-col">
       {/* 顶部导航栏 - 统一设计 */}
       <div className="flex items-center justify-between h-14 px-4 bg-white border-b border-gray-200 flex-shrink-0">
-        <h1 className="text-lg font-semibold text-gray-900">消息</h1>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={onBack}
+            className="p-2 -ml-2 rounded-full hover:bg-gray-100 active:bg-gray-200 transition-colors"
+          >
+            <ArrowLeft className="w-5 h-5 text-gray-700" />
+          </button>
+          <h1 className="text-lg font-semibold text-gray-900">消息</h1>
+        </div>
         <button
           onClick={handleStartCreate}
           className="p-2 rounded-full hover:bg-gray-100 active:bg-gray-200 transition-colors"

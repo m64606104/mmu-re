@@ -248,7 +248,7 @@ export function EasyChatApp({ onBack }: EasyChatAppProps) {
         <div className="flex-1 overflow-hidden">
           {activeTab === 'chat' && (
             <EasyChatList
-              onBack={() => {}} // 不再需要返回
+              onBack={onBack}
               conversations={conversations}
               setConversations={setConversations}
               contacts={contacts}
@@ -258,7 +258,7 @@ export function EasyChatApp({ onBack }: EasyChatAppProps) {
           )}
           {activeTab === 'contacts' && (
             <EasyChatContactsManager
-              onBack={() => {}} // 不再需要返回
+              onBack={onBack}
               contacts={contacts}
               setContacts={setContacts}
             />
@@ -266,7 +266,7 @@ export function EasyChatApp({ onBack }: EasyChatAppProps) {
           {activeTab === 'settings' && (
             <EasyChatUserSettings
               user={user}
-              onBack={() => {}} // 不再需要返回
+              onBack={onBack}
               onUpdateUser={handleUpdateUser}
             />
           )}

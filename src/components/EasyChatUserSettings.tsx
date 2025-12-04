@@ -93,7 +93,15 @@ export function EasyChatUserSettings({ user, onBack, onUpdateUser }: EasyChatUse
     <div className="w-full h-full bg-gray-50 flex flex-col">
       {/* 顶部导航栏 - 统一设计 */}
       <div className="flex items-center justify-between h-14 px-4 bg-white border-b border-gray-200 flex-shrink-0">
-        <h1 className="text-lg font-semibold text-gray-900">设置</h1>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={onBack}
+            className="p-2 -ml-2 rounded-full hover:bg-gray-100 active:bg-gray-200 transition-colors"
+          >
+            <ArrowLeft className="w-5 h-5 text-gray-700" />
+          </button>
+          <h1 className="text-lg font-semibold text-gray-900">设置</h1>
+        </div>
         <button
           onClick={handleSave}
           className="px-4 py-1.5 bg-blue-500 text-white rounded-lg text-sm font-medium active:opacity-80 transition-all hover:bg-blue-600"
@@ -104,92 +112,72 @@ export function EasyChatUserSettings({ user, onBack, onUpdateUser }: EasyChatUse
 
       {/* 内容区域 */}
       <div className="flex-1 overflow-y-auto">
-        {/* 头像和名称区域 */}
-        <div className="bg-white px-4 py-6 mb-4">
-          <div className="flex flex-col items-center">
-            {/* 头像 */}
-            <div className="w-24 h-24 rounded-full bg-gradient-to-br from-blue-400 to-blue-500 flex items-center justify-center overflow-hidden shadow-lg mb-4">
+        {/* 个人信息卡片 */}
+        <div className="bg-white mb-2">
+          {/* 头像区域 */}
+          <div className="flex items-center gap-4 px-4 py-4 border-b border-gray-100">
+            <div className="w-16 h-16 rounded-full bg-blue-500 flex items-center justify-center overflow-hidden shadow-sm flex-shrink-0">
               {editAvatar.startsWith('data:') ? (
                 <img src={editAvatar} alt="头像" className="w-full h-full object-cover" />
               ) : (
-                <span className="text-4xl">{editAvatar}</span>
+                <span className="text-3xl text-white">{editAvatar}</span>
               )}
             </div>
-
-            {/* 编辑头像 */}
-            <label className="inline-flex items-center justify-center gap-2 px-6 py-2.5 bg-blue-500 hover:bg-blue-600 text-white rounded-full cursor-pointer transition-colors shadow-sm mb-3">
-              <Upload className="w-4 h-4" />
-              <span className="text-sm">上传头像</span>
-              <input
-                type="file"
-                accept="image/*"
-                onChange={handleImageUpload}
-                className="hidden"
-              />
-            </label>
-            <p className="text-xs text-gray-400 mb-4">建议使用正方形图片 (系统会自动裁剪)</p>
-
-            <p className="text-xs text-gray-500 mb-2">或选择 Emoji</p>
-            <div className="flex gap-2 flex-wrap justify-center max-w-xs mb-4">
-              {emojiList.map((emoji) => (
-                <button
-                  key={emoji}
-                  onClick={() => setEditAvatar(emoji)}
-                  className={`w-10 h-10 rounded-full flex items-center justify-center transition-all ${
-                    editAvatar === emoji
-                      ? 'bg-blue-100 ring-2 ring-blue-500'
-                      : 'bg-gray-100 hover:bg-gray-200'
-                  }`}
-                >
-                  <span className="text-xl">{emoji}</span>
-                </button>
-              ))}
+            <div className="flex-1">
+              <label className="inline-flex items-center gap-2 px-4 py-2 bg-gray-100 hover:bg-gray-200 rounded-lg cursor-pointer transition-colors text-sm">
+                <Upload className="w-4 h-4" />
+                <span>更换头像</span>
+                <input
+                  type="file"
+                  accept="image/*"
+                  onChange={handleImageUpload}
+                  className="hidden"
+                />
+              </label>
             </div>
+          </div>
 
-            {/* 名称 */}
-            <div className="w-full max-w-xs space-y-2">
-              <Label htmlFor="name">用户名</Label>
+          {/* 用户名 */}
+          <div className="px-4 py-3 border-b border-gray-100">
+            <div className="flex items-center justify-between">
+              <label className="text-sm text-gray-600">用户名</label>
               <Input
-                id="name"
                 value={editName}
                 onChange={(e) => setEditName(e.target.value)}
-                placeholder="例如：小明"
-                className="bg-gray-50 border-gray-200 text-center"
+                placeholder="请输入用户名"
+                className="flex-1 ml-4 border-0 bg-transparent text-right focus:ring-0 px-0"
               />
             </div>
           </div>
         </div>
 
-        {/* 气泡颜色选择区域 */}
-        <div className="bg-white px-4 py-6">
-          <h2 className="text-center mb-4">消息气泡颜色</h2>
-          <div className="grid grid-cols-2 gap-3 max-w-sm mx-auto">
+        {/* 消息气泡颜色 */}
+        <div className="bg-white mt-2">
+          <div className="px-4 py-3 border-b border-gray-100">
+            <h3 className="text-sm font-medium text-gray-900">消息气泡颜色</h3>
+          </div>
+          <div className="px-4 py-3 grid grid-cols-2 gap-2">
             {BUBBLE_COLOR_THEMES.map((theme) => (
               <button
                 key={theme.id}
                 onClick={() => setEditBubbleColor(theme.id)}
-                className={`flex items-center gap-3 p-3 rounded-xl transition-all ${
+                className={`flex items-center gap-2 p-2.5 rounded-lg transition-all ${
                   editBubbleColor === theme.id
-                    ? 'bg-blue-50 ring-2 ring-blue-500'
+                    ? 'bg-blue-50 ring-1 ring-blue-500'
                     : 'bg-gray-50 hover:bg-gray-100'
                 }`}
               >
-                {/* 颜色预览 */}
                 <div
-                  className="w-12 h-12 rounded-lg flex-shrink-0 shadow-sm"
+                  className="w-10 h-10 rounded-lg flex-shrink-0"
                   style={{ background: theme.preview }}
                 />
-                
-                {/* 名称和 Emoji */}
                 <div className="flex-1 text-left">
-                  <p className="text-sm">{theme.name}</p>
+                  <p className="text-xs font-medium text-gray-900">{theme.name}</p>
                   <p className="text-xs text-gray-500">{theme.emoji}</p>
                 </div>
-
-                {/* 选中标记 */}
                 {editBubbleColor === theme.id && (
-                  <div className="w-5 h-5 rounded-full bg-blue-500 flex items-center justify-center flex-shrink-0">
-                    <div className="w-2 h-2 bg-white rounded-full" />
+                  <div className="w-4 h-4 rounded-full bg-blue-500 flex items-center justify-center flex-shrink-0">
+                    <div className="w-1.5 h-1.5 bg-white rounded-full" />
                   </div>
                 )}
               </button>
