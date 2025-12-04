@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
-import { ArrowLeft, Send, MoreHorizontal, Plus, Image as ImageIcon, Video, Mic, Play, Pause, Smile, Radio, Phone, PhoneOff } from 'lucide-react';
+import { ArrowLeft, Send, MoreHorizontal, Plus, Image as ImageIcon, Video, Mic, Play, Pause, Smile, Radio, Phone, PhoneOff, User } from 'lucide-react';
 import { EasyChatConversation, EasyChatContact, EasyChatMessage, EasyChatUser, LivestreamData, GroupCallData, GlobalCallState } from '../types';
 import { VoiceMessageDialog } from './VoiceMessageDialog';
 import { MessageActionDialog } from './MessageActionDialog';
@@ -633,7 +633,7 @@ export function EasyChatRoom({ conversation, contacts, user, onBack, onUpdateCon
                     )}
 
                     {/* 消息 */}
-                    <div className={`flex gap-2 mb-3 ${isMe ? 'flex-row-reverse' : 'flex-row'}`}>
+                    <div className={`flex gap-3 mb-3 ${isMe ? 'flex-row-reverse' : 'flex-row'}`}>
                       {/* 头像 */}
                       <div className="w-10 h-10 rounded-[5px] bg-blue-500 flex items-center justify-center overflow-hidden flex-shrink-0">
                         {sender.avatar.startsWith('data:') ? (
@@ -654,11 +654,11 @@ export function EasyChatRoom({ conversation, contacts, user, onBack, onUpdateCon
                             }`}
                             onClick={() => handleLongPressMessage(msg)}
                           >
-                            {/* 小尖角 */}
+                            {/* 小尖角 - 调整位置 */}
                             <div className={`absolute top-[10px] w-0 h-0 ${
                               isMe 
-                                ? 'right-[-8px] border-l-[8px] border-l-[#95ec69] border-t-[6px] border-t-transparent border-b-[6px] border-b-transparent'
-                                : 'left-[-8px] border-r-[8px] border-r-white border-t-[6px] border-t-transparent border-b-[6px] border-b-transparent'
+                                ? 'right-[-6px] border-l-[6px] border-l-[#95ec69] border-t-[5px] border-t-transparent border-b-[5px] border-b-transparent'
+                                : 'left-[-6px] border-r-[6px] border-r-white border-t-[5px] border-t-transparent border-b-[5px] border-b-transparent'
                             }`}></div>
                             {msg.text}
                           </div>
@@ -684,6 +684,16 @@ export function EasyChatRoom({ conversation, contacts, user, onBack, onUpdateCon
         {/* 底部输入栏 - 微信风格 */}
         <div className="border-t bg-[#f7f7f7] border-[#d1d1d1]">
           <div className="px-2 py-2 flex items-center gap-2">
+            {/* 群聊切换用户按钮 */}
+            {conversation.type === 'group' && (
+              <button 
+                onClick={handleToggleSender}
+                className="p-1 text-[#181818] hover:bg-gray-200 rounded-full transition-colors"
+                title="切换发言者"
+              >
+                <User size={24} strokeWidth={1.5} />
+              </button>
+            )}
             <button className="p-1 text-[#181818]">
               <Mic size={28} strokeWidth={1.5} />
             </button>
@@ -716,6 +726,70 @@ export function EasyChatRoom({ conversation, contacts, user, onBack, onUpdateCon
             )}
           </div>
         </div>
+
+        {/* 群聊发送者快速切换 - 隐蔽设计（微信风格） */}
+        {showSenderPicker && conversation.type === 'group' && (
+          <div 
+            className="absolute inset-0 z-50 flex items-end animate-in fade-in duration-150"
+            onClick={() => setShowSenderPicker(false)}
+          >
+            <div 
+              className="w-full bg-white/95 backdrop-blur-md shadow-2xl animate-in slide-in-from-bottom duration-200 pb-safe"
+              onClick={(e) => e.stopPropagation()}
+            >
+              {/* 拖动指示条 */}
+              <div className="flex justify-center pt-2 pb-1">
+                <div className="w-10 h-1 bg-gray-300 rounded-full"></div>
+              </div>
+
+              {/* 横向滚动的角色列表 */}
+              <div className="px-4 py-3 overflow-x-auto scrollbar-hide">
+                <div className="flex gap-6 min-w-min pb-1">
+                  {getAllSenders().map(sender => {
+                    const isSelected = sender.id === currentSenderId;
+
+                    return (
+                      <button
+                        key={sender.id}
+                        onClick={() => handleSelectSender(sender.id)}
+                        className="flex flex-col items-center gap-2 min-w-[60px] active:scale-95 transition-transform"
+                      >
+                        {/* 头像 */}
+                        <div className={`relative w-14 h-14 rounded-full overflow-hidden transition-all ${
+                          isSelected 
+                            ? 'ring-2 ring-green-500 ring-offset-2 shadow-lg' 
+                            : 'opacity-60 shadow-sm'
+                        }`}>
+                          <div className="w-full h-full bg-gradient-to-br from-gray-200 to-gray-300 flex items-center justify-center">
+                            {sender.avatar.startsWith('data:') ? (
+                              <img src={sender.avatar} alt="" className="w-full h-full object-cover" />
+                            ) : (
+                              <span className="text-2xl">{sender.avatar}</span>
+                            )}
+                          </div>
+                          
+                          {/* 选中指示器 */}
+                          {isSelected && (
+                            <div className="absolute bottom-0 right-0 w-5 h-5 bg-green-500 rounded-full flex items-center justify-center border-2 border-white">
+                              <div className="w-2 h-2 bg-white rounded-full"></div>
+                            </div>
+                          )}
+                        </div>
+
+                        {/* 名称 */}
+                        <span className={`text-xs max-w-[60px] truncate transition-all ${
+                          isSelected ? 'text-green-600 font-medium' : 'text-gray-500'
+                        }`}>
+                          {sender.name}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     );
   }

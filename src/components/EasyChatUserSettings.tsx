@@ -162,7 +162,10 @@ export function EasyChatUserSettings({ user, onBack, onUpdateUser }: EasyChatUse
               <button
                 onClick={() => {
                   localStorage.setItem('easychat_ui_style', 'default');
-                  window.location.reload();
+                  toast.success('已切换到默认风格', { duration: 1500 });
+                  setTimeout(() => {
+                    window.location.reload();
+                  }, 800);
                 }}
                 className={`w-full flex items-center justify-between p-3 rounded-lg transition-all ${
                   localStorage.getItem('easychat_ui_style') !== 'wechat'
@@ -189,7 +192,10 @@ export function EasyChatUserSettings({ user, onBack, onUpdateUser }: EasyChatUse
               <button
                 onClick={() => {
                   localStorage.setItem('easychat_ui_style', 'wechat');
-                  window.location.reload();
+                  toast.success('已切换到微信风格', { duration: 1500 });
+                  setTimeout(() => {
+                    window.location.reload();
+                  }, 800);
                 }}
                 className={`w-full flex items-center justify-between p-3 rounded-lg transition-all ${
                   localStorage.getItem('easychat_ui_style') === 'wechat'
@@ -214,7 +220,7 @@ export function EasyChatUserSettings({ user, onBack, onUpdateUser }: EasyChatUse
               </button>
             </div>
             <p className="text-xs text-gray-400 mt-3 text-center">
-              切换风格后将自动刷新页面
+              切换风格后页面将自动刷新
             </p>
           </div>
         </div>
