@@ -494,83 +494,104 @@ export function EasyChatList({
 
           {/* 选择现有联系人 */}
           {createStep === 'selectContact' && (
-            <>
-              <div className="flex items-center justify-between px-4 h-14 border-b border-gray-100 flex-shrink-0">
-                <button
-                  onClick={() => chatType === 'group' ? setCreateStep('choose') : setCreateStep('type')}
-                  className="text-blue-500 active:opacity-60 transition-opacity"
-                >
-                  返回
-                </button>
-                <h2 className="tracking-tight">
-                  选择联系人{chatType === 'group' && selectedContacts.length > 0 && ` (${selectedContacts.length})`}
-                </h2>
-                <button
-                  onClick={handleCreateFromExisting}
-                  className={`text-blue-500 transition-opacity ${
-                    (chatType === 'private' && selectedContacts.length === 1) ||
-                    (chatType === 'group' && selectedContacts.length >= 2)
-                      ? 'active:opacity-60'
-                      : 'opacity-30'
-                  }`}
-                  disabled={
-                    chatType === 'private' 
-                      ? selectedContacts.length !== 1
-                      : selectedContacts.length < 2
-                  }
-                >
-                  {chatType === 'group' ? '下一步' : '完成'}
-                </button>
-              </div>
+            <div className="absolute inset-0 bg-black/20 backdrop-blur-sm z-50 flex items-end justify-center animate-in fade-in duration-200"
+              onClick={() => chatType === 'group' ? setCreateStep('choose') : setCreateStep('type')}>
+              <div 
+                className="w-full max-h-[70vh] bg-white/95 backdrop-blur-md rounded-t-[2rem] shadow-2xl animate-in slide-in-from-bottom duration-300 overflow-hidden"
+                onClick={(e) => e.stopPropagation()}
+              >
+                {/* 拖动条 */}
+                <div className="flex justify-center pt-3 pb-2">
+                  <div className="w-10 h-1 bg-gray-300 rounded-full"></div>
+                </div>
 
-              <div className="flex-1 overflow-y-auto">
-                {contacts.length === 0 ? (
-                  <div className="flex flex-col items-center justify-center h-full text-gray-400 px-8">
-                    <div className="w-20 h-20 rounded-full bg-gray-100 flex items-center justify-center mb-4">
-                      <User className="w-10 h-10 text-gray-300" />
-                    </div>
-                    <p className="text-center mb-2">暂无联系人</p>
-                    <p className="text-sm text-gray-300 text-center mb-4">请先创建联系人</p>
-                    <button
-                      onClick={() => setCreateStep('newContact')}
-                      className="px-6 py-2.5 bg-blue-500 text-white rounded-full active:opacity-60 transition-opacity"
-                    >
-                      新建联系人
-                    </button>
-                  </div>
-                ) : (
-                  <div className="bg-white divide-y divide-gray-100">
-                    {contacts.map((contact) => (
+                {/* 标题区 */}
+                <div className="px-6 pb-3">
+                  <h2 className="text-lg font-medium text-center">
+                    选择联系人{chatType === 'group' && selectedContacts.length > 0 && ` (${selectedContacts.length})`}
+                  </h2>
+                  <p className="text-xs text-gray-400 text-center mt-1">
+                    {chatType === 'group' ? '至少选择2人创建群聊' : '选择一个联系人开始聊天'}
+                  </p>
+                </div>
+
+                {/* 联系人列表 */}
+                <div className="overflow-y-auto max-h-[50vh] px-4 pb-4">
+                  {contacts.length === 0 ? (
+                    <div className="flex flex-col items-center justify-center py-12">
+                      <div className="w-16 h-16 rounded-full bg-gray-100 flex items-center justify-center mb-3">
+                        <User className="w-8 h-8 text-gray-300" />
+                      </div>
+                      <p className="text-sm text-gray-400 mb-4">暂无联系人</p>
                       <button
-                        key={contact.id}
-                        onClick={() => toggleContactSelection(contact.id)}
-                        className="w-full flex items-center gap-3 px-4 py-3 active:bg-gray-50 transition-colors"
+                        onClick={() => setCreateStep('newContact')}
+                        className="px-5 py-2 bg-blue-500 text-white text-sm rounded-full active:opacity-60 transition-opacity"
                       >
-                        <div className="w-12 h-12 rounded-full bg-gradient-to-br from-blue-400 to-blue-500 flex items-center justify-center shadow-sm overflow-hidden flex-shrink-0">
-                          {contact.avatar.startsWith('data:') ? (
-                            <img src={contact.avatar} alt="头像" className="w-full h-full object-cover" />
-                          ) : (
-                            <span className="text-2xl">{contact.avatar}</span>
-                          )}
-                        </div>
-                        <div className="flex-1 text-left">
-                          <p>{contact.name}</p>
-                        </div>
-                        <div className={`w-6 h-6 rounded-full border-2 flex items-center justify-center ${
-                          selectedContacts.includes(contact.id)
-                            ? 'bg-blue-500 border-blue-500'
-                            : 'border-gray-300'
-                        }`}>
-                          {selectedContacts.includes(contact.id) && (
-                            <div className="w-3 h-3 bg-white rounded-full" />
-                          )}
-                        </div>
+                        新建联系人
                       </button>
-                    ))}
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      {contacts.map((contact) => (
+                        <button
+                          key={contact.id}
+                          onClick={() => toggleContactSelection(contact.id)}
+                          className={`w-full flex items-center gap-3 px-4 py-3 rounded-2xl transition-all ${
+                            selectedContacts.includes(contact.id)
+                              ? 'bg-blue-50 ring-2 ring-blue-500'
+                              : 'bg-gray-50 hover:bg-gray-100'
+                          }`}
+                        >
+                          <div className="w-12 h-12 rounded-full bg-gradient-to-br from-blue-400 to-blue-500 flex items-center justify-center shadow-sm overflow-hidden flex-shrink-0">
+                            {contact.avatar.startsWith('data:') ? (
+                              <img src={contact.avatar} alt="头像" className="w-full h-full object-cover" />
+                            ) : (
+                              <span className="text-2xl">{contact.avatar}</span>
+                            )}
+                          </div>
+                          <div className="flex-1 text-left">
+                            <p className="font-medium">{contact.name}</p>
+                          </div>
+                          <div className={`w-6 h-6 rounded-full border-2 flex items-center justify-center transition-all ${
+                            selectedContacts.includes(contact.id)
+                              ? 'bg-blue-500 border-blue-500 scale-110'
+                              : 'border-gray-300'
+                          }`}>
+                            {selectedContacts.includes(contact.id) && (
+                              <svg className="w-4 h-4 text-white" fill="currentColor" viewBox="0 0 20 20">
+                                <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                              </svg>
+                            )}
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {/* 底部按钮 */}
+                {contacts.length > 0 && (
+                  <div className="px-4 py-4 border-t border-gray-100 bg-white/90 backdrop-blur-sm">
+                    <button
+                      onClick={handleCreateFromExisting}
+                      disabled={
+                        chatType === 'private' 
+                          ? selectedContacts.length !== 1
+                          : selectedContacts.length < 2
+                      }
+                      className={`w-full py-3.5 rounded-full font-medium transition-all ${
+                        (chatType === 'private' && selectedContacts.length === 1) ||
+                        (chatType === 'group' && selectedContacts.length >= 2)
+                          ? 'bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white shadow-lg active:scale-95'
+                          : 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                      }`}
+                    >
+                      {chatType === 'group' ? '下一步' : '开始聊天'}
+                    </button>
                   </div>
                 )}
               </div>
-            </>
+            </div>
           )}
 
           {/* 新建联系人 */}
