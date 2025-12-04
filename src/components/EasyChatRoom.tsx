@@ -642,7 +642,71 @@ export function EasyChatRoom({ conversation, contacts, user, onBack, onUpdateCon
   const chatStyleConfig = getChatStyleConfig();
 
   return (
-    <div className={`w-full h-full ${chatStyleConfig.containerBg} flex flex-col`}>
+    <>
+      {/* 气泡小尾巴样式 */}
+      <style>{`
+        /* 微信风格 - 用户气泡右侧小尾巴 */
+        ${chatStyle === 'wechat' ? `
+          .message-bubble-my::after {
+            content: '';
+            position: absolute;
+            right: -6px;
+            top: 12px;
+            width: 0;
+            height: 0;
+            border-left: 8px solid #95ec69;
+            border-top: 6px solid transparent;
+            border-bottom: 6px solid transparent;
+          }
+        ` : ''}
+
+        /* 微信风格 - 对方气泡左侧小尾巴 */
+        ${chatStyle === 'wechat' ? `
+          .message-bubble-other::after {
+            content: '';
+            position: absolute;
+            left: -6px;
+            top: 12px;
+            width: 0;
+            height: 0;
+            border-right: 8px solid #4a4a4a;
+            border-top: 6px solid transparent;
+            border-bottom: 6px solid transparent;
+          }
+        ` : ''}
+
+        /* QQ风格 - 用户气泡右侧小尾巴 */
+        ${chatStyle === 'qq' ? `
+          .message-bubble-my::after {
+            content: '';
+            position: absolute;
+            right: -5px;
+            top: 10px;
+            width: 0;
+            height: 0;
+            border-left: 7px solid #4A90E2;
+            border-top: 5px solid transparent;
+            border-bottom: 5px solid transparent;
+          }
+        ` : ''}
+
+        /* QQ风格 - 对方气泡左侧小尾巴 */
+        ${chatStyle === 'qq' ? `
+          .message-bubble-other::after {
+            content: '';
+            position: absolute;
+            left: -5px;
+            top: 10px;
+            width: 0;
+            height: 0;
+            border-right: 7px solid #4a4a4a;
+            border-top: 5px solid transparent;
+            border-bottom: 5px solid transparent;
+          }
+        ` : ''}
+      `}</style>
+      
+      <div className={`w-full h-full ${chatStyleConfig.containerBg} flex flex-col`}>
       {/* 顶部导航栏 */}
       <div className={`flex items-center justify-between h-20 px-4 ${chatStyleConfig.headerBg} ${chatStyle === 'default' ? 'backdrop-blur-xl' : ''} border-b ${chatStyle === 'qq' ? 'border-[#3a3a3a]' : 'border-gray-100'} flex-shrink-0`}>
         <button
@@ -898,7 +962,7 @@ export function EasyChatRoom({ conversation, contacts, user, onBack, onUpdateCon
                             </div>
                           </button>
                         ) : (
-                          <div className={`${chatStyleConfig.myBubbleBg} rounded-lg rounded-tr-sm px-3 py-2.5 shadow-sm`}>
+                          <div className={`relative ${chatStyleConfig.myBubbleBg} ${chatStyle === 'qq' ? 'rounded-lg' : 'rounded-2xl'} px-3 py-2.5 shadow-sm message-bubble-my`}>
                             <p className={`${chatStyleConfig.myBubbleText} text-[15px] leading-relaxed whitespace-pre-wrap break-words`}>
                               {msg.text}
                             </p>
@@ -938,7 +1002,7 @@ export function EasyChatRoom({ conversation, contacts, user, onBack, onUpdateCon
                           onClick={() => handleLongPressMessage(msg)}
                         >
                           {msg.type === 'voice' ? (
-                            <div className={`${chatStyleConfig.otherBubbleBg} rounded-lg rounded-tl-sm px-3 py-2.5 shadow-sm`}>
+                            <div className={`relative ${chatStyleConfig.otherBubbleBg} ${chatStyle === 'qq' ? 'rounded-lg' : 'rounded-2xl'} px-3 py-2.5 shadow-sm message-bubble-other`}>
                               <button
                                 onClick={(e) => {
                                   e.stopPropagation();
@@ -960,7 +1024,7 @@ export function EasyChatRoom({ conversation, contacts, user, onBack, onUpdateCon
                               )}
                             </div>
                           ) : msg.type === 'image' ? (
-                            <div className="rounded-lg rounded-tl-sm overflow-hidden shadow-sm max-w-[200px]">
+                            <div className={`relative ${chatStyle === 'qq' ? 'rounded-lg' : 'rounded-2xl'} overflow-hidden shadow-sm max-w-[200px] message-bubble-other`}>
                               <img src={msg.imageUrl} alt="图片" className="w-full h-auto" />
                             </div>
                           ) : msg.type === 'video' ? (
@@ -1137,7 +1201,7 @@ export function EasyChatRoom({ conversation, contacts, user, onBack, onUpdateCon
                               </div>
                             </button>
                           ) : (
-                            <div className={`${chatStyleConfig.otherBubbleBg} rounded-lg rounded-tl-sm px-3 py-2.5 shadow-sm`}>
+                            <div className={`relative ${chatStyleConfig.otherBubbleBg} ${chatStyle === 'qq' ? 'rounded-lg' : 'rounded-2xl'} px-3 py-2.5 shadow-sm message-bubble-other`}>
                               <p className={`${chatStyleConfig.otherBubbleText} text-[15px] leading-relaxed whitespace-pre-wrap break-words`}>
                                 {msg.text}
                               </p>
@@ -1522,5 +1586,6 @@ export function EasyChatRoom({ conversation, contacts, user, onBack, onUpdateCon
         />
       )}
     </div>
+    </>
   );
 }
