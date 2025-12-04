@@ -307,13 +307,7 @@ export function EasyChatList({
     <div className="w-full h-full bg-gradient-to-b from-gray-50 to-white flex flex-col">
       {/* 顶部导航栏 - QQ风格美化版 */}
       <div className="flex items-center justify-between h-16 px-4 bg-white/90 backdrop-blur-xl border-b border-gray-100 flex-shrink-0 shadow-sm">
-        <button
-          onClick={onBack}
-          className="p-2 -ml-2 rounded-full hover:bg-gray-100 active:bg-gray-200 transition-all"
-        >
-          <ArrowLeft className="w-5 h-5 text-gray-700" strokeWidth={2.5} />
-        </button>
-        <h1 className="tracking-tight">消息</h1>
+        <h1 className="text-xl font-medium tracking-tight">消息</h1>
         <button
           onClick={handleStartCreate}
           className="p-2 -mr-2 rounded-full hover:bg-blue-50 active:bg-blue-100 transition-all group"

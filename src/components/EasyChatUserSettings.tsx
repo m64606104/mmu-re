@@ -73,9 +73,15 @@ export function EasyChatUserSettings({ user, onBack, onUpdateUser }: EasyChatUse
       };
       
       onUpdateUser(updatedUser);
+      
+      // 延迟一下，让保存动作更有仪式感
+      await new Promise(resolve => setTimeout(resolve, 300));
+      
       toast.dismiss();
-      toast.success('保存成功');
-      onBack();
+      toast.success('✅ 设置已保存', {
+        description: '您的个人信息已成功更新',
+        duration: 2000,
+      });
     } catch (error) {
       console.error('保存设置失败:', error);
       toast.dismiss();
@@ -86,19 +92,13 @@ export function EasyChatUserSettings({ user, onBack, onUpdateUser }: EasyChatUse
   return (
     <div className="w-full h-full bg-gray-50 flex flex-col">
       {/* 顶部导航栏 */}
-      <div className="flex items-center justify-between h-20 px-4 bg-white border-b border-gray-200 flex-shrink-0">
-        <button
-          onClick={onBack}
-          className="text-blue-500 active:opacity-60 transition-opacity"
-        >
-          <ArrowLeft className="w-6 h-6" />
-        </button>
-        <h1 className="tracking-tight">用户设置</h1>
+      <div className="flex items-center justify-between h-16 px-4 bg-white border-b border-gray-200 flex-shrink-0">
+        <h1 className="text-xl font-medium tracking-tight">用户设置</h1>
         <button
           onClick={handleSave}
-          className="text-blue-500 active:opacity-60 transition-opacity"
+          className="px-4 py-2 bg-blue-500 text-white rounded-full font-medium active:opacity-80 transition-all hover:bg-blue-600 shadow-sm"
         >
-          完成
+          保存
         </button>
       </div>
 
