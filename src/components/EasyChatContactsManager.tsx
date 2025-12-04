@@ -83,65 +83,68 @@ export function EasyChatContactsManager({ onBack, contacts, setContacts }: EasyC
   };
 
   return (
-    <div className="w-full h-full bg-gradient-to-b from-gray-50 to-white flex flex-col">
-      {/* 顶部导航栏 - 美化版 */}
-      <div className="flex items-center justify-between h-16 px-4 bg-white/90 backdrop-blur-xl border-b border-gray-100 flex-shrink-0 shadow-sm">
-        <button
-          onClick={onBack}
-          className="p-2 -ml-2 rounded-full hover:bg-gray-100 active:bg-gray-200 transition-all"
-        >
-          <ArrowLeft className="w-5 h-5 text-gray-700" strokeWidth={2.5} />
-        </button>
-        <h1 className="tracking-tight">联系人</h1>
+    <div className="w-full h-full bg-white flex flex-col">
+      {/* 顶部导航栏 - 通讯录风格 */}
+      <div className="flex items-center justify-between h-16 px-4 bg-gradient-to-r from-emerald-500 to-teal-500 flex-shrink-0 shadow-md">
+        <h1 className="text-xl font-medium tracking-tight text-white">联系人</h1>
         <button
           onClick={() => setShowAddDialog(true)}
-          className="p-2 -mr-2 rounded-full hover:bg-blue-50 active:bg-blue-100 transition-all group"
+          className="p-2 rounded-full bg-white/20 hover:bg-white/30 active:bg-white/40 transition-all group backdrop-blur-sm"
         >
-          <UserPlus className="w-5 h-5 text-blue-500 group-hover:scale-110 transition-transform" strokeWidth={2.5} />
+          <UserPlus className="w-5 h-5 text-white group-hover:scale-110 transition-transform" strokeWidth={2.5} />
         </button>
       </div>
 
-      {/* 联系人列表 - 美化版 */}
-      <div className="flex-1 overflow-y-auto">
+      {/* 统计信息条 */}
+      <div className="px-4 py-3 bg-gradient-to-r from-emerald-50 to-teal-50 border-b border-emerald-100">
+        <p className="text-sm text-emerald-700">
+          共 <span className="font-bold text-emerald-600">{contacts.length}</span> 位联系人
+        </p>
+      </div>
+
+      {/* 联系人网格 - 卡片式 */}
+      <div className="flex-1 overflow-y-auto bg-gray-50">
         {contacts.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full text-gray-400 px-8">
             <div className="relative mb-6">
-              <div className="w-24 h-24 rounded-3xl bg-gradient-to-br from-blue-50 to-purple-50 flex items-center justify-center border-2 border-dashed border-gray-200">
-                <UserPlus className="w-12 h-12 text-gray-300" strokeWidth={1.5} />
+              <div className="w-28 h-28 rounded-full bg-gradient-to-br from-emerald-50 to-teal-50 flex items-center justify-center border-4 border-dashed border-emerald-200">
+                <UserPlus className="w-14 h-14 text-emerald-300" strokeWidth={1.5} />
               </div>
-              <div className="absolute -bottom-2 -right-2 w-10 h-10 rounded-full bg-blue-500 flex items-center justify-center shadow-lg">
-                <Plus className="w-5 h-5 text-white" strokeWidth={3} />
+              <div className="absolute -bottom-2 -right-2 w-12 h-12 rounded-full bg-gradient-to-br from-emerald-500 to-teal-500 flex items-center justify-center shadow-lg">
+                <Plus className="w-6 h-6 text-white" strokeWidth={3} />
               </div>
             </div>
-            <p className="text-center mb-2">暂无联系人</p>
-            <p className="text-sm text-gray-300 text-center">点击右上角 + 添加联系人</p>
+            <p className="text-center mb-2 font-medium text-gray-600">暂无联系人</p>
+            <p className="text-sm text-gray-400 text-center">点击右上角添加新联系人</p>
           </div>
         ) : (
-          <div className="py-2 px-3 space-y-1">
+          <div className="p-4 grid grid-cols-3 gap-4">
             {contacts.map((contact) => (
-              <div key={contact.id} className="flex items-center gap-3 px-3 py-3 rounded-2xl hover:bg-white transition-all group">
-                {/* 头像 */}
-                <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-blue-400 via-blue-500 to-purple-500 flex items-center justify-center shadow-md group-hover:shadow-lg overflow-hidden flex-shrink-0 transition-shadow">
+              <div 
+                key={contact.id} 
+                className="relative bg-white rounded-2xl p-3 shadow-sm hover:shadow-md transition-all active:scale-95 group"
+              >
+                {/* 删除按钮 - 卡片右上角 */}
+                <button
+                  onClick={() => handleDeleteContact(contact.id)}
+                  className="absolute -top-1 -right-1 w-6 h-6 bg-red-500 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all shadow-md z-10"
+                >
+                  <X className="w-3.5 h-3.5 text-white" strokeWidth={3} />
+                </button>
+
+                {/* 头像 - 圆形 */}
+                <div className="w-full aspect-square rounded-full bg-gradient-to-br from-emerald-400 via-teal-500 to-cyan-500 flex items-center justify-center shadow-md overflow-hidden mb-2">
                   {contact.avatar.startsWith('data:') ? (
                     <img src={contact.avatar} alt="头像" className="w-full h-full object-cover" />
                   ) : (
-                    <span className="text-2xl">{contact.avatar}</span>
+                    <span className="text-3xl">{contact.avatar}</span>
                   )}
                 </div>
 
                 {/* 名称 */}
-                <div className="flex-1 min-w-0">
-                  <p className="truncate font-medium">{contact.name}</p>
-                  <p className="text-xs text-gray-400 truncate">联系人</p>
-                </div>
-
-                {/* 删除按钮 */}
-                <button
-                  onClick={() => handleDeleteContact(contact.id)}
-                  className="p-2 hover:bg-red-50 rounded-full transition-all active:scale-95 opacity-0 group-hover:opacity-100"
-                >
-                  <Trash2 className="w-5 h-5 text-red-500" />
-                </button>
+                <p className="text-center text-sm font-medium truncate text-gray-800">
+                  {contact.name}
+                </p>
               </div>
             ))}
           </div>
