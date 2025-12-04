@@ -91,12 +91,12 @@ export function EasyChatUserSettings({ user, onBack, onUpdateUser }: EasyChatUse
 
   return (
     <div className="w-full h-full bg-gray-50 flex flex-col">
-      {/* 顶部导航栏 */}
-      <div className="flex items-center justify-between h-16 px-4 bg-white border-b border-gray-200 flex-shrink-0">
-        <h1 className="text-xl font-medium tracking-tight">用户设置</h1>
+      {/* 顶部导航栏 - 统一设计 */}
+      <div className="flex items-center justify-between h-14 px-4 bg-white border-b border-gray-200 flex-shrink-0">
+        <h1 className="text-lg font-semibold text-gray-900">设置</h1>
         <button
           onClick={handleSave}
-          className="px-4 py-2 bg-blue-500 text-white rounded-full font-medium active:opacity-80 transition-all hover:bg-blue-600 shadow-sm"
+          className="px-4 py-1.5 bg-blue-500 text-white rounded-lg text-sm font-medium active:opacity-80 transition-all hover:bg-blue-600"
         >
           保存
         </button>

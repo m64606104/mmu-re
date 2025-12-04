@@ -304,20 +304,20 @@ export function EasyChatList({
   };
 
   return (
-    <div className="w-full h-full bg-gradient-to-b from-gray-50 to-white flex flex-col">
-      {/* 顶部导航栏 - QQ风格美化版 */}
-      <div className="flex items-center justify-between h-16 px-4 bg-white/90 backdrop-blur-xl border-b border-gray-100 flex-shrink-0 shadow-sm">
-        <h1 className="text-xl font-medium tracking-tight">消息</h1>
+    <div className="w-full h-full bg-gray-50 flex flex-col">
+      {/* 顶部导航栏 - 统一设计 */}
+      <div className="flex items-center justify-between h-14 px-4 bg-white border-b border-gray-200 flex-shrink-0">
+        <h1 className="text-lg font-semibold text-gray-900">消息</h1>
         <button
           onClick={handleStartCreate}
-          className="p-2 -mr-2 rounded-full hover:bg-blue-50 active:bg-blue-100 transition-all group"
+          className="p-2 rounded-full hover:bg-gray-100 active:bg-gray-200 transition-colors"
         >
-          <Plus className="w-5 h-5 text-blue-500 group-hover:scale-110 transition-transform" strokeWidth={2.5} />
+          <Plus className="w-5 h-5 text-blue-500" strokeWidth={2.5} />
         </button>
       </div>
 
       {/* 聊天列表 */}
-      <div className="flex-1 overflow-y-auto">
+      <div className="flex-1 overflow-y-auto bg-white">
         {conversations.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full text-gray-400 px-8">
             <div className="relative mb-6">
@@ -345,28 +345,28 @@ export function EasyChatList({
               <button
                 key={conv.id}
                 onClick={() => onOpenChatRoom(conv)}
-                className="w-full flex items-center gap-3 px-3 py-3 rounded-2xl hover:bg-white active:bg-gray-50 transition-all group"
+                className="w-full flex items-center gap-3 px-3 py-3 rounded-xl hover:bg-gray-50 active:bg-gray-100 transition-colors"
               >
                 {/* 头像 */}
                 <div className="relative flex-shrink-0">
-                  <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-blue-400 via-blue-500 to-purple-500 flex items-center justify-center shadow-md group-hover:shadow-lg overflow-hidden transition-shadow">
+                  <div className="w-12 h-12 rounded-xl bg-blue-500 flex items-center justify-center shadow-sm overflow-hidden">
                     {conv.avatar.startsWith('data:') ? (
                       <img src={conv.avatar} alt="头像" className="w-full h-full object-cover" />
                     ) : (
-                      <span className="text-2xl">{conv.avatar}</span>
+                      <span className="text-xl text-white">{conv.avatar}</span>
                     )}
                   </div>
                   {conv.type === 'group' && (
-                    <div className="absolute -bottom-1 -right-1 w-5 h-5 bg-gradient-to-br from-green-400 to-emerald-500 rounded-full flex items-center justify-center border-2 border-white shadow-sm">
-                      <Users className="w-2.5 h-2.5 text-white" strokeWidth={3} />
+                    <div className="absolute -bottom-0.5 -right-0.5 w-4 h-4 bg-blue-600 rounded-full flex items-center justify-center border-2 border-white">
+                      <Users className="w-2 h-2 text-white" strokeWidth={3} />
                     </div>
                   )}
                 </div>
 
                 {/* 信息 */}
                 <div className="flex-1 min-w-0 text-left">
-                  <div className="flex items-center justify-between mb-1">
-                    <span className="truncate font-medium">{conv.name}</span>
+                  <div className="flex items-center justify-between mb-0.5">
+                    <span className="truncate font-medium text-gray-900">{conv.name}</span>
                     {conv.lastMessageTime && (
                       <span className="text-xs text-gray-400 ml-2 flex-shrink-0">
                         {conv.lastMessageTime}

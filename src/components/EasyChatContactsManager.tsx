@@ -83,22 +83,22 @@ export function EasyChatContactsManager({ onBack, contacts, setContacts }: EasyC
   };
 
   return (
-    <div className="w-full h-full bg-white flex flex-col">
-      {/* 顶部导航栏 - 通讯录风格 */}
-      <div className="flex items-center justify-between h-16 px-4 bg-gradient-to-r from-emerald-500 to-teal-500 flex-shrink-0 shadow-md">
-        <h1 className="text-xl font-medium tracking-tight text-white">联系人</h1>
+    <div className="w-full h-full bg-gray-50 flex flex-col">
+      {/* 顶部导航栏 - 统一设计 */}
+      <div className="flex items-center justify-between h-14 px-4 bg-white border-b border-gray-200 flex-shrink-0">
+        <h1 className="text-lg font-semibold text-gray-900">联系人</h1>
         <button
           onClick={() => setShowAddDialog(true)}
-          className="p-2 rounded-full bg-white/20 hover:bg-white/30 active:bg-white/40 transition-all group backdrop-blur-sm"
+          className="p-2 rounded-full hover:bg-gray-100 active:bg-gray-200 transition-colors"
         >
-          <UserPlus className="w-5 h-5 text-white group-hover:scale-110 transition-transform" strokeWidth={2.5} />
+          <UserPlus className="w-5 h-5 text-blue-500" strokeWidth={2.5} />
         </button>
       </div>
 
       {/* 统计信息条 */}
-      <div className="px-4 py-3 bg-gradient-to-r from-emerald-50 to-teal-50 border-b border-emerald-100">
-        <p className="text-sm text-emerald-700">
-          共 <span className="font-bold text-emerald-600">{contacts.length}</span> 位联系人
+      <div className="px-4 py-2.5 bg-white border-b border-gray-200">
+        <p className="text-sm text-gray-600">
+          共 <span className="font-semibold text-blue-500">{contacts.length}</span> 位联系人
         </p>
       </div>
 
@@ -107,42 +107,42 @@ export function EasyChatContactsManager({ onBack, contacts, setContacts }: EasyC
         {contacts.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full text-gray-400 px-8">
             <div className="relative mb-6">
-              <div className="w-28 h-28 rounded-full bg-gradient-to-br from-emerald-50 to-teal-50 flex items-center justify-center border-4 border-dashed border-emerald-200">
-                <UserPlus className="w-14 h-14 text-emerald-300" strokeWidth={1.5} />
+              <div className="w-24 h-24 rounded-full bg-blue-50 flex items-center justify-center border-4 border-dashed border-blue-200">
+                <UserPlus className="w-12 h-12 text-blue-300" strokeWidth={1.5} />
               </div>
-              <div className="absolute -bottom-2 -right-2 w-12 h-12 rounded-full bg-gradient-to-br from-emerald-500 to-teal-500 flex items-center justify-center shadow-lg">
-                <Plus className="w-6 h-6 text-white" strokeWidth={3} />
+              <div className="absolute -bottom-2 -right-2 w-10 h-10 rounded-full bg-blue-500 flex items-center justify-center shadow-lg">
+                <Plus className="w-5 h-5 text-white" strokeWidth={3} />
               </div>
             </div>
             <p className="text-center mb-2 font-medium text-gray-600">暂无联系人</p>
             <p className="text-sm text-gray-400 text-center">点击右上角添加新联系人</p>
           </div>
         ) : (
-          <div className="p-4 grid grid-cols-3 gap-4">
+          <div className="p-3 grid grid-cols-3 gap-3">
             {contacts.map((contact) => (
               <div 
                 key={contact.id} 
-                className="relative bg-white rounded-2xl p-3 shadow-sm hover:shadow-md transition-all active:scale-95 group"
+                className="relative bg-white rounded-xl p-3 shadow-sm hover:shadow-md transition-all active:scale-95 group"
               >
                 {/* 删除按钮 - 卡片右上角 */}
                 <button
                   onClick={() => handleDeleteContact(contact.id)}
-                  className="absolute -top-1 -right-1 w-6 h-6 bg-red-500 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all shadow-md z-10"
+                  className="absolute -top-1 -right-1 w-6 h-6 bg-red-500 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity shadow-md z-10"
                 >
                   <X className="w-3.5 h-3.5 text-white" strokeWidth={3} />
                 </button>
 
                 {/* 头像 - 圆形 */}
-                <div className="w-full aspect-square rounded-full bg-gradient-to-br from-emerald-400 via-teal-500 to-cyan-500 flex items-center justify-center shadow-md overflow-hidden mb-2">
+                <div className="w-full aspect-square rounded-full bg-blue-500 flex items-center justify-center shadow-sm overflow-hidden mb-2">
                   {contact.avatar.startsWith('data:') ? (
                     <img src={contact.avatar} alt="头像" className="w-full h-full object-cover" />
                   ) : (
-                    <span className="text-3xl">{contact.avatar}</span>
+                    <span className="text-2xl text-white">{contact.avatar}</span>
                   )}
                 </div>
 
                 {/* 名称 */}
-                <p className="text-center text-sm font-medium truncate text-gray-800">
+                <p className="text-center text-xs font-medium truncate text-gray-900">
                   {contact.name}
                 </p>
               </div>
