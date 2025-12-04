@@ -675,34 +675,14 @@ export function EasyChatRoom({ conversation, contacts, user, onBack, onUpdateCon
           }
         ` : ''}
 
-        /* QQ风格 - 用户气泡右侧小尾巴 */
+        /* QQ风格 - 用户气泡（无尾巴，圆角矩形） */
         ${chatStyle === 'qq' ? `
-          .message-bubble-my::after {
-            content: '';
-            position: absolute;
-            right: -5px;
-            top: 10px;
-            width: 0;
-            height: 0;
-            border-left: 7px solid #4A90E2;
-            border-top: 5px solid transparent;
-            border-bottom: 5px solid transparent;
-          }
+          /* QQ不需要伪元素尾巴 */
         ` : ''}
 
-        /* QQ风格 - 对方气泡左侧小尾巴 */
+        /* QQ风格 - 对方气泡（无尾巴，圆角矩形） */
         ${chatStyle === 'qq' ? `
-          .message-bubble-other::after {
-            content: '';
-            position: absolute;
-            left: -5px;
-            top: 10px;
-            width: 0;
-            height: 0;
-            border-right: 7px solid #4a4a4a;
-            border-top: 5px solid transparent;
-            border-bottom: 5px solid transparent;
-          }
+          /* QQ不需要伪元素尾巴 */
         ` : ''}
       `}</style>
       
