@@ -722,7 +722,10 @@ export function EasyChatRoom({ conversation, contacts, user, onBack, onUpdateCon
             <button onClick={onBack} className="p-1 text-black">
               <ArrowLeft size={24} strokeWidth={2} />
             </button>
-            <h2 className="text-[17px] flex-1 text-center text-black">{conversation.name}</h2>
+            <h2 className="text-[17px] flex-1 text-center text-black">
+              {conversation.name}
+              {conversation.type === 'group' && ` (${conversation.participants.length + 1})`}
+            </h2>
             <button onClick={onOpenSettings} className="p-1 text-black">
               <MoreHorizontal size={24} strokeWidth={2} />
             </button>
