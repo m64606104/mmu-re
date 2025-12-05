@@ -393,14 +393,42 @@ export function EasyChatRoom({ conversation, contacts, user, onBack, onUpdateCon
       }
       // 3. 处理完整日期格式 (尝试直接解析)
       else {
-        // 替换中文年月日为标准格式以便解析
-        const standardStr = newTime
+        // 预处理字符串以支持更多格式 (12.23, 14点30分 等)
+        let processedTime = newTime
           .replace(/年/g, '/')
           .replace(/月/g, '/')
-          .replace(/日/g, '')
-          .replace(/[:：]/g, ':');
+          .replace(/日/g, ' ')
+          .replace(/号/g, ' ')
+          .replace(/点/g, ':')
+          .replace(/分/g, '')
+          .replace(/[。.]/g, '/') // 处理 12.23
+          .replace(/[:：]/g, ':')
+          .trim();
+
+        // 处理可能出现的双空格
+        processedTime = processedTime.replace(/\s+/g, ' ');
         
-        const parsed = Date.parse(standardStr);
+        let parsed = Date.parse(processedTime);
+
+        // 如果解析失败，尝试加上当前年份 (针对 MM/DD HH:MM 格式)
+        if (isNaN(parsed)) {
+          const currentYear = new Date().getFullYear();
+          // 尝试三种组合
+          const tryFormats = [
+            `${currentYear}/${processedTime}`,
+            `${currentYear}-${processedTime}`,
+            `${currentYear} ${processedTime}`
+          ];
+          
+          for (const fmt of tryFormats) {
+            const p = Date.parse(fmt);
+            if (!isNaN(p)) {
+              parsed = p;
+              break;
+            }
+          }
+        }
+
         if (!isNaN(parsed)) {
           newFullTime = parsed;
         }
