@@ -90,23 +90,77 @@ export function EasyChatRoom({ conversation, contacts, user, onBack, onUpdateCon
     setShowSenderPicker(false);
   };
 
-  // 判断是否需要显示时间（参考微信：相隔5分钟以上显示时间）
+  // 格式化时间显示
+  const formatMessageTime = (msg: EasyChatMessage): string => {
+    // 如果有完整时间戳，优先使用
+    if (msg.fullTime) {
+      const date = new Date(msg.fullTime);
+      const now = new Date();
+      const isToday = date.toDateString() === now.toDateString();
+      const isYesterday = new Date(now.getTime() - 86400000).toDateString() === date.toDateString();
+      const isSameYear = date.getFullYear() === now.getFullYear();
+
+      const timeStr = `${date.getHours().toString().padStart(2, '0')}:${date.getMinutes().toString().padStart(2, '0')}`;
+
+      if (isToday) {
+        return timeStr;
+      } else if (isYesterday) {
+        return `昨天 ${timeStr}`;
+      } else if (isSameYear) {
+        return `${date.getMonth() + 1}月${date.getDate()}日 ${timeStr}`;
+      } else {
+        return `${date.getFullYear()}年${date.getMonth() + 1}月${date.getDate()}日 ${timeStr}`;
+      }
+    }
+    
+    // 回退到使用 timestamp 字符串
+    return msg.timestamp;
+  };
+
+  // 判断是否需要显示时间
   const shouldShowTime = (currentIndex: number): boolean => {
     if (currentIndex === 0) return true;
     
     const currentMsg = conversation.messages[currentIndex];
     const prevMsg = conversation.messages[currentIndex - 1];
+
+    // 1. 如果有 fullTime，使用精确逻辑
+    if (currentMsg.fullTime && prevMsg.fullTime) {
+      const currDate = new Date(currentMsg.fullTime);
+      const prevDate = new Date(prevMsg.fullTime);
+      
+      // 如果日期不同，必须显示
+      if (currDate.toDateString() !== prevDate.toDateString()) {
+        return true;
+      }
+      
+      // 如果日期相同，检查时间差（5分钟）
+      return currentMsg.fullTime - prevMsg.fullTime >= 5 * 60 * 1000;
+    }
     
-    // 解析时间字符串 HH:MM 为分钟数
+    // 2. 如果是手动编辑的时间字符串（包含日期信息的长字符串），只要跟上一条不一样就显示
+    // 简单的启发式：如果不包含冒号，或者长度超过5（HH:MM），或者包含中文
+    const isComplexTime = (str: string) => str.length > 5 || /[\u4e00-\u9fa5]/.test(str);
+    
+    if (isComplexTime(currentMsg.timestamp)) {
+      return currentMsg.timestamp !== prevMsg.timestamp;
+    }
+    
+    // 3. 旧逻辑：解析时间字符串 HH:MM
     const parseTime = (timeStr: string): number => {
-      const [hours, minutes] = timeStr.split(':').map(Number);
+      const parts = timeStr.split(':');
+      if (parts.length !== 2) return 0;
+      const [hours, minutes] = parts.map(Number);
+      if (isNaN(hours) || isNaN(minutes)) return 0;
       return hours * 60 + minutes;
     };
     
     const currentTime = parseTime(currentMsg.timestamp);
     const prevTime = parseTime(prevMsg.timestamp);
     
-    // 相隔5分钟以上显示时间
+    // 如果解析失败（比如跨天导致时间变小，或者格式不对），保守起见显示时间
+    if (currentTime < prevTime && !isComplexTime(prevMsg.timestamp)) return true;
+    
     return Math.abs(currentTime - prevTime) >= 5;
   };
 
@@ -127,6 +181,7 @@ export function EasyChatRoom({ conversation, contacts, user, onBack, onUpdateCon
       senderName: sender.name,
       senderAvatar: sender.avatar,
       timestamp: timeString,
+      fullTime: now.getTime(), // 添加完整时间戳
       type: messageType,
       ...extraData
     };
@@ -241,6 +296,7 @@ export function EasyChatRoom({ conversation, contacts, user, onBack, onUpdateCon
       senderName: sender.name,
       senderAvatar: sender.avatar,
       timestamp: timeString,
+      fullTime: now.getTime(), // 添加完整时间戳
       type: 'emojipack',
       emojipackDescription: description
     };
@@ -558,6 +614,7 @@ export function EasyChatRoom({ conversation, contacts, user, onBack, onUpdateCon
       senderName: sender.name,
       senderAvatar: sender.avatar,
       timestamp: timeString,
+      fullTime: now.getTime(), // 添加完整时间戳
       type: 'privatecall',
       privatecallData: {
         type,
@@ -632,7 +689,7 @@ export function EasyChatRoom({ conversation, contacts, user, onBack, onUpdateCon
                     {/* 时间戳 */}
                     {showTime && (
                       <div className="text-center my-3">
-                        <span className="text-[#999] text-xs">{msg.timestamp}</span>
+                        <span className="text-[#999] text-xs">{formatMessageTime(msg)}</span>
                       </div>
                     )}
 

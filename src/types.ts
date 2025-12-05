@@ -793,6 +793,7 @@ export interface EasyChatMessage {
   senderName: string;
   senderAvatar: string;
   timestamp: string;
+  fullTime?: number; // 完整时间戳（毫秒），用于更精确的时间显示
   type?: 'text' | 'image' | 'video' | 'voice' | 'emojipack' | 'livestream' | 'groupcall' | 'privatecall'; // 消息类型
   imageUrl?: string; // 图片URL
   videoUrl?: string; // 视频URL
