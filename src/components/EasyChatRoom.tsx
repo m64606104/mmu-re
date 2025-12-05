@@ -787,7 +787,7 @@ export function EasyChatRoom({ conversation, contacts, user, onBack, onUpdateCon
                     )}
 
                     {/* 消息 */}
-                    <div className={`flex gap-3 mb-3 ${isMe ? 'flex-row-reverse' : 'flex-row'}`}>
+                    <div className={`flex gap-3 mb-3.5 ${isMe ? 'flex-row-reverse' : 'flex-row'}`}>
                       {/* 头像 */}
                       <div className="w-10 h-10 rounded-[5px] bg-blue-500 flex items-center justify-center overflow-hidden flex-shrink-0">
                         {sender.avatar.startsWith('data:') ? (
@@ -833,6 +833,10 @@ export function EasyChatRoom({ conversation, contacts, user, onBack, onUpdateCon
                                   newExpanded.add(msg.id);
                                 }
                                 setExpandedVoiceMessages(newExpanded);
+                              }}
+                              onContextMenu={(e) => {
+                                e.preventDefault();
+                                handleLongPressMessage(msg);
                               }}
                             >
                               {/* 小尖角 */}
@@ -882,12 +886,24 @@ export function EasyChatRoom({ conversation, contacts, user, onBack, onUpdateCon
                             )}
                           </div>
                         ) : msg.type === 'image' ? (
-                          <div className="rounded-[4px] overflow-hidden max-w-[200px]">
+                          <div 
+                            className="rounded-[4px] overflow-hidden max-w-[200px] cursor-pointer"
+                            onClick={() => handleLongPressMessage(msg)}
+                          >
                             <img src={msg.imageUrl} alt="图片" className="w-full h-auto" />
                           </div>
                         ) : msg.type === 'video' ? (
-                          <div className="bg-black rounded-[4px] overflow-hidden max-w-[200px]">
-                            <video src={msg.videoUrl} controls className="w-full h-auto" />
+                          <div 
+                            className="bg-black rounded-[4px] overflow-hidden max-w-[200px] cursor-pointer relative group"
+                            onClick={() => handleLongPressMessage(msg)}
+                          >
+                            <div className="absolute inset-0 z-10 bg-transparent"></div>
+                            <video src={msg.videoUrl} className="w-full h-auto" />
+                            <div className="absolute inset-0 flex items-center justify-center z-0">
+                               <div className="w-10 h-10 rounded-full bg-black/50 flex items-center justify-center text-white">
+                                 <Play size={20} fill="currentColor" />
+                               </div>
+                            </div>
                           </div>
                         ) : null}
                       </div>
