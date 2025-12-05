@@ -35,11 +35,13 @@ export default function HomeScreen({ onNavigate, theme }: HomeScreenProps) {
   const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
   const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState<{type: 'app' | 'quick' | 'dock', index: number} | null>(null);
-  const [showQuickSelector, setShowQuickSelector] = useState(false);
+  const [activeSelector, setActiveSelector] = useState<'quick' | 'dock' | null>(null);
   const [showCountdownEditor, setShowCountdownEditor] = useState(false);
   const [showMusicUploader, setShowMusicUploader] = useState(false);
   const [tempCountdownDate, setTempCountdownDate] = useState('');
   const [tempCountdownName, setTempCountdownName] = useState('');
+  const [dragSource, setDragSource] = useState<'app' | 'dock' | null>(null);
+  const [dragOverSource, setDragOverSource] = useState<'app' | 'dock' | null>(null);
   
   // 历史记录用于undo
   const [layoutHistory, setLayoutHistory] = useState<{
@@ -182,6 +184,8 @@ export default function HomeScreen({ onNavigate, theme }: HomeScreenProps) {
     setIsEditMode(false);
     setDraggedIndex(null);
     setDragOverIndex(null);
+    setDragSource(null);
+    setDragOverSource(null);
     setDeleteConfirm(null);
   };
 
@@ -210,39 +214,55 @@ export default function HomeScreen({ onNavigate, theme }: HomeScreenProps) {
     setLayoutHistory(prev => prev.slice(0, -1));
   };
 
-  // 拖拽处理 - 第二页应用
-  const handleDragStart = (e: React.DragEvent, index: number) => {
+  // 拖拽处理
+  const handleDragStart = (e: React.DragEvent, index: number, source: 'app' | 'dock') => {
     if (!isEditMode) return;
     setDraggedIndex(index);
+    setDragSource(source);
     e.dataTransfer.effectAllowed = 'move';
   };
 
-  const handleDragOver = (e: React.DragEvent, index: number) => {
+  const handleDragOver = (e: React.DragEvent, index: number, source: 'app' | 'dock') => {
     if (!isEditMode) return;
     e.preventDefault();
     e.dataTransfer.dropEffect = 'move';
     setDragOverIndex(index);
+    setDragOverSource(source);
   };
 
   const handleDragLeave = () => {
     setDragOverIndex(null);
+    setDragOverSource(null);
   };
 
-  const handleDrop = (e: React.DragEvent, targetIndex: number) => {
-    if (!isEditMode || draggedIndex === null) return;
+  const handleDrop = (e: React.DragEvent, targetIndex: number, source: 'app' | 'dock') => {
+    if (!isEditMode || draggedIndex === null || dragSource !== source) return;
     e.preventDefault();
     
     saveHistory();
     
-    const newLayout = [...appLayout];
-    const draggedItem = newLayout[draggedIndex];
-    newLayout.splice(draggedIndex, 1);
-    newLayout.splice(targetIndex, 0, draggedItem);
+    if (source === 'app') {
+      const newLayout = [...appLayout];
+      const draggedItem = newLayout[draggedIndex];
+      newLayout.splice(draggedIndex, 1);
+      newLayout.splice(targetIndex, 0, draggedItem);
+      
+      setAppLayout(newLayout);
+      localStorage.setItem('appLayout', JSON.stringify(newLayout));
+    } else if (source === 'dock') {
+      const newLayout = [...dockLayout];
+      const draggedItem = newLayout[draggedIndex];
+      newLayout.splice(draggedIndex, 1);
+      newLayout.splice(targetIndex, 0, draggedItem);
+      
+      setDockLayout(newLayout);
+      localStorage.setItem('dockLayout', JSON.stringify(newLayout));
+    }
     
-    setAppLayout(newLayout);
-    localStorage.setItem('appLayout', JSON.stringify(newLayout));
     setDraggedIndex(null);
     setDragOverIndex(null);
+    setDragSource(null);
+    setDragOverSource(null);
   };
 
   // 显示删除确认
@@ -296,7 +316,34 @@ export default function HomeScreen({ onNavigate, theme }: HomeScreenProps) {
     const newLayout = [...quickLayout, appId];
     setQuickLayout(newLayout);
     localStorage.setItem('quickLayout', JSON.stringify(newLayout));
-    setShowQuickSelector(false);
+    setActiveSelector(null);
+  };
+
+  // 添加Dock应用
+  const addDockApp = (appId: string) => {
+    if (dockLayout.includes(appId)) {
+      alert('该应用已存在');
+      return;
+    }
+    if (dockLayout.length >= 4) {
+      alert('Dock栏最多4个应用');
+      return;
+    }
+
+    saveHistory();
+
+    const newLayout = [...dockLayout, appId];
+    setDockLayout(newLayout);
+    localStorage.setItem('dockLayout', JSON.stringify(newLayout));
+    setActiveSelector(null);
+  };
+  
+  const handleAddApp = (appId: string) => {
+    if (activeSelector === 'quick') {
+      addQuickApp(appId);
+    } else if (activeSelector === 'dock') {
+      addDockApp(appId);
+    }
   };
 
   // 触摸滑动处理
@@ -516,20 +563,24 @@ export default function HomeScreen({ onNavigate, theme }: HomeScreenProps) {
         </div>
       )}
 
-      {/* 快捷应用选择器 */}
-      {showQuickSelector && (
+      {/* 应用选择器 */}
+      {activeSelector && (
         <div className="absolute inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50">
           <div className="bg-white/90 backdrop-blur-xl rounded-3xl p-6 shadow-2xl mx-6 max-w-md border border-white/50">
-            <h3 className="text-lg font-bold text-slate-800 mb-4">选择快捷应用</h3>
+            <h3 className="text-lg font-bold text-slate-800 mb-4">
+              {activeSelector === 'quick' ? '选择快捷应用' : '选择Dock应用'}
+            </h3>
             <div className="grid grid-cols-4 gap-4 mb-6">
               {Object.entries(iconConfig).map(([appId, config]) => {
                 const Icon = config.icon;
-                const isAdded = quickLayout.includes(appId);
+                const isAdded = activeSelector === 'quick' 
+                  ? quickLayout.includes(appId)
+                  : dockLayout.includes(appId);
                 
                 return (
                   <button
                     key={appId}
-                    onClick={() => !isAdded && addQuickApp(appId)}
+                    onClick={() => !isAdded && handleAddApp(appId)}
                     disabled={isAdded}
                     className={`flex flex-col items-center gap-2 p-3 rounded-xl transition active:scale-95 ${
                       isAdded 
@@ -546,7 +597,7 @@ export default function HomeScreen({ onNavigate, theme }: HomeScreenProps) {
               })}
             </div>
             <button
-              onClick={() => setShowQuickSelector(false)}
+              onClick={() => setActiveSelector(null)}
               className="w-full px-4 py-3 bg-slate-700 hover:bg-slate-800 rounded-xl font-medium text-white transition active:scale-95"
             >
               关闭
@@ -727,7 +778,7 @@ export default function HomeScreen({ onNavigate, theme }: HomeScreenProps) {
             {isEditMode && quickLayout.length < 4 && (
               <div className="text-center">
                 <button 
-                  onClick={() => setShowQuickSelector(true)}
+                  onClick={() => setActiveSelector('quick')}
                   className="w-16 h-16 rounded-2xl bg-white/15 backdrop-blur-md border-2 border-dashed border-white/40 flex items-center justify-center hover:scale-110 active:scale-95 transition-transform shadow-lg mb-1"
                 >
                   <span className="text-white text-3xl font-light">+</span>
@@ -770,17 +821,17 @@ export default function HomeScreen({ onNavigate, theme }: HomeScreenProps) {
               const config = iconConfig[appId];
               if (!config) return null;
               const Icon = config.icon;
-              const isDragOver = dragOverIndex === index && isEditMode;
+              const isDragOver = dragOverIndex === index && isEditMode && dragOverSource === 'app';
               
               return (
                 <div 
                   key={appId}
                   className={`text-center relative ${isDragOver ? 'scale-110' : ''} transition-transform`}
                   draggable={isEditMode}
-                  onDragStart={(e) => handleDragStart(e, index)}
-                  onDragOver={(e) => handleDragOver(e, index)}
+                  onDragStart={(e) => handleDragStart(e, index, 'app')}
+                  onDragOver={(e) => handleDragOver(e, index, 'app')}
                   onDragLeave={handleDragLeave}
-                  onDrop={(e) => handleDrop(e, index)}
+                  onDrop={(e) => handleDrop(e, index, 'app')}
                 >
                   <button 
                     onClick={isEditMode ? undefined : config.onClick}
@@ -817,9 +868,18 @@ export default function HomeScreen({ onNavigate, theme }: HomeScreenProps) {
               const config = iconConfig[appId];
               if (!config) return null;
               const Icon = config.icon;
+              const isDragOver = dragOverIndex === index && isEditMode && dragOverSource === 'dock';
               
               return (
-                <div key={appId} className="relative">
+                <div 
+                  key={appId} 
+                  className={`relative ${isDragOver ? 'scale-110' : ''} transition-transform`}
+                  draggable={isEditMode}
+                  onDragStart={(e) => handleDragStart(e, index, 'dock')}
+                  onDragOver={(e) => handleDragOver(e, index, 'dock')}
+                  onDragLeave={handleDragLeave}
+                  onDrop={(e) => handleDrop(e, index, 'dock')}
+                >
                   <button 
                     onClick={isEditMode ? undefined : config.onClick}
                     onTouchStart={handleLongPressStart}
@@ -827,7 +887,7 @@ export default function HomeScreen({ onNavigate, theme }: HomeScreenProps) {
                     onMouseDown={handleLongPressStart}
                     onMouseUp={handleLongPressEnd}
                     onMouseLeave={handleLongPressEnd}
-                    className={`w-14 h-14 rounded-[18px] bg-white/30 backdrop-blur-md flex items-center justify-center hover:scale-110 active:scale-95 transition-transform ${isEditMode ? 'animate-wiggle' : ''}`}
+                    className={`w-14 h-14 rounded-[18px] bg-white/30 backdrop-blur-md flex items-center justify-center hover:scale-110 active:scale-95 transition-transform ${isEditMode ? 'animate-wiggle cursor-move' : ''}`}
                   >
                     <Icon className="w-6 h-6 text-white" strokeWidth={2} />
                   </button>
@@ -842,6 +902,18 @@ export default function HomeScreen({ onNavigate, theme }: HomeScreenProps) {
                 </div>
               );
             })}
+
+            {/* 添加Dock应用按钮 */}
+            {isEditMode && dockLayout.length < 4 && (
+              <div className="relative">
+                <button 
+                  onClick={() => setActiveSelector('dock')}
+                  className="w-14 h-14 rounded-[18px] bg-white/20 backdrop-blur-md border-2 border-dashed border-white/40 flex items-center justify-center hover:scale-110 active:scale-95 transition-transform shadow-lg"
+                >
+                  <span className="text-white text-2xl font-light">+</span>
+                </button>
+              </div>
+            )}
           </div>
         </div>
 
