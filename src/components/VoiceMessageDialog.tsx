@@ -199,7 +199,7 @@ export function VoiceMessageDialog({ onClose, onSend }: VoiceMessageDialogProps)
                   disabled={!speechSupported}
                   className={`w-16 h-16 rounded-full shadow-lg flex items-center justify-center transition-all ${
                     speechSupported
-                      ? 'bg-gradient-to-br from-red-500 to-red-600 hover:from-red-600 hover:to-red-700 hover:shadow-xl active:scale-95'
+                      ? 'bg-gradient-to-br from-[#07c160] to-[#06ad56] hover:from-[#06ad56] hover:to-[#059e4e] hover:shadow-xl active:scale-95'
                       : 'bg-gray-300 cursor-not-allowed'
                   }`}
                 >
@@ -208,7 +208,7 @@ export function VoiceMessageDialog({ onClose, onSend }: VoiceMessageDialogProps)
                 {voiceText.trim() && (
                   <button
                     onClick={handleSend}
-                    className="px-6 py-3 bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white rounded-full shadow-md hover:shadow-lg flex items-center gap-2 transition-all active:scale-95 font-medium"
+                    className="px-6 py-3 bg-[#07c160] hover:bg-[#06ad56] text-white rounded-full shadow-md hover:shadow-lg flex items-center gap-2 transition-all active:scale-95 font-medium"
                   >
                     <Send className="w-4 h-4" />
                     <span>发送</span>

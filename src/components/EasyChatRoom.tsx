@@ -696,27 +696,27 @@ export function EasyChatRoom({ conversation, contacts, user, onBack, onUpdateCon
                               <div className="flex items-center gap-2">
                                 {isMe ? (
                                   <>
-                                    {/* 声波图标 */}
-                                    <div className="flex items-center gap-[2px]">
-                                      <div className="w-[3px] h-[8px] rounded-full bg-black"></div>
-                                      <div className="w-[3px] h-[12px] rounded-full bg-black"></div>
-                                      <div className="w-[3px] h-[16px] rounded-full bg-black"></div>
-                                    </div>
                                     <span className="text-[17px] font-medium text-black">
                                       {msg.voiceDuration}"
                                     </span>
+                                    {/* 声波图标 - 自己发：从左到右变矮 (高->低) */}
+                                    <div className="flex items-center gap-[2px]">
+                                      <div className="w-[3px] h-[16px] rounded-full bg-black"></div>
+                                      <div className="w-[3px] h-[12px] rounded-full bg-black"></div>
+                                      <div className="w-[3px] h-[8px] rounded-full bg-black"></div>
+                                    </div>
                                   </>
                                 ) : (
                                   <>
-                                    <span className="text-[17px] font-medium text-black">
-                                      {msg.voiceDuration}"
-                                    </span>
-                                    {/* 声波图标 */}
+                                    {/* 声波图标 - 对方发：从左到右变高 (低->高) */}
                                     <div className="flex items-center gap-[2px]">
                                       <div className="w-[3px] h-[8px] rounded-full bg-gray-700"></div>
                                       <div className="w-[3px] h-[12px] rounded-full bg-gray-700"></div>
                                       <div className="w-[3px] h-[16px] rounded-full bg-gray-700"></div>
                                     </div>
+                                    <span className="text-[17px] font-medium text-black">
+                                      {msg.voiceDuration}"
+                                    </span>
                                   </>
                                 )}
                               </div>
