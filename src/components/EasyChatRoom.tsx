@@ -361,17 +361,79 @@ export function EasyChatRoom({ conversation, contacts, user, onBack, onUpdateCon
 
   // 修改消息时间
   const handleEditMessageTime = (messageId: string, newTime: string) => {
+    const targetMsg = conversation.messages.find(m => m.id === messageId);
+    if (!targetMsg) return;
+
+    let newFullTime = targetMsg.fullTime || new Date().getTime();
+    const now = new Date();
+    
+    // 尝试解析新时间
+    try {
+      // 1. 处理 HH:MM 格式 (保持原有日期或默认为今天)
+      const timeMatch = newTime.match(/^(\d{1,2})[:：](\d{1,2})$/);
+      if (timeMatch) {
+        const hours = parseInt(timeMatch[1]);
+        const minutes = parseInt(timeMatch[2]);
+        const date = new Date(newFullTime);
+        date.setHours(hours, minutes, 0, 0);
+        newFullTime = date.getTime();
+      } 
+      // 2. 处理 "昨天 HH:MM" / "前天 HH:MM"
+      else if (newTime.includes('昨天') || newTime.includes('前天')) {
+        const timePart = newTime.match(/(\d{1,2})[:：](\d{1,2})/);
+        if (timePart) {
+          const hours = parseInt(timePart[1]);
+          const minutes = parseInt(timePart[2]);
+          const date = new Date(); // 基准是今天
+          const daysToSubtract = newTime.includes('前天') ? 2 : 1;
+          date.setDate(date.getDate() - daysToSubtract);
+          date.setHours(hours, minutes, 0, 0);
+          newFullTime = date.getTime();
+        }
+      }
+      // 3. 处理完整日期格式 (尝试直接解析)
+      else {
+        // 替换中文年月日为标准格式以便解析
+        const standardStr = newTime
+          .replace(/年/g, '/')
+          .replace(/月/g, '/')
+          .replace(/日/g, '')
+          .replace(/[:：]/g, ':');
+        
+        const parsed = Date.parse(standardStr);
+        if (!isNaN(parsed)) {
+          newFullTime = parsed;
+        }
+      }
+    } catch (e) {
+      console.error('时间解析失败', e);
+    }
+
     const updatedMessages = conversation.messages.map(msg =>
-      msg.id === messageId ? { ...msg, timestamp: newTime } : msg
+      msg.id === messageId ? { ...msg, timestamp: newTime, fullTime: newFullTime } : msg
     );
     
-    // 按时间排序消息（HH:MM格式）
+    // 按 fullTime 排序
     const sortedMessages = updatedMessages.sort((a, b) => {
-      const [aHour, aMin] = a.timestamp.split(':').map(Number);
-      const [bHour, bMin] = b.timestamp.split(':').map(Number);
-      const aTime = aHour * 60 + aMin;
-      const bTime = bHour * 60 + bMin;
-      return aTime - bTime;
+      // 如果没有 fullTime，尝试从 timestamp 解析一个保底值（默认为今天的 HH:MM）
+      const getTime = (msg: EasyChatMessage) => {
+        if (msg.fullTime) return msg.fullTime;
+        
+        // 兼容旧数据的保底逻辑
+        const parts = msg.timestamp.split(':');
+        if (parts.length === 2) {
+          const h = parseInt(parts[0]);
+          const m = parseInt(parts[1]);
+          if (!isNaN(h) && !isNaN(m)) {
+            const d = new Date();
+            d.setHours(h, m, 0, 0);
+            return d.getTime();
+          }
+        }
+        return 0;
+      };
+      
+      return getTime(a) - getTime(b);
     });
     
     onUpdateConversation({ ...conversation, messages: sortedMessages });
