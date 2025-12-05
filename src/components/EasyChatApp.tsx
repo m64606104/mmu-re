@@ -13,6 +13,8 @@ import { FloatingCallWindow } from './FloatingCallWindow';
 import { load, save, checkMigrationNeeded, migrateData } from '../utils/storage';
 import { toast } from 'sonner';
 
+import { Toaster } from './ui/sonner';
+
 interface EasyChatAppProps {
   onBack: () => void;
 }
@@ -265,7 +267,7 @@ export function EasyChatApp({ onBack }: EasyChatAppProps) {
           )}
           {activeTab === 'contacts' && (
             <EasyChatContactsManager
-              onBack={onBack}
+              onBack={() => setActiveTab('chat')}
               contacts={contacts}
               setContacts={setContacts}
             />
@@ -273,7 +275,7 @@ export function EasyChatApp({ onBack }: EasyChatAppProps) {
           {activeTab === 'settings' && (
             <EasyChatUserSettings
               user={user}
-              onBack={onBack}
+              onBack={() => setActiveTab('chat')}
               onUpdateUser={handleUpdateUser}
               uiStyle={uiStyle}
               onChangeUiStyle={(style) => {
@@ -337,6 +339,7 @@ export function EasyChatApp({ onBack }: EasyChatAppProps) {
 
   return (
     <>
+      <Toaster />
       {currentViewContent}
       
       {/* 全局悬浮窗 - 在所有页面都显示 */}

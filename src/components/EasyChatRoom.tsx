@@ -787,7 +787,7 @@ export function EasyChatRoom({ conversation, contacts, user, onBack, onUpdateCon
                     )}
 
                     {/* 消息 */}
-                    <div className={`flex gap-3 mb-3.5 ${isMe ? 'flex-row-reverse' : 'flex-row'}`}>
+                    <div className={`flex gap-3 mb-5 ${isMe ? 'flex-row-reverse' : 'flex-row'}`}>
                       {/* 头像 */}
                       <div className="w-10 h-10 rounded-[5px] bg-blue-500 flex items-center justify-center overflow-hidden flex-shrink-0">
                         {sender.avatar.startsWith('data:') ? (
