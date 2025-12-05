@@ -158,14 +158,17 @@ export function MessageActionDialog({
 
             <div className="px-6 py-5 space-y-4">
               <div className="space-y-2">
-                <Label htmlFor="editTime">消息时间（格式：HH:MM）</Label>
+                <Label htmlFor="editTime">消息时间</Label>
                 <Input
                   id="editTime"
                   value={editTime}
                   onChange={(e) => setEditTime(e.target.value)}
-                  placeholder="例如：14:30"
+                  placeholder="例如：14:30 或 昨天 14:30"
                   className="bg-gray-50 border-gray-200"
                 />
+                <p className="text-xs text-gray-500">
+                  支持格式：14:30、昨天 14:30、2023-12-01 14:30
+                </p>
               </div>
             </div>
 
