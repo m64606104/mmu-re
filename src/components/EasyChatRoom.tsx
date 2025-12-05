@@ -693,22 +693,38 @@ export function EasyChatRoom({ conversation, contacts, user, onBack, onUpdateCon
                               }`}></div>
                               
                               {/* 语音内容 */}
-                              <div className={`flex items-center gap-2 ${isMe ? 'flex-row-reverse' : 'flex-row'}`}>
-                                <span className="text-[17px] font-medium text-black">
-                                  {msg.voiceDuration}"
-                                </span>
-                                {/* WiFi样式的声波图标 */}
-                                <div className="flex items-center gap-[2px]">
-                                  <div className={`w-[3px] h-[8px] rounded-full ${isMe ? 'bg-black' : 'bg-gray-700'}`}></div>
-                                  <div className={`w-[3px] h-[12px] rounded-full ${isMe ? 'bg-black' : 'bg-gray-700'}`}></div>
-                                  <div className={`w-[3px] h-[16px] rounded-full ${isMe ? 'bg-black' : 'bg-gray-700'}`}></div>
-                                </div>
+                              <div className="flex items-center gap-2">
+                                {isMe ? (
+                                  <>
+                                    {/* 声波图标 */}
+                                    <div className="flex items-center gap-[2px]">
+                                      <div className="w-[3px] h-[8px] rounded-full bg-black"></div>
+                                      <div className="w-[3px] h-[12px] rounded-full bg-black"></div>
+                                      <div className="w-[3px] h-[16px] rounded-full bg-black"></div>
+                                    </div>
+                                    <span className="text-[17px] font-medium text-black">
+                                      {msg.voiceDuration}"
+                                    </span>
+                                  </>
+                                ) : (
+                                  <>
+                                    <span className="text-[17px] font-medium text-black">
+                                      {msg.voiceDuration}"
+                                    </span>
+                                    {/* 声波图标 */}
+                                    <div className="flex items-center gap-[2px]">
+                                      <div className="w-[3px] h-[8px] rounded-full bg-gray-700"></div>
+                                      <div className="w-[3px] h-[12px] rounded-full bg-gray-700"></div>
+                                      <div className="w-[3px] h-[16px] rounded-full bg-gray-700"></div>
+                                    </div>
+                                  </>
+                                )}
                               </div>
                             </div>
 
                             {/* 语音转文字 - 点击后展开 */}
                             {msg.voiceText && expandedVoiceMessages.has(msg.id) && (
-                              <div className={`mt-1 p-2.5 bg-white rounded-[4px] max-w-[200px] shadow-md border border-gray-200 relative z-0 ${isMe ? 'self-end' : 'self-start'}`}>
+                              <div className={`mt-1 p-2.5 bg-white rounded-[4px] max-w-[200px] shadow-none border border-gray-300 relative z-0 ${isMe ? 'self-end' : 'self-start'}`}>
                                 {/* 小尖角 */}
                                 <div className={`absolute top-[-5px] w-0 h-0 border-l-[5px] border-l-transparent border-r-[5px] border-r-transparent border-b-[5px] border-b-white ${isMe ? 'right-[12px]' : 'left-[12px]'}`}></div>
                                 <p className="text-gray-800 text-[14px] leading-relaxed break-words">{msg.voiceText}</p>
@@ -786,12 +802,112 @@ export function EasyChatRoom({ conversation, contacts, user, onBack, onUpdateCon
                 >
                   <Smile size={24} strokeWidth={1.5} />
                 </button>
-                <button 
-                  onClick={() => setShowMediaMenu(!showMediaMenu)}
-                  className="p-1 text-[#181818] flex-shrink-0"
-                >
-                  <Plus size={24} strokeWidth={2} />
-                </button>
+
+                {/* 多媒体按钮 - 复用默认布局逻辑 */}
+                <div className="relative">
+                  <button 
+                    onClick={() => setShowMediaMenu(!showMediaMenu)}
+                    className="p-1 text-[#181818] flex-shrink-0"
+                  >
+                    <Plus size={24} strokeWidth={2} />
+                  </button>
+
+                  {showMediaMenu && (
+                    <>
+                      {/* 背景遮罩 */}
+                      <div 
+                        className="fixed inset-0 z-40" 
+                        onClick={() => setShowMediaMenu(false)}
+                      />
+                      
+                      {/* 菜单内容 */}
+                      <div className="absolute bottom-full right-0 mb-3 bg-white rounded-3xl shadow-2xl border border-gray-100 p-4 min-w-[240px] z-50 animate-in slide-in-from-bottom-4 fade-in duration-200">
+                        {/* 标题 */}
+                        <div className="flex items-center justify-between mb-4 pb-3 border-b border-gray-100">
+                          <h3 className="text-sm text-gray-600">更多功能</h3>
+                          <button
+                            onClick={() => setShowMediaMenu(false)}
+                            className="w-6 h-6 rounded-full hover:bg-gray-100 flex items-center justify-center transition-colors"
+                          >
+                            <Plus className="w-4 h-4 text-gray-400 rotate-45" />
+                          </button>
+                        </div>
+
+                        {/* 功能网格 */}
+                        <div className="grid grid-cols-3 gap-3">
+                          <button
+                            onClick={() => {
+                              imageInputRef.current?.click();
+                              setShowMediaMenu(false);
+                            }}
+                            className="flex flex-col items-center gap-2 p-3 rounded-2xl hover:bg-blue-50 active:bg-blue-100 transition-all group"
+                          >
+                            <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-blue-400 to-blue-600 shadow-md group-hover:shadow-lg flex items-center justify-center transition-all group-hover:scale-110">
+                              <ImageIcon className="w-7 h-7 text-white" />
+                            </div>
+                            <span className="text-xs text-gray-700 font-medium">图片</span>
+                          </button>
+
+                          <button
+                            onClick={() => {
+                              videoInputRef.current?.click();
+                              setShowMediaMenu(false);
+                            }}
+                            className="flex flex-col items-center gap-2 p-3 rounded-2xl hover:bg-purple-50 active:bg-purple-100 transition-all group"
+                          >
+                            <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-purple-400 to-purple-600 shadow-md group-hover:shadow-lg flex items-center justify-center transition-all group-hover:scale-110">
+                              <Video className="w-7 h-7 text-white" />
+                            </div>
+                            <span className="text-xs text-gray-700 font-medium">视频</span>
+                          </button>
+
+                          <button
+                            onClick={() => {
+                              setShowEmojiPack(true);
+                              setShowMediaMenu(false);
+                            }}
+                            className="flex flex-col items-center gap-2 p-3 rounded-2xl hover:bg-yellow-50 active:bg-yellow-100 transition-all group"
+                          >
+                            <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-yellow-400 to-yellow-600 shadow-md group-hover:shadow-lg flex items-center justify-center transition-all group-hover:scale-110">
+                              <Smile className="w-7 h-7 text-white" />
+                            </div>
+                            <span className="text-xs text-gray-700 font-medium">表情包</span>
+                          </button>
+
+                          {/* 群直播 - 仅群聊可用 */}
+                          {conversation.type === 'group' && (
+                            <button
+                              onClick={() => {
+                                handleStartLivestream();
+                                setShowMediaMenu(false);
+                              }}
+                              className={`flex flex-col items-center gap-2 p-3 rounded-2xl transition-all group ${
+                                isCurrentUserLivestreaming() 
+                                  ? 'hover:bg-red-50 active:bg-red-100' 
+                                  : 'hover:bg-orange-50 active:bg-orange-100'
+                              }`}
+                            >
+                              <div className={`w-14 h-14 rounded-2xl shadow-md group-hover:shadow-lg flex items-center justify-center transition-all group-hover:scale-110 ${
+                                isCurrentUserLivestreaming() 
+                                  ? 'bg-gradient-to-br from-red-400 to-pink-600' 
+                                  : 'bg-gradient-to-br from-orange-400 to-red-600'
+                              }`}>
+                                {isCurrentUserLivestreaming() ? (
+                                  <PhoneOff className="w-7 h-7 text-white" />
+                                ) : (
+                                  <Radio className="w-7 h-7 text-white" />
+                                )}
+                              </div>
+                              <span className="text-xs text-gray-700 font-medium">
+                                {isCurrentUserLivestreaming() ? '关闭直播' : '直播'}
+                              </span>
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    </>
+                  )}
+                </div>
               </>
             ) : (
               <button
@@ -866,6 +982,63 @@ export function EasyChatRoom({ conversation, contacts, user, onBack, onUpdateCon
               </div>
             </div>
           </div>
+        )}
+
+        {/* 语音消息弹窗 */}
+        {showVoiceDialog && (
+          <VoiceMessageDialog
+            onClose={() => setShowVoiceDialog(false)}
+            onSend={handleSendVoice}
+          />
+        )}
+
+        {/* 消息操作弹窗 */}
+        {showMessageActionDialog && selectedMessage && (
+          <MessageActionDialog
+            message={selectedMessage}
+            onClose={() => {
+              setShowMessageActionDialog(false);
+              setSelectedMessage(null);
+            }}
+            onEdit={handleEditMessage}
+            onDelete={handleDeleteMessage}
+            onEditTime={handleEditMessageTime}
+          />
+        )}
+
+        {/* 表情包弹窗 */}
+        {showEmojiPack && (
+          <EmojiPackDialog
+            onClose={() => setShowEmojiPack(false)}
+            onSend={handleSendEmojiPack}
+          />
+        )}
+
+        {/* 直播详情弹窗 */}
+        {selectedLivestream && (
+          <LivestreamDialog
+            livestream={selectedLivestream}
+            currentUserId={currentSenderId}
+            contacts={contacts}
+            user={user}
+            onClose={() => setSelectedLivestream(null)}
+            onJoinAsViewer={() => handleJoinLivestreamAsViewer(selectedLivestream)}
+            onJoinAsCoHost={() => handleJoinLivestreamAsCoHost(selectedLivestream)}
+            onEndLivestream={() => handleEndLivestream(selectedLivestream)}
+          />
+        )}
+
+        {/* 群通话详情弹窗 */}
+        {selectedGroupCall && (
+          <GroupCallDialog
+            groupCall={selectedGroupCall}
+            currentUserId={currentSenderId}
+            contacts={contacts}
+            user={user}
+            onClose={() => setSelectedGroupCall(null)}
+            onJoinCall={() => handleJoinGroupCall(selectedGroupCall)}
+            onEndCall={() => handleEndGroupCall(selectedGroupCall)}
+          />
         )}
       </div>
     );
