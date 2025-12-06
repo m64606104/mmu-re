@@ -1088,7 +1088,7 @@ export function EasyChatRoom({ conversation, contacts, user, onBack, onUpdateCon
                       <div className={`flex flex-col relative ${isMe ? 'items-end' : 'items-start'}`}>
                         {/* 群聊且非自己：显示昵称 */}
                         {conversation.type === 'group' && !isMe && (
-                          <div className="text-[12px] text-gray-500 mb-[2px] ml-1">
+                          <div className="text-[12px] text-gray-500 mb-[5px] ml-0 leading-none">
                             {sender.name}
                           </div>
                         )}
