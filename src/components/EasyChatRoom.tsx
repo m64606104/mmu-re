@@ -1085,10 +1085,10 @@ export function EasyChatRoom({ conversation, contacts, user, onBack, onUpdateCon
                       </div>
 
                       {/* 消息气泡 */}
-                      <div className={`flex flex-col relative ${isMe ? 'items-end' : 'items-start'} ${!isMe && conversation.type === 'group' ? '-mt-3' : ''}`}>
+                      <div className={`flex flex-col relative ${isMe ? 'items-end' : 'items-start'} ${!isMe && conversation.type === 'group' ? '-mt-[9px]' : ''}`}>
                         {/* 群聊且非自己：显示昵称 */}
                         {conversation.type === 'group' && !isMe && (
-                          <div className="text-[12px] text-gray-500 mb-0.5 -ml-1.5 leading-none">
+                          <div className="text-[12px] text-gray-500 mb-[3px] -ml-1.5 leading-none">
                             {sender.name}
                           </div>
                         )}
