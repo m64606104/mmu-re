@@ -43,7 +43,11 @@ export function EasyChatRoom({ conversation, contacts, user, onBack, onUpdateCon
   const [isSelectionMode, setIsSelectionMode] = useState(false);
   const [selectedMessageIds, setSelectedMessageIds] = useState<Set<string>>(new Set());
   const [showBatchTimeDialog, setShowBatchTimeDialog] = useState(false);
-  const [timeEditValue, setTimeEditValue] = useState('');
+  // 分块时间修改状态
+  const [batchYear, setBatchYear] = useState('');
+  const [batchMonth, setBatchMonth] = useState('');
+  const [batchDay, setBatchDay] = useState('');
+  const [batchTime, setBatchTime] = useState('');
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -103,7 +107,10 @@ export function EasyChatRoom({ conversation, contacts, user, onBack, onUpdateCon
     setSelectedMessageIds(new Set());
     // 退出多选模式时清空输入
     if (isSelectionMode) {
-      setTimeEditValue('');
+      setBatchYear('');
+      setBatchMonth('');
+      setBatchDay('');
+      setBatchTime('');
     }
   };
 
@@ -142,96 +149,47 @@ export function EasyChatRoom({ conversation, contacts, user, onBack, onUpdateCon
 
   // 批量修改时间确认
   const handleBatchEditTimeConfirm = () => {
-    if (!timeEditValue.trim()) return;
+    // 如果所有字段都为空，则不执行任何操作
+    if (!batchYear && !batchMonth && !batchDay && !batchTime) return;
 
-    const newTime = timeEditValue.trim();
     let updatedCount = 0;
 
     const updatedMessages = conversation.messages.map(msg => {
       if (selectedMessageIds.has(msg.id)) {
-        // 智能时间解析逻辑
         let newFullTime = msg.fullTime || new Date().getTime();
-        const originalDate = new Date(newFullTime);
-        
-        // 预处理字符串
-        let processedTime = newTime
-          .replace(/年/g, '/')
-          .replace(/月/g, '/')
-          .replace(/日/g, ' ')
-          .replace(/号/g, ' ')
-          .replace(/点/g, ':')
-          .replace(/分/g, '')
-          .replace(/[。.]/g, '/')
-          .replace(/[:：]/g, ':')
-          .trim()
-          .replace(/\s+/g, ' ');
-
-        try {
-          // 1. 检测是否包含年份 (4位数字)
-          const hasYear = /\d{4}/.test(processedTime);
-          // 2. 检测是否包含日期 (月/日 或 昨天/前天)
-          const hasDate = /\d{1,2}[\/\-\.]\d{1,2}/.test(processedTime) || /昨天|前天/.test(newTime);
-          // 3. 检测是否包含时间 (HH:MM)
-          const hasTime = /\d{1,2}:\d{1,2}/.test(processedTime);
-
-          // 逻辑分支处理
-          if (hasTime && !hasDate && !hasYear) {
-            // Case A: 只有时间 (HH:MM) -> 保留原年月日
-            const match = processedTime.match(/(\d{1,2}):(\d{1,2})/);
-            if (match) {
-              const h = parseInt(match[1]);
-              const m = parseInt(match[2]);
-              const d = new Date(newFullTime);
-              d.setHours(h, m, 0, 0);
-              newFullTime = d.getTime();
-            }
-          } else if (hasDate && !hasYear) {
-            // Case B: 包含日期，但无年份 -> 使用原年份 (关键修复)
-            if (newTime.includes('昨天') || newTime.includes('前天')) {
-              // 相对日期：相对于"今天"
-              const d = new Date();
-              const sub = newTime.includes('前天') ? 2 : 1;
-              d.setDate(d.getDate() - sub);
-              const timeMatch = processedTime.match(/(\d{1,2}):(\d{1,2})/);
-              if (timeMatch) {
-                d.setHours(parseInt(timeMatch[1]), parseInt(timeMatch[2]), 0, 0);
-              } else {
-                // 如果没写时间，保留原时间？或者默认 00:00？通常会有时间。
-                // 如果只写"昨天"，保留原时间？
-                d.setHours(originalDate.getHours(), originalDate.getMinutes(), 0, 0);
-              }
-              newFullTime = d.getTime();
-            } else {
-              // 普通日期 "12/05 14:00" -> 使用原年份
-              const currentYear = originalDate.getFullYear();
-              // 尝试拼接原年份
-              // 如果 processedTime 开头是时间，可能解析失败，假设格式是 MM/DD HH:MM
-              const tryStr = `${currentYear}/${processedTime}`;
-              const parsed = Date.parse(tryStr);
-              if (!isNaN(parsed)) {
-                newFullTime = parsed;
-              } else {
-                // 尝试当前年份作为备选
-                const fallbackParsed = Date.parse(`${new Date().getFullYear()}/${processedTime}`);
-                if (!isNaN(fallbackParsed)) newFullTime = fallbackParsed;
-              }
-            }
-          } else if (hasYear) {
-            // Case C: 包含年份 -> 直接解析
-            const parsed = Date.parse(processedTime);
-            if (!isNaN(parsed)) newFullTime = parsed;
-          } else {
-            // Fallback: 尝试直接解析
-            const parsed = Date.parse(processedTime);
-            if (!isNaN(parsed)) newFullTime = parsed;
-          }
-        } catch (e) {
-          console.error('批量时间解析失败', e);
-        }
-
-        updatedCount++;
-        // 构造新的 timestamp 字符串显示 (仅显示 HH:MM 用于 UI，实际排序用 fullTime)
         const d = new Date(newFullTime);
+
+        // 逐个字段更新
+        if (batchYear) {
+          const y = parseInt(batchYear);
+          if (!isNaN(y)) d.setFullYear(y);
+        }
+        
+        if (batchMonth) {
+          const m = parseInt(batchMonth);
+          if (!isNaN(m) && m >= 1 && m <= 12) d.setMonth(m - 1);
+        }
+        
+        if (batchDay) {
+          const day = parseInt(batchDay);
+          if (!isNaN(day) && day >= 1 && day <= 31) d.setDate(day);
+        }
+        
+        if (batchTime) {
+          const parts = batchTime.split(/[:：]/);
+          if (parts.length >= 2) {
+            const h = parseInt(parts[0]);
+            const m = parseInt(parts[1]);
+            if (!isNaN(h) && !isNaN(m)) {
+              d.setHours(h, m, 0, 0);
+            }
+          }
+        }
+        
+        newFullTime = d.getTime();
+        updatedCount++;
+        
+        // 构造新的 timestamp 字符串显示 (仅显示 HH:MM 用于 UI，实际排序用 fullTime)
         const newTimeStr = `${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')}`;
         
         return { ...msg, timestamp: newTimeStr, fullTime: newFullTime };
@@ -249,18 +207,20 @@ export function EasyChatRoom({ conversation, contacts, user, onBack, onUpdateCon
     setShowBatchTimeDialog(false);
     setIsSelectionMode(false);
     setSelectedMessageIds(new Set());
-    setTimeEditValue('');
+    setBatchYear('');
+    setBatchMonth('');
+    setBatchDay('');
+    setBatchTime('');
     toast.success(`已修改 ${updatedCount} 条消息的时间`);
   };
 
   const handleOpenBatchTimeDialog = () => {
     if (selectedMessageIds.size === 0) return;
-    // 默认填入第一条选中消息的时间
-    const firstId = Array.from(selectedMessageIds)[0];
-    const firstMsg = conversation.messages.find(m => m.id === firstId);
-    if (firstMsg) {
-      setTimeEditValue(formatMessageTime(firstMsg)); // 使用格式化后的时间作为初始值
-    }
+    // 默认清空，显示 Placeholder "保持原样"
+    setBatchYear('');
+    setBatchMonth('');
+    setBatchDay('');
+    setBatchTime('');
     setShowBatchTimeDialog(true);
   };
 
@@ -947,19 +907,66 @@ export function EasyChatRoom({ conversation, contacts, user, onBack, onUpdateCon
         </div>
         
         <div className="p-4 space-y-4">
-          <div className="space-y-2">
-            <label className="text-sm font-medium text-gray-700">
-              新时间 (将应用于 {selectedMessageIds.size} 条消息)
+          <div className="space-y-3">
+            <label className="text-sm font-medium text-gray-700 block">
+              新时间 (留空则保持原样)
             </label>
-            <input
-              type="text"
-              value={timeEditValue}
-              onChange={(e) => setTimeEditValue(e.target.value)}
-              placeholder="例如: 14:30 或 昨天 14:30"
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-            />
+            
+            {/* 年月日输入 */}
+            <div className="flex items-center gap-2">
+              <div className="flex-1 min-w-[70px]">
+                <input
+                  type="number"
+                  value={batchYear}
+                  onChange={(e) => setBatchYear(e.target.value)}
+                  placeholder="年"
+                  className="w-full px-2 py-2 border border-gray-300 rounded-lg text-center focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                />
+              </div>
+              <span className="text-gray-500 text-sm">年</span>
+              
+              <div className="w-[60px]">
+                <input
+                  type="number"
+                  value={batchMonth}
+                  onChange={(e) => setBatchMonth(e.target.value)}
+                  placeholder="月"
+                  min="1"
+                  max="12"
+                  className="w-full px-2 py-2 border border-gray-300 rounded-lg text-center focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                />
+              </div>
+              <span className="text-gray-500 text-sm">月</span>
+              
+              <div className="w-[60px]">
+                <input
+                  type="number"
+                  value={batchDay}
+                  onChange={(e) => setBatchDay(e.target.value)}
+                  placeholder="日"
+                  min="1"
+                  max="31"
+                  className="w-full px-2 py-2 border border-gray-300 rounded-lg text-center focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                />
+              </div>
+              <span className="text-gray-500 text-sm">日</span>
+            </div>
+
+            {/* 时间输入 */}
+            <div className="flex items-center gap-2">
+              <div className="flex-1">
+                <input
+                  type="text"
+                  value={batchTime}
+                  onChange={(e) => setBatchTime(e.target.value)}
+                  placeholder="时间 (例如 14:30)"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                />
+              </div>
+            </div>
+
             <p className="text-xs text-gray-500">
-              支持格式：14:30 (仅修改时间)、12-05 14:30 (保留原年份)、2023-12-05 14:30 (修改全部)
+              * 只填写想修改的部分，未填写的将保持原样
             </p>
           </div>
           
@@ -972,7 +979,7 @@ export function EasyChatRoom({ conversation, contacts, user, onBack, onUpdateCon
             </button>
             <button
               onClick={handleBatchEditTimeConfirm}
-              disabled={!timeEditValue.trim()}
+              disabled={!batchYear && !batchMonth && !batchDay && !batchTime}
               className="flex-1 px-4 py-2 text-white bg-[#07c160] rounded-lg hover:bg-[#06ad56] font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >
               确定

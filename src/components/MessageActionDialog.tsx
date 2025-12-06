@@ -24,7 +24,13 @@ export function MessageActionDialog({
 }: MessageActionDialogProps) {
   const [action, setAction] = useState<'menu' | 'edit' | 'editTime'>('menu');
   const [editText, setEditText] = useState(message.text);
-  const [editTime, setEditTime] = useState(message.timestamp);
+  
+  // 初始化时间状态
+  const initDate = message.fullTime ? new Date(message.fullTime) : new Date();
+  const [year, setYear] = useState(initDate.getFullYear().toString());
+  const [month, setMonth] = useState((initDate.getMonth() + 1).toString());
+  const [day, setDay] = useState(initDate.getDate().toString());
+  const [time, setTime] = useState(`${initDate.getHours().toString().padStart(2, '0')}:${initDate.getMinutes().toString().padStart(2, '0')}`);
 
   const handleEdit = () => {
     if (editText.trim()) {
@@ -39,10 +45,10 @@ export function MessageActionDialog({
   };
 
   const handleEditTime = () => {
-    if (editTime.trim()) {
-      onEditTime(message.id, editTime);
-      onClose();
-    }
+    // 组合成标准时间字符串 YYYY/MM/DD HH:MM
+    const newTimeStr = `${year}/${month}/${day} ${time}`;
+    onEditTime(message.id, newTimeStr);
+    onClose();
   };
 
   return (
@@ -170,18 +176,61 @@ export function MessageActionDialog({
             </div>
 
             <div className="px-6 py-5 space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="editTime">消息时间</Label>
-                <Input
-                  id="editTime"
-                  value={editTime}
-                  onChange={(e) => setEditTime(e.target.value)}
-                  placeholder="例如：14:30 或 昨天 14:30"
-                  className="bg-gray-50 border-gray-200"
-                />
-                <p className="text-xs text-gray-500">
-                  支持格式：14:30、昨天 14:30、2023-12-01 14:30
-                </p>
+              <div className="space-y-3">
+                <Label className="text-gray-700 block">消息时间</Label>
+                
+                {/* 年月日输入 */}
+                <div className="flex items-center gap-2">
+                  <div className="flex-1 min-w-[70px]">
+                    <input
+                      type="number"
+                      value={year}
+                      onChange={(e) => setYear(e.target.value)}
+                      placeholder="年"
+                      className="w-full px-2 py-2 border border-gray-300 rounded-lg text-center focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-gray-50"
+                    />
+                  </div>
+                  <span className="text-gray-500 text-sm">年</span>
+                  
+                  <div className="w-[60px]">
+                    <input
+                      type="number"
+                      value={month}
+                      onChange={(e) => setMonth(e.target.value)}
+                      placeholder="月"
+                      min="1"
+                      max="12"
+                      className="w-full px-2 py-2 border border-gray-300 rounded-lg text-center focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-gray-50"
+                    />
+                  </div>
+                  <span className="text-gray-500 text-sm">月</span>
+                  
+                  <div className="w-[60px]">
+                    <input
+                      type="number"
+                      value={day}
+                      onChange={(e) => setDay(e.target.value)}
+                      placeholder="日"
+                      min="1"
+                      max="31"
+                      className="w-full px-2 py-2 border border-gray-300 rounded-lg text-center focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-gray-50"
+                    />
+                  </div>
+                  <span className="text-gray-500 text-sm">日</span>
+                </div>
+
+                {/* 时间输入 */}
+                <div className="flex items-center gap-2">
+                  <div className="flex-1">
+                    <input
+                      type="text"
+                      value={time}
+                      onChange={(e) => setTime(e.target.value)}
+                      placeholder="时间 (例如 14:30)"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-gray-50"
+                    />
+                  </div>
+                </div>
               </div>
             </div>
 
@@ -195,7 +244,7 @@ export function MessageActionDialog({
               </Button>
               <Button
                 onClick={handleEditTime}
-                disabled={!editTime.trim()}
+                disabled={!year || !month || !day || !time}
                 className="flex-1 bg-blue-500 hover:bg-blue-600"
               >
                 保存
