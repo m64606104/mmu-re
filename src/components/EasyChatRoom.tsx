@@ -1076,7 +1076,7 @@ export function EasyChatRoom({ conversation, contacts, user, onBack, onUpdateCon
                       )}
                       <div className={`flex-1 flex gap-3 ${isMe ? 'flex-row-reverse' : 'flex-row'}`}>
                       {/* 头像 */}
-                      <div className="w-10 h-10 rounded-[5px] bg-blue-500 flex items-center justify-center overflow-hidden flex-shrink-0 mt-1">
+                      <div className="w-10 h-10 rounded-[5px] bg-blue-500 flex items-center justify-center overflow-hidden flex-shrink-0">
                         {sender.avatar.startsWith('data:') ? (
                           <img src={sender.avatar} alt="头像" className="w-full h-full object-cover" />
                         ) : (
@@ -1085,10 +1085,10 @@ export function EasyChatRoom({ conversation, contacts, user, onBack, onUpdateCon
                       </div>
 
                       {/* 消息气泡 */}
-                      <div className={`flex flex-col relative ${isMe ? 'items-end' : 'items-start'}`}>
+                      <div className={`flex flex-col relative ${isMe ? 'items-end' : 'items-start'} ${!isMe && conversation.type === 'group' ? '-mt-3' : ''}`}>
                         {/* 群聊且非自己：显示昵称 */}
                         {conversation.type === 'group' && !isMe && (
-                          <div className="text-[12px] text-gray-500 mb-[5px] ml-0 leading-none">
+                          <div className="text-[12px] text-gray-500 mb-0.5 -ml-1.5 leading-none">
                             {sender.name}
                           </div>
                         )}
