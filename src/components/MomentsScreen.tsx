@@ -11,9 +11,9 @@ interface MomentsScreenProps {
   conversations: Conversation[];
   userProfile: UserProfile;
   apiConfig: ApiConfig;
-  onAddMoment: (content: string, images: string[]) => void;
+  onAddMoment: (postData: any) => void;
   onLikeMoment: (momentId: string) => void;
-  onCommentMoment: (momentId: string, content: string) => void;
+  onCommentMoment: (momentId: string, content: string, authorInfo?: any) => void;
   onBack: () => void;
 }
 
@@ -30,9 +30,31 @@ export default function MomentsScreen({
   const [showNewPost, setShowNewPost] = useState(false);
   const [newPostContent, setNewPostContent] = useState('');
   const [newPostImages, setNewPostImages] = useState<string[]>([]);
+  const [postingAs, setPostingAs] = useState<string>('user'); // 发布身份
   const [commentingMomentId, setCommentingMomentId] = useState<string | null>(null);
   const [commentContent, setCommentContent] = useState('');
+  const [commentingAs, setCommentingAs] = useState<string>('user'); // 评论身份
   const [aiMoments, setAiMoments] = useState<MomentPost[]>([]);
+  
+  // 获取指定ID的角色信息
+  const getAuthorInfo = (id: string) => {
+    if (id === 'user') {
+      return {
+        id: 'user',
+        name: userProfile.username,
+        avatar: userProfile.avatar
+      };
+    }
+    const contact = conversations.find(c => c.id === id);
+    if (contact) {
+      return {
+        id: contact.id,
+        name: contact.characterSettings?.nickname || contact.name,
+        avatar: contact.characterSettings?.avatar || contact.avatar
+      };
+    }
+    return { id: 'unknown', name: '未知', avatar: '' };
+  };
   const imageInputRef = useRef<HTMLInputElement>(null);
   const [viewingImageDesc, setViewingImageDesc] = useState<{ desc: string; index: number } | null>(null);
   const [showMenuForMoment, setShowMenuForMoment] = useState<string | null>(null);
@@ -309,6 +331,46 @@ export default function MomentsScreen({
     return () => io.disconnect();
   }, [allMoments]);
 
+  // 角色选择器组件
+  const RoleSelector = ({ selectedId, onSelect }: { selectedId: string, onSelect: (id: string) => void }) => (
+    <div className="flex gap-3 overflow-x-auto py-2 scrollbar-hide mb-3 px-1">
+      <button
+        onClick={() => onSelect('user')}
+        className={`flex flex-col items-center gap-1 min-w-[60px] transition-opacity ${selectedId === 'user' ? 'opacity-100 scale-105' : 'opacity-60 scale-100'}`}
+      >
+        <div className={`w-10 h-10 rounded-full overflow-hidden border-2 ${selectedId === 'user' ? 'border-blue-500 shadow-md' : 'border-transparent'}`}>
+          {userProfile.avatar ? (
+            <img src={userProfile.avatar} alt="我" className="w-full h-full object-cover" />
+          ) : (
+            <div className="w-full h-full bg-gray-300 flex items-center justify-center text-xs">我</div>
+          )}
+        </div>
+        <span className="text-xs truncate w-full text-center font-medium">我</span>
+      </button>
+      {conversations.map(c => {
+        const charSettings = c.characterSettings || {} as any;
+        const name = charSettings.nickname || c.name;
+        const avatar = charSettings.avatar || c.avatar;
+        return (
+          <button
+            key={c.id}
+            onClick={() => onSelect(c.id)}
+            className={`flex flex-col items-center gap-1 min-w-[60px] transition-opacity ${selectedId === c.id ? 'opacity-100 scale-105' : 'opacity-60 scale-100'}`}
+          >
+            <div className={`w-10 h-10 rounded-full overflow-hidden border-2 ${selectedId === c.id ? 'border-blue-500 shadow-md' : 'border-transparent'}`}>
+              {avatar?.startsWith('data:') || avatar?.startsWith('http') ? (
+                <img src={avatar} alt={name} className="w-full h-full object-cover" />
+              ) : (
+                <div className="w-full h-full bg-gray-200 flex items-center justify-center text-xs">{avatar || name.charAt(0)}</div>
+              )}
+            </div>
+            <span className="text-xs truncate w-full text-center font-medium">{name}</span>
+          </button>
+        );
+      })}
+    </div>
+  );
+
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (files) {
@@ -343,10 +405,18 @@ export default function MomentsScreen({
 
   const handlePublish = () => {
     if (newPostContent.trim() || newPostImages.length > 0) {
-      onAddMoment(newPostContent, newPostImages);
+      const author = getAuthorInfo(postingAs);
+      onAddMoment({
+        userId: author.id,
+        username: author.name,
+        userAvatar: author.avatar,
+        content: newPostContent,
+        images: newPostImages
+      });
       setNewPostContent('');
       setNewPostImages([]);
       setShowNewPost(false);
+      setPostingAs('user'); // reset
       
       // 🎯 用户发布朋友圈后，触发AI互动（事件驱动）
       setTimeout(() => {
@@ -362,18 +432,22 @@ export default function MomentsScreen({
 
   const handleComment = async (momentId: string) => {
     if (commentContent.trim()) {
+      const author = getAuthorInfo(commentingAs);
+      const commentInfo = {
+        authorId: author.id,
+        authorName: author.name,
+        authorAvatar: author.avatar,
+        content: commentContent,
+        replyTo: replyToComment?.id,
+        replyToName: replyToComment?.authorName
+      };
+
       // 检查是否是AI朋友圈
       const aiMoment = aiMoments.find(m => m.id === momentId);
-      if (aiMoment && aiMoment.authorId) {
+      // 如果是用户自己发的朋友圈（authorId='user'），也要走 onCommentMoment
+      if (aiMoment && aiMoment.authorId && aiMoment.authorId !== 'user') {
         // AI朋友圈评论
-        await commentMomentPost(aiMoment.authorId, momentId, {
-          authorId: 'user',
-          authorName: userProfile.username,
-          authorAvatar: userProfile.avatar,
-          content: commentContent,
-          replyTo: replyToComment?.id,
-          replyToName: replyToComment?.authorName
-        });
+        await commentMomentPost(aiMoment.authorId, momentId, commentInfo);
         
         // 🔄 立即刷新朋友圈显示
         const updatedPosts = await getAllMomentPosts();
@@ -410,11 +484,12 @@ export default function MomentsScreen({
         setAiMoments(posts);
       } else {
         // 用户朋友圈评论
-        onCommentMoment(momentId, commentContent);
+        onCommentMoment(momentId, commentContent, commentInfo);
       }
       setCommentContent('');
       setCommentingMomentId(null);
       setReplyToComment(null);
+      setCommentingAs('user'); // reset
     }
   };
 
@@ -981,6 +1056,11 @@ export default function MomentsScreen({
                 {/* Comment Input */}
                 {commentingMomentId === moment.id && (
                   <div className="mt-3 pt-3 border-t border-gray-100">
+                    {/* 评论角色选择 */}
+                    <div className="mb-2">
+                      <RoleSelector selectedId={commentingAs} onSelect={setCommentingAs} />
+                    </div>
+
                     {replyToComment && (
                       <div className="flex items-center justify-between bg-blue-50 px-3 py-2 rounded-t-lg text-sm">
                         <span className="text-blue-700">
@@ -1035,6 +1115,12 @@ export default function MomentsScreen({
               >
                 取消
               </button>
+            </div>
+
+            {/* 角色选择器 */}
+            <div className="mb-4">
+              <label className="text-xs font-medium text-gray-500 mb-2 block px-1">发布身份</label>
+              <RoleSelector selectedId={postingAs} onSelect={setPostingAs} />
             </div>
 
             <textarea

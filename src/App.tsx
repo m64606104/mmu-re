@@ -718,18 +718,25 @@ function App() {
   }, []);
 
   // 添加朋友圈
-  const addMoment = useCallback((content: string, images: string[]) => {
+  const addMoment = useCallback((postData: any) => {
     const newMoment: MomentPost = {
       id: Date.now().toString(),
-      userId: 'user',
-      username: userProfile.username,
-      userAvatar: userProfile.avatar,
-      content,
-      images,
       timestamp: Date.now(),
       likes: [],
-      comments: []
+      comments: [],
+      ...postData
     };
+    
+    // 确保有用户信息
+    if (!newMoment.userId && !newMoment.authorId) {
+      newMoment.userId = 'user';
+      newMoment.authorId = 'user';
+      newMoment.username = userProfile.username;
+      newMoment.authorName = userProfile.username;
+      newMoment.userAvatar = userProfile.avatar;
+      newMoment.authorAvatar = userProfile.avatar;
+    }
+
     setMoments(prev => [newMoment, ...prev]);
   }, [userProfile]);
 
@@ -748,16 +755,21 @@ function App() {
   }, []);
 
   // 评论朋友圈
-  const commentMoment = useCallback((momentId: string, content: string) => {
+  const commentMoment = useCallback((momentId: string, content: string, authorInfo?: any) => {
     setMoments(prev => prev.map(moment => {
       if (moment.id === momentId) {
         const newComment = {
           id: Date.now().toString(),
-          userId: 'user',
-          username: userProfile.username,
-          userAvatar: userProfile.avatar,
+          userId: authorInfo?.id || 'user',
+          username: authorInfo?.name || userProfile.username,
+          userAvatar: authorInfo?.avatar || userProfile.avatar,
+          authorId: authorInfo?.id || 'user',
+          authorName: authorInfo?.name || userProfile.username,
+          authorAvatar: authorInfo?.avatar || userProfile.avatar,
           content,
-          timestamp: Date.now()
+          timestamp: Date.now(),
+          replyTo: authorInfo?.replyTo,
+          replyToName: authorInfo?.replyToName
         };
         return { ...moment, comments: [...moment.comments, newComment] };
       }
