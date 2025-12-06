@@ -8,13 +8,12 @@ interface EmojiPackDialogProps {
 }
 
 export function EmojiPackDialog({ onClose, onSend }: EmojiPackDialogProps) {
-  const [description, setDescription] = useState('');
-
-  const handleSend = () => {
-    if (!description.trim()) return;
-    onSend(description);
-    onClose();
-  };
+  const STICKERS = [
+    '😀', '😂', '🤣', '❤️', '😍', 
+    '😭', '🙏', '🎉', '👍', '👎', 
+    '👋', '💩', '👻', '🤖', '🍅', 
+    '💣', '🌹', '🐷', '🐶', '🐱'
+  ];
 
   return (
     <div className="absolute inset-0 bg-black/40 z-50 flex items-center justify-center animate-in fade-in duration-200">
@@ -23,7 +22,7 @@ export function EmojiPackDialog({ onClose, onSend }: EmojiPackDialogProps) {
         <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
           <div className="flex items-center gap-2">
             <Smile className="w-5 h-5 text-yellow-500" />
-            <h3>发送表情包</h3>
+            <h3>表情包</h3>
           </div>
           <button
             onClick={onClose}
@@ -33,35 +32,27 @@ export function EmojiPackDialog({ onClose, onSend }: EmojiPackDialogProps) {
           </button>
         </div>
 
-        {/* 内容区域 */}
-        <div className="px-6 py-5 space-y-4">
-          <div className="space-y-2">
-            <p className="text-sm text-gray-600">描述表情包内容</p>
-            <textarea
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              placeholder="例如：笑哭、委屈、点赞..."
-              className="w-full min-h-[100px] px-3 py-2 border border-gray-200 rounded-lg resize-none outline-none focus:ring-2 focus:ring-yellow-500 focus:border-transparent"
-            />
+        {/* 内容区域 - 网格布局 */}
+        <div className="p-4 max-h-[60vh] overflow-y-auto">
+          <div className="grid grid-cols-5 gap-3">
+            {STICKERS.map((sticker, index) => (
+              <button
+                key={index}
+                onClick={() => {
+                  onSend(sticker);
+                  onClose();
+                }}
+                className="aspect-square flex items-center justify-center text-4xl hover:bg-gray-50 rounded-xl transition-colors active:scale-95"
+              >
+                {sticker}
+              </button>
+            ))}
           </div>
         </div>
 
-        {/* 按钮区域 */}
-        <div className="flex gap-3 px-6 pb-6">
-          <Button
-            onClick={onClose}
-            variant="outline"
-            className="flex-1"
-          >
-            取消
-          </Button>
-          <Button
-            onClick={handleSend}
-            disabled={!description.trim()}
-            className="flex-1 bg-yellow-500 hover:bg-yellow-600"
-          >
-            发送
-          </Button>
+        {/* 底部区域 */}
+        <div className="px-6 py-4 border-t border-gray-100 bg-gray-50">
+          <p className="text-xs text-center text-gray-500">点击即可发送</p>
         </div>
       </div>
     </div>

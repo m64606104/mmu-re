@@ -1069,6 +1069,13 @@ export function EasyChatRoom({ conversation, contacts, user, onBack, onUpdateCon
 
                       {/* 消息气泡 */}
                       <div className={`flex flex-col relative ${isMe ? 'items-end' : 'items-start'}`}>
+                        {/* 群聊且非自己：显示昵称 */}
+                        {conversation.type === 'group' && !isMe && (
+                          <div className="text-[12px] text-gray-500 mb-[2px] ml-1">
+                            {sender.name}
+                          </div>
+                        )}
+
                         {isSelectionMode && (
                             <div 
                               className="absolute inset-0 z-10 cursor-pointer"
@@ -1181,6 +1188,174 @@ export function EasyChatRoom({ conversation, contacts, user, onBack, onUpdateCon
                                </div>
                             </div>
                           </div>
+                        ) : msg.type === 'emojipack' ? (
+                          <div 
+                             className="cursor-pointer hover:scale-110 transition-transform px-2"
+                             onClick={() => handleLongPressMessage(msg)}
+                             title={msg.emojipackDescription}
+                          >
+                            <span className="text-[64px] leading-none drop-shadow-sm select-none filter">
+                              {msg.emojipackDescription}
+                            </span>
+                          </div>
+                        ) : msg.type === 'livestream' ? (
+                          <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                if (msg.livestreamData && msg.livestreamData.isActive && onStartGlobalCall) {
+                                  onStartGlobalCall({
+                                    type: 'livestream',
+                                    callType: 'video',
+                                    conversationId: conversation.id,
+                                    contactName: conversation.name,
+                                    contactAvatar: conversation.avatar,
+                                    isMinimized: false,
+                                    groupData: {
+                                      data: msg.livestreamData,
+                                      currentUserId: currentSenderId,
+                                      participantIds: msg.livestreamData?.viewers || []
+                                    }
+                                  });
+                                }
+                              }}
+                              onContextMenu={(e) => {
+                                e.preventDefault();
+                                handleLongPressMessage(msg);
+                              }}
+                              className="bg-gradient-to-br from-red-50 to-pink-50 rounded-2xl p-4 shadow-sm border border-red-100 hover:shadow-md transition-all w-64"
+                            >
+                              <div className="flex items-center gap-3 mb-3">
+                                <div className="w-12 h-12 rounded-full bg-gradient-to-br from-red-500 to-pink-500 flex items-center justify-center">
+                                  <Radio className="w-6 h-6 text-white" />
+                                </div>
+                                <div className="flex-1 text-left">
+                                  <p className="text-sm mb-0.5">{msg.livestreamData?.title || '群直播'}</p>
+                                  <p className="text-xs text-gray-500">{msg.livestreamData?.hostName} 开启了直播</p>
+                                </div>
+                              </div>
+                              {msg.livestreamData?.isActive ? (
+                                <div className="flex items-center justify-between text-xs text-gray-600">
+                                  <span className="flex items-center gap-1">
+                                    <Radio className="w-3 h-3 text-red-500 animate-pulse" />
+                                    <span className="text-red-500">正在直播</span>
+                                  </span>
+                                  <span>{msg.livestreamData.viewers.length + msg.livestreamData.coHosts.length + 1} 人观看</span>
+                                </div>
+                              ) : (
+                                <div className="text-xs text-gray-500">
+                                  已结束
+                                </div>
+                              )}
+                            </button>
+                        ) : msg.type === 'groupcall' ? (
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                if (msg.groupcallData && msg.groupcallData.isActive && onStartGlobalCall) {
+                                  onStartGlobalCall({
+                                    type: 'group',
+                                    callType: msg.groupcallData.type,
+                                    conversationId: conversation.id,
+                                    contactName: conversation.name,
+                                    contactAvatar: conversation.avatar,
+                                    isMinimized: false,
+                                    groupData: {
+                                      data: msg.groupcallData,
+                                      currentUserId: currentSenderId,
+                                      participantIds: msg.groupcallData?.participants || []
+                                    }
+                                  });
+                                }
+                              }}
+                              onContextMenu={(e) => {
+                                e.preventDefault();
+                                handleLongPressMessage(msg);
+                              }}
+                              className={`rounded-2xl p-4 shadow-sm border hover:shadow-md transition-all w-64 ${
+                                msg.groupcallData?.type === 'video'
+                                  ? 'bg-gradient-to-br from-purple-50 to-pink-50 border-purple-100'
+                                  : 'bg-gradient-to-br from-green-50 to-emerald-50 border-green-100'
+                              }`}
+                            >
+                              <div className="flex items-center gap-3 mb-3">
+                                <div className={`w-12 h-12 rounded-full flex items-center justify-center ${
+                                  msg.groupcallData?.type === 'video'
+                                    ? 'bg-gradient-to-br from-purple-500 to-pink-500'
+                                    : 'bg-gradient-to-br from-green-500 to-emerald-500'
+                                }`}>
+                                  {msg.groupcallData?.type === 'video' ? (
+                                    <Video className="w-6 h-6 text-white" />
+                                  ) : (
+                                    <Phone className="w-6 h-6 text-white" />
+                                  )}
+                                </div>
+                                <div className="flex-1 text-left">
+                                  <p className="text-sm mb-0.5">
+                                    {msg.groupcallData?.type === 'video' ? '群视频通话' : '群语音通话'}
+                                  </p>
+                                  <p className="text-xs text-gray-500">{msg.groupcallData?.initiatorName} 发起</p>
+                                </div>
+                              </div>
+                              {msg.groupcallData?.isActive ? (
+                                <div className="text-xs text-gray-600">
+                                  {msg.groupcallData.participants.length} 人参与
+                                </div>
+                              ) : (
+                                <div className="text-xs text-gray-500">
+                                  已结束
+                                </div>
+                              )}
+                            </button>
+                        ) : msg.type === 'privatecall' ? (
+                            <button 
+                              className={`rounded-2xl p-4 shadow-sm border w-64 hover:shadow-md transition-all ${
+                                msg.privatecallData?.type === 'video'
+                                  ? 'bg-gradient-to-br from-purple-50 to-pink-50 border-purple-100'
+                                  : 'bg-gradient-to-br from-green-50 to-emerald-50 border-green-100'
+                              }`}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                if (msg.privatecallData && msg.privatecallData.isActive && onStartGlobalCall) {
+                                  onStartGlobalCall({
+                                    type: 'private',
+                                    callType: msg.privatecallData.type,
+                                    conversationId: conversation.id,
+                                    contactName: getContact(conversation.participants[0])?.name || '',
+                                    contactAvatar: getContact(conversation.participants[0])?.avatar || '',
+                                    isMinimized: false,
+                                    privateCallData: {
+                                      contactId: conversation.participants[0]
+                                    }
+                                  });
+                                }
+                              }}
+                              onContextMenu={(e) => {
+                                e.preventDefault();
+                                handleLongPressMessage(msg);
+                              }}
+                            >
+                              <div className="flex items-center gap-3">
+                                <div className={`w-10 h-10 rounded-full flex items-center justify-center ${
+                                  msg.privatecallData?.type === 'video'
+                                    ? 'bg-gradient-to-br from-purple-500 to-pink-500'
+                                    : 'bg-gradient-to-br from-green-500 to-emerald-500'
+                                }`}>
+                                  {msg.privatecallData?.type === 'video' ? (
+                                    <Video className="w-5 h-5 text-white" />
+                                  ) : (
+                                    <Phone className="w-5 h-5 text-white" />
+                                  )}
+                                </div>
+                                <div>
+                                  <p className="text-sm font-medium text-gray-900">
+                                    {msg.privatecallData?.type === 'video' ? '视频通话' : '语音通话'}
+                                  </p>
+                                  <p className="text-xs text-gray-500">
+                                    {msg.privatecallData?.isActive ? '通话中...' : '已结束'}
+                                  </p>
+                                </div>
+                              </div>
+                            </button>
                         ) : null}
                       </div>
                     </div>
