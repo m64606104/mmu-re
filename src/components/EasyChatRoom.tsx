@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { ArrowLeft, Send, MoreHorizontal, Plus, Image as ImageIcon, Video, Mic, Play, Pause, Smile, Radio, Phone, PhoneOff, User, CheckCircle2, Circle, Trash2, Clock, X } from 'lucide-react';
 import { StickerPanel } from './StickerPanel';
+import { MediaActionPanel } from './MediaActionPanel';
 import { EasyChatConversation, EasyChatContact, EasyChatMessage, EasyChatUser, LivestreamData, GroupCallData, GlobalCallState } from '../types';
 import { VoiceMessageDialog } from './VoiceMessageDialog';
 import { MessageActionDialog } from './MessageActionDialog';
@@ -301,7 +302,7 @@ export function EasyChatRoom({ conversation, contacts, user, onBack, onUpdateCon
   };
 
   // 发送消息
-  const handleSendMessage = (messageType: 'text' | 'image' | 'video' | 'voice' | 'livestream' | 'groupcall' = 'text', extraData?: any) => {
+  const handleSendMessage = (messageType: 'text' | 'image' | 'video' | 'voice' | 'livestream' | 'groupcall' | 'privatecall' = 'text', extraData?: any) => {
     const sender = getContact(currentSenderId);
     if (!sender) return;
 
@@ -322,10 +323,22 @@ export function EasyChatRoom({ conversation, contacts, user, onBack, onUpdateCon
       ...extraData
     };
 
+    let lastMsgText = '';
+    switch (messageType) {
+      case 'text': lastMsgText = message; break;
+      case 'voice': lastMsgText = '[语音]'; break;
+      case 'image': lastMsgText = '[图片]'; break;
+      case 'video': lastMsgText = '[视频]'; break;
+      case 'livestream': lastMsgText = '[直播]'; break;
+      case 'groupcall': lastMsgText = '[群组通话]'; break;
+      case 'privatecall': lastMsgText = extraData?.privatecallData?.type === 'video' ? '[视频通话]' : '[语音通话]'; break;
+      default: lastMsgText = '[消息]';
+    }
+
     const updatedConversation = {
       ...conversation,
       messages: [...conversation.messages, newMessage],
-      lastMessage: messageType === 'text' ? message : messageType === 'voice' ? '[语音]' : messageType === 'image' ? '[图片]' : messageType === 'video' ? '[视频]' : messageType === 'livestream' ? '[直播]' : '[群组通话]',
+      lastMessage: lastMsgText,
       lastMessageTime: timeString
     };
 
@@ -1465,111 +1478,35 @@ export function EasyChatRoom({ conversation, contacts, user, onBack, onUpdateCon
                   <Smile size={24} strokeWidth={1.5} />
                 </button>
 
-                {/* 多媒体按钮 - 复用默认布局逻辑 */}
-                <div className="relative">
-                  <button 
-                    onClick={() => setShowMediaMenu(!showMediaMenu)}
-                    className="p-1 text-[#181818] flex-shrink-0"
-                  >
-                    <Plus size={24} strokeWidth={2} />
-                  </button>
+                  {/* 多媒体按钮 */}
+                  <div className="relative">
+                    <button 
+                      onClick={() => {
+                        setShowMediaMenu(!showMediaMenu);
+                        setShowStickerPanel(false);
+                      }}
+                      className="p-1 text-[#181818] flex-shrink-0"
+                    >
+                      <Plus size={24} strokeWidth={2} />
+                    </button>
+                    
+                    {/* 隐藏的文件输入 - 微信风格 */}
+                    <input
+                      ref={imageInputRef}
+                      type="file"
+                      accept="image/*"
+                      onChange={handleImageUpload}
+                      className="hidden"
+                    />
+                    <input
+                      ref={videoInputRef}
+                      type="file"
+                      accept="video/*"
+                      onChange={handleVideoUpload}
+                      className="hidden"
+                    />
+                  </div>
 
-                  {showMediaMenu && (
-                    <>
-                      {/* 背景遮罩 */}
-                      <div 
-                        className="fixed inset-0 z-40" 
-                        onClick={() => setShowMediaMenu(false)}
-                      />
-                      
-                      {/* 菜单内容 */}
-                      <div className="absolute bottom-full right-0 mb-3 bg-white rounded-3xl shadow-2xl border border-gray-100 p-4 min-w-[240px] z-50 animate-in slide-in-from-bottom-4 fade-in duration-200">
-                        {/* 标题 */}
-                        <div className="flex items-center justify-between mb-4 pb-3 border-b border-gray-100">
-                          <h3 className="text-sm text-gray-600">更多功能</h3>
-                          <button
-                            onClick={() => setShowMediaMenu(false)}
-                            className="w-6 h-6 rounded-full hover:bg-gray-100 flex items-center justify-center transition-colors"
-                          >
-                            <Plus className="w-4 h-4 text-gray-400 rotate-45" />
-                          </button>
-                        </div>
-
-                        {/* 功能网格 */}
-                        <div className="grid grid-cols-3 gap-3">
-                          <button
-                            onClick={() => {
-                              imageInputRef.current?.click();
-                              setShowMediaMenu(false);
-                            }}
-                            className="flex flex-col items-center gap-2 p-3 rounded-2xl hover:bg-blue-50 active:bg-blue-100 transition-all group"
-                          >
-                            <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-blue-400 to-blue-600 shadow-md group-hover:shadow-lg flex items-center justify-center transition-all group-hover:scale-110">
-                              <ImageIcon className="w-7 h-7 text-white" />
-                            </div>
-                            <span className="text-xs text-gray-700 font-medium">图片</span>
-                          </button>
-
-                          <button
-                            onClick={() => {
-                              videoInputRef.current?.click();
-                              setShowMediaMenu(false);
-                            }}
-                            className="flex flex-col items-center gap-2 p-3 rounded-2xl hover:bg-purple-50 active:bg-purple-100 transition-all group"
-                          >
-                            <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-purple-400 to-purple-600 shadow-md group-hover:shadow-lg flex items-center justify-center transition-all group-hover:scale-110">
-                              <Video className="w-7 h-7 text-white" />
-                            </div>
-                            <span className="text-xs text-gray-700 font-medium">视频</span>
-                          </button>
-
-                          <button
-                            onClick={() => {
-                              setShowEmojiPack(true);
-                              setShowMediaMenu(false);
-                            }}
-                            className="flex flex-col items-center gap-2 p-3 rounded-2xl hover:bg-yellow-50 active:bg-yellow-100 transition-all group"
-                          >
-                            <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-yellow-400 to-yellow-600 shadow-md group-hover:shadow-lg flex items-center justify-center transition-all group-hover:scale-110">
-                              <Smile className="w-7 h-7 text-white" />
-                            </div>
-                            <span className="text-xs text-gray-700 font-medium">表情包</span>
-                          </button>
-
-                          {/* 群直播 - 仅群聊可用 */}
-                          {conversation.type === 'group' && (
-                            <button
-                              onClick={() => {
-                                handleStartLivestream();
-                                setShowMediaMenu(false);
-                              }}
-                              className={`flex flex-col items-center gap-2 p-3 rounded-2xl transition-all group ${
-                                isCurrentUserLivestreaming() 
-                                  ? 'hover:bg-red-50 active:bg-red-100' 
-                                  : 'hover:bg-orange-50 active:bg-orange-100'
-                              }`}
-                            >
-                              <div className={`w-14 h-14 rounded-2xl shadow-md group-hover:shadow-lg flex items-center justify-center transition-all group-hover:scale-110 ${
-                                isCurrentUserLivestreaming() 
-                                  ? 'bg-gradient-to-br from-red-400 to-pink-600' 
-                                  : 'bg-gradient-to-br from-orange-400 to-red-600'
-                              }`}>
-                                {isCurrentUserLivestreaming() ? (
-                                  <PhoneOff className="w-7 h-7 text-white" />
-                                ) : (
-                                  <Radio className="w-7 h-7 text-white" />
-                                )}
-                              </div>
-                              <span className="text-xs text-gray-700 font-medium">
-                                {isCurrentUserLivestreaming() ? '关闭直播' : '直播'}
-                              </span>
-                            </button>
-                          )}
-                        </div>
-                      </div>
-                    </>
-                  )}
-                </div>
               </>
             ) : (
               <button
@@ -1588,6 +1525,33 @@ export function EasyChatRoom({ conversation, contacts, user, onBack, onUpdateCon
           <StickerPanel 
             currentSenderId={currentSenderId}
             onSend={(url) => handleSendEmojiPack('[图片表情]', url)}
+            onSendText={(text) => handleSendEmojiPack(text)}
+          />
+        )}
+        
+        {/* 多媒体功能面板 */}
+        {showMediaMenu && (
+          <MediaActionPanel 
+            onImageSelect={() => imageInputRef.current?.click()}
+            onLivestream={handleStartLivestream}
+            onVoiceCall={() => {
+              if (conversation.type === 'private') {
+                handleStartPrivateCall('voice');
+              } else {
+                handleStartGroupCall('voice');
+              }
+            }}
+            onVideoCall={() => {
+              if (conversation.type === 'private') {
+                handleStartPrivateCall('video');
+              } else {
+                handleStartGroupCall('video');
+              }
+            }}
+            isLivestreaming={isCurrentUserLivestreaming()}
+            isVoiceCalling={isCurrentUserInCall('voice')}
+            isVideoCalling={isCurrentUserInCall('video')}
+            conversationType={conversation.type}
           />
         )}
 
@@ -2290,177 +2254,30 @@ export function EasyChatRoom({ conversation, contacts, user, onBack, onUpdateCon
             </button>
           </div>
 
+          {/* 表情包按钮 */}
+          <button
+            onClick={() => {
+              setShowStickerPanel(!showStickerPanel);
+              setShowMediaMenu(false);
+            }}
+            className={`flex-shrink-0 w-9 h-9 rounded-full hover:bg-gray-100 flex items-center justify-center transition-colors active:scale-95 ${showStickerPanel ? 'text-blue-500' : 'text-gray-500'}`}
+          >
+            <Smile className="w-6 h-6" />
+          </button>
+
           {/* 多媒体按钮 - 在输入框右边 */}
           <div className="relative">
             <button
-              onClick={() => setShowMediaMenu(!showMediaMenu)}
+              onClick={() => {
+                setShowMediaMenu(!showMediaMenu);
+                setShowStickerPanel(false);
+              }}
               className="flex-shrink-0 w-9 h-9 rounded-full bg-gradient-to-br from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 shadow-md hover:shadow-lg flex items-center justify-center transition-all active:scale-95"
             >
               <Plus className={`w-5 h-5 text-white transition-transform duration-200 ${showMediaMenu ? 'rotate-45' : ''}`} />
             </button>
 
-            {/* 多媒体菜单 - 美化版 */}
-            {showMediaMenu && (
-              <>
-                {/* 背景遮罩 */}
-                <div 
-                  className="fixed inset-0 z-40" 
-                  onClick={() => setShowMediaMenu(false)}
-                />
-                
-                {/* 菜单内容 */}
-                <div className="absolute bottom-full right-0 mb-3 bg-white rounded-3xl shadow-2xl border border-gray-100 p-4 min-w-[240px] z-50 animate-in slide-in-from-bottom-4 fade-in duration-200">
-                  {/* 标题 */}
-                  <div className="flex items-center justify-between mb-4 pb-3 border-b border-gray-100">
-                    <h3 className="text-sm text-gray-600">更多功能</h3>
-                    <button
-                      onClick={() => setShowMediaMenu(false)}
-                      className="w-6 h-6 rounded-full hover:bg-gray-100 flex items-center justify-center transition-colors"
-                    >
-                      <Plus className="w-4 h-4 text-gray-400 rotate-45" />
-                    </button>
-                  </div>
-
-                  {/* 功能网格 */}
-                  <div className="grid grid-cols-3 gap-3">
-                    <button
-                      onClick={() => {
-                        imageInputRef.current?.click();
-                        setShowMediaMenu(false);
-                      }}
-                      className="flex flex-col items-center gap-2 p-3 rounded-2xl hover:bg-blue-50 active:bg-blue-100 transition-all group"
-                    >
-                      <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-blue-400 to-blue-600 shadow-md group-hover:shadow-lg flex items-center justify-center transition-all group-hover:scale-110">
-                        <ImageIcon className="w-7 h-7 text-white" />
-                      </div>
-                      <span className="text-xs text-gray-700 font-medium">图片</span>
-                    </button>
-
-                    <button
-                      onClick={() => {
-                        videoInputRef.current?.click();
-                        setShowMediaMenu(false);
-                      }}
-                      className="flex flex-col items-center gap-2 p-3 rounded-2xl hover:bg-purple-50 active:bg-purple-100 transition-all group"
-                    >
-                      <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-purple-400 to-purple-600 shadow-md group-hover:shadow-lg flex items-center justify-center transition-all group-hover:scale-110">
-                        <Video className="w-7 h-7 text-white" />
-                      </div>
-                      <span className="text-xs text-gray-700 font-medium">视频</span>
-                    </button>
-
-                    <button
-                      onClick={() => {
-                        setShowStickerPanel(!showStickerPanel);
-                        setShowMediaMenu(false);
-                      }}
-                      className="flex flex-col items-center gap-2 p-3 rounded-2xl hover:bg-yellow-50 active:bg-yellow-100 transition-all group"
-                    >
-                      <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-yellow-400 to-yellow-600 shadow-md group-hover:shadow-lg flex items-center justify-center transition-all group-hover:scale-110">
-                        <Smile className="w-7 h-7 text-white" />
-                      </div>
-                      <span className="text-xs text-gray-700 font-medium">表情包</span>
-                    </button>
-
-                    {/* 群直播 - 仅群聊可用 */}
-                    {conversation.type === 'group' && (
-                      <button
-                        onClick={() => {
-                          handleStartLivestream();
-                          setShowMediaMenu(false);
-                        }}
-                        className={`flex flex-col items-center gap-2 p-3 rounded-2xl transition-all group ${
-                          isCurrentUserLivestreaming() 
-                            ? 'hover:bg-red-50 active:bg-red-100' 
-                            : 'hover:bg-orange-50 active:bg-orange-100'
-                        }`}
-                      >
-                        <div className={`w-14 h-14 rounded-2xl shadow-md group-hover:shadow-lg flex items-center justify-center transition-all group-hover:scale-110 ${
-                          isCurrentUserLivestreaming() 
-                            ? 'bg-gradient-to-br from-red-400 to-pink-600' 
-                            : 'bg-gradient-to-br from-orange-400 to-red-600'
-                        }`}>
-                          {isCurrentUserLivestreaming() ? (
-                            <PhoneOff className="w-7 h-7 text-white" />
-                          ) : (
-                            <Radio className="w-7 h-7 text-white" />
-                          )}
-                        </div>
-                        <span className="text-xs text-gray-700 font-medium">
-                          {isCurrentUserLivestreaming() ? '关闭直播' : '直播'}
-                        </span>
-                      </button>
-                    )}
-
-                    {/* 语音通话 - 私聊和群聊都可用 */}
-                    <button
-                        onClick={() => {
-                          if (conversation.type === 'private') {
-                            handleStartPrivateCall('voice');
-                          } else {
-                            handleStartGroupCall('voice');
-                          }
-                          setShowMediaMenu(false);
-                        }}
-                        className={`flex flex-col items-center gap-2 p-3 rounded-2xl transition-all group ${
-                          isCurrentUserInCall('voice') 
-                            ? 'hover:bg-red-50 active:bg-red-100' 
-                            : 'hover:bg-green-50 active:bg-green-100'
-                        }`}
-                      >
-                        <div className={`w-14 h-14 rounded-2xl shadow-md group-hover:shadow-lg flex items-center justify-center transition-all group-hover:scale-110 ${
-                          isCurrentUserInCall('voice') 
-                            ? 'bg-gradient-to-br from-red-400 to-pink-600' 
-                            : 'bg-gradient-to-br from-green-400 to-emerald-600'
-                        }`}>
-                          {isCurrentUserInCall('voice') ? (
-                            <PhoneOff className="w-7 h-7 text-white" />
-                          ) : (
-                            <Phone className="w-7 h-7 text-white" />
-                          )}
-                        </div>
-                        <span className="text-xs text-gray-700 font-medium">
-                          {isCurrentUserInCall('voice') ? '挂断语音' : '语音通话'}
-                        </span>
-                      </button>
-
-                    {/* 视频通话 - 私聊和群聊都可用 */}
-                    <button
-                        onClick={() => {
-                          if (conversation.type === 'private') {
-                            handleStartPrivateCall('video');
-                          } else {
-                            handleStartGroupCall('video');
-                          }
-                          setShowMediaMenu(false);
-                        }}
-                        className={`flex flex-col items-center gap-2 p-3 rounded-2xl transition-all group ${
-                          isCurrentUserInCall('video') 
-                            ? 'hover:bg-red-50 active:bg-red-100' 
-                            : 'hover:bg-purple-50 active:bg-purple-100'
-                        }`}
-                      >
-                        <div className={`w-14 h-14 rounded-2xl shadow-md group-hover:shadow-lg flex items-center justify-center transition-all group-hover:scale-110 ${
-                          isCurrentUserInCall('video') 
-                            ? 'bg-gradient-to-br from-red-400 to-pink-600' 
-                            : 'bg-gradient-to-br from-purple-400 to-pink-600'
-                        }`}>
-                          {isCurrentUserInCall('video') ? (
-                            <PhoneOff className="w-7 h-7 text-white" />
-                          ) : (
-                            <Video className="w-7 h-7 text-white" />
-                          )}
-                        </div>
-                        <span className="text-xs text-gray-700 font-medium">
-                          {isCurrentUserInCall('video') ? '挂断' : '视频通话'}
-                        </span>
-                      </button>
-                  </div>
-                </div>
-              </>
-            )}
-
-            {/* 隐藏的文件输入 */}
+            {/* 隐藏的文件输入 - 默认风格 */}
             <input
               ref={imageInputRef}
               type="file"
@@ -2493,6 +2310,33 @@ export function EasyChatRoom({ conversation, contacts, user, onBack, onUpdateCon
         <StickerPanel 
           currentSenderId={currentSenderId}
           onSend={(url) => handleSendEmojiPack('[图片表情]', url)}
+          onSendText={(text) => handleSendEmojiPack(text)}
+        />
+      )}
+
+      {/* 多媒体功能面板 */}
+      {showMediaMenu && (
+        <MediaActionPanel 
+          onImageSelect={() => imageInputRef.current?.click()}
+          onLivestream={handleStartLivestream}
+          onVoiceCall={() => {
+            if (conversation.type === 'private') {
+              handleStartPrivateCall('voice');
+            } else {
+              handleStartGroupCall('voice');
+            }
+          }}
+          onVideoCall={() => {
+            if (conversation.type === 'private') {
+              handleStartPrivateCall('video');
+            } else {
+              handleStartGroupCall('video');
+            }
+          }}
+          isLivestreaming={isCurrentUserLivestreaming()}
+          isVoiceCalling={isCurrentUserInCall('voice')}
+          isVideoCalling={isCurrentUserInCall('video')}
+          conversationType={conversation.type}
         />
       )}
 
