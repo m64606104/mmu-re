@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { X, Edit, Trash2, Clock } from 'lucide-react';
+import { X, Edit, Trash2, Clock, CheckCircle2 } from 'lucide-react';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { Label } from './ui/label';
@@ -11,6 +11,7 @@ interface MessageActionDialogProps {
   onEdit: (messageId: string, newText: string) => void;
   onDelete: (messageId: string) => void;
   onEditTime: (messageId: string, newTime: string) => void;
+  onSelectMultiple?: () => void;
 }
 
 export function MessageActionDialog({ 
@@ -18,7 +19,8 @@ export function MessageActionDialog({
   onClose, 
   onEdit, 
   onDelete, 
-  onEditTime 
+  onEditTime,
+  onSelectMultiple
 }: MessageActionDialogProps) {
   const [action, setAction] = useState<'menu' | 'edit' | 'editTime'>('menu');
   const [editText, setEditText] = useState(message.text);
@@ -80,6 +82,17 @@ export function MessageActionDialog({
                 <Clock className="w-4 h-4 text-purple-600" strokeWidth={2.5} />
                 <span className="text-purple-600 font-medium">修改时间</span>
               </button>
+
+              {/* 多选按钮 */}
+              {onSelectMultiple && (
+                <button
+                  onClick={onSelectMultiple}
+                  className="w-full flex items-center justify-center gap-2 px-5 py-3.5 rounded-full bg-gradient-to-r from-green-50 to-green-100 hover:from-green-100 hover:to-green-200 active:scale-[0.98] transition-all shadow-sm"
+                >
+                  <CheckCircle2 className="w-4 h-4 text-green-600" strokeWidth={2.5} />
+                  <span className="text-green-600 font-medium">多选</span>
+                </button>
+              )}
 
               {/* 删除按钮 */}
               <button

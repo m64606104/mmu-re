@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
-import { ArrowLeft, Send, MoreHorizontal, Plus, Image as ImageIcon, Video, Mic, Play, Pause, Smile, Radio, Phone, PhoneOff, User } from 'lucide-react';
+import { ArrowLeft, Send, MoreHorizontal, Plus, Image as ImageIcon, Video, Mic, Play, Pause, Smile, Radio, Phone, PhoneOff, User, CheckCircle2, Circle, Trash2, Clock, X } from 'lucide-react';
 import { EasyChatConversation, EasyChatContact, EasyChatMessage, EasyChatUser, LivestreamData, GroupCallData, GlobalCallState } from '../types';
 import { VoiceMessageDialog } from './VoiceMessageDialog';
 import { MessageActionDialog } from './MessageActionDialog';
@@ -38,6 +38,13 @@ export function EasyChatRoom({ conversation, contacts, user, onBack, onUpdateCon
   const [showEmojiPack, setShowEmojiPack] = useState(false);
   const [activeLivestream, setActiveLivestream] = useState<LivestreamData | null>(null);
   const [activeGroupCall, setActiveGroupCall] = useState<GroupCallData | null>(null);
+  
+  // 多选模式状态
+  const [isSelectionMode, setIsSelectionMode] = useState(false);
+  const [selectedMessageIds, setSelectedMessageIds] = useState<Set<string>>(new Set());
+  const [showBatchTimeDialog, setShowBatchTimeDialog] = useState(false);
+  const [timeEditValue, setTimeEditValue] = useState('');
+
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const imageInputRef = useRef<HTMLInputElement>(null);
@@ -88,6 +95,173 @@ export function EasyChatRoom({ conversation, contacts, user, onBack, onUpdateCon
   const handleSelectSender = (senderId: string) => {
     setCurrentSenderId(senderId);
     setShowSenderPicker(false);
+  };
+
+  // 切换多选模式
+  const handleToggleSelectionMode = () => {
+    setIsSelectionMode(!isSelectionMode);
+    setSelectedMessageIds(new Set());
+    // 退出多选模式时清空输入
+    if (isSelectionMode) {
+      setTimeEditValue('');
+    }
+  };
+
+  // 选择/取消选择消息
+  const handleSelectMessage = (messageId: string) => {
+    const newSelected = new Set(selectedMessageIds);
+    if (newSelected.has(messageId)) {
+      newSelected.delete(messageId);
+    } else {
+      newSelected.add(messageId);
+    }
+    setSelectedMessageIds(newSelected);
+  };
+
+  // 全选
+  const handleSelectAll = () => {
+    if (selectedMessageIds.size === conversation.messages.length) {
+      setSelectedMessageIds(new Set());
+    } else {
+      setSelectedMessageIds(new Set(conversation.messages.map(m => m.id)));
+    }
+  };
+
+  // 批量删除
+  const handleBatchDelete = () => {
+    if (selectedMessageIds.size === 0) return;
+    
+    if (confirm(`确定要删除选中的 ${selectedMessageIds.size} 条消息吗？`)) {
+      const updatedMessages = conversation.messages.filter(msg => !selectedMessageIds.has(msg.id));
+      onUpdateConversation({ ...conversation, messages: updatedMessages });
+      setIsSelectionMode(false);
+      setSelectedMessageIds(new Set());
+      toast.success('已删除');
+    }
+  };
+
+  // 批量修改时间确认
+  const handleBatchEditTimeConfirm = () => {
+    if (!timeEditValue.trim()) return;
+
+    const newTime = timeEditValue.trim();
+    let updatedCount = 0;
+
+    const updatedMessages = conversation.messages.map(msg => {
+      if (selectedMessageIds.has(msg.id)) {
+        // 智能时间解析逻辑
+        let newFullTime = msg.fullTime || new Date().getTime();
+        const originalDate = new Date(newFullTime);
+        
+        // 预处理字符串
+        let processedTime = newTime
+          .replace(/年/g, '/')
+          .replace(/月/g, '/')
+          .replace(/日/g, ' ')
+          .replace(/号/g, ' ')
+          .replace(/点/g, ':')
+          .replace(/分/g, '')
+          .replace(/[。.]/g, '/')
+          .replace(/[:：]/g, ':')
+          .trim()
+          .replace(/\s+/g, ' ');
+
+        try {
+          // 1. 检测是否包含年份 (4位数字)
+          const hasYear = /\d{4}/.test(processedTime);
+          // 2. 检测是否包含日期 (月/日 或 昨天/前天)
+          const hasDate = /\d{1,2}[\/\-\.]\d{1,2}/.test(processedTime) || /昨天|前天/.test(newTime);
+          // 3. 检测是否包含时间 (HH:MM)
+          const hasTime = /\d{1,2}:\d{1,2}/.test(processedTime);
+
+          // 逻辑分支处理
+          if (hasTime && !hasDate && !hasYear) {
+            // Case A: 只有时间 (HH:MM) -> 保留原年月日
+            const match = processedTime.match(/(\d{1,2}):(\d{1,2})/);
+            if (match) {
+              const h = parseInt(match[1]);
+              const m = parseInt(match[2]);
+              const d = new Date(newFullTime);
+              d.setHours(h, m, 0, 0);
+              newFullTime = d.getTime();
+            }
+          } else if (hasDate && !hasYear) {
+            // Case B: 包含日期，但无年份 -> 使用原年份 (关键修复)
+            if (newTime.includes('昨天') || newTime.includes('前天')) {
+              // 相对日期：相对于"今天"
+              const d = new Date();
+              const sub = newTime.includes('前天') ? 2 : 1;
+              d.setDate(d.getDate() - sub);
+              const timeMatch = processedTime.match(/(\d{1,2}):(\d{1,2})/);
+              if (timeMatch) {
+                d.setHours(parseInt(timeMatch[1]), parseInt(timeMatch[2]), 0, 0);
+              } else {
+                // 如果没写时间，保留原时间？或者默认 00:00？通常会有时间。
+                // 如果只写"昨天"，保留原时间？
+                d.setHours(originalDate.getHours(), originalDate.getMinutes(), 0, 0);
+              }
+              newFullTime = d.getTime();
+            } else {
+              // 普通日期 "12/05 14:00" -> 使用原年份
+              const currentYear = originalDate.getFullYear();
+              // 尝试拼接原年份
+              // 如果 processedTime 开头是时间，可能解析失败，假设格式是 MM/DD HH:MM
+              const tryStr = `${currentYear}/${processedTime}`;
+              const parsed = Date.parse(tryStr);
+              if (!isNaN(parsed)) {
+                newFullTime = parsed;
+              } else {
+                // 尝试当前年份作为备选
+                const fallbackParsed = Date.parse(`${new Date().getFullYear()}/${processedTime}`);
+                if (!isNaN(fallbackParsed)) newFullTime = fallbackParsed;
+              }
+            }
+          } else if (hasYear) {
+            // Case C: 包含年份 -> 直接解析
+            const parsed = Date.parse(processedTime);
+            if (!isNaN(parsed)) newFullTime = parsed;
+          } else {
+            // Fallback: 尝试直接解析
+            const parsed = Date.parse(processedTime);
+            if (!isNaN(parsed)) newFullTime = parsed;
+          }
+        } catch (e) {
+          console.error('批量时间解析失败', e);
+        }
+
+        updatedCount++;
+        // 构造新的 timestamp 字符串显示 (仅显示 HH:MM 用于 UI，实际排序用 fullTime)
+        const d = new Date(newFullTime);
+        const newTimeStr = `${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')}`;
+        
+        return { ...msg, timestamp: newTimeStr, fullTime: newFullTime };
+      }
+      return msg;
+    });
+
+    // 重新排序
+    const sortedMessages = updatedMessages.sort((a, b) => {
+       const getTime = (m: EasyChatMessage) => m.fullTime || 0;
+       return getTime(a) - getTime(b);
+    });
+
+    onUpdateConversation({ ...conversation, messages: sortedMessages });
+    setShowBatchTimeDialog(false);
+    setIsSelectionMode(false);
+    setSelectedMessageIds(new Set());
+    setTimeEditValue('');
+    toast.success(`已修改 ${updatedCount} 条消息的时间`);
+  };
+
+  const handleOpenBatchTimeDialog = () => {
+    if (selectedMessageIds.size === 0) return;
+    // 默认填入第一条选中消息的时间
+    const firstId = Array.from(selectedMessageIds)[0];
+    const firstMsg = conversation.messages.find(m => m.id === firstId);
+    if (firstMsg) {
+      setTimeEditValue(formatMessageTime(firstMsg)); // 使用格式化后的时间作为初始值
+    }
+    setShowBatchTimeDialog(true);
   };
 
   // 格式化时间显示
@@ -740,10 +914,82 @@ export function EasyChatRoom({ conversation, contacts, user, onBack, onUpdateCon
 
 
 
+  // 提取弹窗内容以复用
+  const messageActionDialogContent = showMessageActionDialog && selectedMessage && (
+    <MessageActionDialog
+      message={selectedMessage}
+      onClose={() => {
+        setShowMessageActionDialog(false);
+        setSelectedMessage(null);
+      }}
+      onEdit={handleEditMessage}
+      onDelete={handleDeleteMessage}
+      onEditTime={handleEditMessageTime}
+      onSelectMultiple={() => {
+        setShowMessageActionDialog(false);
+        setIsSelectionMode(true);
+        setSelectedMessageIds(new Set([selectedMessage.id]));
+      }}
+    />
+  );
+
+  const batchTimeDialogContent = showBatchTimeDialog && (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 animate-in fade-in duration-200">
+      <div className="w-full max-w-sm bg-white rounded-xl overflow-hidden shadow-xl mx-4 animate-in zoom-in-95 duration-200">
+        <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100">
+          <h3 className="font-medium text-gray-900">批量修改时间</h3>
+          <button 
+            onClick={() => setShowBatchTimeDialog(false)}
+            className="p-1 text-gray-400 hover:text-gray-600 rounded-full hover:bg-gray-100 transition-colors"
+          >
+            <X size={20} />
+          </button>
+        </div>
+        
+        <div className="p-4 space-y-4">
+          <div className="space-y-2">
+            <label className="text-sm font-medium text-gray-700">
+              新时间 (将应用于 {selectedMessageIds.size} 条消息)
+            </label>
+            <input
+              type="text"
+              value={timeEditValue}
+              onChange={(e) => setTimeEditValue(e.target.value)}
+              placeholder="例如: 14:30 或 昨天 14:30"
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            />
+            <p className="text-xs text-gray-500">
+              支持格式：14:30 (仅修改时间)、12-05 14:30 (保留原年份)、2023-12-05 14:30 (修改全部)
+            </p>
+          </div>
+          
+          <div className="flex gap-3 pt-2">
+            <button
+              onClick={() => setShowBatchTimeDialog(false)}
+              className="flex-1 px-4 py-2 text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 font-medium transition-colors"
+            >
+              取消
+            </button>
+            <button
+              onClick={handleBatchEditTimeConfirm}
+              disabled={!timeEditValue.trim()}
+              className="flex-1 px-4 py-2 text-white bg-[#07c160] rounded-lg hover:bg-[#06ad56] font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              确定
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+
   // 微信风格UI渲染
   if (isWechatStyle) {
     return (
       <div className="w-full h-full bg-[#ededed] flex flex-col">
+        {messageActionDialogContent}
+        {batchTimeDialogContent}
+        
         {/* 顶部导航栏 - 微信风格 */}
         <div className="bg-[#ededed] shadow-sm">
           <div className="px-3 py-2 flex items-center justify-between">
@@ -776,9 +1022,10 @@ export function EasyChatRoom({ conversation, contacts, user, onBack, onUpdateCon
 
                 const isMe = msg.senderId === user.id;
                 const showTime = shouldShowTime(index);
+                const isSelected = selectedMessageIds.has(msg.id);
 
                 return (
-                  <div key={msg.id}>
+                  <div key={msg.id} className="relative">
                     {/* 时间戳 */}
                     {showTime && (
                       <div className="text-center my-3">
@@ -787,7 +1034,23 @@ export function EasyChatRoom({ conversation, contacts, user, onBack, onUpdateCon
                     )}
 
                     {/* 消息 */}
-                    <div className={`flex gap-3 mb-5 ${isMe ? 'flex-row-reverse' : 'flex-row'}`}>
+                    <div className={`flex items-start mb-5 ${isSelectionMode ? 'pl-2' : ''}`}>
+                      {isSelectionMode && (
+                        <div 
+                          className="flex items-center justify-center h-10 mr-3 cursor-pointer"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleSelectMessage(msg.id);
+                          }}
+                        >
+                          {isSelected ? (
+                            <CheckCircle2 className="w-6 h-6 text-[#07c160] fill-white" />
+                          ) : (
+                            <Circle className="w-6 h-6 text-gray-300" />
+                          )}
+                        </div>
+                      )}
+                      <div className={`flex-1 flex gap-3 ${isMe ? 'flex-row-reverse' : 'flex-row'}`}>
                       {/* 头像 */}
                       <div className="w-10 h-10 rounded-[5px] bg-blue-500 flex items-center justify-center overflow-hidden flex-shrink-0">
                         {sender.avatar.startsWith('data:') ? (
@@ -798,7 +1061,13 @@ export function EasyChatRoom({ conversation, contacts, user, onBack, onUpdateCon
                       </div>
 
                       {/* 消息气泡 */}
-                      <div className={`flex flex-col ${isMe ? 'items-end' : 'items-start'}`}>
+                      <div className={`flex flex-col relative ${isMe ? 'items-end' : 'items-start'}`}>
+                        {isSelectionMode && (
+                            <div 
+                              className="absolute inset-0 z-10 cursor-pointer"
+                              onClick={() => handleSelectMessage(msg.id)}
+                            ></div>
+                        )}
                         {msg.type === 'text' || !msg.type ? (
                           <div
                             className={`max-w-[240px] px-3 py-2 break-words text-[16px] leading-[1.4] relative ${
@@ -908,6 +1177,7 @@ export function EasyChatRoom({ conversation, contacts, user, onBack, onUpdateCon
                         ) : null}
                       </div>
                     </div>
+                    </div>
                   </div>
                 );
               })}
@@ -917,8 +1187,37 @@ export function EasyChatRoom({ conversation, contacts, user, onBack, onUpdateCon
         </div>
 
         {/* 底部输入栏 - 微信风格 */}
-        <div className="border-t bg-[#f7f7f7] border-[#d1d1d1]">
-          <div className="px-4 py-2 flex items-center gap-2">
+        {isSelectionMode ? (
+          <div className="h-[56px] bg-[#f7f7f7] border-t border-[#d1d1d1] flex items-center justify-between px-6 z-50 relative">
+            <button
+              onClick={handleBatchDelete}
+              className="flex flex-col items-center justify-center text-gray-600 active:opacity-70"
+              disabled={selectedMessageIds.size === 0}
+            >
+               <Trash2 size={20} strokeWidth={1.5} />
+               <span className="text-[10px] mt-0.5">删除{selectedMessageIds.size > 0 ? `(${selectedMessageIds.size})` : ''}</span>
+            </button>
+            
+            <button
+              onClick={handleOpenBatchTimeDialog}
+              className="flex flex-col items-center justify-center text-gray-600 active:opacity-70"
+              disabled={selectedMessageIds.size === 0}
+            >
+               <Clock size={20} strokeWidth={1.5} />
+               <span className="text-[10px] mt-0.5">修改时间</span>
+            </button>
+
+            <button
+              onClick={handleToggleSelectionMode}
+              className="flex flex-col items-center justify-center text-gray-600 active:opacity-70"
+            >
+               <X size={20} strokeWidth={1.5} />
+               <span className="text-[10px] mt-0.5">取消</span>
+            </button>
+          </div>
+        ) : (
+          <div className="border-t bg-[#f7f7f7] border-[#d1d1d1]">
+            <div className="px-4 py-2 flex items-center gap-2">
             {/* 当前发送者头像按钮 - 私聊和群聊都显示 */}
             {currentSender && (
               <button
@@ -1085,6 +1384,7 @@ export function EasyChatRoom({ conversation, contacts, user, onBack, onUpdateCon
             )}
           </div>
         </div>
+        )}
 
         {/* 群聊发送者快速切换 - 隐蔽设计（微信风格） */}
         {showSenderPicker && conversation.type === 'group' && (
@@ -1159,18 +1459,10 @@ export function EasyChatRoom({ conversation, contacts, user, onBack, onUpdateCon
         )}
 
         {/* 消息操作弹窗 */}
-        {showMessageActionDialog && selectedMessage && (
-          <MessageActionDialog
-            message={selectedMessage}
-            onClose={() => {
-              setShowMessageActionDialog(false);
-              setSelectedMessage(null);
-            }}
-            onEdit={handleEditMessage}
-            onDelete={handleDeleteMessage}
-            onEditTime={handleEditMessageTime}
-          />
-        )}
+        {messageActionDialogContent}
+
+        {/* 批量修改时间对话框 */}
+        {batchTimeDialogContent}
 
         {/* 表情包弹窗 */}
         {showEmojiPack && (
