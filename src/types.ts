@@ -800,6 +800,7 @@ export interface EasyChatMessage {
   voiceText?: string; // 语音转文字内容
   voiceDuration?: number; // 语音时长（秒）
   emojipackDescription?: string; // 表情包描述
+  emojipackUrl?: string; // 表情包图片URL (自定义表情)
   livestreamData?: LivestreamData; // 直播数据
   groupcallData?: GroupCallData; // 群通话数据
   privatecallData?: PrivateCallData; // 私聊通话数据

@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
 import { ArrowLeft, Send, MoreHorizontal, Plus, Image as ImageIcon, Video, Mic, Play, Pause, Smile, Radio, Phone, PhoneOff, User, CheckCircle2, Circle, Trash2, Clock, X } from 'lucide-react';
+import { StickerPanel } from './StickerPanel';
 import { EasyChatConversation, EasyChatContact, EasyChatMessage, EasyChatUser, LivestreamData, GroupCallData, GlobalCallState } from '../types';
 import { VoiceMessageDialog } from './VoiceMessageDialog';
 import { MessageActionDialog } from './MessageActionDialog';
@@ -43,6 +44,7 @@ export function EasyChatRoom({ conversation, contacts, user, onBack, onUpdateCon
   const [isSelectionMode, setIsSelectionMode] = useState(false);
   const [selectedMessageIds, setSelectedMessageIds] = useState<Set<string>>(new Set());
   const [showBatchTimeDialog, setShowBatchTimeDialog] = useState(false);
+  const [showStickerPanel, setShowStickerPanel] = useState(false);
   // 分块时间修改状态
   const [batchYear, setBatchYear] = useState('');
   const [batchMonth, setBatchMonth] = useState('');
@@ -416,7 +418,7 @@ export function EasyChatRoom({ conversation, contacts, user, onBack, onUpdateCon
   };
 
   // 发送表情包
-  const handleSendEmojiPack = (description: string) => {
+  const handleSendEmojiPack = (description: string, url?: string) => {
     const sender = getContact(currentSenderId);
     if (!sender) return;
 
@@ -432,7 +434,8 @@ export function EasyChatRoom({ conversation, contacts, user, onBack, onUpdateCon
       timestamp: timeString,
       fullTime: now.getTime(), // 添加完整时间戳
       type: 'emojipack',
-      emojipackDescription: description
+      emojipackDescription: description,
+      emojipackUrl: url
     };
 
     const updatedConversation = {
@@ -443,7 +446,8 @@ export function EasyChatRoom({ conversation, contacts, user, onBack, onUpdateCon
     };
 
     onUpdateConversation(updatedConversation);
-    toast.success('表情包已发送');
+    // Panel 不自动关闭，Dialog 可能会自己处理关闭
+    // toast.success('表情包已发送');
   };
 
   // 播放/暂停语音
@@ -1194,9 +1198,17 @@ export function EasyChatRoom({ conversation, contacts, user, onBack, onUpdateCon
                              onClick={() => handleLongPressMessage(msg)}
                              title={msg.emojipackDescription}
                           >
-                            <span className="text-[64px] leading-none drop-shadow-sm select-none filter">
-                              {msg.emojipackDescription}
-                            </span>
+                            {msg.emojipackUrl ? (
+                              <img 
+                                src={msg.emojipackUrl} 
+                                alt={msg.emojipackDescription}
+                                className="max-w-[120px] max-h-[120px] object-contain"
+                              />
+                            ) : (
+                              <span className="text-[64px] leading-none drop-shadow-sm select-none filter">
+                                {msg.emojipackDescription}
+                              </span>
+                            )}
                           </div>
                         ) : msg.type === 'livestream' ? (
                           <button
@@ -1444,8 +1456,11 @@ export function EasyChatRoom({ conversation, contacts, user, onBack, onUpdateCon
             {!message.trim() ? (
               <>
                 <button 
-                  onClick={() => setShowEmojiPack(true)}
-                  className="p-1 text-[#181818] flex-shrink-0"
+                  onClick={() => {
+                    setShowStickerPanel(!showStickerPanel);
+                    setShowMediaMenu(false);
+                  }}
+                  className={`p-1 flex-shrink-0 ${showStickerPanel ? 'text-green-600' : 'text-[#181818]'}`}
                 >
                   <Smile size={24} strokeWidth={1.5} />
                 </button>
@@ -1566,6 +1581,14 @@ export function EasyChatRoom({ conversation, contacts, user, onBack, onUpdateCon
             )}
           </div>
         </div>
+        )}
+
+        {/* 表情包面板 */}
+        {showStickerPanel && (
+          <StickerPanel 
+            currentSenderId={currentSenderId}
+            onSend={(url) => handleSendEmojiPack('[图片表情]', url)}
+          />
         )}
 
         {/* 群聊发送者快速切换 - 隐蔽设计（微信风格） */}
@@ -1773,12 +1796,22 @@ export function EasyChatRoom({ conversation, contacts, user, onBack, onUpdateCon
                             <video src={msg.videoUrl} controls className="w-full h-auto" />
                           </div>
                         ) : msg.type === 'emojipack' ? (
-                          <div className="bg-gradient-to-br from-yellow-50 to-orange-50 rounded-2xl p-3 shadow-sm border border-yellow-100">
-                            <div className="w-28 h-28 bg-gradient-to-br from-gray-200 to-gray-300 rounded-lg flex items-center justify-center p-3">
-                              <p className="text-gray-700 text-xs text-center leading-tight break-words">
+                          <div 
+                             className="cursor-pointer hover:scale-110 transition-transform px-2"
+                             onClick={() => handleLongPressMessage(msg)}
+                             title={msg.emojipackDescription}
+                          >
+                            {msg.emojipackUrl ? (
+                              <img 
+                                src={msg.emojipackUrl} 
+                                alt={msg.emojipackDescription}
+                                className="max-w-[120px] max-h-[120px] object-contain"
+                              />
+                            ) : (
+                              <span className="text-[64px] leading-none drop-shadow-sm select-none filter">
                                 {msg.emojipackDescription}
-                              </p>
-                            </div>
+                              </span>
+                            )}
                           </div>
                         ) : msg.type === 'livestream' ? (
                           <button
@@ -2012,12 +2045,22 @@ export function EasyChatRoom({ conversation, contacts, user, onBack, onUpdateCon
                               <video src={msg.videoUrl} controls className="w-full h-auto" />
                             </div>
                           ) : msg.type === 'emojipack' ? (
-                            <div className="bg-gradient-to-br from-yellow-50 to-orange-50 rounded-2xl p-3 shadow-sm border border-yellow-100">
-                              <div className="w-28 h-28 bg-gradient-to-br from-gray-200 to-gray-300 rounded-lg flex items-center justify-center p-3">
-                                <p className="text-gray-700 text-xs text-center leading-tight break-words">
+                            <div 
+                               className="cursor-pointer hover:scale-110 transition-transform px-2"
+                               onClick={() => handleLongPressMessage(msg)}
+                               title={msg.emojipackDescription}
+                            >
+                              {msg.emojipackUrl ? (
+                                <img 
+                                  src={msg.emojipackUrl} 
+                                  alt={msg.emojipackDescription}
+                                  className="max-w-[120px] max-h-[120px] object-contain"
+                                />
+                              ) : (
+                                <span className="text-[64px] leading-none drop-shadow-sm select-none filter">
                                   {msg.emojipackDescription}
-                                </p>
-                              </div>
+                                </span>
+                              )}
                             </div>
                           ) : msg.type === 'livestream' ? (
                             <button
