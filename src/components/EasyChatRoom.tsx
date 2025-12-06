@@ -1174,18 +1174,14 @@ export function EasyChatRoom({ conversation, contacts, user, onBack, onUpdateCon
                           </div>
                         ) : msg.type === 'image' ? (
                           <div 
-                            className={`rounded-[4px] overflow-hidden max-w-[200px] cursor-pointer ${
-                              isMe ? 'mr-[-6px]' : 'ml-[-6px]'
-                            }`}
+                            className="rounded-[4px] overflow-hidden max-w-[200px] cursor-pointer"
                             onClick={() => handleLongPressMessage(msg)}
                           >
                             <img src={msg.imageUrl} alt="图片" className="w-full h-auto" />
                           </div>
                         ) : msg.type === 'video' ? (
                           <div 
-                            className={`bg-black rounded-[4px] overflow-hidden max-w-[200px] cursor-pointer relative group ${
-                              isMe ? 'mr-[-6px]' : 'ml-[-6px]'
-                            }`}
+                            className="bg-black rounded-[4px] overflow-hidden max-w-[200px] cursor-pointer relative group"
                             onClick={() => handleLongPressMessage(msg)}
                           >
                             <div className="absolute inset-0 z-10 bg-transparent"></div>
@@ -1198,9 +1194,7 @@ export function EasyChatRoom({ conversation, contacts, user, onBack, onUpdateCon
                           </div>
                         ) : msg.type === 'emojipack' ? (
                           <div 
-                             className={`cursor-pointer hover:scale-110 transition-transform ${
-                               isMe ? 'mr-[-6px]' : 'ml-[-6px]'
-                             }`}
+                             className="cursor-pointer hover:scale-110 transition-transform"
                              onClick={() => handleLongPressMessage(msg)}
                              title={msg.emojipackDescription}
                           >
