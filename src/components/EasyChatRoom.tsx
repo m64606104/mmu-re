@@ -1076,7 +1076,7 @@ export function EasyChatRoom({ conversation, contacts, user, onBack, onUpdateCon
                       )}
                       <div className={`flex-1 flex gap-3 ${isMe ? 'flex-row-reverse' : 'flex-row'}`}>
                       {/* 头像 */}
-                      <div className="w-10 h-10 rounded-[5px] bg-blue-500 flex items-center justify-center overflow-hidden flex-shrink-0">
+                      <div className="w-10 h-10 rounded-[5px] bg-blue-500 flex items-center justify-center overflow-hidden flex-shrink-0 mt-1">
                         {sender.avatar.startsWith('data:') ? (
                           <img src={sender.avatar} alt="头像" className="w-full h-full object-cover" />
                         ) : (
