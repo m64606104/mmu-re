@@ -1174,14 +1174,18 @@ export function EasyChatRoom({ conversation, contacts, user, onBack, onUpdateCon
                           </div>
                         ) : msg.type === 'image' ? (
                           <div 
-                            className="rounded-[4px] overflow-hidden max-w-[200px] cursor-pointer"
+                            className={`rounded-[4px] overflow-hidden max-w-[200px] cursor-pointer ${
+                              isMe ? 'mr-[-6px]' : 'ml-[-6px]'
+                            }`}
                             onClick={() => handleLongPressMessage(msg)}
                           >
                             <img src={msg.imageUrl} alt="图片" className="w-full h-auto" />
                           </div>
                         ) : msg.type === 'video' ? (
                           <div 
-                            className="bg-black rounded-[4px] overflow-hidden max-w-[200px] cursor-pointer relative group"
+                            className={`bg-black rounded-[4px] overflow-hidden max-w-[200px] cursor-pointer relative group ${
+                              isMe ? 'mr-[-6px]' : 'ml-[-6px]'
+                            }`}
                             onClick={() => handleLongPressMessage(msg)}
                           >
                             <div className="absolute inset-0 z-10 bg-transparent"></div>
@@ -1194,7 +1198,9 @@ export function EasyChatRoom({ conversation, contacts, user, onBack, onUpdateCon
                           </div>
                         ) : msg.type === 'emojipack' ? (
                           <div 
-                             className="cursor-pointer hover:scale-110 transition-transform px-2"
+                             className={`cursor-pointer hover:scale-110 transition-transform ${
+                               isMe ? 'mr-[-6px]' : 'ml-[-6px]'
+                             }`}
                              onClick={() => handleLongPressMessage(msg)}
                              title={msg.emojipackDescription}
                           >
@@ -2351,7 +2357,7 @@ export function EasyChatRoom({ conversation, contacts, user, onBack, onUpdateCon
 
                     <button
                       onClick={() => {
-                        setShowEmojiPack(true);
+                        setShowStickerPanel(!showStickerPanel);
                         setShowMediaMenu(false);
                       }}
                       className="flex flex-col items-center gap-2 p-3 rounded-2xl hover:bg-yellow-50 active:bg-yellow-100 transition-all group"
@@ -2487,6 +2493,14 @@ export function EasyChatRoom({ conversation, contacts, user, onBack, onUpdateCon
           </button>
         </div>
       </div>
+
+      {/* 表情包面板 */}
+      {showStickerPanel && (
+        <StickerPanel 
+          currentSenderId={currentSenderId}
+          onSend={(url) => handleSendEmojiPack('[图片表情]', url)}
+        />
+      )}
 
       {/* 群聊发送者快速切换 - 隐蔽设计 */}
       {showSenderPicker && conversation.type === 'group' && (
