@@ -5458,58 +5458,6 @@ ${doc.content}`;
             <Search className="w-5 h-5 text-gray-700" />
           </button>
           
-          {/* 📚 世界书挂载按钮 (仅私聊) */}
-          {conversation.type === 'private' && (
-            <button
-              onClick={() => setShowWorldbookMount(true)}
-              className="p-2 hover:bg-gray-100 rounded-lg transition-colors relative"
-              title="世界书设定"
-            >
-              <svg className="w-5 h-5 text-gray-700" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
-                <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" />
-                <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" />
-              </svg>
-              {/* 启用标记 */}
-              {conversation.worldbookMount?.enabled && conversation.worldbookMount.selectedIds.length > 0 && (
-                <span className="absolute -top-0.5 -right-0.5 w-2 h-2 bg-blue-500 rounded-full"></span>
-              )}
-            </button>
-          )}
-          
-          {/* 💬 子聊天按钮 */}
-          {conversation.type === 'private' && (
-            <button
-              onClick={() => setShowSubChatManager(true)}
-              className="p-2 hover:bg-gray-100 rounded-lg transition-colors relative"
-              title="子聊天"
-            >
-              <MessageCircle className="w-5 h-5 text-gray-700" />
-              {/* 未读数角标 */}
-              {subChatUnreadCount > 0 && (
-                <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs px-1.5 py-0.5 rounded-full min-w-[18px] text-center">
-                  {subChatUnreadCount > 99 ? '99+' : subChatUnreadCount}
-                </span>
-              )}
-              {/* 待处理请求角标 */}
-              {pendingSubChatsCount > 0 && subChatUnreadCount === 0 && (
-                <span className="absolute -top-1 -right-1 bg-yellow-500 text-white text-xs px-1.5 py-0.5 rounded-full min-w-[18px] text-center">
-                  {pendingSubChatsCount}
-                </span>
-              )}
-            </button>
-          )}
-          
-          {/* 视频通话按钮 (仅私聊) */}
-          {conversation.type === 'private' && (
-            <button
-              onClick={() => setShowVideoCall(true)}
-              className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
-              title="视频通话"
-            >
-              <Video className="w-5 h-5 text-gray-700" />
-            </button>
-          )}
-          
           {/* 免打扰按钮 */}
           <button
             onClick={() => {
