@@ -1,5 +1,5 @@
-import { useState, useEffect, useRef } from 'react';
-import { ArrowLeft, Plus, Heart, MessageCircle, Send, X, ChevronDown } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { ArrowLeft, Plus, Heart, MessageCircle, Send, X } from 'lucide-react';
 import { EasyChatUser, EasyChatContact } from '../types';
 import { load, save } from '../utils/storage';
 
@@ -48,13 +48,12 @@ export function EasyChatForum({ user, contacts, onBack }: EasyChatForumProps) {
   const [currentRole, setCurrentRole] = useState<ForumRole | null>(null);
   const [showNewPost, setShowNewPost] = useState(false);
   const [newPostContent, setNewPostContent] = useState('');
+  const [postingRole, setPostingRole] = useState<ForumRole | null>(null); // 发帖时选择的角色
   const [commentingPostId, setCommentingPostId] = useState<string | null>(null);
   const [commentContent, setCommentContent] = useState('');
   const [replyToComment, setReplyToComment] = useState<ForumComment | null>(null);
-  const [showRoleSelector, setShowRoleSelector] = useState(false);
+  const [commentingRoles, setCommentingRoles] = useState<Record<string, ForumRole>>({}); // 每个帖子的评论角色
   const [expandedPosts, setExpandedPosts] = useState<Set<string>>(new Set());
-
-  const roleButtonRef = useRef<HTMLButtonElement>(null);
 
   // 初始化角色列表
   useEffect(() => {
@@ -133,13 +132,19 @@ export function EasyChatForum({ user, contacts, onBack }: EasyChatForumProps) {
     return `${date.getMonth() + 1}/${date.getDate()}`;
   };
 
+  // 打开发帖弹窗
+  const handleOpenNewPost = () => {
+    setShowNewPost(true);
+    setPostingRole(currentRole || roles[0]); // 默认选择当前角色或第一个角色
+  };
+
   // 发布帖子
   const handlePublishPost = () => {
-    if (!newPostContent.trim() || !currentRole) return;
+    if (!newPostContent.trim() || !postingRole) return;
 
     const newPost: ForumPost = {
       id: `post_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-      author: currentRole,
+      author: postingRole,
       content: newPostContent.trim(),
       createdAt: Date.now(),
       likeIds: [],
@@ -149,29 +154,48 @@ export function EasyChatForum({ user, contacts, onBack }: EasyChatForumProps) {
     setPosts(prev => [newPost, ...prev]);
     setNewPostContent('');
     setShowNewPost(false);
+    setCurrentRole(postingRole); // 更新当前角色为发帖使用的角色
   };
 
   // 点赞
   const handleLike = (postId: string) => {
+    if (!currentRole) return;
+    
     setPosts(prev => prev.map(post => {
       if (post.id === postId) {
-        const likeIds = post.likeIds.includes('user')
-          ? post.likeIds.filter(id => id !== 'user')
-          : [...post.likeIds, 'user'];
+        const likeIds = post.likeIds.includes(currentRole.id)
+          ? post.likeIds.filter(id => id !== currentRole.id)
+          : [...post.likeIds, currentRole.id];
         return { ...post, likeIds };
       }
       return post;
     }));
   };
 
+  // 获取或初始化帖子的评论角色
+  const getCommentingRole = (postId: string): ForumRole => {
+    if (commentingRoles[postId]) {
+      return commentingRoles[postId];
+    }
+    // 默认使用当前角色或第一个角色
+    return currentRole || roles[0];
+  };
+
+  // 设置帖子的评论角色
+  const setCommentingRole = (postId: string, role: ForumRole) => {
+    setCommentingRoles(prev => ({ ...prev, [postId]: role }));
+    setCurrentRole(role); // 同步更新当前角色，用于点赞
+  };
+
   // 发表评论
   const handleComment = (postId: string) => {
-    if (!commentContent.trim() || !currentRole) return;
+    const commentRole = getCommentingRole(postId);
+    if (!commentContent.trim() || !commentRole) return;
 
     const newComment: ForumComment = {
       id: `comment_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
       postId,
-      author: currentRole,
+      author: commentRole,
       content: commentContent.trim(),
       createdAt: Date.now(),
       replyToCommentId: replyToComment?.id,
@@ -241,73 +265,11 @@ export function EasyChatForum({ user, contacts, onBack }: EasyChatForumProps) {
           </button>
           <h1 className="text-lg font-semibold text-gray-800">论坛</h1>
           <button
-            onClick={() => setShowNewPost(true)}
+            onClick={handleOpenNewPost}
             className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
           >
             <Plus className="w-5 h-5 text-gray-700" />
           </button>
-        </div>
-
-        {/* 当前角色显示 */}
-        <div className="px-4 pb-3">
-          <div className="relative">
-            <button
-              ref={roleButtonRef}
-              onClick={() => setShowRoleSelector(!showRoleSelector)}
-              className="flex items-center gap-2 px-3 py-2 bg-gray-50 hover:bg-gray-100 rounded-lg transition-colors w-full"
-            >
-              <div className="w-8 h-8 rounded-full bg-blue-500 flex items-center justify-center flex-shrink-0 overflow-hidden">
-                {currentRole && (currentRole.avatar.startsWith('data:') ? (
-                  <img src={currentRole.avatar} alt={currentRole.name} className="w-full h-full object-cover" />
-                ) : (
-                  <span className="text-sm">{currentRole.avatar}</span>
-                ))}
-              </div>
-              <span className="text-sm text-gray-700 flex-1 text-left">
-                当前身份：{currentRole?.name || '未选择'}
-              </span>
-              <ChevronDown className={`w-4 h-4 text-gray-500 transition-transform ${showRoleSelector ? 'rotate-180' : ''}`} />
-            </button>
-
-            {/* 角色选择下拉 */}
-            {showRoleSelector && (
-              <>
-                <div 
-                  className="fixed inset-0 z-10" 
-                  onClick={() => setShowRoleSelector(false)}
-                />
-                <div className="absolute top-full left-0 right-0 mt-1 bg-white rounded-lg shadow-lg border border-gray-200 z-20 max-h-64 overflow-y-auto">
-                  {roles.map(role => (
-                    <button
-                      key={role.id}
-                      onClick={() => {
-                        setCurrentRole(role);
-                        setShowRoleSelector(false);
-                      }}
-                      className={`w-full flex items-center gap-3 px-4 py-3 hover:bg-gray-50 transition-colors ${
-                        currentRole?.id === role.id ? 'bg-blue-50' : ''
-                      }`}
-                    >
-                      <div className="w-10 h-10 rounded-full bg-blue-500 flex items-center justify-center overflow-hidden flex-shrink-0">
-                        {role.avatar.startsWith('data:') ? (
-                          <img src={role.avatar} alt={role.name} className="w-full h-full object-cover" />
-                        ) : (
-                          <span className="text-base">{role.avatar}</span>
-                        )}
-                      </div>
-                      <div className="flex-1 text-left">
-                        <div className="font-medium text-gray-800">{role.name}</div>
-                        <div className="text-xs text-gray-500">{role.type === 'user' ? '我' : '角色'}</div>
-                      </div>
-                      {currentRole?.id === role.id && (
-                        <div className="w-2 h-2 bg-blue-500 rounded-full" />
-                      )}
-                    </button>
-                  ))}
-                </div>
-              </>
-            )}
-          </div>
         </div>
       </div>
 
@@ -364,10 +326,10 @@ export function EasyChatForum({ user, contacts, onBack }: EasyChatForumProps) {
                     <button
                       onClick={() => handleLike(post.id)}
                       className={`flex items-center gap-1.5 text-sm transition-colors ${
-                        post.likeIds.includes('user') ? 'text-red-500' : 'text-gray-500 hover:text-red-500'
+                        currentRole && post.likeIds.includes(currentRole.id) ? 'text-red-500' : 'text-gray-500 hover:text-red-500'
                       }`}
                     >
-                      <Heart className={`w-5 h-5 ${post.likeIds.includes('user') ? 'fill-current' : ''}`} />
+                      <Heart className={`w-5 h-5 ${currentRole && post.likeIds.includes(currentRole.id) ? 'fill-current' : ''}`} />
                       <span>{post.likeIds.length || '赞'}</span>
                     </button>
                     <button
@@ -467,7 +429,30 @@ export function EasyChatForum({ user, contacts, onBack }: EasyChatForumProps) {
                           </button>
                         </div>
                       )}
-                      <div className="flex gap-2">
+                      <div className="flex gap-2 items-center">
+                        {/* 角色头像选择器 */}
+                        <div className="relative">
+                          <button
+                            onClick={() => {
+                              const currentCommentRole = getCommentingRole(post.id);
+                              const currentIndex = roles.findIndex(r => r.id === currentCommentRole.id);
+                              const nextRole = roles[(currentIndex + 1) % roles.length];
+                              setCommentingRole(post.id, nextRole);
+                            }}
+                            className="w-8 h-8 rounded-full bg-blue-500 flex items-center justify-center overflow-hidden flex-shrink-0 hover:ring-2 hover:ring-blue-300 transition-all"
+                            title="点击切换身份"
+                          >
+                            {(() => {
+                              const role = getCommentingRole(post.id);
+                              return role.avatar.startsWith('data:') ? (
+                                <img src={role.avatar} alt={role.name} className="w-full h-full object-cover" />
+                              ) : (
+                                <span className="text-sm">{role.avatar}</span>
+                              );
+                            })()}
+                          </button>
+                        </div>
+                        
                         <input
                           type="text"
                           value={commentContent}
@@ -514,18 +499,34 @@ export function EasyChatForum({ user, contacts, onBack }: EasyChatForumProps) {
               </button>
             </div>
 
-            {/* 当前身份提示 */}
-            <div className="flex items-center gap-2 mb-4 px-3 py-2 bg-blue-50 rounded-lg">
-              <div className="w-8 h-8 rounded-full bg-blue-500 flex items-center justify-center overflow-hidden flex-shrink-0">
-                {currentRole && (currentRole.avatar.startsWith('data:') ? (
-                  <img src={currentRole.avatar} alt={currentRole.name} className="w-full h-full object-cover" />
-                ) : (
-                  <span className="text-sm">{currentRole.avatar}</span>
+            {/* 角色选择器 */}
+            <div className="mb-4">
+              <label className="text-sm text-gray-600 mb-2 block">选择发布身份</label>
+              <div className="flex gap-2 overflow-x-auto pb-2">
+                {roles.map(role => (
+                  <button
+                    key={role.id}
+                    onClick={() => setPostingRole(role)}
+                    className={`flex flex-col items-center gap-1 p-2 rounded-lg transition-all flex-shrink-0 ${
+                      postingRole?.id === role.id 
+                        ? 'bg-blue-50 ring-2 ring-blue-500' 
+                        : 'bg-gray-50 hover:bg-gray-100'
+                    }`}
+                  >
+                    <div className="w-12 h-12 rounded-full bg-blue-500 flex items-center justify-center overflow-hidden">
+                      {role.avatar.startsWith('data:') ? (
+                        <img src={role.avatar} alt={role.name} className="w-full h-full object-cover" />
+                      ) : (
+                        <span className="text-lg">{role.avatar}</span>
+                      )}
+                    </div>
+                    <span className="text-xs font-medium text-gray-700">{role.name}</span>
+                    {role.type === 'user' && (
+                      <span className="text-[10px] text-gray-400">我</span>
+                    )}
+                  </button>
                 ))}
               </div>
-              <span className="text-sm text-gray-700">
-                以 <span className="font-medium text-blue-600">{currentRole?.name}</span> 的身份发布
-              </span>
             </div>
 
             <textarea
