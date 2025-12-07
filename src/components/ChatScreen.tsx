@@ -94,6 +94,7 @@ import { CallLog } from '../types';
 import WorldbookMountSettings from './WorldbookMountSettings';
 import { WorldbookMountConfig } from '../types/worldbook';
 import { buildWorldbookPrompt } from '../utils/worldbookPrompt';
+import { buildStickerPrompt } from '../utils/stickerPrompt';
 
 // import { backgroundTaskManager } from '../utils/backgroundTaskManager';
 // 直接在这里定义一个简化版的backgroundTaskManager作为替代
@@ -3809,6 +3810,20 @@ ${groupContext.contextSummary}
       }
       console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
       
+      // 📦 获取表情包提示
+      let stickerPrompt = '';
+      try {
+        console.log('📦 [表情包] 开始加载可用表情包...');
+        stickerPrompt = await buildStickerPrompt(conversation.id);
+        if (stickerPrompt) {
+          console.log('📦 [表情包] ✅ 已加载表情包提示');
+        } else {
+          console.log('📦 [表情包] ⚠️  没有可用的表情包');
+        }
+      } catch (error) {
+        console.error('📦 [表情包] ❌ 加载失败:', error);
+      }
+      
       let systemPrompt = conversation.characterSettings
         ? `${worldbookSections.before}你是${conversation.characterSettings.nickname}。
 ${conversation.characterSettings.systemPrompt ? `人物设定：${conversation.characterSettings.systemPrompt}` : ''}
@@ -4506,6 +4521,11 @@ ${SmartHTMLGenerator.getModuleInstructions()}
         }
       } else {
         console.log('⚡ 朋友圈记忆已关闭，不加载朋友圈内容');
+      }
+      
+      // 添加表情包提示
+      if (stickerPrompt) {
+        systemPrompt += stickerPrompt;
       }
       
       // 添加时间感知信息
