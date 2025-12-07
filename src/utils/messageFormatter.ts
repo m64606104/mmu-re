@@ -94,6 +94,77 @@ export const splitMessages = (message: string): string[] => {
     /￥?\d+\.\d+[元亿万]?/g  // 🎯 保护金额（如99.9元、3.14亿）
   ];
   
+  // 🎨 检测并保护完整的HTML内容块
+  // 匹配从 < 开始到对应的闭合标签结束的完整HTML
+  let htmlProtectedMessage = message;
+  const htmlBlocks: string[] = [];
+  
+  // 检测是否包含HTML标签
+  if (/<[^>]+>/.test(message)) {
+    console.log('🎨 [分割器] 检测到HTML标签，开始保护HTML块');
+    
+    // 使用栈来匹配标签对
+    let depth = 0;
+    let htmlStart = -1;
+    let i = 0;
+    
+    while (i < message.length) {
+      // 检测到标签开始
+      if (message[i] === '<') {
+        const tagEnd = message.indexOf('>', i);
+        if (tagEnd === -1) break;
+        
+        const tagContent = message.substring(i + 1, tagEnd);
+        
+        // 判断是否是自闭合标签 (如 <br/>, <img/>)
+        const isSelfClosing = tagContent.endsWith('/') || 
+                            ['br', 'hr', 'img', 'input', 'meta', 'link'].some(t => 
+                              tagContent.startsWith(t + ' ') || tagContent === t
+                            );
+        
+        // 判断是否是闭合标签 (如 </div>)
+        const isClosing = tagContent.startsWith('/');
+        
+        if (depth === 0 && !isClosing && !isSelfClosing) {
+          // 开始一个新的HTML块
+          htmlStart = i;
+          depth = 1;
+        } else if (depth > 0) {
+          if (isClosing) {
+            depth--;
+            if (depth === 0) {
+              // 找到完整的HTML块
+              const htmlBlock = message.substring(htmlStart, tagEnd + 1);
+              htmlBlocks.push(htmlBlock);
+              htmlProtectedMessage = htmlProtectedMessage.replace(htmlBlock, '___HTML_BLOCK___');
+              console.log(`🎨 [分割器] 保护HTML块，长度: ${htmlBlock.length}`);
+            }
+          } else if (!isSelfClosing) {
+            depth++;
+          }
+        }
+        
+        i = tagEnd + 1;
+      } else {
+        i++;
+      }
+    }
+    
+    // 如果有未匹配的HTML开始标签（说明可能是单个标签或格式不完整）
+    if (depth > 0 && htmlStart >= 0) {
+      const remainingHtml = message.substring(htmlStart);
+      htmlBlocks.push(remainingHtml);
+      htmlProtectedMessage = htmlProtectedMessage.replace(remainingHtml, '___HTML_BLOCK___');
+      console.log(`🎨 [分割器] 保护剩余HTML内容，长度: ${remainingHtml.length}`);
+    }
+    
+    // 如果保护了HTML块，替换原始message
+    if (htmlBlocks.length > 0) {
+      message = htmlProtectedMessage;
+      console.log(`🎨 [分割器] 共保护了 ${htmlBlocks.length} 个HTML块`);
+    }
+  }
+  
   let protectedParts: string[] = [];
   let messageWithoutProtected = message;
   
@@ -270,9 +341,16 @@ export const splitMessages = (message: string): string[] => {
   let urlIndex = 0;
   let protectedContentIndex = 0;
   let protectedFormatIndex = 0;
+  let htmlBlockIndex = 0;
   const restoredMessages = finalMessages.map(msg => {
-    // 先恢复URL
-    let restored = msg.replace(new RegExp(urlPlaceholder, 'g'), () => {
+    // 先恢复HTML块
+    let restored = msg.replace(/___HTML_BLOCK___/g, () => {
+      const htmlBlock = htmlBlocks[htmlBlockIndex];
+      htmlBlockIndex++;
+      return htmlBlock || '';
+    });
+    // 恢复URL
+    restored = restored.replace(new RegExp(urlPlaceholder, 'g'), () => {
       const url = urls[urlIndex];
       urlIndex++;
       return url || '';
