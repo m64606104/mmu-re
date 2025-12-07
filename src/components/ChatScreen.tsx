@@ -95,6 +95,8 @@ import WorldbookMountSettings from './WorldbookMountSettings';
 import { WorldbookMountConfig } from '../types/worldbook';
 import { buildWorldbookPrompt } from '../utils/worldbookPrompt';
 import { buildStickerPrompt } from '../utils/stickerPrompt';
+import UserStickerPicker from './UserStickerPicker';
+import { StickerItem } from '../types/sticker';
 
 // import { backgroundTaskManager } from '../utils/backgroundTaskManager';
 // 直接在这里定义一个简化版的backgroundTaskManager作为替代
@@ -924,6 +926,7 @@ export default function ChatScreen({
   const [pendingVideoFile, setPendingVideoFile] = useState<File | null>(null);
   const [showStickerModal, setShowStickerModal] = useState(false);
   const [stickerDescInput, setStickerDescInput] = useState('');
+  const [showUserStickerPicker, setShowUserStickerPicker] = useState(false);
   const [viewingVoice, setViewingVoice] = useState<string[]>([]);
   const [playingVoice, setPlayingVoice] = useState<string | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
@@ -2586,10 +2589,32 @@ ${characterInfo?.languageStyle ? `语言风格：${characterInfo.languageStyle}`
     if (e.target) e.target.value = '';
   };
 
-  // 打开表情包输入弹窗
+  // 打开表情包选择器
   const handleStickerClick = () => {
-    setShowStickerModal(true);
+    setShowUserStickerPicker(true);
     setShowToolbar(false);
+  };
+  
+  // 处理选中表情包
+  const handleSelectSticker = (sticker: StickerItem) => {
+    // 发送表情包消息
+    const stickerMessage: Message = {
+      id: `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+      role: 'user',
+      content: '', // 表情包不需要文字内容
+      timestamp: Date.now(),
+      mediaType: 'sticker',
+      mediaUrl: sticker.imageUrl,
+      mediaDescription: sticker.description,
+    };
+    
+    // 添加到对话
+    onUpdateConversation(conversation.id, {
+      messages: [...conversation.messages, stickerMessage],
+      lastMessageTime: Date.now()
+    });
+    
+    setShowUserStickerPicker(false);
   };
 
   // 🎵 音乐分享处理函数 - 重写为上下文感知版本
@@ -4405,13 +4430,28 @@ ${SmartHTMLGenerator.getModuleInstructions()}
         systemPrompt += `
         
 【❌ 严格禁止动作描述】：
-- 禁止使用括号描述动作或神态，如（笑着说）、（摸摸头）、（叹气）等
-- 禁止使用星号描述动作，如 *看着你*、*点头*
-- 必须像真实人类在微信/QQ聊天一样，只发送文字、图片或表情
-- 不要像写小说一样描述场景
-- 示例：
-  ❌ 错误：(开心地点头) 好的呀！
-  ✅ 正确：好的呀！[表情包:开心]`;
+⚠️ 这是日常聊天，不是角色扮演或小说！
+
+绝对禁止以下所有形式：
+- ❌ 任何括号内的动作/神态/场景描述：（从浴室里走出来）、（笑着说）、（摸摸头）、（叹气）、（看向窗外）
+- ❌ 星号动作描述：*看着你*、*点头*、*微笑*
+- ❌ 任何第三人称叙述：她走过来、他拿起手机
+- ❌ 任何场景描写：房间里很安静、窗外下着雨
+
+✅ 正确的表达方式：
+- 纯文字对话
+- 使用表情包表达情绪：[表情包:开心]、[表情包:疑问]
+- 发送图片/视频/语音等多媒体
+- 像在微信/QQ上真实聊天一样自然对话
+
+示例对比：
+❌ 错误："（从浴室里走出来，一边擦着头发一边拿起手机）这么晚还没睡？"
+✅ 正确："这么晚还没睡呀？[表情包:疑问]"
+
+❌ 错误："（笑着说）好的呀！"  
+✅ 正确："好的呀！[表情包:开心]"
+
+记住：你是在用手机聊天，不是在写小说！`;
       } else {
         console.log('🎭 检测到角色扮演/语C模式，允许使用动作描述');
       }
@@ -8023,6 +8063,14 @@ ${doc.content}`;
           </div>
         </div>
       </div>
+    )}
+
+    {/* 用户表情包选择器 */}
+    {showUserStickerPicker && (
+      <UserStickerPicker
+        onClose={() => setShowUserStickerPicker(false)}
+        onSelectSticker={handleSelectSticker}
+      />
     )}
     </>
   );
