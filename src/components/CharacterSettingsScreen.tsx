@@ -80,6 +80,9 @@ export default function CharacterSettingsScreen({
   // 📸 朋友圈记忆配置
   const [momentsMemoryEnabled, setMomentsMemoryEnabled] = useState(settings.momentsMemoryConfig?.enabled ?? true);
   
+  // 📚 世界书禁用配置
+  const [disableWorldbook, setDisableWorldbook] = useState(settings.disableWorldbook ?? false);
+  
   // 📸 朋友圈频率配置
   const [momentsFrequencyDescription, setMomentsFrequencyDescription] = useState(settings.momentsConfig?.description || '');
   const [parsedRules, setParsedRules] = useState<any>(null);
@@ -307,6 +310,7 @@ export default function CharacterSettingsScreen({
           momentsMemoryConfig: {
             enabled: momentsMemoryEnabled,
           },
+          disableWorldbook: disableWorldbook,
           momentsConfig: {
             description: momentsFrequencyDescription,
           },
@@ -1488,6 +1492,38 @@ export default function CharacterSettingsScreen({
                       <><span className="font-medium">✅ 已开启</span> - AI会记住查看过的朋友圈内容，可以在聊天中提及</>
                     ) : (
                       <><span className="font-medium">⚡ 已关闭</span> - 朋友圈内容不会记录到记忆库，减少记忆负担</>
+                    )}
+                  </p>
+                </div>
+              </div>
+
+              {/* Disable Worldbook */}
+              <div className="bg-white rounded-lg border border-gray-100 p-3">
+                <div className="flex items-center justify-between mb-3">
+                  <div className="flex items-center gap-2">
+                    <BookOpen className="w-5 h-5 text-blue-500" />
+                    <h3 className="text-sm font-medium text-gray-900">世界书功能</h3>
+                  </div>
+                  <label className="relative inline-flex items-center cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={!disableWorldbook}
+                      onChange={(e) => setDisableWorldbook(!e.target.checked)}
+                      className="sr-only peer"
+                    />
+                    <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+                  </label>
+                </div>
+                <div className={`rounded-lg p-3 ${
+                  !disableWorldbook ? 'bg-blue-50 border border-blue-100' : 'bg-gray-50 border border-gray-200'
+                }`}>
+                  <p className={`text-xs leading-relaxed ${
+                    !disableWorldbook ? 'text-blue-700' : 'text-gray-600'
+                  }`}>
+                    {!disableWorldbook ? (
+                      <><span className="font-medium">✅ 已启用</span> - AI会根据挂载的世界书设定进行对话，包含全局和局部世界书</>
+                    ) : (
+                      <><span className="font-medium">❌ 已禁用</span> - AI不会使用任何世界书内容，即使有全局世界书也不会加载</>
                     )}
                   </p>
                 </div>

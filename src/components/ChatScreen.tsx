@@ -243,12 +243,39 @@ const backgroundTaskManager = {
         const content = splitMsgs[index];
         const baseId = Date.now().toString() + '_' + index;
         
-        // 提取所有媒体项（支持多媒体混合）
+        // 🎨 第1步：检测并分离HTML内容
+        let htmlContent = '';
+        let nonHTMLContent = content;
+        
+        // 检测是否包含HTML（使用与顶层相同的逻辑）
+        const hasHTMLTags = /<[^>]+>/.test(content);
+        if (hasHTMLTags) {
+          const htmlTagMatches = content.match(/<[^>]+>/g) || [];
+          const htmlTagCount = htmlTagMatches.length;
+          const structuralTags = ['<div', '<style', '<span', '<table', '<ul', '<ol'];
+          const hasStructuralTags = structuralTags.some(tag => content.includes(tag));
+          
+          // 如果检测到HTML结构
+          if (htmlTagCount >= 3 || hasStructuralTags) {
+            // 提取HTML部分（从第一个<到最后一个>）
+            const firstTagIndex = content.indexOf('<');
+            const lastTagIndex = content.lastIndexOf('>') + 1;
+            if (firstTagIndex !== -1 && lastTagIndex > firstTagIndex) {
+              htmlContent = content.substring(firstTagIndex, lastTagIndex);
+              // 移除HTML部分，保留前后的文本
+              nonHTMLContent = content.substring(0, firstTagIndex) + ' ' + content.substring(lastTagIndex);
+              nonHTMLContent = nonHTMLContent.trim();
+              console.log('🎨 [分离HTML] 提取了HTML内容，长度:', htmlContent.length);
+            }
+          }
+        }
+        
+        // 🎤 第2步：从非HTML内容中提取媒体项
         const mediaItems: any[] = [];
-        let cleanContent = content;
+        let cleanContent = nonHTMLContent;
         
         // 提取所有图片
-        const imageMatches = content.matchAll(/\[图片[:：]([^\]]+)\]/g);
+        const imageMatches = cleanContent.matchAll(/\[图片[:：]([^\]]+)\]/g);
         for (const match of imageMatches) {
           mediaItems.push({
             type: 'image',
@@ -258,7 +285,7 @@ const backgroundTaskManager = {
         }
         
         // 提取所有视频
-        const videoMatches = content.matchAll(/\[视频[:：]([^\]]+)\]/g);
+        const videoMatches = cleanContent.matchAll(/\[视频[:：]([^\]]+)\]/g);
         for (const match of videoMatches) {
           mediaItems.push({
             type: 'video',
@@ -268,7 +295,7 @@ const backgroundTaskManager = {
         }
         
         // 提取所有语音
-        const voiceMatches = content.matchAll(/\[语音[:：](.+?)(?:[，,]\s*(?:时长)?(\d+)秒?)?\]/g);
+        const voiceMatches = cleanContent.matchAll(/\[语音[:：](.+?)(?:[，,]\s*(?:时长)?(\d+)秒?)?\]/g);
         for (const match of voiceMatches) {
           mediaItems.push({
             type: 'voice',
@@ -279,7 +306,7 @@ const backgroundTaskManager = {
         }
         
         // 提取所有表情包
-        const stickerMatches = content.matchAll(/\[表情包[:：]([^\]]+)\]/g);
+        const stickerMatches = cleanContent.matchAll(/\[表情包[:：]([^\]]+)\]/g);
         for (const match of stickerMatches) {
           mediaItems.push({
             type: 'sticker',
@@ -620,56 +647,107 @@ ${summary}`;
           finalContent = finalContent.replace(/\[换回原头像\]/g, '').replace(/【换回原头像】/g, '').trim();
         }
         
-        // 🎤 将语音消息分离为独立的消息（避免和文本混在一起）
-        const voiceItems = mediaItems.filter(item => item.type === 'voice');
-        const nonVoiceItems = mediaItems.filter(item => item.type !== 'voice');
+        // 🎯 第3步：分离所有内容为独立消息
+        let msgTimestamp = Date.now();
         
-        // 1. 先添加所有语音消息（作为独立的消息气泡）
+        // 3.1 添加HTML消息（如果有）
+        if (htmlContent) {
+          messages.push({
+            id: `${baseId}_html`,
+            role: 'assistant' as const,
+            content: htmlContent,
+            timestamp: msgTimestamp++
+          });
+          console.log('🎨 [创建消息] HTML消息已添加');
+        }
+        
+        // 3.2 添加所有语音消息（每个语音独立气泡）
+        const voiceItems = mediaItems.filter(item => item.type === 'voice');
         voiceItems.forEach((voice, voiceIdx) => {
           messages.push({
             id: `${baseId}_voice_${voiceIdx}`,
             role: 'assistant' as const,
             content: '[语音]',
-            timestamp: Date.now() + voiceIdx,
+            timestamp: msgTimestamp++,
             mediaType: 'voice',
             mediaDescription: voice.description,
             voiceDuration: voice.duration,
             isMediaDescriptionOnly: true
           });
+          console.log(`🎤 [创建消息] 语音消息 ${voiceIdx + 1} 已添加`);
         });
         
-        // 2. 再添加文本和其他媒体消息
+        // 3.3 添加所有图片消息（每个图片独立气泡）
+        const imageItems = mediaItems.filter(item => item.type === 'image');
+        imageItems.forEach((image, imageIdx) => {
+          messages.push({
+            id: `${baseId}_image_${imageIdx}`,
+            role: 'assistant' as const,
+            content: '[图片]',
+            timestamp: msgTimestamp++,
+            mediaType: 'image',
+            mediaDescription: image.description,
+            isMediaDescriptionOnly: true
+          });
+          console.log(`🖼️ [创建消息] 图片消息 ${imageIdx + 1} 已添加`);
+        });
+        
+        // 3.4 添加所有视频消息
+        const videoItems = mediaItems.filter(item => item.type === 'video');
+        videoItems.forEach((video, videoIdx) => {
+          messages.push({
+            id: `${baseId}_video_${videoIdx}`,
+            role: 'assistant' as const,
+            content: '[视频]',
+            timestamp: msgTimestamp++,
+            mediaType: 'video',
+            mediaDescription: video.description,
+            isMediaDescriptionOnly: true
+          });
+          console.log(`🎬 [创建消息] 视频消息 ${videoIdx + 1} 已添加`);
+        });
+        
+        // 3.5 添加所有表情包消息
+        const stickerItems = mediaItems.filter(item => item.type === 'sticker');
+        stickerItems.forEach((sticker, stickerIdx) => {
+          messages.push({
+            id: `${baseId}_sticker_${stickerIdx}`,
+            role: 'assistant' as const,
+            content: '[表情包]',
+            timestamp: msgTimestamp++,
+            mediaType: 'sticker',
+            mediaDescription: sticker.description,
+            isMediaDescriptionOnly: true
+          });
+          console.log(`😊 [创建消息] 表情包消息 ${stickerIdx + 1} 已添加`);
+        });
+        
+        // 3.6 最后添加文本消息（如果有剩余文本）
         const hasSpecialContent = allExtraMessages.some(msg => msg.id.startsWith(baseId));
-        const shouldCreateTextMessage = finalContent || (!hasSpecialContent && (cleanContent || nonVoiceItems.length > 0));
+        const shouldCreateTextMessage = finalContent || (!hasSpecialContent && cleanContent);
         
         if (shouldCreateTextMessage) {
-          const message: Message = {
-            id: baseId,
-            role: 'assistant' as const,
-            content: finalContent || cleanContent || (nonVoiceItems.length > 0 ? '[多媒体消息]' : ''),
-            timestamp: Date.now() + voiceItems.length
-          };
-          
-          // 如果有引用消息，添加到消息中
-          if (replyToInfo) {
-            message.replyTo = {
-              id: '', // AI回复时不需要原始ID
-              content: replyToInfo.content,
-              role: replyToInfo.role
+          const textContent = finalContent || cleanContent;
+          if (textContent && textContent.trim()) {
+            const message: Message = {
+              id: baseId,
+              role: 'assistant' as const,
+              content: textContent,
+              timestamp: msgTimestamp++
             };
+            
+            // 如果有引用消息，添加到消息中
+            if (replyToInfo) {
+              message.replyTo = {
+                id: '',
+                content: replyToInfo.content,
+                role: replyToInfo.role
+              };
+            }
+            
+            messages.push(message);
+            console.log('📝 [创建消息] 文本消息已添加');
           }
-          
-          // 如果有非语音媒体项，添加到消息中
-          if (nonVoiceItems.length > 0) {
-            message.mediaItems = nonVoiceItems;
-            // 为了兼容旧的渲染逻辑，也设置第一个媒体的信息
-            const firstMedia = nonVoiceItems[0];
-            message.mediaType = firstMedia.type;
-            message.mediaDescription = firstMedia.description;
-            message.isMediaDescriptionOnly = true;
-          }
-          
-          messages.push(message);
         }
       }
       
@@ -3708,8 +3786,17 @@ ${groupContext.contextSummary}
         }
       }
       
-      // 📚 获取世界书内容
-      const worldbookSections = await buildWorldbookPrompt(conversation);
+      // 📚 获取世界书内容（检查是否启用）
+      let worldbookSections = { before: '', middle: '', after: '' };
+      
+      // 检查是否禁用世界书（优先检查全局禁用开关）
+      const isWorldbookDisabled = conversation.characterSettings?.disableWorldbook === true;
+      
+      if (!isWorldbookDisabled) {
+        worldbookSections = await buildWorldbookPrompt(conversation);
+      } else {
+        console.log('📚 [世界书] 用户已禁用，跳过加载');
+      }
       
       let systemPrompt = conversation.characterSettings
         ? `${worldbookSections.before}你是${conversation.characterSettings.nickname}。

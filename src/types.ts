@@ -231,6 +231,8 @@ export interface CharacterSettings {
     enabled: boolean; // 是否允许使用该角色的历史聊天内容生成论坛动态
     lastGeneratedAt?: number; // 上次生成时间
   };
+  // 📚 世界书禁用开关
+  disableWorldbook?: boolean; // 是否禁用世界书（默认false）
 }
 
 // 气泡装饰配置接口
