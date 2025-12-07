@@ -3164,10 +3164,12 @@ ${characterInfo?.languageStyle ? `语言风格：${characterInfo.languageStyle}`
 3. 内容要有趣、有价值
 4. 长度控制在50-200字以内`;
 
-        // 构建请求体
-        const requestBody = {
-          model: apiConfig.modelName,
-          messages: [
+        // 调用Chat API生成私聊消息（使用统一的API helper）
+        const { getAIResponse } = await import('../utils/apiHelper');
+        
+        const aiReply = await getAIResponse(
+          apiConfig,
+          [
             {
               role: 'system',
               content: `你是${privateConversation.characterSettings?.nickname || privateConversation.name}。${privateConversation.characterSettings?.systemPrompt || ''}`
@@ -3177,28 +3179,13 @@ ${characterInfo?.languageStyle ? `语言风格：${characterInfo.languageStyle}`
               content: privatePrompt
             }
           ],
-          temperature: 0.7,
-          max_tokens: 500
-        };
+          {
+            temperature: 0.7,
+            max_tokens: 500
+          }
+        );
         
-        // 调用Chat API生成私聊消息
-        const response = await fetch('https://api.openai.com/v1/chat/completions', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${apiConfig.apiKey}`
-          },
-          body: JSON.stringify(requestBody)
-        });
-        
-        if (!response.ok) {
-          throw new Error(`API调用失败: ${response.status}`);
-        }
-        
-        const data = await response.json();
-        const aiReply = data.choices?.[0]?.message?.content;
-        
-        if (!aiReply) {
+        if (!aiReply || aiReply.trim() === '') {
           console.warn('AI私聊回复为空');
           return;
         }

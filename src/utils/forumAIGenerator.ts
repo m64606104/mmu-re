@@ -1,5 +1,6 @@
 import { EasyChatConversation, ApiConfig } from '../types';
 import { collectLearningSamples, formatSamplesForPrompt, getSamplesStats } from './forumLearningSamples';
+import { getAIResponse } from './apiHelper';
 
 /**
  * 生成论坛帖子的配置
@@ -102,50 +103,26 @@ export async function generateForumPost(
 
     console.log('📝 生成Prompt:', prompt.substring(0, 200) + '...');
 
-    // 4. 调用API
-    // 智能处理API URL - 如果baseUrl已经包含完整路径则直接使用，否则添加标准路径
-    let apiUrl = config.apiConfig.baseUrl;
-    if (!apiUrl.includes('/chat/completions')) {
-      // 移除末尾的斜杠
-      apiUrl = apiUrl.replace(/\/$/, '');
-      // 添加标准路径（优先尝试 /v1/chat/completions）
-      apiUrl = apiUrl.includes('/v1') ? `${apiUrl}/chat/completions` : `${apiUrl}/v1/chat/completions`;
-    }
-
-    console.log('🌐 API URL:', apiUrl);
-
-    const response = await fetch(apiUrl, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${config.apiConfig.apiKey}`
-      },
-      body: JSON.stringify({
-        model: config.apiConfig.modelName,
-        messages: [
-          {
-            role: 'user',
-            content: prompt
-          }
-        ],
+    // 4. 调用API（使用统一的 API helper）
+    const content = await getAIResponse(
+      config.apiConfig,
+      [
+        {
+          role: 'user',
+          content: prompt
+        }
+      ],
+      {
         temperature: 0.9, // 提高创造性
         max_tokens: 500
-      })
-    });
+      }
+    );
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      throw new Error(`API请求失败: ${response.status} ${errorText}`);
-    }
-
-    const data = await response.json();
-    const content = data.choices?.[0]?.message?.content?.trim();
-
-    if (!content) {
+    if (!content || content.trim() === '') {
       throw new Error('API返回内容为空');
     }
 
-    console.log('✅ 生成成功:', content);
+    console.log('✅ 生成成功:', content.substring(0, 100) + '...');
 
     return {
       success: true,
