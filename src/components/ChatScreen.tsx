@@ -179,7 +179,64 @@ const backgroundTaskManager = {
         return;
       }
       
-      // 使用splitMessages分割消息（非社交平台内容）
+      // 🎨 智能检测：判断消息模式（普通消息 vs HTML输出）
+      const isHTMLOutputMode = (() => {
+        // 检测是否包含HTML标签
+        const hasHTMLTags = /<[^>]+>/.test(assistantMessage);
+        if (!hasHTMLTags) return false;
+        
+        // 统计HTML标签数量和总字符数
+        const htmlTagMatches = assistantMessage.match(/<[^>]+>/g) || [];
+        const htmlTagCount = htmlTagMatches.length;
+        const totalLength = assistantMessage.length;
+        
+        // 如果HTML标签数量 >= 3，且内容中HTML占比较高，判定为HTML输出模式
+        if (htmlTagCount >= 3) {
+          const htmlContentLength = htmlTagMatches.reduce((sum, tag) => sum + tag.length, 0);
+          const htmlRatio = htmlContentLength / totalLength;
+          
+          if (htmlRatio > 0.2) {
+            console.log(`🎨 [智能检测] HTML输出模式: 标签数=${htmlTagCount}, 占比=${(htmlRatio * 100).toFixed(1)}%`);
+            return true;
+          }
+        }
+        
+        // 检测是否包含典型的HTML结构标签
+        const structuralTags = ['<div', '<style', '<span', '<table', '<ul', '<ol', '<section', '<article'];
+        const hasStructuralTags = structuralTags.some(tag => assistantMessage.includes(tag));
+        if (hasStructuralTags && htmlTagCount >= 2) {
+          console.log(`🎨 [智能检测] HTML输出模式: 检测到结构化标签`);
+          return true;
+        }
+        
+        // 检测是否是完整的HTML块（开始标签和闭合标签配对）
+        const openTagMatches = assistantMessage.match(/<(\w+)[^>]*>/g) || [];
+        const closeTagMatches = assistantMessage.match(/<\/(\w+)>/g) || [];
+        if (openTagMatches.length >= 2 && openTagMatches.length === closeTagMatches.length) {
+          console.log(`🎨 [智能检测] HTML输出模式: 检测到配对的HTML标签`);
+          return true;
+        }
+        
+        console.log(`📝 [智能检测] 普通消息模式: HTML标签数=${htmlTagCount}`);
+        return false;
+      })();
+      
+      // 如果是HTML输出模式，作为单条完整消息，不分割
+      if (isHTMLOutputMode) {
+        console.log(`🎨 [HTML输出模式] 保持完整，不进行分割`);
+        messages.push({
+          id: `${Date.now()}_html_output`,
+          role: 'assistant',
+          content: assistantMessage, // 保持原始HTML内容
+          timestamp: Date.now()
+        });
+        
+        callback(messages, conversation.id);
+        return;
+      }
+      
+      // 📝 普通消息模式：使用splitMessages分割消息
+      console.log(`📝 [普通消息模式] 进行智能分割`);
       const splitMsgs = splitMessages(assistantMessage);
       
       for (let index = 0; index < splitMsgs.length; index++) {
