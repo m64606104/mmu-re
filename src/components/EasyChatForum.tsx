@@ -76,6 +76,32 @@ export function EasyChatForum({ user, contacts, onBack }: EasyChatForumProps) {
     setCurrentRole(userRole); // 默认选中用户自己
   }, [user, contacts]);
 
+  // 根据角色ID获取最新的角色信息（用于名字修改同步）
+  const getLatestRoleInfo = (role: ForumRole): ForumRole => {
+    if (role.type === 'user') {
+      // 用户角色，返回最新的用户信息
+      return {
+        id: 'user',
+        type: 'user',
+        name: user.name,
+        avatar: user.avatar
+      };
+    } else {
+      // 联系人角色，从联系人列表中查找
+      const contact = contacts.find(c => c.id === role.id);
+      if (contact) {
+        return {
+          id: contact.id,
+          type: 'contact',
+          name: contact.name,
+          avatar: contact.avatar
+        };
+      }
+      // 如果联系人被删除，返回原始信息
+      return role;
+    }
+  };
+
   // 从 IndexedDB 加载数据
   useEffect(() => {
     const loadData = async () => {
@@ -286,22 +312,23 @@ export function EasyChatForum({ user, contacts, onBack }: EasyChatForumProps) {
               const postComments = getPostComments(post.id);
               const isExpanded = expandedPosts.has(post.id);
               const canDelete = post.author.id === currentRole?.id;
+              const latestAuthor = getLatestRoleInfo(post.author); // 获取最新的作者信息
 
               return (
                 <div key={post.id} className="bg-white rounded-xl p-4 shadow-sm">
                   {/* 帖子头部 */}
                   <div className="flex items-start gap-3 mb-3">
                     <div className="w-10 h-10 rounded-full bg-blue-500 flex items-center justify-center overflow-hidden flex-shrink-0">
-                      {post.author.avatar.startsWith('data:') ? (
-                        <img src={post.author.avatar} alt={post.author.name} className="w-full h-full object-cover" />
+                      {latestAuthor.avatar.startsWith('data:') ? (
+                        <img src={latestAuthor.avatar} alt={latestAuthor.name} className="w-full h-full object-cover" />
                       ) : (
-                        <span className="text-base">{post.author.avatar}</span>
+                        <span className="text-base">{latestAuthor.avatar}</span>
                       )}
                     </div>
                     <div className="flex-1">
                       <div className="flex items-center justify-between">
                         <div>
-                          <div className="font-medium text-gray-800">{post.author.name}</div>
+                          <div className="font-medium text-gray-800">{latestAuthor.name}</div>
                           <div className="text-xs text-gray-500">{formatTime(post.createdAt)}</div>
                         </div>
                         {canDelete && (
@@ -362,23 +389,35 @@ export function EasyChatForum({ user, contacts, onBack }: EasyChatForumProps) {
                         <div className="space-y-3">
                           {postComments.map(comment => {
                             const canDeleteComment = comment.author.id === currentRole?.id;
+                            const latestCommentAuthor = getLatestRoleInfo(comment.author); // 获取最新的评论作者信息
+                            
+                            // 如果有回复对象，也获取其最新信息
+                            let latestReplyToName = comment.replyToAuthorName;
+                            if (comment.replyToCommentId) {
+                              const replyToComment = comments.find(c => c.id === comment.replyToCommentId);
+                              if (replyToComment) {
+                                const latestReplyToAuthor = getLatestRoleInfo(replyToComment.author);
+                                latestReplyToName = latestReplyToAuthor.name;
+                              }
+                            }
+
                             return (
                               <div key={comment.id} className="flex gap-2">
                                 <div className="w-8 h-8 rounded-full bg-blue-500 flex items-center justify-center overflow-hidden flex-shrink-0">
-                                  {comment.author.avatar.startsWith('data:') ? (
-                                    <img src={comment.author.avatar} alt={comment.author.name} className="w-full h-full object-cover" />
+                                  {latestCommentAuthor.avatar.startsWith('data:') ? (
+                                    <img src={latestCommentAuthor.avatar} alt={latestCommentAuthor.name} className="w-full h-full object-cover" />
                                   ) : (
-                                    <span className="text-xs">{comment.author.avatar}</span>
+                                    <span className="text-xs">{latestCommentAuthor.avatar}</span>
                                   )}
                                 </div>
                                 <div className="flex-1 bg-gray-50 rounded-lg p-3">
                                   <div className="flex items-center justify-between mb-1">
                                     <div className="flex items-center gap-2">
-                                      <span className="text-sm font-medium text-gray-800">{comment.author.name}</span>
-                                      {comment.replyToAuthorName && (
+                                      <span className="text-sm font-medium text-gray-800">{latestCommentAuthor.name}</span>
+                                      {latestReplyToName && (
                                         <>
                                           <span className="text-xs text-gray-400">回复</span>
-                                          <span className="text-sm font-medium text-blue-600">{comment.replyToAuthorName}</span>
+                                          <span className="text-sm font-medium text-blue-600">{latestReplyToName}</span>
                                         </>
                                       )}
                                     </div>
@@ -414,21 +453,24 @@ export function EasyChatForum({ user, contacts, onBack }: EasyChatForumProps) {
                   )}
 
                   {/* 评论输入框 */}
-                  {commentingPostId === post.id && (
-                    <div className="mt-3 pt-3 border-t border-gray-100">
-                      {replyToComment && (
-                        <div className="flex items-center justify-between bg-blue-50 px-3 py-2 rounded-t-lg text-sm mb-2">
-                          <span className="text-blue-700">
-                            回复 <span className="font-medium">{replyToComment.author.name}</span>
-                          </span>
-                          <button
-                            onClick={() => setReplyToComment(null)}
-                            className="text-blue-500 hover:text-blue-700"
-                          >
-                            <X className="w-4 h-4" />
-                          </button>
-                        </div>
-                      )}
+                  {commentingPostId === post.id && (() => {
+                    const latestReplyToAuthor = replyToComment ? getLatestRoleInfo(replyToComment.author) : null;
+                    
+                    return (
+                      <div className="mt-3 pt-3 border-t border-gray-100">
+                        {replyToComment && latestReplyToAuthor && (
+                          <div className="flex items-center justify-between bg-blue-50 px-3 py-2 rounded-t-lg text-sm mb-2">
+                            <span className="text-blue-700">
+                              回复 <span className="font-medium">{latestReplyToAuthor.name}</span>
+                            </span>
+                            <button
+                              onClick={() => setReplyToComment(null)}
+                              className="text-blue-500 hover:text-blue-700"
+                            >
+                              <X className="w-4 h-4" />
+                            </button>
+                          </div>
+                        )}
                       <div className="flex gap-2 items-center">
                         {/* 角色头像选择器 */}
                         <div className="relative">
@@ -457,7 +499,7 @@ export function EasyChatForum({ user, contacts, onBack }: EasyChatForumProps) {
                           type="text"
                           value={commentContent}
                           onChange={(e) => setCommentContent(e.target.value)}
-                          placeholder={replyToComment ? `回复 ${replyToComment.author.name}...` : '写评论...'}
+                          placeholder={replyToComment && latestReplyToAuthor ? `回复 ${latestReplyToAuthor.name}...` : '写评论...'}
                           className="flex-1 px-3 py-2 bg-gray-50 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                           onKeyPress={(e) => {
                             if (e.key === 'Enter' && !e.shiftKey) {
@@ -474,7 +516,8 @@ export function EasyChatForum({ user, contacts, onBack }: EasyChatForumProps) {
                         </button>
                       </div>
                     </div>
-                  )}
+                    );
+                  })()}
                 </div>
               );
             })}
