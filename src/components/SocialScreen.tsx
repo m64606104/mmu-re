@@ -332,16 +332,6 @@ export default function SocialScreen({ conversations, onNavigate, onImportCharac
                     <Scan className={`w-5 h-5 ${isDarkMode ? 'text-white' : 'text-gray-700'}`} />
                     <span className={`text-sm ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>扫一扫</span>
                   </button>
-                  <button
-                    onClick={() => {
-                      setShowMenu(false);
-                      setShowWorldbook(true);
-                    }}
-                    className={`w-full px-4 py-3 flex items-center gap-3 transition-colors ${isDarkMode ? 'hover:bg-gray-700' : 'hover:bg-gray-50'}`}
-                  >
-                    <Book className={`w-5 h-5 ${isDarkMode ? 'text-white' : 'text-gray-700'}`} />
-                    <span className={`text-sm ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>世界书</span>
-                  </button>
                 </div>
               </>
             )}

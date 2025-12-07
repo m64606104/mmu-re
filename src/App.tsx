@@ -33,6 +33,7 @@ import FavoriteRepliesScreen from './components/FavoriteRepliesScreen';
 import AIKindergartenScreen from './components/AIKindergartenScreen';
 import WorldbookScreen from './components/WorldbookScreen';
 import { EasyChatApp } from './components/EasyChatApp';
+import StickerManagementScreen from './components/StickerManagementScreen';
 import BottomNavBar from './components/BottomNavBar';
 import UnrepliedLettersScreen from './components/UnrepliedLettersScreen';
 import ToastContainer from './components/ToastContainer';
@@ -1201,6 +1202,13 @@ function App() {
         return (
           <EasyChatApp
             onBack={() => navigateTo('home')}
+          />
+        );
+      case 'sticker-management':
+        return (
+          <StickerManagementScreen
+            onBack={() => navigateTo('profile')}
+            conversations={conversations}
           />
         );
       default:

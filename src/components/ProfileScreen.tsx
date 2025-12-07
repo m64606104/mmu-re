@@ -350,6 +350,14 @@ export default function ProfileScreen({
             <ChevronRight className="w-5 h-5 text-gray-400" />
           </button>
           <div className="h-px bg-gray-100 mx-6"></div>
+          <button
+            onClick={() => onNavigate('sticker-management')}
+            className="w-full px-6 py-4 flex items-center justify-between hover:bg-gray-50 active:bg-gray-100 transition-colors"
+          >
+            <span className="text-gray-900 font-medium">表情包</span>
+            <ChevronRight className="w-5 h-5 text-gray-400" />
+          </button>
+          <div className="h-px bg-gray-100 mx-6"></div>
           <button className="w-full px-6 py-4 flex items-center justify-between hover:bg-gray-50 active:bg-gray-100 transition-colors">
             <span className="text-gray-900 font-medium">相册</span>
             <ChevronRight className="w-5 h-5 text-gray-400" />
