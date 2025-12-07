@@ -3792,11 +3792,22 @@ ${groupContext.contextSummary}
       // 检查是否禁用世界书（优先检查全局禁用开关）
       const isWorldbookDisabled = conversation.characterSettings?.disableWorldbook === true;
       
+      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+      console.log('📚 [世界书检查] 开始');
+      console.log('📚 [世界书检查] 对话:', conversation.name);
+      console.log('📚 [世界书检查] 禁用开关:', isWorldbookDisabled ? '❌ 已禁用' : '✅ 已启用');
+      
       if (!isWorldbookDisabled) {
+        console.log('📚 [世界书检查] ➡️  调用buildWorldbookPrompt...');
         worldbookSections = await buildWorldbookPrompt(conversation);
+        
+        const hasWorldbook = !!(worldbookSections.before || worldbookSections.middle || worldbookSections.after);
+        console.log('📚 [世界书检查] 结果:', hasWorldbook ? '✅ 已加载世界书内容' : '⚠️  没有世界书内容');
       } else {
-        console.log('📚 [世界书] 用户已禁用，跳过加载');
+        console.log('📚 [世界书检查] ❌ 用户已禁用，跳过加载');
+        console.log('📚 [世界书检查] ⚠️  注意：即使有全局世界书，也不会加载');
       }
+      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
       
       let systemPrompt = conversation.characterSettings
         ? `${worldbookSections.before}你是${conversation.characterSettings.nickname}。
