@@ -1,17 +1,17 @@
-import { ArrowLeft, MessageCircle, Aperture, Send } from 'lucide-react';
+import { ArrowLeft, MessageCircle, Users, Send } from 'lucide-react';
 import { getBubbleColorTheme } from '../utils/bubbleColors';
 
 interface EasyChatHomeProps {
   onBack: () => void;
   onOpenChatList: () => void;
-  onOpenMoments: () => void;
+  onOpenContactsManager: () => void;
   onOpenUserSettings: () => void;
   userName: string;
   userAvatar: string;
   userBubbleColor?: string;
 }
 
-export function EasyChatHome({ onBack, onOpenChatList, onOpenMoments, onOpenUserSettings, userName, userAvatar, userBubbleColor }: EasyChatHomeProps) {
+export function EasyChatHome({ onBack, onOpenChatList, onOpenContactsManager, onOpenUserSettings, userName, userAvatar, userBubbleColor }: EasyChatHomeProps) {
   const theme = getBubbleColorTheme(userBubbleColor);
   
   return (
@@ -81,18 +81,18 @@ export function EasyChatHome({ onBack, onOpenChatList, onOpenMoments, onOpenUser
             </div>
           </button>
 
-          {/* 朋友圈按钮 */}
+          {/* 联系人管理按钮 */}
           <button
-            onClick={onOpenMoments}
+            onClick={onOpenContactsManager}
             className="group w-full p-6 bg-white hover:bg-gradient-to-br hover:from-gray-500 hover:to-gray-600 border-2 border-gray-200 hover:border-transparent active:scale-95 rounded-2xl transition-all shadow-lg hover:shadow-xl"
           >
             <div className="flex items-center gap-4">
               <div className="w-16 h-16 bg-gradient-to-br from-gray-400 to-gray-500 group-hover:from-white/20 group-hover:to-white/20 rounded-2xl flex items-center justify-center flex-shrink-0 transition-all">
-                <Aperture className="w-8 h-8 text-white" strokeWidth={2} />
+                <Users className="w-8 h-8 text-white" strokeWidth={2} />
               </div>
               <div className="flex-1 text-left">
-                <h3 className="text-lg text-gray-800 group-hover:text-white mb-1 transition-colors">朋友圈</h3>
-                <p className="text-sm text-gray-500 group-hover:text-white/80 transition-colors">分享生活点滴</p>
+                <h3 className="text-lg text-gray-800 group-hover:text-white mb-1 transition-colors">联系人</h3>
+                <p className="text-sm text-gray-500 group-hover:text-white/80 transition-colors">管理联系人和群组</p>
               </div>
             </div>
           </button>

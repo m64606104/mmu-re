@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { ArrowLeft } from 'lucide-react';
-import { EasyChatContact, EasyChatConversation, EasyChatUser, GlobalCallState, MomentPost, ApiConfig } from '../types';
+import { EasyChatContact, EasyChatConversation, EasyChatUser, GlobalCallState, ApiConfig } from '../types';
 import { EasyChatSplash } from './EasyChatSplash';
 import { EasyChatIntro } from './EasyChatIntro';
 import { EasyChatHome } from './EasyChatHome';
@@ -10,8 +10,6 @@ import { EasyChatContactsManager } from './EasyChatContactsManager';
 import { EasyChatSettings } from './EasyChatSettings';
 import { EasyChatUserSettings } from './EasyChatUserSettings';
 import { FloatingCallWindow } from './FloatingCallWindow';
-import MomentsScreen from './MomentsScreen';
-import { getAllMomentPosts, addMomentPost, likeMomentPost, commentMomentPost } from '../utils/aiMomentsGenerator';
 import { load, save, checkMigrationNeeded, migrateData } from '../utils/storage';
 import { toast } from 'sonner';
 
@@ -24,13 +22,12 @@ interface EasyChatAppProps {
 export function EasyChatApp({ onBack }: EasyChatAppProps) {
   const [showSplash, setShowSplash] = useState(true);
   const [showIntro, setShowIntro] = useState(false);
-  const [currentView, setCurrentView] = useState<'home' | 'chatList' | 'chatRoom' | 'contactsManager' | 'settings' | 'userSettings' | 'moments'>('home');
+  const [currentView, setCurrentView] = useState<'home' | 'chatList' | 'chatRoom' | 'contactsManager' | 'settings' | 'userSettings'>('home');
   const [contacts, setContacts] = useState<EasyChatContact[]>([]);
   const [conversations, setConversations] = useState<EasyChatConversation[]>([]);
   const [selectedConversation, setSelectedConversation] = useState<EasyChatConversation | null>(null);
   const [user, setUser] = useState<EasyChatUser>({ id: 'me', name: '我', avatar: '😊', bubbleColor: 'blue' });
   const [globalCallState, setGlobalCallState] = useState<GlobalCallState | null>(null);
-  const [moments, setMoments] = useState<MomentPost[]>([]);
   const [isLoaded, setIsLoaded] = useState(false);
   const [apiConfig, setApiConfig] = useState<ApiConfig>({
     baseUrl: localStorage.getItem('api_url') || '',
@@ -74,12 +71,10 @@ export function EasyChatApp({ onBack }: EasyChatAppProps) {
         const savedContacts = await load('easychat_contacts');
         const savedConversations = await load('easychat_conversations');
         const savedUser = await load('easychat_user');
-        const savedMoments = await getAllMomentPosts();
         
         if (savedContacts) setContacts(savedContacts);
         if (savedConversations) setConversations(savedConversations);
         if (savedUser) setUser(savedUser);
-        if (savedMoments) setMoments(savedMoments);
       } catch (error) {
         console.error('加载数据失败:', error);
         toast.error('数据加载出错，请尝试刷新');
@@ -141,16 +136,9 @@ export function EasyChatApp({ onBack }: EasyChatAppProps) {
     setActiveTab('chat');
   };
   
-  // 打开朋友圈
-  const handleOpenMoments = () => {
-    setCurrentView('moments');
-  };
-
   // 打开联系人管理
   const handleOpenContactsManager = () => {
-    // 这里可以保留原有逻辑，或者通过 Tab 切换
-    setCurrentView('chatList');
-    setActiveTab('contacts');
+    setCurrentView('contactsManager');
   };
 
   // 打开用户设置
@@ -219,59 +207,6 @@ export function EasyChatApp({ onBack }: EasyChatAppProps) {
     setUser(updatedUser);
   };
 
-  // 朋友圈操作
-  const handleAddMoment = async (postData: any) => {
-    // 根据发布者ID决定存储位置
-    const contactId = postData.userId === user.id ? 'user' : postData.userId;
-    
-    await addMomentPost(contactId, {
-      id: Date.now().toString(),
-      timestamp: Date.now(),
-      likes: [],
-      comments: [],
-      ...postData
-    });
-    const posts = await getAllMomentPosts();
-    setMoments(posts);
-  };
-
-  const handleLikeMoment = async (momentId: string) => {
-    await likeMomentPost(momentId, momentId, 'user'); // 这里的 authorId 参数有点奇怪，如果是用户点赞，通常不需要 authorId 或者用 'user'
-    // 注意：aiMomentsGenerator 的 likeMomentPost 参数是 (authorId, momentId, userId)
-    // 如果是用户点赞，authorId 应该是该 moment 的作者 ID。
-    // 但 MomentsScreen 里有处理逻辑，这里只是回调更新状态。
-    // 实际上 MomentsScreen 已经处理了大部分逻辑，这里可能只需要刷新数据？
-    // 检查 MomentsScreen 实现：它调用了 onLikeMoment，但也自己处理了 AI 点赞。
-    // 如果是用户点赞，MomentsScreen 调用 onLikeMoment。
-    // 我们需要在这里实现真正的点赞逻辑（如果它是纯用户朋友圈）
-    // 但目前的 aiMomentsGenerator 混合了 AI 和用户。
-    
-    // 简单处理：重新加载数据
-    const posts = await getAllMomentPosts();
-    setMoments(posts);
-  };
-
-  const handleCommentMoment = async (momentId: string, content: string, authorInfo?: any) => {
-    // 保存评论到 user 朋友圈 (假设该回调只用于处理用户朋友圈的评论)
-    // 或者是当 MomentsScreen 判定为"非AI朋友圈"时调用
-    await commentMomentPost('user', momentId, {
-        id: Date.now().toString(),
-        timestamp: Date.now(),
-        content,
-        authorId: authorInfo?.id || user.id,
-        userId: authorInfo?.id || user.id,
-        authorName: authorInfo?.name || user.name,
-        username: authorInfo?.name || user.name,
-        authorAvatar: authorInfo?.avatar || user.avatar,
-        userAvatar: authorInfo?.avatar || user.avatar,
-        replyTo: authorInfo?.replyTo,
-        replyToName: authorInfo?.replyToName
-    } as any);
-    
-    const posts = await getAllMomentPosts();
-    setMoments(posts);
-  };
-
   // 显示开屏页
   if (showSplash) {
     return <EasyChatSplash onFinish={handleSplashEnd} userBubbleColor={user.bubbleColor} />;
@@ -292,39 +227,21 @@ export function EasyChatApp({ onBack }: EasyChatAppProps) {
       <EasyChatHome
         onBack={onBack}
         onOpenChatList={handleOpenChatList}
-        onOpenMoments={handleOpenMoments}
+        onOpenContactsManager={handleOpenContactsManager}
         onOpenUserSettings={handleOpenUserSettings}
         userName={user.name}
         userAvatar={user.avatar}
         userBubbleColor={user.bubbleColor}
       />
     );
-  } else if (currentView === 'moments') {
-    currentViewContent = (
-      <MomentsScreen
-        moments={moments}
-        conversations={conversations.map(c => ({
-          ...c,
-          characterSettings: {
-            nickname: c.name,
-            avatar: c.avatar
-          },
-          messages: [],
-          lastMessageTime: 0,
-          unreadCount: 0
-        } as any))}
-        userProfile={{
-          username: user.name,
-          avatar: user.avatar,
-          bio: 'Easy Chat User'
-        }}
-        apiConfig={apiConfig}
-        onAddMoment={handleAddMoment}
-        onLikeMoment={handleLikeMoment}
-        onCommentMoment={handleCommentMoment}
-        onBack={handleBackToHome}
-      />
-    );
+  } else if (currentView === 'contactsManager') {
+      currentViewContent = (
+        <EasyChatContactsManager
+          onBack={handleBackToHome}
+          contacts={contacts}
+          setContacts={setContacts}
+        />
+      );
   } else if (currentView === 'chatRoom' && selectedConversation) {
     currentViewContent = (
       <EasyChatRoom
