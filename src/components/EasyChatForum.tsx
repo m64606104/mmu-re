@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react';
-import { ArrowLeft, Plus, Heart, MessageCircle, Send, X } from 'lucide-react';
-import { EasyChatUser, EasyChatContact } from '../types';
+import { ArrowLeft, Plus, Heart, MessageCircle, Send, X, Sparkles } from 'lucide-react';
+import { EasyChatUser, EasyChatContact, EasyChatConversation, ApiConfig } from '../types';
 import { load, save } from '../utils/storage';
+import { generateForumPost } from '../utils/forumAIGenerator';
 
 // 角色类型
 type ForumRoleType = 'user' | 'contact';
@@ -43,10 +44,12 @@ interface ForumComment {
 interface EasyChatForumProps {
   user: EasyChatUser;
   contacts: EasyChatContact[];
+  conversations: EasyChatConversation[];
+  apiConfig: ApiConfig;
   onBack: () => void;
 }
 
-export function EasyChatForum({ user, contacts, onBack }: EasyChatForumProps) {
+export function EasyChatForum({ user, contacts, conversations, apiConfig, onBack }: EasyChatForumProps) {
   // 状态管理
   const [posts, setPosts] = useState<ForumPost[]>([]);
   const [comments, setComments] = useState<ForumComment[]>([]);
@@ -63,6 +66,7 @@ export function EasyChatForum({ user, contacts, onBack }: EasyChatForumProps) {
   const [sortMode, setSortMode] = useState<'latest' | 'hot'>('latest'); // 排序模式
   const [editingPostId, setEditingPostId] = useState<string | null>(null); // 正在编辑的帖子ID
   const [editContent, setEditContent] = useState(''); // 编辑内容
+  const [isGenerating, setIsGenerating] = useState(false); // AI生成中
 
   // 初始化角色列表
   useEffect(() => {
@@ -256,6 +260,75 @@ export function EasyChatForum({ user, contacts, onBack }: EasyChatForumProps) {
     setEditContent('');
   };
 
+  // AI生成论坛帖子
+  const handleAIGenerate = async () => {
+    // 在EasyChat模式下，随机选择一个有对话记录的联系人
+    const contactsWithConv = contacts.filter(contact => {
+      return conversations.some(c => c.participants.includes(contact.id));
+    });
+
+    if (contactsWithConv.length === 0) {
+      alert('没有找到有对话记录的联系人\n\n请先与联系人聊天，AI才能学习其语言风格');
+      return;
+    }
+
+    // 随机选择一个联系人
+    const randomContact = contactsWithConv[Math.floor(Math.random() * contactsWithConv.length)];
+    const conv = conversations.find(c => c.participants.includes(randomContact.id));
+
+    if (!conv) {
+      alert('找不到该角色的对话记录');
+      return;
+    }
+
+    setIsGenerating(true);
+
+    try {
+      const result = await generateForumPost({
+        roleId: randomContact.id,
+        roleName: randomContact.name,
+        personality: undefined, // EasyChat没有personality设置，使用默认值
+        languageStyle: undefined, // EasyChat没有languageStyle设置，使用默认值
+        conversations: conversations,
+        apiConfig: apiConfig
+      });
+
+      if (result.success && result.content) {
+        // 创建AI生成的帖子
+        const aiPost: ForumPost = {
+          id: `post_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+          author: {
+            id: randomContact.id,
+            type: 'contact',
+            name: randomContact.name,
+            avatar: randomContact.avatar
+          },
+          content: result.content,
+          createdAt: Date.now(),
+          likeIds: [],
+          commentIds: [],
+          source: 'ai',
+          originalRoleId: randomContact.id,
+          generationMeta: {
+            fromConversations: conversations.filter(c => c.id.includes(randomContact.id)).map(c => c.id),
+            createdByApi: apiConfig.modelName
+          }
+        };
+
+        setPosts(prev => [aiPost, ...prev]);
+        
+        alert(`✨ AI生成成功！\n\n角色：${randomContact.name}\n使用了 ${result.stats?.samplesUsed || 0} 条学习样本`);
+      } else {
+        throw new Error(result.error || '生成失败');
+      }
+    } catch (error) {
+      console.error('AI生成失败:', error);
+      alert(`AI生成失败：${error instanceof Error ? error.message : '未知错误'}\n\n请检查API配置是否正确`);
+    } finally {
+      setIsGenerating(false);
+    }
+  };
+
   // 点赞
   const handleLike = (postId: string) => {
     if (!currentRole) return;
@@ -363,12 +436,30 @@ export function EasyChatForum({ user, contacts, onBack }: EasyChatForumProps) {
             <ArrowLeft className="w-5 h-5 text-gray-700" />
           </button>
           <h1 className="text-lg font-semibold text-gray-800">论坛</h1>
-          <button
-            onClick={handleOpenNewPost}
-            className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
-          >
-            <Plus className="w-5 h-5 text-gray-700" />
-          </button>
+          <div className="flex items-center gap-1">
+            {/* AI生成按钮 */}
+            <button
+              onClick={handleAIGenerate}
+              disabled={isGenerating}
+              className={`p-2 hover:bg-purple-50 rounded-lg transition-colors ${
+                isGenerating ? 'opacity-50 cursor-not-allowed' : ''
+              }`}
+              title="AI生成帖子"
+            >
+              {isGenerating ? (
+                <div className="w-5 h-5 border-2 border-purple-500 border-t-transparent rounded-full animate-spin"></div>
+              ) : (
+                <Sparkles className="w-5 h-5 text-purple-500" />
+              )}
+            </button>
+            {/* 新帖子按钮 */}
+            <button
+              onClick={handleOpenNewPost}
+              className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+            >
+              <Plus className="w-5 h-5 text-gray-700" />
+            </button>
+          </div>
         </div>
 
         {/* 排序切换 */}

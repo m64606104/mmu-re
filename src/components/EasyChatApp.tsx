@@ -245,6 +245,8 @@ export function EasyChatApp({ onBack }: EasyChatAppProps) {
       <EasyChatForum
         user={user}
         contacts={contacts}
+        conversations={conversations}
+        apiConfig={apiConfig}
         onBack={handleBackToHome}
       />
     );
