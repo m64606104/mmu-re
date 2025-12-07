@@ -1,6 +1,7 @@
 import { useState, useRef } from 'react';
 import { Plus, Trash2, Heart, User, Type } from 'lucide-react';
 import { useStickers } from '../utils/stickerStore';
+import { compressImages } from '../utils/imageCompression';
 
 interface StickerPanelProps {
   currentSenderId: string;
@@ -9,25 +10,38 @@ interface StickerPanelProps {
 }
 
 export function StickerPanel({ currentSenderId, onSend, onSendText }: StickerPanelProps) {
-  const { common, character, addSticker, deleteSticker } = useStickers(currentSenderId);
+  const { common, character, addSticker, addStickers, deleteSticker } = useStickers(currentSenderId);
   const [activeTab, setActiveTab] = useState<'common' | 'character' | 'text'>('common');
   const [textInput, setTextInput] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
 
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
 
-    const reader = new FileReader();
-    reader.onload = (ev) => {
-      const url = ev.target?.result as string;
-      if (url) {
-        const targetTab = activeTab === 'common' || activeTab === 'text' ? 'common' : 'character';
-        addSticker(targetTab, url, currentSenderId);
+    try {
+      // 检查文件大小
+      for (let i = 0; i < files.length; i++) {
+        if (files[i].size > 5 * 1024 * 1024) {
+          alert(`图片 "${files[i].name}" 超过5MB，请选择更小的图片`);
+          return;
+        }
       }
-    };
-    reader.readAsDataURL(file);
+
+      // 批量压缩 (表情包尺寸建议较小，300x300足够)
+      const compressedResults = await compressImages(files, 300, 300, 0.8);
+      
+      const urls = compressedResults.map(r => r.dataUrl);
+      const targetTab = activeTab === 'common' || activeTab === 'text' ? 'common' : 'character';
+      
+      await addStickers(targetTab, urls, currentSenderId);
+      
+    } catch (error) {
+      console.error('表情包处理失败:', error);
+      alert('表情包添加失败，请重试');
+    }
+    
     e.target.value = '';
   };
 
@@ -144,6 +158,7 @@ export function StickerPanel({ currentSenderId, onSend, onSendText }: StickerPan
           ref={fileInputRef}
           className="hidden"
           accept="image/*"
+          multiple
           onChange={handleFileChange}
         />
       </div>

@@ -10,7 +10,7 @@ import { LivestreamDialog } from './LivestreamDialog';
 import { GroupCallDialog } from './GroupCallDialog';
 import { toast } from 'sonner';
 import { getBubbleColorTheme } from '../utils/bubbleColors';
-import { compressImage } from '../utils/imageCompression';
+import { compressImage, compressImages } from '../utils/imageCompression';
 
 interface EasyChatRoomProps {
   conversation: EasyChatConversation;
@@ -354,29 +354,39 @@ export function EasyChatRoom({ conversation, contacts, user, onBack, onUpdateCon
 
   // 处理图片上传
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
 
-    if (!file.type.startsWith('image/')) {
-      toast.error('请上传图片文件');
-      return;
-    }
-
-    if (file.size > 10 * 1024 * 1024) {
-      toast.error('图片大小不能超过10MB');
-      return;
+    // 检查文件类型和大小
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i];
+      if (!file.type.startsWith('image/')) {
+        toast.error(`文件 ${file.name} 不是图片`);
+        return;
+      }
+      // 限制 20MB (原先是10MB，稍微放宽因为我们会压缩)
+      if (file.size > 20 * 1024 * 1024) {
+        toast.error(`图片 ${file.name} 大小超过20MB`);
+        return;
+      }
     }
 
     try {
-      toast.loading('正在压缩图片...');
-      const result = await compressImage(file, 1200, 1200, 0.8);
-      const compressedBase64 = result.dataUrl;
+      toast.loading(`正在处理 ${files.length} 张图片...`);
+      
+      // 批量压缩
+      const compressedResults = await compressImages(files, 1280, 1280, 0.8);
       
       toast.dismiss();
-      handleSendMessage('image', { imageUrl: compressedBase64 });
-      toast.success('图片已发送');
+      
+      // 批量发送
+      compressedResults.forEach(result => {
+        handleSendMessage('image', { imageUrl: result.dataUrl });
+      });
+      
+      toast.success(`${files.length} 张图片已发送`);
     } catch (error) {
-      console.error('图片压缩失败:', error);
+      console.error('图片处理失败:', error);
       toast.dismiss();
       toast.error('图片处理失败，请重试');
     }
@@ -1085,10 +1095,10 @@ export function EasyChatRoom({ conversation, contacts, user, onBack, onUpdateCon
                       </div>
 
                       {/* 消息气泡 */}
-                      <div className={`flex flex-col relative ${isMe ? 'items-end' : 'items-start'} ${!isMe && conversation.type === 'group' ? '-mt-[5px]' : ''}`}>
+                      <div className={`flex flex-col relative ${isMe ? 'items-end' : 'items-start'} ${!isMe && conversation.type === 'group' ? '-mt-[2px]' : ''}`}>
                         {/* 群聊且非自己：显示昵称 */}
                         {conversation.type === 'group' && !isMe && (
-                          <div className="text-[12px] text-gray-500 mb-[3px] ml-0 leading-none">
+                          <div className="text-[12px] text-gray-500 mb-[4px] ml-0 leading-none">
                             {sender.name}
                           </div>
                         )}
@@ -1495,6 +1505,7 @@ export function EasyChatRoom({ conversation, contacts, user, onBack, onUpdateCon
                       ref={imageInputRef}
                       type="file"
                       accept="image/*"
+                      multiple
                       onChange={handleImageUpload}
                       className="hidden"
                     />
@@ -2282,6 +2293,7 @@ export function EasyChatRoom({ conversation, contacts, user, onBack, onUpdateCon
               ref={imageInputRef}
               type="file"
               accept="image/*"
+              multiple
               onChange={handleImageUpload}
               className="hidden"
             />

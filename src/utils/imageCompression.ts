@@ -95,10 +95,24 @@ export const compressImage = (
 };
 
 /**
- * 格式化文件大小
- * @param bytes 字节数
- * @returns 格式化后的文件大小字符串
+ * 批量压缩图片
+ * @param files 图片文件列表 (FileList | File[])
+ * @param maxWidth 最大宽度
+ * @param maxHeight 最大高度
+ * @param quality 压缩质量 (0-1)
+ * @returns Promise<CompressedImage[]>
  */
+export const compressImages = async (
+  files: FileList | File[],
+  maxWidth: number = 1920,
+  maxHeight: number = 1080,
+  quality: number = 0.8
+): Promise<CompressedImage[]> => {
+  const fileArray = Array.from(files);
+  return Promise.all(
+    fileArray.map(file => compressImage(file, maxWidth, maxHeight, quality))
+  );
+};
 export const formatFileSize = (bytes: number): string => {
   if (bytes === 0) return '0 B';
   

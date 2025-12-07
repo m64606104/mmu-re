@@ -103,6 +103,35 @@ export const stickerStore = {
     });
   },
 
+  // 批量添加表情
+  async addStickers(type: 'common' | 'character', urls: string[], characterId?: string) {
+    const db = await openDB();
+    return new Promise<void>((resolve, reject) => {
+      const transaction = db.transaction(STORE_NAME, 'readwrite');
+      const store = transaction.objectStore(STORE_NAME);
+      
+      let count = 0;
+
+      transaction.oncomplete = () => {
+        window.dispatchEvent(new Event('sticker-storage-change'));
+        resolve();
+      };
+      transaction.onerror = () => reject(transaction.error);
+
+      urls.forEach(url => {
+        const newSticker: Sticker = {
+          id: Date.now().toString() + Math.random().toString(36).substr(2, 9) + count,
+          url,
+          createdAt: Date.now() + count,
+          category: type,
+          characterId
+        };
+        store.add(newSticker);
+        count++;
+      });
+    });
+  },
+
   // 删除表情
   async deleteSticker(id: string) {
     const db = await openDB();
@@ -144,6 +173,7 @@ export function useStickers(currentCharacterId?: string) {
     character: currentCharacterId ? (library.character[currentCharacterId] || []) : [],
     loading,
     addSticker: stickerStore.addSticker.bind(stickerStore),
+    addStickers: stickerStore.addStickers.bind(stickerStore),
     deleteSticker: stickerStore.deleteSticker.bind(stickerStore)
   };
 }
