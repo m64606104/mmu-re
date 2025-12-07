@@ -192,7 +192,7 @@ const backgroundTaskManager = {
         
         // 如果HTML标签数量 >= 3，且内容中HTML占比较高，判定为HTML输出模式
         if (htmlTagCount >= 3) {
-          const htmlContentLength = htmlTagMatches.reduce((sum, tag) => sum + tag.length, 0);
+          const htmlContentLength = htmlTagMatches.reduce((sum: number, tag: string) => sum + tag.length, 0);
           const htmlRatio = htmlContentLength / totalLength;
           
           if (htmlRatio > 0.2) {
@@ -620,17 +620,34 @@ ${summary}`;
           finalContent = finalContent.replace(/\[换回原头像\]/g, '').replace(/【换回原头像】/g, '').trim();
         }
         
-        // 构建消息对象
-        // 如果提取了特殊指令且没有其他内容，不创建文本消息
+        // 🎤 将语音消息分离为独立的消息（避免和文本混在一起）
+        const voiceItems = mediaItems.filter(item => item.type === 'voice');
+        const nonVoiceItems = mediaItems.filter(item => item.type !== 'voice');
+        
+        // 1. 先添加所有语音消息（作为独立的消息气泡）
+        voiceItems.forEach((voice, voiceIdx) => {
+          messages.push({
+            id: `${baseId}_voice_${voiceIdx}`,
+            role: 'assistant' as const,
+            content: '[语音]',
+            timestamp: Date.now() + voiceIdx,
+            mediaType: 'voice',
+            mediaDescription: voice.description,
+            voiceDuration: voice.duration,
+            isMediaDescriptionOnly: true
+          });
+        });
+        
+        // 2. 再添加文本和其他媒体消息
         const hasSpecialContent = allExtraMessages.some(msg => msg.id.startsWith(baseId));
-        const shouldCreateTextMessage = finalContent || (!hasSpecialContent && (cleanContent || mediaItems.length > 0));
+        const shouldCreateTextMessage = finalContent || (!hasSpecialContent && (cleanContent || nonVoiceItems.length > 0));
         
         if (shouldCreateTextMessage) {
           const message: Message = {
             id: baseId,
             role: 'assistant' as const,
-            content: finalContent || cleanContent || (mediaItems.length > 0 ? '[多媒体消息]' : ''),
-            timestamp: Date.now()
+            content: finalContent || cleanContent || (nonVoiceItems.length > 0 ? '[多媒体消息]' : ''),
+            timestamp: Date.now() + voiceItems.length
           };
           
           // 如果有引用消息，添加到消息中
@@ -642,14 +659,13 @@ ${summary}`;
             };
           }
           
-          // 如果有媒体项，添加到消息中
-          if (mediaItems.length > 0) {
-            message.mediaItems = mediaItems;
+          // 如果有非语音媒体项，添加到消息中
+          if (nonVoiceItems.length > 0) {
+            message.mediaItems = nonVoiceItems;
             // 为了兼容旧的渲染逻辑，也设置第一个媒体的信息
-            const firstMedia = mediaItems[0];
+            const firstMedia = nonVoiceItems[0];
             message.mediaType = firstMedia.type;
             message.mediaDescription = firstMedia.description;
-            message.voiceDuration = firstMedia.duration;
             message.isMediaDescriptionOnly = true;
           }
           
@@ -6228,14 +6244,14 @@ ${doc.content}`;
                     )}
                     {/* 用户语音消息（与AI样式一致：只显示转文字，不播放音频） */}
                     {!message.mediaItems && message.role === 'user' && message.mediaType === 'voice' && message.isMediaDescriptionOnly && (
-                      <div>
+                      <>
                         <div 
                           onClick={() => setViewingVoice(prev => 
                             prev.includes(message.id) 
                               ? prev.filter(id => id !== message.id)
                               : [...prev, message.id]
                           )}
-                          className="cursor-pointer flex items-center gap-2 px-3 py-2 bg-gray-50 rounded-xl min-w-[120px] max-w-[200px]"
+                          className="cursor-pointer flex items-center gap-2 px-3 py-2 bg-gray-50 rounded-xl min-w-[120px] max-w-[200px] flex-shrink-0"
                         >
                           <Mic className="w-4 h-4 text-gray-600 flex-shrink-0" />
                           <div className="flex-1 flex items-center gap-0.5">
@@ -6251,13 +6267,13 @@ ${doc.content}`;
                           </div>
                           <span className="text-xs text-gray-600 flex-shrink-0">{message.voiceDuration || 3}"</span>
                         </div>
-                        {/* 语音内容文字（点击气泡显示） */}
+                        {/* 语音内容文字（点击气泡显示，作为独立的小气泡） */}
                         {viewingVoice.includes(message.id) && message.mediaDescription && (
-                          <div className="mt-2 px-4 py-2 bg-gray-50 rounded-xl border border-gray-200">
-                            <p className="text-[13px] text-gray-700">{message.mediaDescription}</p>
+                          <div className="mt-2 px-4 py-2 bg-gray-50 rounded-xl border border-gray-200 max-w-[280px]">
+                            <p className="text-[13px] text-gray-700 whitespace-pre-wrap break-words">{message.mediaDescription}</p>
                           </div>
                         )}
-                      </div>
+                      </>
                     )}
                     {/* 用户语音消息（旧版本：带播放功能，保留兼容） */}
                     {!message.mediaItems && message.role === 'user' && message.mediaType === 'voice' && message.mediaUrl && !message.isMediaDescriptionOnly && (
@@ -6404,14 +6420,14 @@ ${doc.content}`;
                       </div>
                     )}
                     {!message.mediaItems && message.role === 'assistant' && message.mediaType === 'voice' && message.isMediaDescriptionOnly && (
-                      <div>
+                      <>
                         <div 
                           onClick={() => setViewingVoice(prev => 
                             prev.includes(message.id) 
                               ? prev.filter(id => id !== message.id)
                               : [...prev, message.id]
                           )}
-                          className="cursor-pointer flex items-center gap-2 px-3 py-2 bg-gray-50 rounded-xl min-w-[120px] max-w-[200px]"
+                          className="cursor-pointer flex items-center gap-2 px-3 py-2 bg-gray-50 rounded-xl min-w-[120px] max-w-[200px] flex-shrink-0"
                         >
                           <Mic className="w-4 h-4 text-gray-600 flex-shrink-0" />
                           <div className="flex-1 flex items-center gap-0.5">
@@ -6427,13 +6443,13 @@ ${doc.content}`;
                           </div>
                           <span className="text-xs text-gray-600 flex-shrink-0">{message.voiceDuration || 3}"</span>
                         </div>
-                        {/* 语音内容文字（点击气泡显示） */}
+                        {/* 语音内容文字（点击气泡显示，作为独立的小气泡） */}
                         {viewingVoice.includes(message.id) && message.mediaDescription && (
-                          <div className="mt-2 px-4 py-2 bg-gray-50 rounded-xl border border-gray-200">
-                            <p className="text-[13px] text-gray-700">{message.mediaDescription}</p>
+                          <div className="mt-2 px-4 py-2 bg-gray-50 rounded-xl border border-gray-200 max-w-[280px]">
+                            <p className="text-[13px] text-gray-700 whitespace-pre-wrap break-words">{message.mediaDescription}</p>
                           </div>
                         )}
-                      </div>
+                      </>
                     )}
                     {!message.mediaItems && message.role === 'assistant' && message.mediaType === 'sticker' && message.isMediaDescriptionOnly && (
                       <div className="relative w-[120px] h-[120px] rounded-2xl overflow-hidden bg-blue-100/40 backdrop-blur-sm border border-blue-200">
