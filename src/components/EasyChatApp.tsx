@@ -10,6 +10,7 @@ import { EasyChatContactsManager } from './EasyChatContactsManager';
 import { EasyChatSettings } from './EasyChatSettings';
 import { EasyChatUserSettings } from './EasyChatUserSettings';
 import { FloatingCallWindow } from './FloatingCallWindow';
+import { EasyChatForum } from './EasyChatForum';
 import { load, save, checkMigrationNeeded, migrateData } from '../utils/storage';
 import { toast } from 'sonner';
 
@@ -22,7 +23,7 @@ interface EasyChatAppProps {
 export function EasyChatApp({ onBack }: EasyChatAppProps) {
   const [showSplash, setShowSplash] = useState(true);
   const [showIntro, setShowIntro] = useState(false);
-  const [currentView, setCurrentView] = useState<'home' | 'chatList' | 'chatRoom' | 'contactsManager' | 'settings' | 'userSettings'>('home');
+  const [currentView, setCurrentView] = useState<'home' | 'chatList' | 'chatRoom' | 'contactsManager' | 'settings' | 'userSettings' | 'forum'>('home');
   const [contacts, setContacts] = useState<EasyChatContact[]>([]);
   const [conversations, setConversations] = useState<EasyChatConversation[]>([]);
   const [selectedConversation, setSelectedConversation] = useState<EasyChatConversation | null>(null);
@@ -136,6 +137,11 @@ export function EasyChatApp({ onBack }: EasyChatAppProps) {
     setActiveTab('chat');
   };
   
+  // 打开论坛
+  const handleOpenForum = () => {
+    setCurrentView('forum');
+  };
+
   // 打开联系人管理
   const handleOpenContactsManager = () => {
     setCurrentView('contactsManager');
@@ -227,11 +233,19 @@ export function EasyChatApp({ onBack }: EasyChatAppProps) {
       <EasyChatHome
         onBack={onBack}
         onOpenChatList={handleOpenChatList}
-        onOpenContactsManager={handleOpenContactsManager}
+        onOpenForum={handleOpenForum}
         onOpenUserSettings={handleOpenUserSettings}
         userName={user.name}
         userAvatar={user.avatar}
         userBubbleColor={user.bubbleColor}
+      />
+    );
+  } else if (currentView === 'forum') {
+    currentViewContent = (
+      <EasyChatForum
+        user={user}
+        contacts={contacts}
+        onBack={handleBackToHome}
       />
     );
   } else if (currentView === 'contactsManager') {
