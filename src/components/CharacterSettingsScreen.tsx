@@ -1284,6 +1284,95 @@ export default function CharacterSettingsScreen({
         </details>
         )}
 
+        {/* 📚 世界书 (仅非AI儿童) */}
+        {!isAIChild && (
+          <details className="bg-white rounded-lg shadow-sm overflow-hidden group">
+            <summary className="px-4 py-3 flex items-center justify-between bg-gray-50 border-b border-gray-100 cursor-pointer list-none select-none">
+              <div className="flex items-center gap-2">
+                <div className="w-1 h-4 bg-blue-500 rounded-full"></div>
+                <h3 className="text-sm font-medium text-gray-900">世界书</h3>
+              </div>
+              <ChevronLeft className="w-4 h-4 text-gray-500 transition-transform group-open:-rotate-90" />
+            </summary>
+            <div className="p-4 space-y-4">
+              
+              {/* 世界书功能开关 */}
+              <div className="bg-white rounded-lg border border-gray-100 p-3">
+                <div className="flex items-center justify-between mb-3">
+                  <div className="flex items-center gap-2">
+                    <BookOpen className="w-5 h-5 text-blue-500" />
+                    <h3 className="text-sm font-medium text-gray-900">世界书功能</h3>
+                  </div>
+                  <label className="relative inline-flex items-center cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={!disableWorldbook}
+                      onChange={(e) => setDisableWorldbook(!e.target.checked)}
+                      className="sr-only peer"
+                    />
+                    <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+                  </label>
+                </div>
+                <div className={`rounded-lg p-3 ${
+                  !disableWorldbook ? 'bg-blue-50 border border-blue-100' : 'bg-gray-50 border border-gray-200'
+                }`}>
+                  <p className={`text-xs leading-relaxed ${
+                    !disableWorldbook ? 'text-blue-700' : 'text-gray-600'
+                  }`}>
+                    {!disableWorldbook ? (
+                      <><span className="font-medium">✅ 已启用</span> - AI会根据挂载的世界书设定进行对话，包含全局和局部世界书</>
+                    ) : (
+                      <><span className="font-medium">❌ 已禁用</span> - AI不会使用任何世界书内容，即使有全局世界书也不会加载</>
+                    )}
+                  </p>
+                </div>
+              </div>
+
+              {/* 世界书挂载配置 */}
+              <div className="bg-white rounded-lg border border-gray-100 p-3">
+                <div className="flex items-center justify-between mb-3">
+                  <div className="flex items-center gap-2">
+                    <Book className="w-5 h-5 text-blue-500" />
+                    <h3 className="text-sm font-medium text-gray-900">世界书挂载</h3>
+                  </div>
+                  <button
+                    onClick={() => setShowWorldbookMount(true)}
+                    className="flex items-center gap-1 px-3 py-1.5 bg-blue-500 hover:bg-blue-600 text-white text-xs rounded-lg transition-colors"
+                  >
+                    <Edit className="w-4 h-4" />
+                    <span>配置</span>
+                  </button>
+                </div>
+
+                {conversation.worldbookMount?.enabled && conversation.worldbookMount.selectedIds.length > 0 ? (
+                  <div className="space-y-2">
+                    <div className="bg-blue-50 border border-blue-100 rounded-lg p-3 mb-2">
+                      <p className="text-xs text-blue-700 flex items-center gap-1">
+                        <span className="font-medium">✅ 已挂载</span>
+                        <span>- {conversation.worldbookMount.selectedIds.length} 个局部世界书</span>
+                      </p>
+                    </div>
+                    {conversation.worldbookMount.selectedIds.map(id => (
+                      <div key={id} className="bg-gray-50 border border-gray-200 rounded-lg p-3">
+                        <div className="flex items-center gap-2">
+                          <Book className="w-4 h-4 text-blue-500" />
+                          <span className="text-sm text-gray-900">{worldbookNames[id] || '未知世界书'}</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="text-center py-6 text-gray-400">
+                    <Book className="w-12 h-12 mx-auto mb-2 opacity-30" />
+                    <p className="text-sm">未挂载局部世界书</p>
+                    <p className="text-xs mt-1 text-gray-500">全局世界书会自动生效，这里只管理本会话的局部挂载</p>
+                  </div>
+                )}
+              </div>
+            </div>
+          </details>
+        )}
+
         {/* ⚙️ 高级功能 (仅非AI儿童) */}
         {!isAIChild && (
           <details className="bg-white rounded-lg shadow-sm overflow-hidden group">
@@ -1497,38 +1586,6 @@ export default function CharacterSettingsScreen({
                 </div>
               </div>
 
-              {/* Disable Worldbook */}
-              <div className="bg-white rounded-lg border border-gray-100 p-3">
-                <div className="flex items-center justify-between mb-3">
-                  <div className="flex items-center gap-2">
-                    <BookOpen className="w-5 h-5 text-blue-500" />
-                    <h3 className="text-sm font-medium text-gray-900">世界书功能</h3>
-                  </div>
-                  <label className="relative inline-flex items-center cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={!disableWorldbook}
-                      onChange={(e) => setDisableWorldbook(!e.target.checked)}
-                      className="sr-only peer"
-                    />
-                    <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
-                  </label>
-                </div>
-                <div className={`rounded-lg p-3 ${
-                  !disableWorldbook ? 'bg-blue-50 border border-blue-100' : 'bg-gray-50 border border-gray-200'
-                }`}>
-                  <p className={`text-xs leading-relaxed ${
-                    !disableWorldbook ? 'text-blue-700' : 'text-gray-600'
-                  }`}>
-                    {!disableWorldbook ? (
-                      <><span className="font-medium">✅ 已启用</span> - AI会根据挂载的世界书设定进行对话，包含全局和局部世界书</>
-                    ) : (
-                      <><span className="font-medium">❌ 已禁用</span> - AI不会使用任何世界书内容，即使有全局世界书也不会加载</>
-                    )}
-                  </p>
-                </div>
-              </div>
-
               {/* Moments Frequency */}
               <div className="bg-white rounded-lg border border-gray-100 p-3">
                 <div className="flex items-center gap-2 mb-3">
@@ -1702,48 +1759,6 @@ export default function CharacterSettingsScreen({
                 )}
               </div>
 
-              {/* 📚 世界书配置 */}
-              <div className="bg-white rounded-lg border border-gray-100 p-3">
-                <div className="flex items-center justify-between mb-3">
-                  <div className="flex items-center gap-2">
-                    <Book className="w-5 h-5 text-blue-500" />
-                    <h3 className="text-sm font-medium text-gray-900">世界书设定</h3>
-                  </div>
-                  <button
-                    onClick={() => setShowWorldbookMount(true)}
-                    className="flex items-center gap-1 px-3 py-1.5 bg-blue-500 hover:bg-blue-600 text-white text-xs rounded-lg transition-colors"
-                  >
-                    <Edit className="w-4 h-4" />
-                    <span>配置</span>
-                  </button>
-                </div>
-
-                {conversation.worldbookMount?.enabled && conversation.worldbookMount.selectedIds.length > 0 ? (
-                  <div className="space-y-2">
-                    <div className="bg-blue-50 border border-blue-100 rounded-lg p-3 mb-2">
-                      <p className="text-xs text-blue-700 flex items-center gap-1">
-                        <span className="font-medium">✅ 已启用</span>
-                        <span>- 已挂载 {conversation.worldbookMount.selectedIds.length} 个世界书</span>
-                      </p>
-                    </div>
-                    {conversation.worldbookMount.selectedIds.map(id => (
-                      <div key={id} className="bg-gray-50 border border-gray-200 rounded-lg p-3">
-                        <div className="flex items-center gap-2">
-                          <Book className="w-4 h-4 text-blue-500" />
-                          <span className="text-sm text-gray-900">{worldbookNames[id] || '未知世界书'}</span>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <div className="text-center py-6 text-gray-400">
-                    <Book className="w-12 h-12 mx-auto mb-2 opacity-30" />
-                    <p className="text-sm">未挂载局部世界书，点击配置按钮为本会话添加</p>
-                    <p className="text-xs mt-1 text-gray-500">世界书是本角色的重要设定，全局世界书会自动生效，这里只管理本会话的局部挂载</p>
-                  </div>
-                )}
-              </div>
-
               {/* Forum AI Generation */}
               <div className="bg-white rounded-lg border border-gray-100 p-3">
                 <div className="flex items-center justify-between mb-3">
@@ -1886,16 +1901,22 @@ export default function CharacterSettingsScreen({
               </div>
             )}
 
-            {/* Delete Contact */}
-            <button
-              onClick={handleDelete}
-              className="w-full bg-red-500 text-white py-3 rounded-lg font-medium hover:bg-red-600 active:bg-red-700 transition-colors flex items-center justify-center gap-2"
-            >
-              <Trash2 className="w-5 h-5" />
-              删除联系人
-            </button>
           </div>
         </details>
+
+        {/* ❌ 删除联系人 */}
+        <div className="mt-4">
+          <button
+            onClick={handleDelete}
+            className="w-full bg-red-500 text-white py-3 rounded-lg font-medium hover:bg-red-600 active:bg-red-700 transition-colors flex items-center justify-center gap-2 shadow-sm"
+          >
+            <Trash2 className="w-5 h-5" />
+            删除联系人
+          </button>
+          <p className="text-xs text-gray-500 text-center mt-2">
+            ⚠️ 此操作将永久删除该对话及所有消息，无法恢复
+          </p>
+        </div>
       </div>
 
       {/* 记忆管理器 */}
