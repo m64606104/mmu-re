@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { ArrowLeft, Plus, Heart, MessageCircle, Send, X, Sparkles } from 'lucide-react';
+import { ArrowLeft, Plus, Heart, MessageCircle, Send, X, Sparkles, ChevronDown } from 'lucide-react';
 import { EasyChatUser, EasyChatContact, EasyChatConversation, ApiConfig } from '../types';
 import { load, save } from '../utils/storage';
 import { generateForumPost } from '../utils/forumAIGenerator';
@@ -762,27 +762,37 @@ export function EasyChatForum({ user, contacts, conversations, apiConfig, onBack
                           </div>
                         )}
                       <div className="flex gap-2 items-center">
-                        {/* 角色头像选择器 */}
-                        <div className="relative">
-                          <button
-                            onClick={() => {
-                              const currentCommentRole = getCommentingRole(post.id);
-                              const currentIndex = roles.findIndex(r => r.id === currentCommentRole.id);
-                              const nextRole = roles[(currentIndex + 1) % roles.length];
-                              setCommentingRole(post.id, nextRole);
+                        {/* 角色选择下拉框 */}
+                        <div className="relative flex-shrink-0">
+                          <select
+                            value={getCommentingRole(post.id).id}
+                            onChange={(e) => {
+                              const selectedRole = roles.find(r => r.id === e.target.value);
+                              if (selectedRole) {
+                                setCommentingRole(post.id, selectedRole);
+                              }
                             }}
-                            className="w-8 h-8 rounded-full bg-blue-500 flex items-center justify-center overflow-hidden flex-shrink-0 hover:ring-2 hover:ring-blue-300 transition-all"
-                            title="点击切换身份"
+                            className="appearance-none pl-10 pr-8 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 hover:bg-gray-100 transition-colors cursor-pointer"
                           >
+                            {roles.map(role => (
+                              <option key={role.id} value={role.id}>
+                                {role.name}
+                              </option>
+                            ))}
+                          </select>
+                          {/* 头像显示 */}
+                          <div className="absolute left-2 top-1/2 -translate-y-1/2 w-6 h-6 rounded-full bg-blue-500 flex items-center justify-center overflow-hidden pointer-events-none">
                             {(() => {
                               const role = getCommentingRole(post.id);
                               return role.avatar.startsWith('data:') ? (
                                 <img src={role.avatar} alt={role.name} className="w-full h-full object-cover" />
                               ) : (
-                                <span className="text-sm">{role.avatar}</span>
+                                <span className="text-xs">{role.avatar}</span>
                               );
                             })()}
-                          </button>
+                          </div>
+                          {/* 下拉箭头 */}
+                          <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
                         </div>
                         
                         <input

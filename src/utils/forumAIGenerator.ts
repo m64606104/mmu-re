@@ -103,7 +103,18 @@ export async function generateForumPost(
     console.log('📝 生成Prompt:', prompt.substring(0, 200) + '...');
 
     // 4. 调用API
-    const response = await fetch(`${config.apiConfig.baseUrl}/chat/completions`, {
+    // 智能处理API URL - 如果baseUrl已经包含完整路径则直接使用，否则添加标准路径
+    let apiUrl = config.apiConfig.baseUrl;
+    if (!apiUrl.includes('/chat/completions')) {
+      // 移除末尾的斜杠
+      apiUrl = apiUrl.replace(/\/$/, '');
+      // 添加标准路径（优先尝试 /v1/chat/completions）
+      apiUrl = apiUrl.includes('/v1') ? `${apiUrl}/chat/completions` : `${apiUrl}/v1/chat/completions`;
+    }
+
+    console.log('🌐 API URL:', apiUrl);
+
+    const response = await fetch(apiUrl, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
