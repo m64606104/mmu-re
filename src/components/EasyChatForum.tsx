@@ -21,6 +21,12 @@ interface ForumPost {
   createdAt: number;
   likeIds: string[];
   commentIds: string[];
+  source?: 'manual' | 'ai'; // 帖子来源：手动或AI生成
+  originalRoleId?: string; // AI生成时使用的角色ID
+  generationMeta?: { // AI生成的元数据（可选）
+    fromConversations?: string[];
+    createdByApi?: string;
+  };
 }
 
 // 评论数据结构
@@ -54,6 +60,9 @@ export function EasyChatForum({ user, contacts, onBack }: EasyChatForumProps) {
   const [replyToComment, setReplyToComment] = useState<ForumComment | null>(null);
   const [commentingRoles, setCommentingRoles] = useState<Record<string, ForumRole>>({}); // 每个帖子的评论角色
   const [expandedPosts, setExpandedPosts] = useState<Set<string>>(new Set());
+  const [sortMode, setSortMode] = useState<'latest' | 'hot'>('latest'); // 排序模式
+  const [editingPostId, setEditingPostId] = useState<string | null>(null); // 正在编辑的帖子ID
+  const [editContent, setEditContent] = useState(''); // 编辑内容
 
   // 初始化角色列表
   useEffect(() => {
@@ -158,6 +167,40 @@ export function EasyChatForum({ user, contacts, onBack }: EasyChatForumProps) {
     return `${date.getMonth() + 1}/${date.getDate()}`;
   };
 
+  // 计算帖子热度分数
+  const getPostScore = (post: ForumPost): number => {
+    const now = Date.now();
+    const ageHours = (now - post.createdAt) / (1000 * 60 * 60);
+    
+    // 基础分数：点赞数 * 2 + 评论数 * 3
+    const baseScore = post.likeIds.length * 2 + post.commentIds.length * 3;
+    
+    // 时间衰减：48小时内权重1.0，之后每24小时衰减20%
+    let timeDecay = 1.0;
+    if (ageHours > 48) {
+      const daysOld = (ageHours - 48) / 24;
+      timeDecay = Math.pow(0.8, daysOld);
+    }
+    
+    return baseScore * timeDecay;
+  };
+
+  // 获取排序后的帖子列表
+  const getSortedPosts = (): ForumPost[] => {
+    if (sortMode === 'latest') {
+      return [...posts].sort((a, b) => b.createdAt - a.createdAt);
+    } else {
+      return [...posts].sort((a, b) => getPostScore(b) - getPostScore(a));
+    }
+  };
+
+  // 获取热门帖子（用于热门讨论横条）
+  const getHotPosts = (count: number = 3): ForumPost[] => {
+    return [...posts]
+      .sort((a, b) => getPostScore(b) - getPostScore(a))
+      .slice(0, count);
+  };
+
   // 打开发帖弹窗
   const handleOpenNewPost = () => {
     setShowNewPost(true);
@@ -174,13 +217,43 @@ export function EasyChatForum({ user, contacts, onBack }: EasyChatForumProps) {
       content: newPostContent.trim(),
       createdAt: Date.now(),
       likeIds: [],
-      commentIds: []
+      commentIds: [],
+      source: 'manual' // 手动发布的帖子
     };
 
     setPosts(prev => [newPost, ...prev]);
     setNewPostContent('');
     setShowNewPost(false);
     setCurrentRole(postingRole); // 更新当前角色为发帖使用的角色
+  };
+
+  // 编辑帖子
+  const handleEditPost = (postId: string) => {
+    const post = posts.find(p => p.id === postId);
+    if (post) {
+      setEditingPostId(postId);
+      setEditContent(post.content);
+    }
+  };
+
+  // 保存编辑
+  const handleSaveEdit = (postId: string) => {
+    if (!editContent.trim()) return;
+    
+    setPosts(prev => prev.map(post => 
+      post.id === postId 
+        ? { ...post, content: editContent.trim() }
+        : post
+    ));
+    
+    setEditingPostId(null);
+    setEditContent('');
+  };
+
+  // 取消编辑
+  const handleCancelEdit = () => {
+    setEditingPostId(null);
+    setEditContent('');
   };
 
   // 点赞
@@ -297,6 +370,77 @@ export function EasyChatForum({ user, contacts, onBack }: EasyChatForumProps) {
             <Plus className="w-5 h-5 text-gray-700" />
           </button>
         </div>
+
+        {/* 排序切换 */}
+        <div className="px-4 pb-3">
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setSortMode('latest')}
+              className={`px-4 py-1.5 rounded-full text-sm font-medium transition-colors ${
+                sortMode === 'latest'
+                  ? 'bg-blue-500 text-white'
+                  : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+              }`}
+            >
+              最新
+            </button>
+            <button
+              onClick={() => setSortMode('hot')}
+              className={`px-4 py-1.5 rounded-full text-sm font-medium transition-colors ${
+                sortMode === 'hot'
+                  ? 'bg-blue-500 text-white'
+                  : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+              }`}
+            >
+              🔥 热门
+            </button>
+          </div>
+        </div>
+
+        {/* 热门讨论横条 */}
+        {posts.length > 0 && sortMode === 'latest' && (
+          <div className="px-4 pb-3">
+            <div className="bg-gradient-to-r from-orange-50 to-red-50 rounded-lg p-3 border border-orange-100">
+              <div className="flex items-center gap-2 mb-2">
+                <span className="text-sm font-semibold text-orange-600">🔥 热门讨论</span>
+              </div>
+              <div className="space-y-1.5">
+                {getHotPosts(3).map((hotPost, index) => {
+                  const latestAuthor = getLatestRoleInfo(hotPost.author);
+                  const preview = hotPost.content.length > 30 
+                    ? hotPost.content.slice(0, 30) + '...' 
+                    : hotPost.content;
+                  return (
+                    <button
+                      key={hotPost.id}
+                      onClick={() => {
+                        const postElement = document.getElementById(`post-${hotPost.id}`);
+                        if (postElement) {
+                          postElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                          if (!expandedPosts.has(hotPost.id)) {
+                            togglePostExpanded(hotPost.id);
+                          }
+                        }
+                      }}
+                      className="w-full text-left hover:bg-white/50 rounded px-2 py-1 transition-colors"
+                    >
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs font-bold text-orange-500">#{index + 1}</span>
+                        <span className="text-xs text-gray-600 flex-1">{latestAuthor.name}：{preview}</span>
+                        <div className="flex items-center gap-1 text-xs text-gray-400">
+                          <Heart className="w-3 h-3" />
+                          <span>{hotPost.likeIds.length}</span>
+                          <MessageCircle className="w-3 h-3 ml-1" />
+                          <span>{hotPost.commentIds.length}</span>
+                        </div>
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* 帖子列表 */}
@@ -308,14 +452,17 @@ export function EasyChatForum({ user, contacts, onBack }: EasyChatForumProps) {
           </div>
         ) : (
           <div className="p-4 space-y-4">
-            {posts.map(post => {
+            {getSortedPosts().map((post, index) => {
               const postComments = getPostComments(post.id);
               const isExpanded = expandedPosts.has(post.id);
               const canDelete = post.author.id === currentRole?.id;
+              const canEdit = post.source === 'ai'; // AI生成的帖子可编辑
               const latestAuthor = getLatestRoleInfo(post.author); // 获取最新的作者信息
+              const isEditing = editingPostId === post.id;
+              const isHot = sortMode === 'hot' && index < 3; // 热门模式下前3名
 
               return (
-                <div key={post.id} className="bg-white rounded-xl p-4 shadow-sm">
+                <div key={post.id} id={`post-${post.id}`} className="bg-white rounded-xl p-4 shadow-sm relative">
                   {/* 帖子头部 */}
                   <div className="flex items-start gap-3 mb-3">
                     <div className="w-10 h-10 rounded-full bg-blue-500 flex items-center justify-center overflow-hidden flex-shrink-0">
@@ -327,26 +474,78 @@ export function EasyChatForum({ user, contacts, onBack }: EasyChatForumProps) {
                     </div>
                     <div className="flex-1">
                       <div className="flex items-center justify-between">
-                        <div>
-                          <div className="font-medium text-gray-800">{latestAuthor.name}</div>
-                          <div className="text-xs text-gray-500">{formatTime(post.createdAt)}</div>
+                        <div className="flex items-center gap-2">
+                          <div>
+                            <div className="font-medium text-gray-800">{latestAuthor.name}</div>
+                            <div className="text-xs text-gray-500">{formatTime(post.createdAt)}</div>
+                          </div>
+                          {/* AI 标记 */}
+                          {post.source === 'ai' && (
+                            <span className="px-2 py-0.5 bg-purple-50 text-purple-600 text-[10px] rounded-full border border-purple-200">
+                              AI 生成
+                            </span>
+                          )}
+                          {/* 热门标记 */}
+                          {isHot && (
+                            <span className="px-2 py-0.5 bg-orange-50 text-orange-600 text-[10px] rounded-full border border-orange-200">
+                              🔥 热门
+                            </span>
+                          )}
                         </div>
-                        {canDelete && (
-                          <button
-                            onClick={() => handleDeletePost(post.id)}
-                            className="text-gray-400 hover:text-red-500 transition-colors"
-                          >
-                            <X className="w-4 h-4" />
-                          </button>
-                        )}
+                        <div className="flex items-center gap-2">
+                          {/* 编辑按钮（仅AI帖子） */}
+                          {canEdit && !isEditing && (
+                            <button
+                              onClick={() => handleEditPost(post.id)}
+                              className="text-gray-400 hover:text-blue-500 transition-colors text-xs"
+                            >
+                              编辑
+                            </button>
+                          )}
+                          {/* 删除按钮 */}
+                          {(canDelete || canEdit) && (
+                            <button
+                              onClick={() => handleDeletePost(post.id)}
+                              className="text-gray-400 hover:text-red-500 transition-colors"
+                            >
+                              <X className="w-4 h-4" />
+                            </button>
+                          )}
+                        </div>
                       </div>
                     </div>
                   </div>
 
                   {/* 帖子内容 */}
-                  <div className="text-gray-800 leading-relaxed mb-3 whitespace-pre-wrap">
-                    {post.content}
-                  </div>
+                  {isEditing ? (
+                    <div className="mb-3">
+                      <textarea
+                        value={editContent}
+                        onChange={(e) => setEditContent(e.target.value)}
+                        className="w-full px-3 py-2 border border-blue-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+                        rows={4}
+                        autoFocus
+                      />
+                      <div className="flex gap-2 mt-2">
+                        <button
+                          onClick={() => handleSaveEdit(post.id)}
+                          className="px-3 py-1 bg-blue-500 text-white rounded text-xs hover:bg-blue-600"
+                        >
+                          保存
+                        </button>
+                        <button
+                          onClick={handleCancelEdit}
+                          className="px-3 py-1 bg-gray-100 text-gray-600 rounded text-xs hover:bg-gray-200"
+                        >
+                          取消
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="text-gray-800 leading-relaxed mb-3 whitespace-pre-wrap">
+                      {post.content}
+                    </div>
+                  )}
 
                   {/* 互动栏 */}
                   <div className="flex items-center gap-6 pt-3 border-t border-gray-100">

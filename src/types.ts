@@ -226,6 +226,11 @@ export interface CharacterSettings {
   hideBubbleTail?: boolean;
   // 🎨 气泡装饰配置
   bubbleDecoration?: BubbleDecoration;
+  // 📋 论坛AI生成配置
+  forumAIConfig?: {
+    enabled: boolean; // 是否允许使用该角色的历史聊天内容生成论坛动态
+    lastGeneratedAt?: number; // 上次生成时间
+  };
 }
 
 // 气泡装饰配置接口
