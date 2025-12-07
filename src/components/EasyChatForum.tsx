@@ -262,26 +262,39 @@ export function EasyChatForum({ user, contacts, conversations, apiConfig, onBack
 
   // AI生成论坛帖子
   const handleAIGenerate = async () => {
+    console.log('🚀 [论坛AI生成] 开始生成...');
+    console.log('📊 [论坛AI生成] 联系人数量:', contacts.length);
+    console.log('📊 [论坛AI生成] 对话数量:', conversations.length);
+    console.log('📊 [论坛AI生成] API配置:', apiConfig);
+    
     // 在EasyChat模式下，随机选择一个有对话记录的联系人
     const contactsWithConv = contacts.filter(contact => {
       return conversations.some(c => c.participants.includes(contact.id));
     });
 
+    console.log('📊 [论坛AI生成] 有对话的联系人数量:', contactsWithConv.length);
+
     if (contactsWithConv.length === 0) {
+      console.warn('⚠️ [论坛AI生成] 没有找到有对话记录的联系人');
       alert('没有找到有对话记录的联系人\n\n请先与联系人聊天，AI才能学习其语言风格');
       return;
     }
 
     // 随机选择一个联系人
     const randomContact = contactsWithConv[Math.floor(Math.random() * contactsWithConv.length)];
+    console.log('👤 [论坛AI生成] 选择的联系人:', randomContact.name, randomContact.id);
+    
     const conv = conversations.find(c => c.participants.includes(randomContact.id));
+    console.log('💬 [论坛AI生成] 找到的对话:', conv ? `对话ID: ${conv.id}, 消息数: ${conv.messages?.length || 0}` : '未找到');
 
     if (!conv) {
+      console.error('❌ [论坛AI生成] 找不到该角色的对话记录');
       alert('找不到该角色的对话记录');
       return;
     }
 
     setIsGenerating(true);
+    console.log('⏳ [论坛AI生成] 开始调用API...');
 
     try {
       const result = await generateForumPost({
@@ -292,6 +305,8 @@ export function EasyChatForum({ user, contacts, conversations, apiConfig, onBack
         conversations: conversations,
         apiConfig: apiConfig
       });
+
+      console.log('📝 [论坛AI生成] API返回结果:', result);
 
       if (result.success && result.content) {
         // 创建AI生成的帖子
@@ -316,16 +331,20 @@ export function EasyChatForum({ user, contacts, conversations, apiConfig, onBack
         };
 
         setPosts(prev => [aiPost, ...prev]);
+        console.log('✅ [论坛AI生成] 帖子创建成功');
         
         alert(`✨ AI生成成功！\n\n角色：${randomContact.name}\n使用了 ${result.stats?.samplesUsed || 0} 条学习样本`);
       } else {
+        console.error('❌ [论坛AI生成] 生成失败:', result.error);
         throw new Error(result.error || '生成失败');
       }
     } catch (error) {
-      console.error('AI生成失败:', error);
-      alert(`AI生成失败：${error instanceof Error ? error.message : '未知错误'}\n\n请检查API配置是否正确`);
+      console.error('❌ [论坛AI生成] 发生错误:', error);
+      const errorMessage = error instanceof Error ? error.message : '未知错误';
+      alert(`AI生成失败：${errorMessage}\n\n请检查：\n1. API配置是否正确\n2. 网络连接是否正常\n3. API额度是否充足\n\n详细错误请查看控制台`);
     } finally {
       setIsGenerating(false);
+      console.log('🏁 [论坛AI生成] 结束');
     }
   };
 

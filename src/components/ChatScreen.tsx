@@ -6244,36 +6244,28 @@ ${doc.content}`;
                     )}
                     {/* 用户语音消息（与AI样式一致：只显示转文字，不播放音频） */}
                     {!message.mediaItems && message.role === 'user' && message.mediaType === 'voice' && message.isMediaDescriptionOnly && (
-                      <>
-                        <div 
-                          onClick={() => setViewingVoice(prev => 
-                            prev.includes(message.id) 
-                              ? prev.filter(id => id !== message.id)
-                              : [...prev, message.id]
-                          )}
-                          className="cursor-pointer flex items-center gap-2 px-3 py-2 bg-gray-50 rounded-xl min-w-[120px] max-w-[200px] flex-shrink-0"
-                        >
-                          <Mic className="w-4 h-4 text-gray-600 flex-shrink-0" />
-                          <div className="flex-1 flex items-center gap-0.5">
-                            <div className="flex gap-0.5">
-                              {[...Array(15)].map((_, i) => (
-                                <div 
-                                  key={i} 
-                                  className="w-0.5 bg-gray-400 rounded-full"
-                                  style={{ height: `${Math.random() * 12 + 4}px` }}
-                                />
-                              ))}
-                            </div>
-                          </div>
-                          <span className="text-xs text-gray-600 flex-shrink-0">{message.voiceDuration || 3}"</span>
-                        </div>
-                        {/* 语音内容文字（点击气泡显示，作为独立的小气泡） */}
-                        {viewingVoice.includes(message.id) && message.mediaDescription && (
-                          <div className="mt-2 px-4 py-2 bg-gray-50 rounded-xl border border-gray-200 max-w-[280px]">
-                            <p className="text-[13px] text-gray-700 whitespace-pre-wrap break-words">{message.mediaDescription}</p>
-                          </div>
+                      <div 
+                        onClick={() => setViewingVoice(prev => 
+                          prev.includes(message.id) 
+                            ? prev.filter(id => id !== message.id)
+                            : [...prev, message.id]
                         )}
-                      </>
+                        className="cursor-pointer flex items-center gap-2 px-3 py-2 bg-gray-50 rounded-xl min-w-[120px] max-w-[200px]"
+                      >
+                        <Mic className="w-4 h-4 text-gray-600 flex-shrink-0" />
+                        <div className="flex-1 flex items-center gap-0.5">
+                          <div className="flex gap-0.5">
+                            {[...Array(15)].map((_, i) => (
+                              <div 
+                                key={i} 
+                                className="w-0.5 bg-gray-400 rounded-full"
+                                style={{ height: `${Math.random() * 12 + 4}px` }}
+                              />
+                            ))}
+                          </div>
+                        </div>
+                        <span className="text-xs text-gray-600 flex-shrink-0">{message.voiceDuration || 3}"</span>
+                      </div>
                     )}
                     {/* 用户语音消息（旧版本：带播放功能，保留兼容） */}
                     {!message.mediaItems && message.role === 'user' && message.mediaType === 'voice' && message.mediaUrl && !message.isMediaDescriptionOnly && (
@@ -6420,36 +6412,28 @@ ${doc.content}`;
                       </div>
                     )}
                     {!message.mediaItems && message.role === 'assistant' && message.mediaType === 'voice' && message.isMediaDescriptionOnly && (
-                      <>
-                        <div 
-                          onClick={() => setViewingVoice(prev => 
-                            prev.includes(message.id) 
-                              ? prev.filter(id => id !== message.id)
-                              : [...prev, message.id]
-                          )}
-                          className="cursor-pointer flex items-center gap-2 px-3 py-2 bg-gray-50 rounded-xl min-w-[120px] max-w-[200px] flex-shrink-0"
-                        >
-                          <Mic className="w-4 h-4 text-gray-600 flex-shrink-0" />
-                          <div className="flex-1 flex items-center gap-0.5">
-                            <div className="flex gap-0.5">
-                              {[...Array(15)].map((_, i) => (
-                                <div 
-                                  key={i} 
-                                  className="w-0.5 bg-gray-400 rounded-full"
-                                  style={{ height: `${Math.random() * 12 + 4}px` }}
-                                />
-                              ))}
-                            </div>
-                          </div>
-                          <span className="text-xs text-gray-600 flex-shrink-0">{message.voiceDuration || 3}"</span>
-                        </div>
-                        {/* 语音内容文字（点击气泡显示，作为独立的小气泡） */}
-                        {viewingVoice.includes(message.id) && message.mediaDescription && (
-                          <div className="mt-2 px-4 py-2 bg-gray-50 rounded-xl border border-gray-200 max-w-[280px]">
-                            <p className="text-[13px] text-gray-700 whitespace-pre-wrap break-words">{message.mediaDescription}</p>
-                          </div>
+                      <div 
+                        onClick={() => setViewingVoice(prev => 
+                          prev.includes(message.id) 
+                            ? prev.filter(id => id !== message.id)
+                            : [...prev, message.id]
                         )}
-                      </>
+                        className="cursor-pointer flex items-center gap-2 px-3 py-2 bg-gray-50 rounded-xl min-w-[120px] max-w-[200px]"
+                      >
+                        <Mic className="w-4 h-4 text-gray-600 flex-shrink-0" />
+                        <div className="flex-1 flex items-center gap-0.5">
+                          <div className="flex gap-0.5">
+                            {[...Array(15)].map((_, i) => (
+                              <div 
+                                key={i} 
+                                className="w-0.5 bg-gray-400 rounded-full"
+                                style={{ height: `${Math.random() * 12 + 4}px` }}
+                              />
+                            ))}
+                          </div>
+                        </div>
+                        <span className="text-xs text-gray-600 flex-shrink-0">{message.voiceDuration || 3}"</span>
+                      </div>
                     )}
                     {!message.mediaItems && message.role === 'assistant' && message.mediaType === 'sticker' && message.isMediaDescriptionOnly && (
                       <div className="relative w-[120px] h-[120px] rounded-2xl overflow-hidden bg-blue-100/40 backdrop-blur-sm border border-blue-200">
@@ -6461,10 +6445,31 @@ ${doc.content}`;
                       </div>
                     )}
                     
-                    {/* 纯文字内容 */}
-                    {!message.mediaType && !message.moneyTransfer && !message.document && !message.order && message.content && message.content.trim() && (
-                      <p className={`message-content content text-[15px] leading-relaxed whitespace-pre-wrap break-words ${message.replyTo ? 'px-4' : ''}`}>{message.content}</p>
-                    )}
+                    {/* 纯文字内容 / HTML内容 */}
+                    {!message.mediaType && !message.moneyTransfer && !message.document && !message.order && message.content && message.content.trim() && (() => {
+                      // 检测是否是HTML内容（包含多个标签或结构化标签）
+                      const hasHTMLTags = /<[^>]+>/.test(message.content);
+                      const htmlTagCount = (message.content.match(/<[^>]+>/g) || []).length;
+                      const hasStructuralTags = ['<div', '<style', '<span', '<table', '<ul', '<ol'].some(tag => message.content.includes(tag));
+                      const isHTMLContent = hasHTMLTags && (htmlTagCount >= 3 || hasStructuralTags);
+                      
+                      if (isHTMLContent) {
+                        // HTML内容：使用dangerouslySetInnerHTML渲染
+                        return (
+                          <div 
+                            className={`message-content content text-[15px] leading-relaxed ${message.replyTo ? 'px-4' : ''}`}
+                            dangerouslySetInnerHTML={{ __html: message.content }}
+                          />
+                        );
+                      } else {
+                        // 普通文本内容
+                        return (
+                          <p className={`message-content content text-[15px] leading-relaxed whitespace-pre-wrap break-words ${message.replyTo ? 'px-4' : ''}`}>
+                            {message.content}
+                          </p>
+                        );
+                      }
+                    })()}
                     {/* 用户媒体的描述文字（排除语音和表情包） */}
                     {message.role === 'user' && message.mediaType && message.mediaType !== 'sticker' && message.mediaType !== 'voice' && message.mediaDescription && (
                       <p className="text-[13px] leading-relaxed px-3 py-2 text-gray-600">{message.mediaDescription}</p>
@@ -6489,6 +6494,16 @@ ${doc.content}`;
                     }`}></div>
                   </div>
                 </div>
+                
+                {/* 语音转文字内容显示（在气泡外面，不影响气泡宽度） */}
+                {message.mediaType === 'voice' && message.isMediaDescriptionOnly && viewingVoice.includes(message.id) && message.mediaDescription && (
+                  <div className={`mt-2 ${message.role === 'user' ? 'mr-14' : 'ml-14'}`}>
+                    <div className="px-4 py-2.5 bg-gray-50 rounded-xl border border-gray-200 max-w-[280px] shadow-sm">
+                      <p className="text-[13px] text-gray-700 whitespace-pre-wrap break-words leading-relaxed">{message.mediaDescription}</p>
+                    </div>
+                  </div>
+                )}
+                
                 {message.role === 'user' && (
                   <div className="relative flex-shrink-0">
                     {userProfile.avatar ? (
