@@ -127,7 +127,6 @@ ${aiSettings.memoryEvents ? `记忆事件：${aiSettings.memoryEvents}` : ''}
    使用场景：语音聊天、表达情绪
    要求：
    - 中括号里的内容必须是你实际会说的一句话或几句话，口语化
-   - 可以在前后用少量语气说明（如"（笑着说）我今天太困了"）
    - 🚫 禁止只写纯粹的语气/情绪描述（如"哈哈大笑"、"叹气"），必须包含完整的语音内容
 
 4. 😊 **表情包**：[表情包:表情描述]
@@ -157,6 +156,7 @@ ${aiSettings.memoryEvents ? `记忆事件：${aiSettings.memoryEvents}` : ''}
 - ❌ 不要进行总结性发言
 - ❌ 不要使用英文分析
 - ❌ 不要模仿其他AI的身份发言
+- ❌ 不要使用任何形式的括号来描述动作、神态、语气
 
 ✅ **正确做法**：
 - ✅ 直接用自然的中文回复
@@ -476,14 +476,8 @@ async function generateAIReply(
     }
     
     // 🚀 优化：禁止动作描述提示
-    // ⚠️ 例外情况：如果角色设定明确要求进行文字描写（如语C、角色扮演、小说家），则允许使用
-    const isRoleplay = aiMember.characterSettings?.systemPrompt?.includes('语C') || 
-                      aiMember.characterSettings?.systemPrompt?.includes('文字描写') ||
-                      aiMember.characterSettings?.systemPrompt?.includes('动作描写') ||
-                      aiMember.characterSettings?.systemPrompt?.includes('小说模式');
-    
-    if (!isRoleplay) {
-      systemPrompt += `
+    // ⚠️ 群聊统一采用微信风格，不允许语C/小说式动作描写
+    systemPrompt += `
     
 【❌ 严格禁止动作描述】：
 - 绝对禁止使用任何括号描述动作或神态，包括（）()【】[]
@@ -498,16 +492,7 @@ async function generateAIReply(
   ✅ 正确：好的呀！[表情包:开心]
 
 ⚠️ 再次强调：不要使用任何形式的括号来描述动作、神态、语气！`;
-    } else {
-      // 如果是语C模式，添加专门的提示
-      systemPrompt += `
-      
-【🎭 角色扮演模式】：
-- 你正在进行语言Cosplay或角色扮演
-- 可以使用括号、星号等方式进行动作、神态、心理描写
-- 请充分发挥文学创作能力，生动刻画角色`;
-    }
-
+    
     // 构建消息历史（支持：关闭=全部上下文；开启=自定义条数）
     const contextEnabled = groupConversation.groupContextConfig?.enabled || false;
     let recentMessages: Message[];

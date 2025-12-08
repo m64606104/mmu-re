@@ -150,13 +150,20 @@ export default function VideoCallModal({
       if (!response.ok) throw new Error('API Error');
 
       const data = await response.json();
-      const aiContent = data.choices[0]?.message?.content || (callType === 'video' ? '*网络信号有点不好...*' : '喂？信号好像不太好...');
+      const rawContent = data.choices[0]?.message?.content || (callType === 'video' ? '*网络信号有点不好...*' : '喂？信号好像不太好...');
+      const stageMatches = rawContent.match(/\*[^*]+\*/g) || [];
+      const stageText = stageMatches
+        .map((s: string) => s.slice(1, -1).trim())
+        .filter(Boolean)
+        .join(' ');
+      const speechContent = rawContent.replace(/\*[^*]+\*/g, '').trim();
 
       const aiMessage: Message = {
         id: Date.now().toString(),
         role: 'assistant',
-        content: aiContent,
-        timestamp: Date.now()
+        content: speechContent || rawContent,
+        timestamp: Date.now(),
+        stageText: stageText || undefined
       };
 
       setMessages(prev => [...prev, aiMessage]);
@@ -387,13 +394,12 @@ export default function VideoCallModal({
                 }`}
               >
                 {/* 解析动作描述并高亮 */}
-                {msg.content.split(/(\*.*?\*)/).map((part, i) => (
-                  part.startsWith('*') && part.endsWith('*') ? (
-                    <span key={i} className="text-yellow-300/80 italic mx-1 text-xs">{part}</span>
-                  ) : (
-                    <span key={i}>{part}</span>
-                  )
-                ))}
+                {msg.stageText && (
+                  <span className="block text-yellow-300/80 italic mb-1 text-xs">
+                    {msg.stageText}
+                  </span>
+                )}
+                <span>{msg.content}</span>
               </div>
             </div>
           ))}

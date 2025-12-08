@@ -407,12 +407,15 @@ function AddStickerModal({
             <textarea
               value={description}
               onChange={(e) => setDescription(e.target.value)}
-              placeholder="例如：小猫疑问、开心大笑、委屈哭泣..."
+              placeholder="例如：开心、疑问、哭泣、跳舞、爱心..."
               rows={3}
               className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
             />
             <p className="text-xs text-gray-500 mt-1">
-              AI会根据这个描述来判断何时使用这个表情包
+              💡 <strong>建议用2-4个字</strong>的简短词语（如“开心”、“疑问”、“跳舞”），AI会根据场景自动选择最匹配的表情包
+            </p>
+            <p className="text-xs text-yellow-600 mt-1">
+              ⚠️ 避免太长的描述（如“小猫高兴的手舞足蹈”），AI可能无法完整记住
             </p>
           </div>
 

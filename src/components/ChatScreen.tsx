@@ -86,6 +86,7 @@ import { getAIStatus } from '../utils/aiStatusManager';
 import { getErrorFromResponse, formatErrorMessage } from '../utils/apiErrorHandler';
 // @ts-ignore - 函数在backgroundTaskManager内部使用，TS静态分析无法识别
 import { splitMessages, cleanAIMessage } from '../utils/messageFormatter';
+import { findStickerByDescription } from '../utils/stickerMessageParser';
 // 群聊服务
 import { generateGroupChatReplies, generateGroupChatRepliesFreeMode } from '../utils/groupChatService';
 import GroupChatSettingsModal from './GroupChatSettingsModal';
@@ -308,12 +309,16 @@ const backgroundTaskManager = {
           cleanContent = cleanContent.replace(match[0], '').trim();
         }
         
-        // 提取所有表情包
-        const stickerMatches = cleanContent.matchAll(/\[表情包[:：]([^\]]+)\]/g);
+        // 提取所有表情包（需要异步查找图片）
+        const stickerMatches = [...cleanContent.matchAll(/\[表情包[:：]([^\]]+)\]/g)];
         for (const match of stickerMatches) {
+          const description = match[1].trim();
+          // 异步查找表情包图片URL（使用当前角色ID限制范围）
+          const imageUrl = await findStickerByDescription(description, conversation.id);
           mediaItems.push({
             type: 'sticker',
-            description: match[1].trim()
+            description,
+            imageUrl: imageUrl || undefined // 找到图片就用，找不到就undefined
           });
           cleanContent = cleanContent.replace(match[0], '').trim();
         }
@@ -720,9 +725,10 @@ ${summary}`;
             timestamp: msgTimestamp++,
             mediaType: 'sticker',
             mediaDescription: sticker.description,
-            isMediaDescriptionOnly: true
+            mediaUrl: sticker.imageUrl, // 如果有图片URL就用真实图片
+            isMediaDescriptionOnly: !sticker.imageUrl // 有URL=false(真实图片), 无URL=true(文字描述)
           });
-          console.log(`😊 [创建消息] 表情包消息 ${stickerIdx + 1} 已添加`);
+          console.log(`😊 [创建消息] 表情包消息 ${stickerIdx + 1} 已添加${sticker.imageUrl ? ' (真实图片)' : ' (文字描述)'}`);
         });
         
         // 3.6 最后添加文本消息（如果有剩余文本）

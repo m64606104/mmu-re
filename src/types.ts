@@ -24,6 +24,7 @@ export interface Message {
   role: 'user' | 'assistant' | 'system';
   content: string;
   timestamp: number;
+  stageText?: string;
   // 新的多媒体支持
   mediaItems?: MediaItem[]; // 多媒体数组，支持混合发送
   // 旧的单媒体字段（保留兼容性）

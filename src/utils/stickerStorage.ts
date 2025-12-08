@@ -13,6 +13,7 @@ import {
 
 const COMMON_STICKERS_STORE = STORES.COMMON_STICKERS;
 const CHARACTER_STICKERS_STORE = STORES.CHARACTER_STICKERS;
+const USER_STICKERS_STORE = STORES.USER_STICKERS;
 
 // 旧版 localStorage 存储的 key（用于一次性迁移）
 const LEGACY_COMMON_KEY = 'common_stickers';
@@ -193,7 +194,22 @@ export const getCharacterStickers = async (characterId: string): Promise<Sticker
 };
 
 /**
+ * 获取用户专属表情包
+ */
+export const getUserStickers = async (): Promise<StickerItem[]> => {
+  try {
+    await migrateLegacyStickersIfNeeded();
+    const stickers = await getAllData<StickerItem>(USER_STICKERS_STORE);
+    return stickers.sort((a, b) => b.createdAt - a.createdAt);
+  } catch (error) {
+    console.error('Failed to load user stickers:', error);
+    return [];
+  }
+};
+
+/**
  * 获取所有表情包（通用 + 指定角色）
+ * ⚠️ 注意：这个函数用于AI，不包含用户专属表情包
  */
 export const getAllAvailableStickers = async (characterId?: string): Promise<StickerItem[]> => {
   const commonStickers = await getCommonStickers();
@@ -227,16 +243,28 @@ export const addSticker = async (
     if (count >= MAX_COMMON_STICKERS) {
       throw new Error(`通用表情包数量已达上限（${MAX_COMMON_STICKERS}个）`);
     }
-    
     await addData(COMMON_STICKERS_STORE, newSticker);
-  } else if (sticker.scope === 'character' && sticker.characterId) {
+  } else if (sticker.scope === 'character') {
+    // 🔥 严格验证：角色专属必须有characterId
+    if (!sticker.characterId) {
+      throw new Error('角色专属表情包必须指定角色ID');
+    }
     // 检查数量限制
     const characterStickers = await getCharacterStickers(sticker.characterId);
     if (characterStickers.length >= MAX_CHARACTER_STICKERS) {
       throw new Error(`角色表情包数量已达上限（${MAX_CHARACTER_STICKERS}个）`);
     }
-    
     await addData(CHARACTER_STICKERS_STORE, newSticker);
+  } else if (sticker.scope === 'user') {
+    // 用户专属表情包
+    const count = await getCount(USER_STICKERS_STORE);
+    if (count >= MAX_COMMON_STICKERS) {
+      throw new Error(`用户表情包数量已达上限（${MAX_COMMON_STICKERS}个）`);
+    }
+    await addData(USER_STICKERS_STORE, newSticker);
+  } else {
+    // 🔥 未知的scope类型
+    throw new Error(`无效的表情包类型：${sticker.scope}`);
   }
 
   return newSticker;
@@ -251,7 +279,14 @@ export const updateSticker = async (sticker: StickerItem): Promise<void> => {
     updatedAt: Date.now(),
   };
 
-  const storeName = sticker.scope === 'common' ? COMMON_STICKERS_STORE : CHARACTER_STICKERS_STORE;
+  let storeName: string;
+  if (sticker.scope === 'common') {
+    storeName = COMMON_STICKERS_STORE;
+  } else if (sticker.scope === 'character') {
+    storeName = CHARACTER_STICKERS_STORE;
+  } else {
+    storeName = USER_STICKERS_STORE;
+  }
   await updateData(storeName, updatedSticker);
 };
 
@@ -259,7 +294,14 @@ export const updateSticker = async (sticker: StickerItem): Promise<void> => {
  * 删除表情包
  */
 export const deleteSticker = async (stickerId: string, scope: StickerScope): Promise<void> => {
-  const storeName = scope === 'common' ? COMMON_STICKERS_STORE : CHARACTER_STICKERS_STORE;
+  let storeName: string;
+  if (scope === 'common') {
+    storeName = COMMON_STICKERS_STORE;
+  } else if (scope === 'character') {
+    storeName = CHARACTER_STICKERS_STORE;
+  } else {
+    storeName = USER_STICKERS_STORE;
+  }
   await deleteData(storeName, stickerId);
 };
 
@@ -267,7 +309,14 @@ export const deleteSticker = async (stickerId: string, scope: StickerScope): Pro
  * 增加表情包使用次数
  */
 export const incrementStickerUsage = async (stickerId: string, scope: StickerScope): Promise<void> => {
-  const storeName = scope === 'common' ? COMMON_STICKERS_STORE : CHARACTER_STICKERS_STORE;
+  let storeName: string;
+  if (scope === 'common') {
+    storeName = COMMON_STICKERS_STORE;
+  } else if (scope === 'character') {
+    storeName = CHARACTER_STICKERS_STORE;
+  } else {
+    storeName = USER_STICKERS_STORE;
+  }
   const allStickers = await getAllData<StickerItem>(storeName);
   const sticker = allStickers.find(s => s.id === stickerId);
   

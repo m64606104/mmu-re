@@ -1,13 +1,14 @@
 // IndexedDB 工具类 - 用于大容量数据存储
 
 const DB_NAME = 'WeChatSimulator';
-const DB_VERSION = 1;
+const DB_VERSION = 2; // 升级版本以支持用户专属表情包
 
 // 存储对象名称
 export const STORES = {
   STICKERS: 'stickers', // 表情包存储
   COMMON_STICKERS: 'commonStickers', // 通用表情包
   CHARACTER_STICKERS: 'characterStickers', // 角色专属表情包
+  USER_STICKERS: 'userStickers', // 用户专属表情包
 };
 
 /**
@@ -51,6 +52,16 @@ export const initDB = (): Promise<IDBDatabase> => {
         characterStore.createIndex('description', 'description', { unique: false });
         characterStore.createIndex('createdAt', 'createdAt', { unique: false });
         console.log('✅ 创建角色表情包存储');
+      }
+
+      // 创建用户专属表情包存储
+      if (!db.objectStoreNames.contains(STORES.USER_STICKERS)) {
+        const userStore = db.createObjectStore(STORES.USER_STICKERS, {
+          keyPath: 'id',
+        });
+        userStore.createIndex('description', 'description', { unique: false });
+        userStore.createIndex('createdAt', 'createdAt', { unique: false });
+        console.log('✅ 创建用户表情包存储');
       }
     };
   });

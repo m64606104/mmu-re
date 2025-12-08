@@ -2,8 +2,11 @@
 
 /**
  * 表情包类型
+ * - common: 通用表情包（AI和用户都能用）
+ * - character: 角色专属表情包（只有指定AI能用）
+ * - user: 用户专属表情包（只有用户能用，AI不能用）
  */
-export type StickerScope = 'common' | 'character';
+export type StickerScope = 'common' | 'character' | 'user';
 
 /**
  * 表情包项

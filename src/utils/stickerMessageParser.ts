@@ -23,6 +23,10 @@ export const parseStickerMarkers = (content: string): { description: string; mar
 
 /**
  * 根据描述查找匹配的表情包
+ * 智能匹配策略：
+ * 1. 优先完全匹配
+ * 2. 如果只是关键词，找最短的匹配项（更精确）
+ * 3. 兜底返回第一个
  */
 export const findStickerByDescription = async (
   description: string,
@@ -36,13 +40,23 @@ export const findStickerByDescription = async (
       return null;
     }
     
-    // 优先匹配完全相同的描述
+    // 1. 优先匹配完全相同的描述
     const exactMatch = stickers.find(s => s.description === description);
     if (exactMatch) {
+      console.log(`✅ [表情包匹配] 完全匹配: "${description}"`);
       return exactMatch.imageUrl;
     }
     
-    // 如果没有完全匹配，返回第一个（相似度最高）
+    // 2. 如果AI只说了关键词（如"开心"），优先选择最短的匹配项
+    // 理由：最短的通常是最核心、最常用的（如"开心" > "开心大笑" > "小狗开心的手舞足蹈"）
+    if (stickers.length > 1) {
+      const sortedByLength = [...stickers].sort((a, b) => a.description.length - b.description.length);
+      console.log(`🎯 [表情包匹配] 关键词"${description}"模糊匹配到${stickers.length}个，选择最短的: "${sortedByLength[0].description}"`);
+      return sortedByLength[0].imageUrl;
+    }
+    
+    // 3. 兜底：只有一个匹配项，直接返回
+    console.log(`📌 [表情包匹配] "${description}"找到唯一匹配: "${stickers[0].description}"`);
     return stickers[0].imageUrl;
   } catch (error) {
     console.error('Failed to find sticker:', error);

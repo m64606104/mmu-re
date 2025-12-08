@@ -7,10 +7,21 @@ import { getAllAvailableStickers } from './stickerStorage';
  */
 export const buildStickerPrompt = async (characterId?: string): Promise<string> => {
   try {
-    const stickers = await getAllAvailableStickers(characterId);
+    const allStickers = await getAllAvailableStickers(characterId);
     
-    if (stickers.length === 0) {
+    if (allStickers.length === 0) {
       return '';
+    }
+
+    // 🔥 智能采样：如果表情包超过30个，只展示最常用的30个
+    const MAX_DISPLAY_STICKERS = 30;
+    let stickers = allStickers;
+    
+    if (allStickers.length > MAX_DISPLAY_STICKERS) {
+      // 按使用次数排序，取前30个最常用的
+      const sorted = [...allStickers].sort((a, b) => (b.usage || 0) - (a.usage || 0));
+      stickers = sorted.slice(0, MAX_DISPLAY_STICKERS);
+      console.log(`📦 [表情包Prompt] 总共${allStickers.length}个，只展示最常用的${MAX_DISPLAY_STICKERS}个`);
     }
 
     // 按描述分组，避免重复
@@ -24,13 +35,34 @@ export const buildStickerPrompt = async (characterId?: string): Promise<string> 
 你可以使用以下表情包来丰富对话表达：
 
 ${stickerDescriptions.map((desc, index) => `${index + 1}. ${desc}`).join('\n')}
+${allStickers.length > MAX_DISPLAY_STICKERS ? `\n💡 提示：以上只展示最常用的${MAX_DISPLAY_STICKERS}个表情包，实际还有更多。如果列表中没有你想要的，可以用关键词（如"开心"、"伤心"），系统会智能匹配相关表情包。` : ''}
 
 ━━━━━━━━━━━━━━━━━━━━━━━━
 💡 使用规则
 ━━━━━━━━━━━━━━━━━━━━━━━━
 
-1. **发送格式**：当你想发送表情包时，使用 \`[表情包:描述]\` 格式
-   例如：\`[表情包:小猫疑问]\`
+1. **智能选择流程**（两步思考法）：
+   
+   **第一步：确定情绪关键词**
+   - 先在心里想：我现在要表达什么情绪？（如"开心"、"伤心"、"疑惑"、"鼓励"等）
+   
+   **第二步：从列表中筛选**
+   - 在上面的表情包列表中，找到所有包含这个关键词的表情包
+   - 例如要表达"伤心"，列表中可能有：
+     * 小狗哭泣
+     * 小狗流泪
+     * 小狗大哭
+     * 委屈哭泣
+   
+   **第三步：精确选择**
+   - 根据**对话语境的强弱**和**你的角色性格**，选择最合适的那个
+   - 语境很悲伤 → 选"小狗大哭"
+   - 语境轻微难过 → 选"小狗流泪"
+   - 觉得委屈 → 选"委屈哭泣"
+   
+   **发送格式**：\`[表情包:完整描述]\`
+   - ✅ 正确：\`[表情包:小狗流泪]\`（完整照抄列表中的描述）
+   - ❌ 错误：\`[表情包:伤心]\`（太笼统，应该选具体的那个）
 
 2. **使用时机**：
    - 💬 在适合的场景下自然使用表情包
@@ -41,7 +73,8 @@ ${stickerDescriptions.map((desc, index) => `${index + 1}. ${desc}`).join('\n')}
    - ⭐ **最优先**：使用上面列表中的真实表情包
    - 📋 仔细查看表情包列表，找到最匹配的表情包
    - ✅ 有合适的表情包时，必须使用 \`[表情包:描述]\` 格式
-   - ❌ **不要**编造列表中不存在的表情包
+   - ❌ **绝对禁止**编造列表中不存在的表情包
+   - ❌ **绝对禁止**修改列表中的描述文字
 
 4. **使用频率**：
    - ⚡ 不要每句话都用表情包

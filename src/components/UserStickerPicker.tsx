@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { X, Plus, Search, Smile } from 'lucide-react';
 import { StickerItem } from '../types/sticker';
-import { getCommonStickers, addSticker, imageToBase64 } from '../utils/stickerStorage';
+import { getUserStickers, addSticker, imageToBase64 } from '../utils/stickerStorage';
 
 interface UserStickerPickerProps {
   onClose: () => void;
@@ -23,8 +23,8 @@ export default function UserStickerPicker({ onClose, onSelectSticker }: UserStic
   const loadStickers = async () => {
     setLoading(true);
     try {
-      // 只加载通用表情包（用户的个人表情包）
-      const data = await getCommonStickers();
+      // 只加载用户专属表情包（AI不能用）
+      const data = await getUserStickers();
       setStickers(data);
     } catch (error) {
       console.error('Failed to load stickers:', error);
@@ -196,7 +196,7 @@ function AddStickerModal({ onClose, onSuccess }: AddStickerModalProps) {
         imageUrl,
         description,
         tags: tagsArray,
-        scope: 'common', // 用户表情包都是通用的
+        scope: 'user', // 用户专属表情包，AI不能用
       });
       
       onSuccess();
@@ -267,7 +267,7 @@ function AddStickerModal({ onClose, onSuccess }: AddStickerModalProps) {
               className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
             />
             <p className="text-xs text-gray-500 mt-1">
-              💡 描述很重要！AI会根据这个描述来理解你发送的表情包含义
+              💡 描述很重要！这是你给这个表情包起的"名字"，用来识别和搜索
             </p>
           </div>
 
