@@ -351,7 +351,7 @@ export const shouldGenerateMoment = async (contactId: string): Promise<{shouldGe
  * 
  * @deprecated 使用 SmartMomentsGenerator.buildSmartPrompt 代替
  */
-const buildMomentPrompt = (conversation: Conversation, todayPosts: MomentPost[]): string => {
+const buildMomentPrompt = async (conversation: Conversation, todayPosts: MomentPost[]): Promise<string> => {
   const now = new Date();
   const hour = now.getHours();
   const dayOfWeek = now.toLocaleDateString('zh-CN', { weekday: 'long' });
@@ -367,7 +367,7 @@ const buildMomentPrompt = (conversation: Conversation, todayPosts: MomentPost[])
   const nickname = characterSettings.nickname;
   
   // 获取记忆库
-  const memoryBank = getMemoryBank(conversation.id);
+  const memoryBank = await getMemoryBank(conversation.id);
   const recentMemories = memoryBank.memories.slice(0, 10);
   
   // 获取最近的聊天记录

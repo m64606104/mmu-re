@@ -5517,7 +5517,7 @@ ${doc.content}`;
   const performMemorySummary = async (currentMessages: Message[]) => {
     try {
       console.log('🧠 开始记忆总结...');
-      const memoryBank = getMemoryBank(conversation.id);
+      const memoryBank = await getMemoryBank(conversation.id);
       const summaryPrompt = buildMemorySummaryPrompt(currentMessages, memoryBank.memories);
       
       // 调用AI进行总结
@@ -5557,9 +5557,9 @@ ${doc.content}`;
         console.log(`🧠 提取到 ${memories.length} 条新记忆`);
         
         // 添加到记忆库
-        memories.forEach((mem: { content: string; importance: 'low' | 'medium' | 'high'; category?: string }) => {
-          addMemory(conversation.id, mem.content, mem.importance, mem.category, true);
-        });
+        for (const mem of memories) {
+          await addMemory(conversation.id, mem.content, mem.importance, mem.category, true);
+        }
         
         alert(`✅ 已保存 ${memories.length} 条记忆`);
       } else {
@@ -5567,12 +5567,12 @@ ${doc.content}`;
       }
       
       // 更新总结计数器
-      updateSummaryCounter(conversation.id, currentMessages.length);
+      await updateSummaryCounter(conversation.id, currentMessages.length);
       
     } catch (error) {
       console.error('记忆总结失败:', error);
       // 即使失败也更新计数器，避免重复尝试
-      updateSummaryCounter(conversation.id, currentMessages.length);
+      await updateSummaryCounter(conversation.id, currentMessages.length);
     }
   };
 
@@ -6484,15 +6484,27 @@ ${doc.content}`;
                         )}
                       </div>
                     )}
-                    {/* 用户表情包（浅蓝色半透明小正方形） */}
+                    {/* 用户表情包 */}
                     {!message.mediaItems && message.role === 'user' && message.mediaType === 'sticker' && (
-                      <div className="relative w-[120px] h-[120px] rounded-2xl overflow-hidden bg-blue-100/40 backdrop-blur-sm border border-blue-200">
-                        <div className="absolute inset-0 bg-gradient-to-br from-blue-50/30 to-blue-100/30" />
-                        <div className="absolute inset-0 flex flex-col items-center justify-center p-3 text-center">
-                          <Smile className="w-8 h-8 text-blue-400 mb-2" strokeWidth={1.5} />
-                          <p className="text-xs text-gray-700 leading-tight">{message.mediaDescription}</p>
+                      message.mediaUrl ? (
+                        // 真实表情包（图片）
+                        <div className="relative w-[120px] h-[120px] rounded-lg overflow-hidden bg-transparent">
+                          <img 
+                            src={message.mediaUrl} 
+                            alt="表情包" 
+                            className="w-full h-full object-contain"
+                          />
                         </div>
-                      </div>
+                      ) : (
+                        // 纯文字描述表情包
+                        <div className="relative w-[120px] h-[120px] rounded-2xl overflow-hidden bg-blue-100/40 backdrop-blur-sm border border-blue-200">
+                          <div className="absolute inset-0 bg-gradient-to-br from-blue-50/30 to-blue-100/30" />
+                          <div className="absolute inset-0 flex flex-col items-center justify-center p-3 text-center">
+                            <Smile className="w-8 h-8 text-blue-400 mb-2" strokeWidth={1.5} />
+                            <p className="text-xs text-gray-700 leading-tight">{message.mediaDescription}</p>
+                          </div>
+                        </div>
+                      )
                     )}
                     
                     {/* 🔄 转发消息显示 */}
@@ -6594,14 +6606,27 @@ ${doc.content}`;
                         <span className="text-xs text-gray-600 flex-shrink-0">{message.voiceDuration || 3}"</span>
                       </div>
                     )}
-                    {!message.mediaItems && message.role === 'assistant' && message.mediaType === 'sticker' && message.isMediaDescriptionOnly && (
-                      <div className="relative w-[120px] h-[120px] rounded-2xl overflow-hidden bg-blue-100/40 backdrop-blur-sm border border-blue-200">
-                        <div className="absolute inset-0 bg-gradient-to-br from-blue-50/30 to-blue-100/30" />
-                        <div className="absolute inset-0 flex flex-col items-center justify-center p-3 text-center">
-                          <Smile className="w-8 h-8 text-blue-400 mb-2" strokeWidth={1.5} />
-                          <p className="text-xs text-gray-700 leading-tight">{message.mediaDescription}</p>
+                    {/* AI表情包 */}
+                    {!message.mediaItems && message.role === 'assistant' && message.mediaType === 'sticker' && (
+                      message.mediaUrl ? (
+                        // 真实表情包（图片）
+                        <div className="relative w-[120px] h-[120px] rounded-lg overflow-hidden bg-transparent">
+                          <img 
+                            src={message.mediaUrl} 
+                            alt="表情包" 
+                            className="w-full h-full object-contain"
+                          />
                         </div>
-                      </div>
+                      ) : message.isMediaDescriptionOnly ? (
+                        // 纯文字描述表情包（仅当标记为纯描述时）
+                        <div className="relative w-[120px] h-[120px] rounded-2xl overflow-hidden bg-blue-100/40 backdrop-blur-sm border border-blue-200">
+                          <div className="absolute inset-0 bg-gradient-to-br from-blue-50/30 to-blue-100/30" />
+                          <div className="absolute inset-0 flex flex-col items-center justify-center p-3 text-center">
+                            <Smile className="w-8 h-8 text-blue-400 mb-2" strokeWidth={1.5} />
+                            <p className="text-xs text-gray-700 leading-tight">{message.mediaDescription}</p>
+                          </div>
+                        </div>
+                      ) : null
                     )}
                     
                     {/* 纯文字内容 / HTML内容 */}
