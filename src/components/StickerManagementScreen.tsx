@@ -66,7 +66,7 @@ export default function StickerManagementScreen({ onBack, conversations }: Stick
     if (!confirm(`确定要删除表情包"${sticker.description}"吗？`)) return;
     
     try {
-      await deleteSticker(sticker.id, sticker.scope, sticker.characterId);
+      await deleteSticker(sticker.id, sticker.scope);
       await loadStickers();
     } catch (error) {
       console.error('Failed to delete sticker:', error);

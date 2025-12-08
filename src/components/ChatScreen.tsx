@@ -927,6 +927,7 @@ export default function ChatScreen({
   const [showStickerModal, setShowStickerModal] = useState(false);
   const [stickerDescInput, setStickerDescInput] = useState('');
   const [showUserStickerPicker, setShowUserStickerPicker] = useState(false);
+  const [showStickerTypeMenu, setShowStickerTypeMenu] = useState(false);
   const [viewingVoice, setViewingVoice] = useState<string[]>([]);
   const [playingVoice, setPlayingVoice] = useState<string | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
@@ -2589,9 +2590,9 @@ ${characterInfo?.languageStyle ? `语言风格：${characterInfo.languageStyle}`
     if (e.target) e.target.value = '';
   };
 
-  // 打开表情包选择器
+  // 打开表情包类型选择菜单
   const handleStickerClick = () => {
-    setShowUserStickerPicker(true);
+    setShowStickerTypeMenu(true);
     setShowToolbar(false);
   };
   
@@ -8063,6 +8064,53 @@ ${doc.content}`;
           </div>
         </div>
       </div>
+    )}
+
+    {/* 表情包类型选择菜单 */}
+    {showStickerTypeMenu && (
+      <>
+        <div
+          className="fixed inset-0 bg-black/30 z-40"
+          onClick={() => setShowStickerTypeMenu(false)}
+        />
+        <div className="fixed bottom-20 left-1/2 -translate-x-1/2 bg-white rounded-2xl shadow-2xl z-50 w-[90%] max-w-sm overflow-hidden animate-slide-up">
+          <div className="px-4 py-3 border-b border-gray-200">
+            <h3 className="text-lg font-bold text-gray-900 text-center">选择表情包类型</h3>
+          </div>
+          <div className="divide-y divide-gray-100">
+            <button
+              onClick={() => {
+                setShowStickerTypeMenu(false);
+                setShowUserStickerPicker(true);
+              }}
+              className="w-full px-4 py-4 hover:bg-gray-50 transition-colors flex items-center gap-3"
+            >
+              <div className="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center">
+                <Smile className="w-5 h-5 text-blue-600" />
+              </div>
+              <div className="flex-1 text-left">
+                <div className="text-sm font-medium text-gray-900">真实表情包</div>
+                <div className="text-xs text-gray-500 mt-0.5">从表情包库中选择已上传的表情包</div>
+              </div>
+            </button>
+            <button
+              onClick={() => {
+                setShowStickerTypeMenu(false);
+                setShowStickerModal(true);
+              }}
+              className="w-full px-4 py-4 hover:bg-gray-50 transition-colors flex items-center gap-3"
+            >
+              <div className="w-10 h-10 rounded-full bg-purple-100 flex items-center justify-center">
+                <FileText className="w-5 h-5 text-purple-600" />
+              </div>
+              <div className="flex-1 text-left">
+                <div className="text-sm font-medium text-gray-900">文字描述表情包</div>
+                <div className="text-xs text-gray-500 mt-0.5">输入表情包的文字描述</div>
+              </div>
+            </button>
+          </div>
+        </div>
+      </>
     )}
 
     {/* 用户表情包选择器 */}

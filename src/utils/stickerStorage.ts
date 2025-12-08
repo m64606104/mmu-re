@@ -1,18 +1,32 @@
-// 表情包存储工具
+// 表情包存储工具 - 使用 IndexedDB
 
-import { StickerItem, StickerScope, DEFAULT_STICKER_CONFIG } from '../types/sticker';
+import { StickerItem, StickerScope } from '../types/sticker';
+import {
+  addData,
+  updateData,
+  deleteData,
+  getAllData,
+  getDataByIndex,
+  getCount,
+  STORES,
+} from './indexedDBHelper';
 
-const STORAGE_KEY_PREFIX = 'sticker_pack_';
-const COMMON_STICKERS_KEY = 'common_stickers';
+const COMMON_STICKERS_STORE = STORES.COMMON_STICKERS;
+const CHARACTER_STICKERS_STORE = STORES.CHARACTER_STICKERS;
+
+// 配置
+const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
+const ALLOWED_FORMATS = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
+const MAX_COMMON_STICKERS = 100;
+const MAX_CHARACTER_STICKERS = 50;
 
 /**
  * 获取所有通用表情包
  */
 export const getCommonStickers = async (): Promise<StickerItem[]> => {
   try {
-    const data = localStorage.getItem(COMMON_STICKERS_KEY);
-    if (!data) return [];
-    return JSON.parse(data);
+    const stickers = await getAllData<StickerItem>(COMMON_STICKERS_STORE);
+    return stickers.sort((a, b) => b.createdAt - a.createdAt);
   } catch (error) {
     console.error('Failed to load common stickers:', error);
     return [];
@@ -24,10 +38,12 @@ export const getCommonStickers = async (): Promise<StickerItem[]> => {
  */
 export const getCharacterStickers = async (characterId: string): Promise<StickerItem[]> => {
   try {
-    const key = `${STORAGE_KEY_PREFIX}${characterId}`;
-    const data = localStorage.getItem(key);
-    if (!data) return [];
-    return JSON.parse(data);
+    const stickers = await getDataByIndex<StickerItem>(
+      CHARACTER_STICKERS_STORE,
+      'characterId',
+      characterId
+    );
+    return stickers.sort((a, b) => b.createdAt - a.createdAt);
   } catch (error) {
     console.error(`Failed to load stickers for character ${characterId}:`, error);
     return [];
@@ -48,30 +64,6 @@ export const getAllAvailableStickers = async (characterId?: string): Promise<Sti
   return [...commonStickers, ...characterStickers];
 };
 
-/**
- * 保存通用表情包
- */
-export const saveCommonStickers = async (stickers: StickerItem[]): Promise<void> => {
-  try {
-    localStorage.setItem(COMMON_STICKERS_KEY, JSON.stringify(stickers));
-  } catch (error) {
-    console.error('Failed to save common stickers:', error);
-    throw error;
-  }
-};
-
-/**
- * 保存角色表情包
- */
-export const saveCharacterStickers = async (characterId: string, stickers: StickerItem[]): Promise<void> => {
-  try {
-    const key = `${STORAGE_KEY_PREFIX}${characterId}`;
-    localStorage.setItem(key, JSON.stringify(stickers));
-  } catch (error) {
-    console.error(`Failed to save stickers for character ${characterId}:`, error);
-    throw error;
-  }
-};
 
 /**
  * 添加表情包
@@ -88,25 +80,21 @@ export const addSticker = async (
   };
 
   if (sticker.scope === 'common') {
-    const commonStickers = await getCommonStickers();
-    
     // 检查数量限制
-    if (commonStickers.length >= DEFAULT_STICKER_CONFIG.maxCommonStickers) {
-      throw new Error(`通用表情包数量已达上限（${DEFAULT_STICKER_CONFIG.maxCommonStickers}个）`);
+    const count = await getCount(COMMON_STICKERS_STORE);
+    if (count >= MAX_COMMON_STICKERS) {
+      throw new Error(`通用表情包数量已达上限（${MAX_COMMON_STICKERS}个）`);
     }
     
-    commonStickers.push(newSticker);
-    await saveCommonStickers(commonStickers);
+    await addData(COMMON_STICKERS_STORE, newSticker);
   } else if (sticker.scope === 'character' && sticker.characterId) {
-    const characterStickers = await getCharacterStickers(sticker.characterId);
-    
     // 检查数量限制
-    if (characterStickers.length >= DEFAULT_STICKER_CONFIG.maxStickersPerCharacter) {
-      throw new Error(`角色表情包数量已达上限（${DEFAULT_STICKER_CONFIG.maxStickersPerCharacter}个）`);
+    const characterStickers = await getCharacterStickers(sticker.characterId);
+    if (characterStickers.length >= MAX_CHARACTER_STICKERS) {
+      throw new Error(`角色表情包数量已达上限（${MAX_CHARACTER_STICKERS}个）`);
     }
     
-    characterStickers.push(newSticker);
-    await saveCharacterStickers(sticker.characterId, characterStickers);
+    await addData(CHARACTER_STICKERS_STORE, newSticker);
   }
 
   return newSticker;
@@ -121,56 +109,30 @@ export const updateSticker = async (sticker: StickerItem): Promise<void> => {
     updatedAt: Date.now(),
   };
 
-  if (sticker.scope === 'common') {
-    const commonStickers = await getCommonStickers();
-    const index = commonStickers.findIndex(s => s.id === sticker.id);
-    if (index !== -1) {
-      commonStickers[index] = updatedSticker;
-      await saveCommonStickers(commonStickers);
-    }
-  } else if (sticker.scope === 'character' && sticker.characterId) {
-    const characterStickers = await getCharacterStickers(sticker.characterId);
-    const index = characterStickers.findIndex(s => s.id === sticker.id);
-    if (index !== -1) {
-      characterStickers[index] = updatedSticker;
-      await saveCharacterStickers(sticker.characterId, characterStickers);
-    }
-  }
+  const storeName = sticker.scope === 'common' ? COMMON_STICKERS_STORE : CHARACTER_STICKERS_STORE;
+  await updateData(storeName, updatedSticker);
 };
 
 /**
  * 删除表情包
  */
-export const deleteSticker = async (stickerId: string, scope: StickerScope, characterId?: string): Promise<void> => {
-  if (scope === 'common') {
-    const commonStickers = await getCommonStickers();
-    const filtered = commonStickers.filter(s => s.id !== stickerId);
-    await saveCommonStickers(filtered);
-  } else if (scope === 'character' && characterId) {
-    const characterStickers = await getCharacterStickers(characterId);
-    const filtered = characterStickers.filter(s => s.id !== stickerId);
-    await saveCharacterStickers(characterId, filtered);
-  }
+export const deleteSticker = async (stickerId: string, scope: StickerScope): Promise<void> => {
+  const storeName = scope === 'common' ? COMMON_STICKERS_STORE : CHARACTER_STICKERS_STORE;
+  await deleteData(storeName, stickerId);
 };
 
 /**
  * 增加表情包使用次数
  */
-export const incrementStickerUsage = async (stickerId: string, scope: StickerScope, characterId?: string): Promise<void> => {
-  if (scope === 'common') {
-    const commonStickers = await getCommonStickers();
-    const sticker = commonStickers.find(s => s.id === stickerId);
-    if (sticker) {
-      sticker.usage = (sticker.usage || 0) + 1;
-      await saveCommonStickers(commonStickers);
-    }
-  } else if (scope === 'character' && characterId) {
-    const characterStickers = await getCharacterStickers(characterId);
-    const sticker = characterStickers.find(s => s.id === stickerId);
-    if (sticker) {
-      sticker.usage = (sticker.usage || 0) + 1;
-      await saveCharacterStickers(characterId, characterStickers);
-    }
+export const incrementStickerUsage = async (stickerId: string, scope: StickerScope): Promise<void> => {
+  const storeName = scope === 'common' ? COMMON_STICKERS_STORE : CHARACTER_STICKERS_STORE;
+  const allStickers = await getAllData<StickerItem>(storeName);
+  const sticker = allStickers.find(s => s.id === stickerId);
+  
+  if (sticker) {
+    sticker.usage = (sticker.usage || 0) + 1;
+    sticker.updatedAt = Date.now();
+    await updateData(storeName, sticker);
   }
 };
 
@@ -202,14 +164,14 @@ export const searchStickers = async (
 export const imageToBase64 = (file: File): Promise<string> => {
   return new Promise((resolve, reject) => {
     // 检查文件大小
-    if (file.size > DEFAULT_STICKER_CONFIG.maxFileSize) {
-      reject(new Error(`文件大小超过限制（${DEFAULT_STICKER_CONFIG.maxFileSize / 1024 / 1024}MB）`));
+    if (file.size > MAX_FILE_SIZE) {
+      reject(new Error(`文件大小超过限制（${MAX_FILE_SIZE / 1024 / 1024}MB）`));
       return;
     }
     
     // 检查文件格式
-    if (!DEFAULT_STICKER_CONFIG.allowedFormats.includes(file.type)) {
-      reject(new Error(`不支持的文件格式，仅支持：${DEFAULT_STICKER_CONFIG.allowedFormats.join(', ')}`));
+    if (!ALLOWED_FORMATS.includes(file.type)) {
+      reject(new Error(`不支持的文件格式，仅支持：${ALLOWED_FORMATS.join(', ')}`));
       return;
     }
     
