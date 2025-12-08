@@ -53,8 +53,16 @@ export const cleanAIMessage = (message: string): string => {
   // 8. 清理多余的空行（超过2个连续换行）
   cleaned = cleaned.replace(/\n{3,}/g, '\n\n');
   
-  // 7. 清理行首行尾的空格
+  // 8. 清理行首行尾的空格
   cleaned = cleaned.split('\n').map(line => line.trim()).join('\n');
+  
+  // 9. 移除动作/语气描写（括号内容）
+  // 匹配 (动作) 或 （动作），通常较短且位于句首或句尾，或者独立
+  // 移除所有圆括号包裹的内容，如果它们看起来像动作描写（非数字、非URL）
+  cleaned = cleaned.replace(/[\(（](?!https?:\/\/|\d+)[^\)）\n]+[\)）]/g, '');
+  
+  // 10. 再次清理可能产生的空括号或多余标点
+  cleaned = cleaned.replace(/[\(（]\s*[\)）]/g, '');
   
   return cleaned.trim();
 };
@@ -136,8 +144,13 @@ export const splitMessages = (message: string): string[] => {
               // 找到完整的HTML块
               const htmlBlock = message.substring(htmlStart, tagEnd + 1);
               htmlBlocks.push(htmlBlock);
-              htmlProtectedMessage = htmlProtectedMessage.replace(htmlBlock, '___HTML_BLOCK___');
+              // 🔥 关键修改：前后加换行符，确保HTML块被独立分割
+              htmlProtectedMessage = htmlProtectedMessage.replace(htmlBlock, '\n___HTML_BLOCK___\n');
               console.log(`🎨 [分割器] 保护HTML块，长度: ${htmlBlock.length}`);
+              // 重置搜索位置，因为字符串已改变
+              i = 0; 
+              htmlStart = -1;
+              continue; // 重新开始循环
             }
           } else if (!isSelfClosing) {
             depth++;
@@ -154,7 +167,8 @@ export const splitMessages = (message: string): string[] => {
     if (depth > 0 && htmlStart >= 0) {
       const remainingHtml = message.substring(htmlStart);
       htmlBlocks.push(remainingHtml);
-      htmlProtectedMessage = htmlProtectedMessage.replace(remainingHtml, '___HTML_BLOCK___');
+      // 🔥 关键修改：前后加换行符
+      htmlProtectedMessage = htmlProtectedMessage.replace(remainingHtml, '\n___HTML_BLOCK___\n');
       console.log(`🎨 [分割器] 保护剩余HTML内容，长度: ${remainingHtml.length}`);
     }
     
@@ -170,12 +184,22 @@ export const splitMessages = (message: string): string[] => {
   
   // 检查并提取所有受保护的内容
   for (const pattern of protectedPatterns) {
-    const matches = Array.from(messageWithoutProtected.matchAll(new RegExp(pattern.source, 'g')));
+    // 使用 while 循环和 exec 来确保正确替换所有匹配项，特别是当替换字符串包含换行时
+    const regex = new RegExp(pattern.source, 'g');
+    let match;
+    const matches: string[] = [];
+    while ((match = regex.exec(messageWithoutProtected)) !== null) {
+      matches.push(match[0]);
+    }
+    
     if (matches.length > 0) {
-      matches.forEach(match => {
-        protectedParts.push(match[0]);
-        // 用占位符替换，避免影响其他内容的分割
-        messageWithoutProtected = messageWithoutProtected.replace(match[0], '___PROTECTED___');
+      matches.forEach(m => {
+        protectedParts.push(m);
+        // 🔥 关键修改：用前后带换行的占位符替换，确保表情包等被强制分割
+        // 注意：这里只替换第一个匹配项，因为我们在forEach里。为了安全，可以使用 replace(m)
+        // 但如果内容完全一样会有问题。最好的方式是先全部提取占位。
+        // 简化策略：直接用 split/join 或者 replaceAll
+        messageWithoutProtected = messageWithoutProtected.replace(m, '\n___PROTECTED___\n');
       });
     }
   }

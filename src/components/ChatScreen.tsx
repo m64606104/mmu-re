@@ -5778,6 +5778,12 @@ ${doc.content}`;
             (displayMessages[index - 1] && 
              message.timestamp - displayMessages[index - 1].timestamp > 5 * 60 * 1000);
           
+          // 提前计算是否为HTML内容（用于调整气泡样式）
+          const hasHTMLTags = message.content && /<[^>]+>/.test(message.content);
+          const htmlTagCount = (message.content && message.content.match(/<[^>]+>/g) || []).length;
+          const hasStructuralTags = message.content && ['<div', '<style', '<span', '<table', '<ul', '<ol'].some(tag => message.content.includes(tag));
+          const isHTMLContent = hasHTMLTags && (htmlTagCount >= 3 || hasStructuralTags);
+          
           return (
             <div key={message.id}>
               {showTime && (
@@ -5901,17 +5907,19 @@ ${doc.content}`;
                       }
                     }}
                     className={`message-bubble ${message.role === 'user' ? 'user' : 'ai'} rounded-2xl shadow-sm cursor-pointer ${
-                      message.moneyTransfer 
-                        ? 'p-0 overflow-hidden'
-                        : message.role === 'user'
-                        ? 'bg-white text-gray-900 border border-gray-200'
-                        : 'bg-white text-gray-900 border border-gray-200'
-                    } ${message.mediaType || message.moneyTransfer ? 'p-0 overflow-hidden' : message.replyTo ? 'pb-2.5' : 'px-4 py-2.5'} ${
+                      isHTMLContent 
+                        ? 'bg-transparent border-0 shadow-none p-0 overflow-visible' 
+                        : message.moneyTransfer 
+                          ? 'p-0 overflow-hidden'
+                          : message.role === 'user'
+                          ? 'bg-white text-gray-900 border border-gray-200'
+                          : 'bg-white text-gray-900 border border-gray-200'
+                    } ${message.mediaType || message.moneyTransfer || isHTMLContent ? 'p-0' : message.replyTo ? 'pb-2.5' : 'px-4 py-2.5'} ${
                       isMultiSelectMode && selectedMessages.includes(message.id) ? 'ring-2 ring-purple-500' : ''
                     }`}
                   >
                     {/* 引用消息显示（只在非特殊消息时显示在这里） */}
-                    {message.replyTo && !message.moneyTransfer && !message.document && !message.order && (
+                    {message.replyTo && !message.moneyTransfer && !message.document && !message.order && !isHTMLContent && (
                       <div className="pt-3">
                         {/* 被引用的原消息 */}
                         <div className="px-4 text-sm text-gray-600 leading-relaxed mb-2.5">
