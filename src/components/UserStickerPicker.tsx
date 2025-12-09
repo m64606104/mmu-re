@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { X, Plus, Search, Smile } from 'lucide-react';
 import { StickerItem } from '../types/sticker';
-import { getUserStickers, addSticker, imageToBase64 } from '../utils/stickerStorage';
+import { getCommonStickers, getUserStickers, addSticker, imageToBase64 } from '../utils/stickerStorage';
 
 interface UserStickerPickerProps {
   onClose: () => void;
@@ -23,9 +23,12 @@ export default function UserStickerPicker({ onClose, onSelectSticker }: UserStic
   const loadStickers = async () => {
     setLoading(true);
     try {
-      // 只加载用户专属表情包（AI不能用）
-      const data = await getUserStickers();
-      setStickers(data);
+      // 加载通用表情包 + 用户专属表情包
+      const [commonStickers, userStickers] = await Promise.all([
+        getCommonStickers(),
+        getUserStickers()
+      ]);
+      setStickers([...commonStickers, ...userStickers]);
     } catch (error) {
       console.error('Failed to load stickers:', error);
     } finally {

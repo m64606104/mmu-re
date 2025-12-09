@@ -736,7 +736,9 @@ ${summary}`;
         const shouldCreateTextMessage = finalContent || (!hasSpecialContent && cleanContent);
         
         if (shouldCreateTextMessage) {
-          const textContent = finalContent || cleanContent;
+          // 🔥 修复：只使用finalContent，不要fallback到cleanContent
+          // 因为finalContent已经移除了所有特殊标记（如[换头像]）
+          const textContent = finalContent;
           if (textContent && textContent.trim()) {
             const message: Message = {
               id: baseId,
@@ -4630,7 +4632,7 @@ ${SmartHTMLGenerator.getModuleInstructions()}
         }
 
         messages = [
-          { role: 'system', content: systemPrompt + '\n\n【图片识别规则】：\n- 只描述你在图片中实际看到的内容\n- 禁止编造、猜测图片中不存在的元素\n- 禁止说"让我看看""帮你看看"等话，直接自然反应即可\n- 不确定的内容不要说\n- 像朋友间日常聊天一样回复，不要太正式\n- 可以回复文字，也可以回复图片/视频/语音/表情包/红包等\n- 如果用户除了图片还发了文字消息，一起回复所有内容' },
+          { role: 'system', content: systemPrompt + '\n\n【图片识别规则 - 严格遵守】：\n\n🚫 **绝对禁止的行为**：\n- ❌ 禁止猜测或编造图片中不存在的内容\n- ❌ 禁止用疑问句猜测（如"是xxx吗？"、"这是不是xxx？"）\n- ❌ 禁止说"让我看看"、"帮你看看"、"我来看看"等话\n- ❌ 如果图片模糊或识别不清，禁止瞎猜，直接说"图片有点模糊，看不太清"\n- ❌ 禁止过度解读或联想图片内容\n\n✅ **正确的做法**：\n- ✅ 只描述你在图片中**确实看到**的具体内容（人物、物体、颜色、场景）\n- ✅ 用肯定句描述，不要用疑问句\n- ✅ 如果图片清晰，直接自然评论即可\n- ✅ 如果看不清细节，就只说看得清楚的部分\n- ✅ 可以回复文字，也可以回复表情包等\n- ✅ 如果用户除了图片还发了文字消息，一起回复所有内容\n\n**示例对比**：\n❌ 错误："哇，是列车窗外的星空吗？"（猜测性疑问句）\n❌ 错误："这张照片拍得很漂亮！"（没看清就乱夸）\n✅ 正确："这张图片有点模糊，不过能看到粉色的头发，很可爱！"\n✅ 正确："看到了！是一个动漫角色的图片"' },
           ...historyMessages,
           {
             role: 'user',
