@@ -43,6 +43,8 @@ const LetterWritingScreen: React.FC<LetterWritingScreenProps> = ({
   const [showCustomFriendCreator, setShowCustomFriendCreator] = useState(false);
   const [customFriends, setCustomFriends] = useState<BottleAI[]>([]);
   const [isAnonymous, setIsAnonymous] = useState(false); // 匿名寄信选项
+  const [showPenPalCodeInput, setShowPenPalCodeInput] = useState(false);
+  const [penPalCode, setPenPalCode] = useState('');
 
   // 请求通知权限
   useEffect(() => {
@@ -141,6 +143,47 @@ const LetterWritingScreen: React.FC<LetterWritingScreenProps> = ({
       avatar: '🌊',
       isBottle: true
     });
+    setShowReceiverModal(false);
+  };
+
+  // 处理笔友码添加
+  const handleAddByPenPalCode = () => {
+    if (!penPalCode.trim()) {
+      alert('请输入笔友码');
+      return;
+    }
+
+    const shareCode = findPenPalShareCode(penPalCode.trim().toUpperCase());
+    
+    if (!shareCode) {
+      alert('❌ 笔友码无效\n\n请检查笔友码是否正确');
+      return;
+    }
+
+    const newConversation = createConversationFromPenPalShare(
+      shareCode,
+      userName,
+      conversations
+    );
+
+    if (!newConversation) {
+      alert('❌ 该笔友已经添加过了');
+      return;
+    }
+
+    // 自动选择为收件人
+    setSelectedReceiver({
+      id: newConversation.id,
+      name: newConversation.name,
+      avatar: newConversation.avatar || '👤',
+      isBottle: false,
+      bottleAIProfile: shareCode.aiProfile
+    });
+
+    alert(`✅ 成功添加笔友 ${newConversation.name}！\n\n${shareCode.sharedBy} 说：${shareCode.sharedReason}\n\n可以开始写信了`);
+    
+    setPenPalCode('');
+    setShowPenPalCodeInput(false);
     setShowReceiverModal(false);
   };
   
@@ -360,6 +403,59 @@ const LetterWritingScreen: React.FC<LetterWritingScreenProps> = ({
                   </div>
                 </div>
               </button>
+
+              {/* 笔友码输入选项 */}
+              {!showPenPalCodeInput ? (
+                <button
+                  onClick={() => setShowPenPalCodeInput(true)}
+                  className="w-full px-6 py-4 hover:bg-purple-50 transition-colors border-b border-gray-100 text-left"
+                >
+                  <div className="flex items-center gap-4">
+                    <div className="w-12 h-12 rounded-full bg-gradient-to-br from-purple-400 to-pink-400 flex items-center justify-center text-2xl">
+                      <Key size={24} className="text-white" />
+                    </div>
+                    <div className="flex-1">
+                      <div className="font-medium text-gray-800 flex items-center gap-2">
+                        通过笔友码添加
+                        <Sparkles size={16} className="text-purple-500" />
+                      </div>
+                      <div className="text-sm text-gray-500">朋友分享的笔友</div>
+                    </div>
+                  </div>
+                </button>
+              ) : (
+                <div className="px-6 py-4 bg-purple-50 border-b border-gray-100">
+                  <div className="mb-3">
+                    <div className="font-medium text-gray-800 mb-1">输入笔友码</div>
+                    <div className="text-xs text-gray-500">格式：SHARE-XXXX-XXXX-XXXXXX</div>
+                  </div>
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      value={penPalCode}
+                      onChange={(e) => setPenPalCode(e.target.value.toUpperCase())}
+                      placeholder="SHARE-XXXX-XXXX-XXXXXX"
+                      className="flex-1 px-3 py-2 border-2 border-purple-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 font-mono text-sm"
+                      autoFocus
+                    />
+                    <button
+                      onClick={handleAddByPenPalCode}
+                      className="px-4 py-2 bg-purple-500 text-white rounded-lg font-medium hover:bg-purple-600 transition-colors whitespace-nowrap"
+                    >
+                      添加
+                    </button>
+                  </div>
+                  <button
+                    onClick={() => {
+                      setShowPenPalCodeInput(false);
+                      setPenPalCode('');
+                    }}
+                    className="mt-2 text-sm text-gray-500 hover:text-gray-700"
+                  >
+                    取消
+                  </button>
+                </div>
+              )}
 
               {/* AI联系人列表 */}
               {aiContacts.length > 0 && (
