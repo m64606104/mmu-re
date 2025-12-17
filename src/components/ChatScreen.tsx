@@ -28,6 +28,7 @@ import { musicContextService } from '../utils/musicContextService';
 import ZhihuFeed from './ZhihuFeed';
 import NeteaseMusicCard from './NeteaseMusicCard';
 import NeteaseMusicParser from '../utils/neteaseMusicParser';
+import { calculateVoiceDuration } from '../utils/voiceDurationCalculator';
 import WeiboFeed from './WeiboFeed';
 import SearchHistoryView from './SearchHistoryView';
 import ChatSearchModal from './ChatSearchModal';
@@ -675,6 +676,9 @@ ${summary}`;
         // 3.2 添加所有语音消息（每个语音独立气泡）
         const voiceItems = mediaItems.filter(item => item.type === 'voice');
         voiceItems.forEach((voice, voiceIdx) => {
+          // 根据文字内容计算语音时长
+          const calculatedDuration = calculateVoiceDuration(voice.description || '');
+          
           messages.push({
             id: `${baseId}_voice_${voiceIdx}`,
             role: 'assistant' as const,
@@ -682,10 +686,10 @@ ${summary}`;
             timestamp: msgTimestamp++,
             mediaType: 'voice',
             mediaDescription: voice.description,
-            voiceDuration: voice.duration,
+            voiceDuration: calculatedDuration, // 使用计算的时长
             isMediaDescriptionOnly: true
           });
-          console.log(`🎤 [创建消息] 语音消息 ${voiceIdx + 1} 已添加`);
+          console.log(`🎤 [创建消息] 语音消息 ${voiceIdx + 1} 已添加，时长：${calculatedDuration}秒`);
         });
         
         // 3.3 添加所有图片消息（每个图片独立气泡）

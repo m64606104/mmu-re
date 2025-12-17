@@ -5,8 +5,8 @@
 
 import { Letter, BottleAI, LetterRound } from '../types/letter';
 import { checkLetterAchievements } from './achievementSystem';
-import { detectAgeFromBottleContent } from './bottleAgeDetector';
-import { save, getCachedData, setCachedData } from './storage';
+import { getCachedData, setCachedData, save } from './storage';
+import { checkAndMergeAnonymousLetters } from './anonymousLetterMerger';
 import { cleanAIMessage } from './messageFormatter';
 
 // 📮 预设AI角色池 - 用户可主动选择的固定角色
@@ -382,18 +382,28 @@ export function sendLetter(
   
   // 🔍 检查是否存在与同一收件人的现有信件（非漂流瓶情况）
   if (!isBottle) {
-    const existingLetters = getLettersFromStorage();
-    const existingLetter = existingLetters.find(letter => 
-      letter.receiverId === receiverId && 
-      !letter.isBottle && 
-      !letter.isArchived &&
-      letter.senderName === senderName // 确保是同一发件人
-    );
-    
-    if (existingLetter) {
-      console.log('📬 找到现有信件，继续多轮交流:', existingLetter.id);
-      // 使用现有的信件继续交流，而不是创建新信件
-      return continueExistingLetter(existingLetter.id, content, senderName);
+    // 🎭 如果是匿名信件，检查是否需要合并
+    if (isAnonymous) {
+      const existingAnonymousLetter = checkAndMergeAnonymousLetters(receiverId);
+      if (existingAnonymousLetter) {
+        console.log('📬 找到现有匿名信件，合并到同一对话:', existingAnonymousLetter.id);
+        return continueExistingLetter(existingAnonymousLetter.id, content, senderName);
+      }
+    } else {
+      // 非匿名信件，按原逻辑查找
+      const existingLetters = getLettersFromStorage();
+      const existingLetter = existingLetters.find(letter => 
+        letter.receiverId === receiverId && 
+        !letter.isBottle && 
+        !letter.isArchived &&
+        !letter.isAnonymous && // 排除匿名信件
+        letter.senderName === senderName
+      );
+      
+      if (existingLetter) {
+        console.log('📬 找到现有信件，继续多轮交流:', existingLetter.id);
+        return continueExistingLetter(existingLetter.id, content, senderName);
+      }
     }
   }
   
