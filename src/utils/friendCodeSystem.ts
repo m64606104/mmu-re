@@ -8,31 +8,41 @@ import { Conversation, CharacterSettings } from '../types';
 import { getLettersFromStorage } from './letterService';
 import { updateLetterMemoryFromLetter, linkFriendToLetterMemory } from './letterMemorySystem';
 
+// 基于 receiverId 计算固定的 10 位数字码（确定性，不依赖随机数）
+function computeFriendCodeCore(receiverId: string): string {
+  let hash = 2166136261;
+  for (let i = 0; i < receiverId.length; i++) {
+    hash ^= receiverId.charCodeAt(i);
+    hash = (hash * 16777619) >>> 0; // FNV-1a 32 位哈希
+  }
+  const codeNum = hash >>> 0;
+  return codeNum.toString().padStart(10, '0');
+}
+
 /**
  * 生成好友码
- * 格式：PENPAL-{receiverId的前8位}-{随机4位}
+ * 格式：PENPAL-{10位数字码}
  */
 export function generateFriendCode(receiverId: string): string {
-  const prefix = receiverId.substring(0, 8).toUpperCase();
-  const random = Math.random().toString(36).substring(2, 6).toUpperCase();
-  return `PENPAL-${prefix}-${random}`;
+  const core = computeFriendCodeCore(receiverId);
+  return `PENPAL-${core}`;
 }
 
 /**
  * 验证好友码格式
  */
 export function validateFriendCodeFormat(code: string): boolean {
-  const pattern = /^PENPAL-[A-Z0-9_]{1,20}-[A-Z0-9]{4}$/;
+  const pattern = /^PENPAL-[0-9]{10}$/;
   return pattern.test(code);
 }
 
 /**
- * 从好友码提取receiverId前缀
+ * 从好友码提取固定数字码部分
  */
-function extractReceiverIdPrefix(code: string): string {
+function extractFriendCodeCore(code: string): string {
   const parts = code.split('-');
-  if (parts.length !== 3) return '';
-  return parts[1].toLowerCase();
+  if (parts.length !== 2) return '';
+  return parts[1];
 }
 
 /**
@@ -43,15 +53,21 @@ export function findLetterByFriendCode(code: string): Letter | null {
     return null;
   }
 
-  const letters = getLettersFromStorage();
-  const prefix = extractReceiverIdPrefix(code);
+  const core = extractFriendCodeCore(code);
+  if (!core) {
+    return null;
+  }
 
-  // 查找receiverId以该前缀开头的信件
-  const matchingLetter = letters.find(letter => 
-    letter.receiverId.toLowerCase().startsWith(prefix) &&
-    !letter.isArchived &&
-    (letter.isBottle || letter.isFriendAdded || letter.bottleAIProfile)
-  );
+  const letters = getLettersFromStorage();
+
+  // 对每封信根据 receiverId 算出固定数字码，精确匹配
+  const matchingLetter = letters.find(letter => {
+    if (letter.isArchived || !(letter.isBottle || letter.isFriendAdded || letter.bottleAIProfile)) {
+      return false;
+    }
+    const expectedCore = computeFriendCodeCore(letter.receiverId);
+    return expectedCore === core;
+  });
 
   return matchingLetter || null;
 }

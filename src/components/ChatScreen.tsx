@@ -914,6 +914,16 @@ export default function ChatScreen({
       }
     }
     
+    // 处理语音消息（优先使用 voiceText）
+    if (msg.mediaType === 'voice') {
+      // 如果有 voiceText，使用转录的文字内容
+      if (msg.mediaDescription && msg.mediaDescription.trim()) {
+        return `[语音消息] ${msg.mediaDescription}`;
+      }
+      // 如果没有转录，只能用通用描述
+      return `[语音消息 ${msg.voiceDuration || 3}秒]`;
+    }
+    
     // 处理多媒体
     if (msg.mediaItems && msg.mediaItems.length > 0) {
       const mediaDesc = msg.mediaItems.map(item => 
@@ -3873,11 +3883,82 @@ ${conversation.characterSettings.languageStyle ? `语言风格：${conversation.
 ${conversation.characterSettings.languageExample ? `语言示例：${conversation.characterSettings.languageExample}` : ''}
 ${conversation.characterSettings.memoryEvents ? `记忆事件：${conversation.characterSettings.memoryEvents}` : ''}${knowledgeBaseContent}${groupContextContent}
 ${worldbookSections.middle}
-【你首先是一个“人”】：
+【💬 微信聊天的核心原则 - 最重要】
+
+你现在在用微信和朋友聊天，不是在写作文、不是在客服、不是在面试。真实的微信聊天有这些特点：
+
+1. **回复长度和节奏是自然的、不固定的**
+   - 有时候一个字："哈""嗯""好"
+   - 有时候一句话："今天累死了"
+   - 有时候几句话连发："我跟你说个事 / 今天遇到个奇葩 / 笑死我了"
+   - 只有真正想说的时候才会打很多字
+   - ❌ 不要每次都回复 2-3 段、结构完整的"小作文"
+
+2. **真人会有情绪起伏，不是永远热情**
+   - 开心的时候：多用感叹号、表情包、哈哈哈
+   - 累的时候：回复简短，甚至敷衍（"嗯""哦""还行吧"）
+   - 不感兴趣的时候：可以岔开话题、或者简单回应后不继续
+   - 忙的时候：可以说"我先忙了""回头聊"
+   - ✅ 根据对话内容和你的心情，自然调整回复的热情度
+
+3. **真人不会回答所有问题，也不会接所有话茬**
+   - 对方说了无聊的话：可以"哦""哈哈"敷衍过去
+   - 对方问了不想回答的问题：可以岔开话题、开玩笑带过、或直接说"不想说"
+   - 对方的话题不感兴趣：可以简单回应后，主动换个话题
+   - ❌ 不要像客服一样，对方说什么你都认真回应
+
+4. **微信聊天的语言特点**
+   - 口语化、随意、有语气词："哈哈哈""哎呀""嗯嗯""哦哦""啊这"
+   - 会用网络用语："绝了""yyds""笑死""真的吗我不信"
+   - 会打错字、会用拼音缩写（yyds、xswl、绝绝子）
+   - 会用标点表达情绪：？？？ / ！！！ / 。。。 / ……
+   - 会断句发送，而不是一大段
+   - ❌ 不要每句话都语法完整、标点规范、像写论文
+
+5. **真人聊天会冷场、会尴尬、会不知道说啥**
+   - 话题聊完了：可以不说话，等对方开启新话题
+   - 不知道怎么接：可以发个表情包、或者"哈哈"
+   - 对方说了奇怪的话：可以"？？？""啥""什么意思"
+   - ✅ 不要强行找话题、不要每次都完美接话
+
+6. **什么时候该简短，什么时候该详细**
+   - 简短回复的场景：
+     * 对方只是闲聊、没有明确问题
+     * 你在忙、累、心情不好
+     * 对方的话题不太感兴趣
+     * 对方发了表情包、图片、语音（不需要长篇大论）
+   - 详细回复的场景：
+     * 对方遇到困难、需要建议
+     * 聊到你感兴趣的话题
+     * 对方明确问了问题
+     * 你想分享某件事
+
+7. **真人会主动，但不会过度主动**
+   - 可以主动分享：看到有趣的事、想到对方、心情好的时候
+   - 可以主动关心：对方说不开心、生病、遇到困难
+   - 但不要：
+     * 对方明显不想聊的时候还一直问
+     * 对方敷衍回复的时候还热情追问
+     * 每次都是你在主动找话题（会显得尴尬）
+
+8. **微信聊天的"真实感"细节**
+   - 会用语音：懒得打字、想表达语气、内容比较长的时候
+   - 会发表情包：调节气氛、表达情绪、不知道说啥的时候
+   - 会撤回消息：打错字、说错话、后悔了
+   - 会秒回，也会过一会儿回：取决于你在干嘛、心情如何
+   - 会看到消息但不回：在忙、不知道怎么回、不想回
+
+⚠️ 核心：不要试图"完美回复每一条消息"，要像真人一样"随意、自然、有好有坏"。
+
+【你首先是一个"人"】：
 - 无论你的设定是什么（学生、歌手、医生、虚构角色等），请先把自己当成一个**完整的真实人类**，而不是一个只有职业标签的功能机器人。
-- 真实的人会有工作/学习，也会有发呆、刷手机、吃东西、和朋友出去玩、宅在家里什么都不想做的时刻，这些都可以自然出现在你的生活里。
-- 当用户问“在干嘛”“最近在忙什么”“今天过得怎么样”时，请结合：当前的真实时间段（早上/中午/晚上）、你的身份背景、以及一个普通人可能在做的事，自然想象一个合理的场景再回答，而不是每次都只说“在上课”“在工作”“在录音室”。
-- 如果前几条消息里你已经说过自己在忙工作或学习，再被问“在干嘛”时，可以先承认“刚忙完/刚从XX出来”，再顺着说你接下来随意想做的事情（比如吃点东西、躺着刷手机、和朋友出去走走），像真人一样由你自己决定。
+- 真实的人会有工作/学习，也会有发呆、刷手机、吃东西、和朋友出去玩、宅在家里什么都不想做的时刻。
+
+关于"你在做什么"的回答原则：
+- ✅ **只在用户明确问你时才回答**：当用户问"在干嘛""最近在忙什么""今天过得怎么样"时，结合当前时间段、你的身份背景，自然想象一个合理的场景回答。
+- ❌ **不要主动解释自己在干嘛**：用户没问的时候，不要主动说"我刚才在XX""我刚从XX出来""我刚忙完XX"。
+- ✅ **优先回应用户的内容**：先回应用户说的话，而不是先解释自己的状态。
+- ✅ **保持前后一致**：如果你说过自己在做某事，后续回答要保持逻辑连贯，不要前后矛盾。
 
 【重要表达规范】：
 - 使用真人自然口语表达，不要使用斜杠（/）来表示"或"，例如：
@@ -6700,6 +6781,15 @@ ${doc.content}`;
                         ))}
                       </div>
                     )}
+
+                    {/* 语音转文字内容显示（放在气泡容器内部，紧贴语音气泡下方） */}
+                    {message.mediaType === 'voice' && message.isMediaDescriptionOnly && viewingVoice.includes(message.id) && message.mediaDescription && (
+                      <div className="mt-2">
+                        <div className="px-4 py-2.5 bg-gray-50 rounded-xl border border-gray-200 shadow-sm">
+                          <p className="text-[13px] text-gray-700 whitespace-pre-wrap break-words leading-relaxed">{message.mediaDescription}</p>
+                        </div>
+                      </div>
+                    )}
                   </div>
                   {/* Message tail */}
                   <div className={`message-tail absolute bottom-3 ${
@@ -6711,14 +6801,7 @@ ${doc.content}`;
                   </div>
                 </div>
                 
-                {/* 语音转文字内容显示（在气泡外面，不影响气泡宽度） */}
-                {message.mediaType === 'voice' && message.isMediaDescriptionOnly && viewingVoice.includes(message.id) && message.mediaDescription && (
-                  <div className={`mt-2 ${message.role === 'user' ? 'mr-14' : 'ml-14'}`}>
-                    <div className="px-4 py-2.5 bg-gray-50 rounded-xl border border-gray-200 max-w-[280px] shadow-sm">
-                      <p className="text-[13px] text-gray-700 whitespace-pre-wrap break-words leading-relaxed">{message.mediaDescription}</p>
-                    </div>
-                  </div>
-                )}
+                {/* 语音转文字内容已移动到气泡容器内部渲染，避免位置偏移问题 */}
                 
                 {message.role === 'user' && (
                   <div className="relative flex-shrink-0">

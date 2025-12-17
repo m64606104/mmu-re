@@ -26,11 +26,24 @@ export interface LetterMigrationData {
 export function exportAllLetterData(): LetterMigrationData {
   // 获取所有信件
   const lettersJson = localStorage.getItem('slow_letters');
+  console.log(`📤 [导出] localStorage 中 'slow_letters' 的原始数据:`, lettersJson ? `${lettersJson.substring(0, 100)}...` : 'null');
+  
   const letters: Letter[] = lettersJson ? JSON.parse(lettersJson) : [];
+  console.log(`📤 [导出] 读取到 ${letters.length} 封信件`);
+  
+  if (letters.length > 0) {
+    console.log(`📤 [导出] 第一封信件示例:`, {
+      id: letters[0].id,
+      receiverName: letters[0].receiverName,
+      status: letters[0].status,
+      sentAt: letters[0].sentAt
+    });
+  }
   
   // 获取自定义笔友
   const customFriendsJson = localStorage.getItem('custom_pen_pals');
   const customFriends: BottleAI[] = customFriendsJson ? JSON.parse(customFriendsJson) : [];
+  console.log(`📤 [导出] 读取到 ${customFriends.length} 个自定义笔友`);
   
   // 统计数据
   const statistics = {
@@ -40,13 +53,23 @@ export function exportAllLetterData(): LetterMigrationData {
     customFriendsCount: customFriends.length
   };
   
-  return {
+  const exportData = {
     version: '1.0.0',
     exportDate: Date.now(),
     letters,
     customFriends,
     statistics
   };
+  
+  console.log(`📤 [导出] 导出数据结构:`, {
+    version: exportData.version,
+    exportDate: new Date(exportData.exportDate).toISOString(),
+    lettersCount: exportData.letters.length,
+    customFriendsCount: exportData.customFriends.length,
+    statistics: exportData.statistics
+  });
+  
+  return exportData;
 }
 
 /**
@@ -89,46 +112,93 @@ export function importAllLetterData(
   mode: 'merge' | 'replace' = 'merge'
 ): { success: boolean; message: string } {
   try {
+    console.log(`📥 [导入] 开始导入，模式: ${mode}`);
+    console.log(`📥 [导入] 导入文件包含: ${data.letters?.length || 0} 封信件, ${data.customFriends?.length || 0} 个笔友`);
+    
     // 验证数据格式
     if (!data.version || !data.letters || !Array.isArray(data.letters)) {
+      console.error('❌ [导入] 数据格式不正确');
       return {
         success: false,
         message: '数据格式不正确'
       };
     }
     
-    if (mode === 'replace') {
-      // 替换模式：直接覆盖
-      localStorage.setItem('slow_letters', JSON.stringify(data.letters));
-      localStorage.setItem('custom_pen_pals', JSON.stringify(data.customFriends || []));
-    } else {
-      // 合并模式：合并现有数据
+    if (mode === 'merge') {
       const existingLettersJson = localStorage.getItem('slow_letters');
       const existingLetters: Letter[] = existingLettersJson ? JSON.parse(existingLettersJson) : [];
+      console.log(`📥 [导入] 现有 ${existingLetters.length} 封信件`);
       
-      // 合并信件（去重）
-      const existingIds = new Set(existingLetters.map(l => l.id));
-      const newLetters = data.letters.filter(l => !existingIds.has(l.id));
-      const mergedLetters = [...existingLetters, ...newLetters];
+      // 创建一个 Map 用于快速查找和合并
+      const letterMap = new Map<string, Letter>();
       
-      localStorage.setItem('slow_letters', JSON.stringify(mergedLetters));
+      // 1. 先把所有现有信件放入 Map
+      existingLetters.forEach(letter => {
+        letterMap.set(letter.id, letter);
+      });
       
-      // 合并自定义笔友
+      // 2. 用导入的信件更新或添加
+      data.letters.forEach(newLetter => {
+        const existing = letterMap.get(newLetter.id);
+        if (existing) {
+          // 如果已存在，合并数据（导入的数据优先）
+          letterMap.set(newLetter.id, { ...existing, ...newLetter });
+        } else {
+          // 如果不存在，添加新信件
+          letterMap.set(newLetter.id, newLetter);
+        }
+      });
+      
+      // 3. 转换回数组并排序
+      const finalLetters = Array.from(letterMap.values());
+      const sortedLetters = finalLetters.sort((a, b) => b.sentAt - a.sentAt);
+      console.log(`✅ [导入] 合并后共有 ${sortedLetters.length} 封信件`);
+      localStorage.setItem('slow_letters', JSON.stringify(sortedLetters));
+      
+      // 同样的逻辑处理自定义笔友
       const existingFriendsJson = localStorage.getItem('custom_pen_pals');
       const existingFriends: BottleAI[] = existingFriendsJson ? JSON.parse(existingFriendsJson) : [];
       
-      const existingFriendIds = new Set(existingFriends.map(p => p.id));
-      const newFriends = (data.customFriends || []).filter(p => !existingFriendIds.has(p.id));
-      const mergedFriends = [...existingFriends, ...newFriends];
+      const friendMap = new Map<string, BottleAI>();
       
-      localStorage.setItem('custom_pen_pals', JSON.stringify(mergedFriends));
+      // 1. 先把所有现有笔友放入 Map
+      existingFriends.forEach(friend => {
+        friendMap.set(friend.id, friend);
+      });
+      
+      // 2. 用导入的笔友更新或添加
+      (data.customFriends || []).forEach(newFriend => {
+        const existing = friendMap.get(newFriend.id);
+        if (existing) {
+          friendMap.set(newFriend.id, { ...existing, ...newFriend });
+        } else {
+          friendMap.set(newFriend.id, newFriend);
+        }
+      });
+      
+      const finalFriends = Array.from(friendMap.values());
+      console.log(`✅ [导入] 合并后共有 ${finalFriends.length} 个笔友`);
+      localStorage.setItem('custom_pen_pals', JSON.stringify(finalFriends));
+    } else {
+      // 替换模式：直接覆盖
+      console.log(`⚠️ [导入] 替换模式，将覆盖所有现有数据`);
+      const sortedLetters = data.letters.sort((a, b) => b.sentAt - a.sentAt);
+      localStorage.setItem('slow_letters', JSON.stringify(sortedLetters));
+      localStorage.setItem('custom_pen_pals', JSON.stringify(data.customFriends || []));
+      console.log(`✅ [导入] 替换完成：${sortedLetters.length} 封信件, ${data.customFriends?.length || 0} 个笔友`);
     }
+    
+    // 获取最终的数据统计
+    const finalLettersJson = localStorage.getItem('slow_letters');
+    const finalLetters: Letter[] = finalLettersJson ? JSON.parse(finalLettersJson) : [];
+    const finalFriendsJson = localStorage.getItem('custom_pen_pals');
+    const finalFriends: BottleAI[] = finalFriendsJson ? JSON.parse(finalFriendsJson) : [];
     
     return {
       success: true,
       message: mode === 'replace' 
         ? `成功导入 ${data.letters.length} 封信件和 ${data.customFriends?.length || 0} 个自定义笔友`
-        : `成功合并数据，共 ${data.letters.length} 封信件和 ${data.customFriends?.length || 0} 个自定义笔友`
+        : `成功合并数据，当前共有 ${finalLetters.length} 封信件和 ${finalFriends.length} 个自定义笔友`
     };
   } catch (error) {
     console.error('导入数据失败:', error);
@@ -161,9 +231,16 @@ export function downloadAsJson(data: any, filename: string) {
  * 导出所有数据并下载
  */
 export function exportAndDownloadAll() {
+  console.log(`🚀 [导出] 开始导出所有数据...`);
   const data = exportAllLetterData();
   const filename = `慢邮件数据_${new Date().toISOString().split('T')[0]}.json`;
+  
+  console.log(`💾 [导出] 准备下载文件: ${filename}`);
+  console.log(`💾 [导出] 文件大小: ${JSON.stringify(data).length} 字符`);
+  
   downloadAsJson(data, filename);
+  
+  console.log(`✅ [导出] 导出完成!`);
   
   return {
     success: true,

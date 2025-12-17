@@ -4,7 +4,7 @@
  */
 
 import React, { useState, useRef } from 'react';
-import { Download, Upload, FileDown, FileUp, Trash2, X, AlertCircle, CheckCircle, FileText } from 'lucide-react';
+import { Download, Upload, FileDown, FileUp, Trash2, X, AlertCircle, CheckCircle, FileText, Archive } from 'lucide-react';
 import {
   exportAndDownloadAll,
   exportAndDownloadMultiple,
@@ -122,16 +122,44 @@ const LetterDataManagement: React.FC<LetterDataManagementProps> = ({
     }
   };
 
+  // 归档选中的信件
+  const handleArchiveSelected = () => {
+    if (selectedLetterIds.size === 0) return;
+    const updatedLetters = letters.map(l => 
+      selectedLetterIds.has(l.id) ? { ...l, isArchived: true } : l
+    );
+    // Save to storage or call a service function
+    localStorage.setItem('slow_letters', JSON.stringify(updatedLetters));
+    setMessage({ type: 'success', text: `已归档 ${selectedLetterIds.size} 封信件` });
+    setSelectedLetterIds(new Set());
+    onRefresh(); // Assuming onRefresh updates the parent component
+  };
+
   // 导入数据
   const handleImport = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
 
     try {
+      console.log(`📂 [导入] 选择的文件: ${file.name}, 大小: ${file.size} 字节`);
       const data = await readJsonFile(file);
+      
+      console.log(`📂 [导入] 读取到的数据类型:`, typeof data);
+      console.log(`📂 [导入] 数据结构:`, {
+        hasVersion: !!data.version,
+        hasLetters: !!data.letters,
+        isArray: Array.isArray(data),
+        hasId: !!data.id,
+        keys: Object.keys(data)
+      });
+      
+      if (data.letters) {
+        console.log(`📂 [导入] data.letters 是数组: ${Array.isArray(data.letters)}, 长度: ${data.letters.length}`);
+      }
       
       // 验证数据格式
       if (!data.letters && !Array.isArray(data)) {
+        console.error(`❌ [导入] 数据格式不正确，既没有 letters 字段也不是数组`);
         setMessage({
           type: 'error',
           text: '数据格式不正确'
@@ -289,6 +317,23 @@ const LetterDataManagement: React.FC<LetterDataManagementProps> = ({
                 导出为PDF {selectedLetterIds.size > 0 && `(${selectedLetterIds.size}封)`}
               </button>
             </div>
+          </div>
+
+          {/* 归档管理 */}
+          <div className="mb-6">
+            <h3 className="text-lg font-semibold text-gray-800 mb-3 flex items-center gap-2">
+              <Archive size={20} className="text-purple-500" />
+              归档管理
+            </h3>
+            <p className="text-sm text-gray-600 mb-3">归档的笔友及其对话将从信件列表中隐藏。</p>
+            <button
+              onClick={handleArchiveSelected}
+              disabled={selectedLetterIds.size === 0}
+              className="w-full px-4 py-3 bg-purple-500 text-white rounded-xl font-medium hover:shadow-lg transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <Archive size={18} />
+              归档选中信件
+            </button>
           </div>
 
           {/* 导入功能 */}

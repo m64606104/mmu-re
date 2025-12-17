@@ -152,8 +152,30 @@ export default function GroupedLetterBoxScreen({
     );
   }
 
-  // 如果选择了收件人组，显示该收件人的所有信件
+  // 如果选择了收件人组，显示该收件人的所有交流记录
   if (selectedGroup) {
+    // 构建跨所有信件的交流列表，并按时间排序
+    const allRounds = receiverLetters
+      .filter(letter => !letter.isArchived)
+      .flatMap(letter =>
+        (letter.conversationRounds || []).map(round => ({
+          letter,
+          round,
+          sentAt: round.userLetter.sentAt || letter.sentAt,
+        }))
+      );
+
+    // 为了给“第 N 次交流”编号，先按时间正序排一份副本
+    const chronological = [...allRounds].sort((a, b) => a.sentAt - b.sentAt);
+    const roundIndexMap = new Map<string, number>();
+    chronological.forEach((item, index) => {
+      const key = `${item.letter.id}-${item.round.roundNumber}`;
+      roundIndexMap.set(key, index + 1);
+    });
+
+    // 展示列表按时间倒序（最新在上）
+    const displayRounds = [...allRounds].sort((a, b) => b.sentAt - a.sentAt);
+
     return (
       <div className="fixed inset-0 bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50 z-50 flex flex-col">
         {/* 头部 */}
@@ -184,86 +206,70 @@ export default function GroupedLetterBoxScreen({
           </button>
         </div>
 
-        {/* 信件列表 */}
+        {/* 交流列表 */}
         <div className="flex-1 overflow-y-auto px-4 py-4">
           <div className="max-w-2xl mx-auto space-y-3">
-            {/* 显示该收件人的每一封独立信件，不合并 */}
-            {selectedGroup && receiverLetters.length > 0 ? (
-              receiverLetters.map((letter, letterIndex) => (
-                <div key={letter.id} className="space-y-3">
-                  {/* 如果有多封信，显示分割标题 */}
-                  {receiverLetters.length > 1 && (
-                    <div className="flex items-center gap-2 px-2 pt-2">
-                      <div className="h-px bg-indigo-100 flex-1"></div>
-                      <span className="text-xs font-medium text-indigo-400">
-                        {letter.isAnonymous ? `第 ${letter.anonymousSequence || (letterIndex + 1)} 次匿名寄信` : `第 ${letterIndex + 1} 封信件`}
-                      </span>
-                      <div className="h-px bg-indigo-100 flex-1"></div>
-                    </div>
-                  )}
+            {selectedGroup && displayRounds.length > 0 ? (
+              displayRounds.map(({ letter, round }) => {
+                // 根据全局时间顺序获取“第 N 次交流”的编号
+                const key = `${letter.id}-${round.roundNumber}`;
+                const exchangeIndex = roundIndexMap.get(key) || 1;
 
-                  {/* 遍历这封信的所有轮次 */}
-                  {letter.conversationRounds && [...letter.conversationRounds].reverse().map((round) => {
-                    // 判断轮次状态
-                    let status = '';
-                    let statusColor = '';
-                    if (round.aiReply) {
-                      status = '已回复';
-                      statusColor = 'bg-green-100 text-green-700';
-                    } else if (round.userLetter.willReplyAt && Date.now() < round.userLetter.willReplyAt) {
-                      status = '等待回信';
-                      statusColor = 'bg-orange-100 text-orange-700';
-                    } else if (round.userLetter.willReplyAt && Date.now() >= round.userLetter.willReplyAt) {
-                      status = '未回信';
-                      statusColor = 'bg-blue-100 text-blue-700';
-                    } else {
-                      status = '等待回信';
-                      statusColor = 'bg-orange-100 text-orange-700';
-                    }
+                // 判断轮次状态
+                let status = '';
+                let statusColor = '';
+                if (round.aiReply) {
+                  status = '已回复';
+                  statusColor = 'bg-green-100 text-green-700';
+                } else if (round.userLetter.willReplyAt && Date.now() < round.userLetter.willReplyAt) {
+                  status = '等待回信';
+                  statusColor = 'bg-orange-100 text-orange-700';
+                } else if (round.userLetter.willReplyAt && Date.now() >= round.userLetter.willReplyAt) {
+                  status = '未回信';
+                  statusColor = 'bg-blue-100 text-blue-700';
+                } else {
+                  status = '等待回信';
+                  statusColor = 'bg-orange-100 text-orange-700';
+                }
 
-                    return (
-                      <div
-                        key={`${letter.id}-${round.roundNumber}`}
-                        onClick={() => handleLetterClick({...letter, selectedRound: round.roundNumber})}
-                        className="bg-white rounded-2xl shadow-md hover:shadow-lg transform hover:scale-[1.02] transition-all duration-200 cursor-pointer p-4 border border-gray-100 hover:border-orange-200"
-                      >
-                        <div className="flex items-start justify-between mb-3">
-                          <div className="flex items-center gap-2">
-                            <div className={`w-2 h-2 rounded-full ${round.aiReply ? 'bg-green-400' : 'bg-orange-400'}`}></div>
-                            <div className="text-sm font-medium text-gray-800">
-                              {letter.isAnonymous ? `第 ${round.roundNumber} 轮对话` : `第 ${round.roundNumber} 封信`}
-                            </div>
-                          </div>
-                          <div className="text-xs text-gray-500">
-                            {formatLastActivity(round.userLetter.sentAt)}
-                          </div>
-                        </div>
-                        
-                        <div className="text-sm text-gray-700 line-clamp-2 mb-3">
-                          "{round.userLetter.content}"
-                        </div>
-                        
-                        <div className="flex items-center justify-between text-xs">
-                          <div className="flex items-center gap-2">
-                            <span className={`px-2 py-1 rounded-full flex items-center gap-1 ${statusColor}`}>
-                              {status === '已回复' && <Check size={12} />}
-                              {status === '等待回信' && <Clock size={12} />}
-                              {status}
-                            </span>
-                            <span className="text-gray-500">
-                              {round.roundNumber} 轮
-                            </span>
-                          </div>
-                          
-                          <div className="text-xs text-gray-400">
-                            点击查看详情 →
-                          </div>
+                return (
+                  <div
+                    key={key}
+                    onClick={() => handleLetterClick({ ...letter, selectedRound: round.roundNumber })}
+                    className="bg-white rounded-2xl shadow-md hover:shadow-lg transform hover:scale-[1.02] transition-all duration-200 cursor-pointer p-4 border border-gray-100 hover:border-orange-200"
+                  >
+                    <div className="flex items-start justify-between mb-3">
+                      <div className="flex items-center gap-2">
+                        <div className={`w-2 h-2 rounded-full ${round.aiReply ? 'bg-green-400' : 'bg-orange-400'}`}></div>
+                        <div className="text-sm font-medium text-gray-800">
+                          第 {exchangeIndex} 次交流
                         </div>
                       </div>
-                    );
-                  })}
-                </div>
-              ))
+                      <div className="text-xs text-gray-500">
+                        {formatLastActivity(round.userLetter.sentAt)}
+                      </div>
+                    </div>
+                    
+                    <div className="text-sm text-gray-700 line-clamp-2 mb-3">
+                      "{round.userLetter.content}"
+                    </div>
+                    
+                    <div className="flex items-center justify-between text-xs">
+                      <div className="flex items-center gap-2">
+                        <span className={`px-2 py-1 rounded-full flex items-center gap-1 ${statusColor}`}>
+                          {status === '已回复' && <Check size={12} />}
+                          {status === '等待回信' && <Clock size={12} />}
+                          {status}
+                        </span>
+                      </div>
+                      
+                      <div className="text-xs text-gray-400">
+                        点击查看详情 →
+                      </div>
+                    </div>
+                  </div>
+                );
+              })
             ) : (
               <div className="text-center py-8 text-gray-500">
                 暂无对话记录
