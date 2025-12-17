@@ -197,8 +197,8 @@ export function exportAndDownloadSingle(letterId: string) {
 /**
  * 导出多个信件并下载
  */
-export function exportAndDownloadMultiple(letterIds: string[]) {
-  const letters = exportMultipleLetters(letterIds);
+export function exportAndDownloadMultiple(letterIds: string[], sourceLetters?: Letter[]) {
+  const letters = exportMultipleLetters(letterIds, sourceLetters);
   if (letters.length === 0) {
     return {
       success: false,
