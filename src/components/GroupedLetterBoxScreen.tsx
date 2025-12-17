@@ -223,7 +223,7 @@ export default function GroupedLetterBoxScreen({
                       <div className="flex items-center gap-2">
                         <div className="w-2 h-2 bg-green-400 rounded-full"></div>
                         <div className="text-sm font-medium text-gray-800">
-                          第 {round.roundNumber} 轮对话
+                          第 {round.roundNumber} 封信
                         </div>
                       </div>
                       <div className="text-xs text-gray-500">
@@ -243,7 +243,7 @@ export default function GroupedLetterBoxScreen({
                           {status}
                         </span>
                         <span className="text-gray-500">
-                          {round.roundNumber} 轮
+                          {round.roundNumber} 封
                         </span>
                       </div>
                       

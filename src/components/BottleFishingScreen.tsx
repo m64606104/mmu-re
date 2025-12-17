@@ -4,7 +4,7 @@
  */
 
 import { useState, useEffect } from 'react';
-import { ArrowLeft, Send } from 'lucide-react';
+import { ArrowLeft, Send, Trash2 } from 'lucide-react';
 import { BottleLetter } from '../types/bottle';
 import {
   canFishToday,
@@ -19,6 +19,7 @@ import {
 } from '../utils/bottleFishingSystem';
 import { checkAPIAvailability } from '../utils/intelligentBottleGenerator';
 import { sendLetter } from '../utils/letterService';
+import { generateBottleTrash, getTrashDisposeMessage, type BottleTrash } from '../utils/bottleTrash';
 
 interface BottleFishingScreenProps {
   onBack: () => void;
@@ -27,6 +28,7 @@ interface BottleFishingScreenProps {
 
 export default function BottleFishingScreen({ onBack, userName }: BottleFishingScreenProps) {
   const [currentBottle, setCurrentBottle] = useState<BottleLetter | null>(null);
+  const [currentTrash, setCurrentTrash] = useState<BottleTrash | null>(null);
   const [isFishing, setIsFishing] = useState(false);
   const [showReplyBox, setShowReplyBox] = useState(false);
   const [replyContent, setReplyContent] = useState('');
@@ -74,8 +76,17 @@ export default function BottleFishingScreen({ onBack, userName }: BottleFishingS
             result = fishBottle();
           }
           
-          if (result.success && result.bottle) {
+          if (result.success && 'trash' in result && result.trash) {
+            // 捞到垃圾
+            const trash = result.trash as BottleTrash;
+            setCurrentTrash(trash);
+            setCurrentBottle(null);
+            setIsFishing(false);
+            console.log('🗑️ 捞到垃圾:', trash.name);
+          } else if (result.success && result.bottle) {
+            // 捞到真正的漂流瓶
             setCurrentBottle(result.bottle);
+            setCurrentTrash(null);
             setIsFishing(false);
             refreshData();
             
@@ -124,6 +135,16 @@ export default function BottleFishingScreen({ onBack, userName }: BottleFishingS
         alert('已投回海里\n\n今天的打捞次数已用完，明天再来吧！\n投回的瓶子1天内可以捕回');
       }
     }
+  };
+
+  // 丢弃垃圾
+  const handleDisposeTrash = () => {
+    if (!currentTrash) return;
+    
+    const message = getTrashDisposeMessage();
+    alert(message);
+    setCurrentTrash(null);
+    refreshData();
   };
 
   // 捕回瓶子
@@ -372,6 +393,54 @@ export default function BottleFishingScreen({ onBack, userName }: BottleFishingS
               </div>
             )}
           </div>
+          )}
+
+          {/* 垃圾卡片 */}
+          {currentTrash && (
+            <div className="relative">
+              <div className="bg-white rounded-3xl shadow-2xl overflow-hidden">
+                {/* 垃圾头部 */}
+                <div className="bg-gradient-to-r from-gray-500 to-gray-700 px-6 py-4 flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <span className="text-4xl">{currentTrash.emoji}</span>
+                    <div>
+                      <div className="text-white font-bold text-lg">{currentTrash.name}</div>
+                      <div className="text-gray-200 text-sm">海洋垃圾</div>
+                    </div>
+                  </div>
+                  <span className="text-xs bg-white/20 px-3 py-1 rounded-full text-white">
+                    🗑️ 垃圾
+                  </span>
+                </div>
+
+                {/* 垃圾描述 */}
+                <div className="p-6">
+                  <div className="text-gray-700 leading-relaxed">
+                    {currentTrash.description}
+                  </div>
+                </div>
+
+                {/* 操作按钮 */}
+                <div className="px-6 pb-6 flex gap-3">
+                  <button
+                    onClick={() => {
+                      setCurrentTrash(null);
+                      refreshData();
+                    }}
+                    className="flex-1 py-3 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-xl font-medium transition-colors flex items-center justify-center gap-2"
+                  >
+                    🔄 再捞一次
+                  </button>
+                  <button
+                    onClick={handleDisposeTrash}
+                    className="flex-1 py-3 bg-gradient-to-r from-green-500 to-emerald-500 hover:from-green-600 hover:to-emerald-600 text-white rounded-xl font-medium transition-colors flex items-center justify-center gap-2"
+                  >
+                    <Trash2 size={18} />
+                    丢弃垃圾
+                  </button>
+                </div>
+              </div>
+            </div>
           )}
 
           {/* 回信时在海水区域显示原文（玻璃瓶样式） */}

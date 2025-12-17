@@ -623,7 +623,13 @@ export function urgeLetter(letterId: string, roundNumber?: number): boolean {
   }
   
   // 检查该轮次是否已经催促过，或者已经有AI回复了
-  if (targetRound.userLetter.hasUrged || targetRound.aiReply) {
+  if (targetRound.userLetter.hasUrged) {
+    console.log(`⚠️ 第 ${targetRoundNumber} 轮已经催促过了`);
+    return false;
+  }
+  
+  if (targetRound.aiReply) {
+    console.log(`⚠️ 第 ${targetRoundNumber} 轮已经有AI回复了`);
     return false;
   }
   
