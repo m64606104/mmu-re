@@ -833,8 +833,8 @@ export default function MomentsScreen({
                   </div>
                 )}
 
-                {/* Music Share Card - 音乐分享卡片 (音乐分享时不显示图片) */}
-                {moment.musicInfo && (!moment.images || moment.images.length === 0) && (
+                {/* Music Share Card - 音乐分享卡片 (仅当contentType为music时显示) */}
+                {moment.contentType === 'music' && moment.musicInfo && (
                   <ShareCard
                     type="music"
                     title={moment.musicInfo.title}
@@ -847,8 +847,8 @@ export default function MomentsScreen({
                   />
                 )}
 
-                {/* Link/Article Share Card - 链接/文章分享卡片 */}
-                {moment.linkInfo && (
+                {/* Link/Article Share Card - 链接/文章分享卡片 (仅当contentType为link时显示) */}
+                {moment.contentType === 'link' && moment.linkInfo && (
                   <ShareCard
                     type={moment.contentType === 'link' ? 'link' : 'article'}
                     title={moment.linkInfo.title}

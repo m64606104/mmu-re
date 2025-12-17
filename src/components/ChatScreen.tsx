@@ -128,7 +128,10 @@ const backgroundTaskManager = {
       
       // 🔥 先检查API返回格式是否正常
       if (!data.choices || data.choices.length === 0) {
-        throw new Error('API返回格式错误：choices为空');
+        console.error('❌ API返回数据异常:', JSON.stringify(data, null, 2));
+        
+        // 用户友好的错误提示
+        throw new Error('AI服务暂时出了点问题，请重新发送消息试试');
       }
       
       if (data.error) {
@@ -6497,8 +6500,8 @@ ${doc.content}`;
                         </div>
                         {/* 语音内容文字（点击气泡显示） */}
                         {viewingVoice.includes(message.id) && message.mediaDescription && (
-                          <div className="mt-2 px-4 py-2 bg-gray-50 rounded-xl border border-gray-200">
-                            <p className="text-[13px] text-gray-700">{message.mediaDescription}</p>
+                          <div className="mt-2 px-4 py-2 bg-gray-50 rounded-xl border border-gray-200 max-w-[200px]">
+                            <p className="text-[13px] text-gray-700 break-words whitespace-pre-wrap">{message.mediaDescription}</p>
                           </div>
                         )}
                       </div>

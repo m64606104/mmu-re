@@ -7,10 +7,10 @@ import { Conversation } from '../types';
 import VirtualNewsGenerator from './virtualNewsGenerator';
 import WeiboStyleGenerator from './weiboStyleGenerator';
 import * as QQSpaceStyle from './qqSpaceStyleGenerator';
-// import * as RealMomentsContent from './realMomentsContentGenerator'; // TODO: 集成真实朋友圈内容
+import { generateRealLifePhotos, generatePhotosMatchingContent, generateVideoDescription } from './realLifePhotoGenerator';
 
 export interface MomentsFormat {
-  type: 'text_only' | 'single_image' | 'multi_image' | 'news_sharing' | 'mood_check' | 'weibo_sharing' | 'music_sharing' | 'article_sharing' | 'coupon_sharing' | 'life_complaint' | 'big_event' | 'qq_forward_text' | 'qq_forward_image' | 'qq_novel_text' | 'qq_tutorial' | 'qq_game_screenshot';
+  type: 'text_only' | 'single_image' | 'multi_image' | 'video' | 'news_sharing' | 'mood_check' | 'weibo_sharing' | 'music_sharing' | 'article_sharing' | 'coupon_sharing' | 'life_complaint' | 'big_event' | 'qq_forward_text' | 'qq_forward_image' | 'qq_novel_text' | 'qq_tutorial' | 'qq_game_screenshot';
   textLength: 'short' | 'medium' | 'long';
   imageCount: number;
   hasHashtags: boolean;
@@ -110,23 +110,24 @@ export class DiverseMomentsGenerator {
     
     // 格式权重（基础概率）- 参考真实微信朋友圈/QQ空间
     const formatWeights: Record<string, number> = {
-      'text_only': 0.05,           // 5% - 纯文字（真实场景较少）
-      'single_image': 0.10,        // 10% - 单图
-      'multi_image': 0.08,         // 8% - 多图
-      'news_sharing': 0.04,        // 4% - 新闻分享
+      'text_only': 0.03,           // 3% - 纯文字（真实场景较少）
+      'single_image': 0.15,        // 15% - 单图（最常见）
+      'multi_image': 0.12,         // 12% - 多图（很常见）
+      'video': 0.08,               // 8% - 视频（越来越流行）
+      'news_sharing': 0.03,        // 3% - 新闻分享
       'mood_check': 0.02,          // 2% - 心情检查
-      'weibo_sharing': 0.04,       // 4% - 微博分享
-      'music_sharing': 0.15,       // 15% - 音乐分享（常见）
-      'article_sharing': 0.10,     // 10% - 公众号文章
-      'coupon_sharing': 0.06,      // 6% - 优惠券广告
-      'life_complaint': 0.08,      // 8% - 生活吐槽+实物照片
-      'big_event': 0.03,           // 3% - 大型活动/聚会（较少）
+      'weibo_sharing': 0.03,       // 3% - 微博分享
+      'music_sharing': 0.12,       // 12% - 音乐分享（常见）
+      'article_sharing': 0.08,     // 8% - 公众号文章
+      'coupon_sharing': 0.05,      // 5% - 优惠券广告
+      'life_complaint': 0.10,      // 10% - 生活吐槽+实物照片
+      'big_event': 0.02,           // 2% - 大型活动/聚会（较少）
       // QQ空间经典格式
-      'qq_forward_text': 0.10,     // 10% - 转发说说（纯文字）
-      'qq_forward_image': 0.05,    // 5% - 转发说说（带图）
-      'qq_novel_text': 0.04,       // 4% - 小说/文段截图
-      'qq_tutorial': 0.03,         // 3% - 教程/素材分享
-      'qq_game_screenshot': 0.03   // 3% - 游戏截图
+      'qq_forward_text': 0.08,     // 8% - 转发说说（纯文字）
+      'qq_forward_image': 0.04,    // 4% - 转发说说（带图）
+      'qq_novel_text': 0.02,       // 2% - 小说/文段截图
+      'qq_tutorial': 0.02,         // 2% - 教程/素材分享
+      'qq_game_screenshot': 0.01   // 1% - 游戏截图
     };
     
     // 降低最近使用过的格式权重
@@ -207,6 +208,13 @@ export class DiverseMomentsGenerator {
         imageCount = Math.random() < 0.3 ? 3 : (Math.random() < 0.6 ? 2 : Math.floor(Math.random() * 6) + 4); // 2-9张图
         textLength = Math.random() < 0.7 ? 'short' : 'medium';
         hasHashtags = true;
+        break;
+        
+      case 'video':
+        imageCount = 0; // 视频不需要图片
+        textLength = 'short';
+        contentStyle = 'casual';
+        hasHashtags = false;
         break;
         
       case 'news_sharing':
@@ -338,6 +346,10 @@ export class DiverseMomentsGenerator {
         ({ content, imageDescriptions, theme } = this.generateImageContent(format, variation.themes));
         break;
         
+      case 'video':
+        ({ content, imageDescriptions, theme } = this.generateVideoContent(variation.themes));
+        break;
+        
       case 'news_sharing':
         ({ content, theme } = this.generateNewsContent(conversation));
         break;
@@ -356,6 +368,18 @@ export class DiverseMomentsGenerator {
         
       case 'article_sharing':
         ({ content, theme } = this.generateArticleSharingContent(conversation));
+        break;
+      
+      case 'life_complaint':
+        ({ content, imageDescriptions, theme } = this.generateLifeComplaintContent());
+        break;
+      
+      case 'big_event':
+        ({ content, imageDescriptions, theme } = this.generateBigEventContent(format));
+        break;
+      
+      case 'coupon_sharing':
+        ({ content, imageDescriptions, theme } = this.generateCouponContent());
         break;
       
       // QQ空间格式
@@ -525,39 +549,8 @@ export class DiverseMomentsGenerator {
   static generateMusicSharingContent(
     conversation: Conversation
   ): { content: string; theme: string } {
-    const personality = conversation.characterSettings?.personality || '';
-    
-    // 根据AI性格选择音乐类型
-    const musicTypes = {
-      '活泼': ['流行', '电子', '舞曲'],
-      '文静': ['轻音乐', '民谣', '古典'],
-      '理性': ['爵士', '蓝调', '纯音乐'],
-      '感性': ['抒情', '流行', 'R&B'],
-      '幽默': ['搞笑', '神曲', '二次元']
-    };
-    
-    let selectedTypes: string[] = ['流行', '摇滚', '民谣', '电子', '爵士'];
-    for (const [trait, types] of Object.entries(musicTypes)) {
-      if (personality.includes(trait)) {
-        selectedTypes = types;
-        break;
-      }
-    }
-    
-    const musicType = selectedTypes[Math.floor(Math.random() * selectedTypes.length)];
-    
-    // 生成音乐分享文案
-    const shareTemplates = [
-      `分享一首超好听的${musicType}！这首歌的旋律真的太棒了 🎵`,
-      `最近一直在单曲循环这首${musicType}，推荐给大家 🎧`,
-      `发现了一首宝藏${musicType}，歌词写得太有感觉了 🎤`,
-      `这首${musicType}完全是我的心情写照，分享给你们 🎼`,
-      `深夜听${musicType}真的很有感觉，推荐试试 🌙`
-    ];
-    
-    const content = shareTemplates[Math.floor(Math.random() * shareTemplates.length)];
-    
-    return { content, theme: '音乐分享' };
+    // 不使用硬编码模板，让AI根据时间和性格自由生成
+    return { content: '主题：音乐分享', theme: '音乐分享' };
   }
 
   /**
@@ -696,12 +689,12 @@ export class DiverseMomentsGenerator {
     content: string;
     imageDescriptions: string[];
   } {
-    const content = `今天的${theme}分享 ✨`;
-    const imageDescriptions = Array(imageCount).fill(0).map((_, i) => 
-      `精美的${theme}照片${i + 1}，构图优美，色彩丰富，充满生活气息`
-    );
-    
-    return { content, imageDescriptions };
+    // 不再使用硬编码模板，返回空内容让AI自由生成
+    // 只提供主题和图片数量信息
+    return { 
+      content: `主题：${theme}`, 
+      imageDescriptions: [] 
+    };
   }
   
   private static fillMoodTemplate(template: string): string {
@@ -835,6 +828,88 @@ export class DiverseMomentsGenerator {
       content: formattedContent,
       imageDescriptions,
       theme: '游戏分享'
+    };
+  }
+  
+  /**
+   * 生成视频内容
+   */
+  static generateVideoContent(recentThemes: string[]): {
+    content: string;
+    imageDescriptions: string[];
+    theme: string;
+  } {
+    const themes = ['美食', '旅游', '日常', '运动', '聚会', '宠物'];
+    const availableThemes = themes.filter(theme => !recentThemes.includes(theme));
+    const theme = availableThemes.length > 0 
+      ? availableThemes[Math.floor(Math.random() * availableThemes.length)]
+      : themes[Math.floor(Math.random() * themes.length)];
+    
+    // 生成视频描述
+    const videoDesc = generateVideoDescription(theme);
+    
+    // 视频文案
+    const videoCaptions = [
+      `拍了个小视频分享给大家 📹`,
+      `记录生活的美好瞬间 🎬`,
+      `这个画面太有意思了，拍下来了 📱`,
+      `今天拍的，感觉还不错 🎥`,
+      `分享一段视频，大家看看 ✨`
+    ];
+    
+    const content = videoCaptions[Math.floor(Math.random() * videoCaptions.length)];
+    
+    // 视频用特殊标记，在渲染时识别
+    const imageDescriptions = [`[视频]${videoDesc}`];
+    
+    return { content, imageDescriptions, theme: `${theme}视频` };
+  }
+  
+  /**
+   * 生成生活吐槽内容（配实物照片）
+   */
+  static generateLifeComplaintContent(): {
+    content: string;
+    imageDescriptions: string[];
+    theme: string;
+  } {
+    // 让AI自由生成吐槽内容和配图
+    return {
+      content: '主题：生活吐槽',
+      imageDescriptions: [],
+      theme: '生活吐槽'
+    };
+  }
+  
+  /**
+   * 生成大型活动/聚会内容
+   */
+  static generateBigEventContent(format: MomentsFormat): {
+    content: string;
+    imageDescriptions: string[];
+    theme: string;
+  } {
+    // 让AI自由生成活动内容
+    return {
+      content: '主题：大型活动/聚会',
+      imageDescriptions: [],
+      theme: '大型活动'
+    };
+  }
+  
+  /**
+   * 生成优惠券/广告内容
+   */
+  static generateCouponContent(): {
+    content: string;
+    imageDescriptions: string[];
+    theme: string;
+  } {
+    // 让AI自由生成优惠分享内容
+    return {
+      content: '主题：优惠分享',
+      imageDescriptions: [],
+      theme: '优惠分享'
     };
   }
 }
