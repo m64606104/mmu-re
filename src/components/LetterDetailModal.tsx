@@ -5,7 +5,7 @@
 
 import React, { useState } from 'react';
 import { Letter } from '../types/letter';
-import { urgeLetter, canContinueReply, continueReply, addAsPenPal, toggleFavoriteLetter } from '../utils/letterService';
+import { urgeLetter, canContinueReply, continueReply, addAsFriend, toggleFavoriteLetter } from '../utils/letterService';
 import { X, Zap, MailPlus, UserPlus, Send, Maximize2, Heart, FileText } from 'lucide-react';
 import FullScreenReplyComposer from './FullScreenReplyComposer';
 import { exportLetterToPDF } from '../utils/letterPDFExporter';
@@ -61,8 +61,8 @@ const LetterDetailModal: React.FC<LetterDetailModalProps> = ({
     }
   };
   
-  const handleAddAsPenPal = () => {
-    const success = addAsPenPal(letter.id);
+  const handleAddAsFriend = () => {
+    const success = addAsFriend(letter.id);
     if (success) {
       alert(`💌 已将 ${letter.receiverName} 加为笔友！\n\n现在可以无限制地交流啦～`);
       onUrge();
@@ -134,7 +134,7 @@ const LetterDetailModal: React.FC<LetterDetailModalProps> = ({
             <div>
               <div className="font-medium text-gray-800 flex items-center gap-2">
                 {letter.receiverName}
-                {letter.isPenPalAdded && (
+                {letter.isFriendAdded && (
                   <span className="text-xs bg-pink-100 text-pink-600 px-2 py-0.5 rounded-full">
                     笔友
                   </span>
@@ -142,7 +142,7 @@ const LetterDetailModal: React.FC<LetterDetailModalProps> = ({
               </div>
               <div className="text-xs text-gray-500 flex items-center gap-2">
                 {letter.isBottle ? '漂流瓶' : '给Ta的信'}
-                {letter.isBottle && !letter.isPenPalAdded && (
+                {letter.isBottle && !letter.isFriendAdded && (
                   <span className="text-amber-600">
                     · 第 {letter.currentRound}/{letter.maxRounds} 轮
                   </span>
@@ -342,9 +342,9 @@ const LetterDetailModal: React.FC<LetterDetailModalProps> = ({
                   继续回信
                 </button>
                 
-                {letter.isBottle && !letter.isPenPalAdded && (
+                {letter.isBottle && !letter.isFriendAdded && (
                   <button
-                    onClick={handleAddAsPenPal}
+                    onClick={handleAddAsFriend}
                     className="flex-1 px-4 py-2.5 bg-gradient-to-r from-blue-500 to-indigo-500 text-white rounded-xl font-medium hover:shadow-lg transition-all flex items-center justify-center gap-2"
                   >
                     <UserPlus size={18} />
@@ -354,7 +354,7 @@ const LetterDetailModal: React.FC<LetterDetailModalProps> = ({
               </div>
 
               {/* 提示信息 */}
-              {letter.isBottle && !letter.isPenPalAdded && replyStatus.isLastRound && (
+              {letter.isBottle && !letter.isFriendAdded && replyStatus.isLastRound && (
                 <div className="text-xs text-amber-600 text-center bg-amber-50 py-2 px-3 rounded-lg">
                   ⚠️ 这是最后一轮交流，加为笔友可继续无限制通信
                 </div>
@@ -365,10 +365,10 @@ const LetterDetailModal: React.FC<LetterDetailModalProps> = ({
           {!replyStatus.canContinue && replyStatus.reason && (
             <div className="text-xs text-center text-gray-500 py-2">
               {replyStatus.reason}
-              {letter.isBottle && !letter.isPenPalAdded && (
+              {letter.isBottle && !letter.isFriendAdded && (
                 <div className="mt-2">
                   <button
-                    onClick={handleAddAsPenPal}
+                    onClick={handleAddAsFriend}
                     className="text-pink-600 hover:text-pink-700 font-medium"
                   >
                     点击加为笔友以继续交流 →

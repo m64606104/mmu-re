@@ -109,7 +109,7 @@ const ArchivedLettersScreen: React.FC<ArchivedLettersScreenProps> = ({
                       <span className="font-medium text-gray-600">
                         {letter.receiverName}
                       </span>
-                      {letter.isPenPalAdded && (
+                      {letter.isFriendAdded && (
                         <span className="text-xs bg-gray-200 text-gray-600 px-2 py-0.5 rounded-full">
                           笔友
                         </span>

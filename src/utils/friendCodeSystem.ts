@@ -1,33 +1,33 @@
 /**
- * 笔友码系统
- * 允许用户通过笔友码将信箱笔友添加为私聊好友
+ * 好友码系统
+ * 允许用户通过好友码将信箱笔友添加为私聊好友
  */
 
 import { Letter, BottleAI } from '../types/letter';
 import { Conversation, CharacterSettings } from '../types';
 import { getLettersFromStorage } from './letterService';
-import { updateLetterMemoryFromLetter, linkPenPalToLetterMemory } from './letterMemorySystem';
+import { updateLetterMemoryFromLetter, linkFriendToLetterMemory } from './letterMemorySystem';
 
 /**
- * 生成笔友码
+ * 生成好友码
  * 格式：PENPAL-{receiverId的前8位}-{随机4位}
  */
-export function generatePenPalCode(receiverId: string): string {
+export function generateFriendCode(receiverId: string): string {
   const prefix = receiverId.substring(0, 8).toUpperCase();
   const random = Math.random().toString(36).substring(2, 6).toUpperCase();
   return `PENPAL-${prefix}-${random}`;
 }
 
 /**
- * 验证笔友码格式
+ * 验证好友码格式
  */
-export function validatePenPalCodeFormat(code: string): boolean {
+export function validateFriendCodeFormat(code: string): boolean {
   const pattern = /^PENPAL-[A-Z0-9]{8}-[A-Z0-9]{4}$/;
   return pattern.test(code);
 }
 
 /**
- * 从笔友码提取receiverId前缀
+ * 从好友码提取receiverId前缀
  */
 function extractReceiverIdPrefix(code: string): string {
   const parts = code.split('-');
@@ -36,10 +36,10 @@ function extractReceiverIdPrefix(code: string): string {
 }
 
 /**
- * 根据笔友码查找对应的信件
+ * 根据好友码查找对应的信件
  */
-export function findLetterByPenPalCode(code: string): Letter | null {
-  if (!validatePenPalCodeFormat(code)) {
+export function findLetterByFriendCode(code: string): Letter | null {
+  if (!validateFriendCodeFormat(code)) {
     return null;
   }
 
@@ -50,7 +50,7 @@ export function findLetterByPenPalCode(code: string): Letter | null {
   const matchingLetter = letters.find(letter => 
     letter.receiverId.toLowerCase().startsWith(prefix) &&
     !letter.isArchived &&
-    (letter.isBottle || letter.isPenPalAdded || letter.bottleAIProfile)
+    (letter.isBottle || letter.isFriendAdded || letter.bottleAIProfile)
   );
 
   return matchingLetter || null;
@@ -122,7 +122,7 @@ export function createConversationFromLetter(
       {
         id: `system-${Date.now()}`,
         role: 'system',
-        content: `你已通过笔友码添加 ${bottleAI.name} 为好友，可以开始聊天了`,
+        content: `你已通过好友码添加 ${bottleAI.name} 为好友，可以开始聊天了`,
         timestamp: Date.now(),
       }
     ],
@@ -135,7 +135,7 @@ export function createConversationFromLetter(
   // 🔗 关联信件记忆到这个私聊角色
   try {
     updateLetterMemoryFromLetter(letter, conversationId);
-    linkPenPalToLetterMemory(conversationId, letter.id);
+    linkFriendToLetterMemory(conversationId, letter.id);
     console.log(`📮 已关联${bottleAI.name}的信件记忆到私聊角色`);
   } catch (error) {
     console.error('关联信件记忆失败:', error);
@@ -164,36 +164,36 @@ function extractMemoryFromLetter(letter: Letter): string {
 }
 
 /**
- * 获取笔友的笔友码
+ * 获取笔友的好友码
  * 如果还没有生成过，则生成一个新的
  */
-export function getPenPalCode(letter: Letter): string {
-  // 检查是否已经有笔友码
-  if (letter.penPalCode) {
-    return letter.penPalCode;
+export function getFriendCode(letter: Letter): string {
+  // 检查是否已经有好友码
+  if (letter.friendCode) {
+    return letter.friendCode;
   }
 
-  // 生成新的笔友码
-  return generatePenPalCode(letter.receiverId);
+  // 生成新的好友码
+  return generateFriendCode(letter.receiverId);
 }
 
 /**
- * 保存笔友码到信件
+ * 保存好友码到信件
  */
-export function savePenPalCodeToLetter(letter: Letter, code: string): void {
-  letter.penPalCode = code;
+export function saveFriendCodeToLetter(letter: Letter, code: string): void {
+  letter.friendCode = code;
   // 这里需要调用letterService的更新函数
   // 由于循环依赖问题，这个函数应该在调用处处理
 }
 
 /**
- * 生成笔友码分享文本
+ * 生成好友码分享文本
  */
-export function generatePenPalShareText(letter: Letter, code: string): string {
+export function generateFriendShareText(letter: Letter, code: string): string {
   const name = letter.receiverName;
-  return `我是 ${name}，这是我的笔友码：
+  return `我是 ${name}，这是我的好友码：
 
 ${code}
 
-在私聊软件中点击「添加好友」→「输入笔友码」，就可以把我添加为微信好友啦！`;
+在私聊软件中点击「添加好友」→「输入好友码」，就可以把我添加为微信好友啦！`;
 }

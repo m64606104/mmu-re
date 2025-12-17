@@ -8,7 +8,7 @@ import { X, Sparkles, User, MapPin, Book } from 'lucide-react';
 import { BottleAI } from '../types/letter';
 import { generateXianyuStyleName } from '../utils/randomNameGenerator';
 
-interface CustomPenPalCreatorProps {
+interface CustomFriendCreatorProps {
   onClose: () => void;
   onConfirm: (penPal: BottleAI) => void;
 }
@@ -30,7 +30,7 @@ const generateRandomPenName = (): string => {
   return generateXianyuStyleName();
 };
 
-const CustomPenPalCreator: React.FC<CustomPenPalCreatorProps> = ({
+const CustomFriendCreator: React.FC<CustomFriendCreatorProps> = ({
   onClose,
   onConfirm
 }) => {
@@ -50,7 +50,7 @@ const CustomPenPalCreator: React.FC<CustomPenPalCreatorProps> = ({
       return;
     }
 
-    const customPenPal: BottleAI = {
+    const customFriend: BottleAI = {
       id: `custom_penpal_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
       name: penName.trim() || generateRandomPenName(),
       avatar: avatar,
@@ -62,7 +62,7 @@ const CustomPenPalCreator: React.FC<CustomPenPalCreatorProps> = ({
       customBackground: background.trim() || undefined
     };
 
-    onConfirm(customPenPal);
+    onConfirm(customFriend);
   };
 
   return (
@@ -236,4 +236,4 @@ const CustomPenPalCreator: React.FC<CustomPenPalCreatorProps> = ({
   );
 };
 
-export default CustomPenPalCreator;
+export default CustomFriendCreator;

@@ -18,7 +18,7 @@ export interface LetterGroup {
   latestLetter: Letter;
   lastActivity: number; // 最后活动时间
   hasNewReply: boolean; // 是否有新回复
-  isPenPal: boolean;
+  isFriend: boolean;
   isBottle: boolean;
 }
 
@@ -70,7 +70,7 @@ export function getGroupedLetterList(): LetterListData {
     
     // 确定联系人类型
     let receiverType: 'bottle' | 'penpal' | 'contact' = 'contact';
-    if (latestLetter.isPenPalAdded) {
+    if (latestLetter.isFriendAdded) {
       receiverType = 'penpal';
     } else if (latestLetter.isBottle) {
       receiverType = 'bottle';
@@ -100,7 +100,7 @@ export function getGroupedLetterList(): LetterListData {
       latestLetter,
       lastActivity,
       hasNewReply,
-      isPenPal: latestLetter.isPenPalAdded,
+      isFriend: latestLetter.isFriendAdded,
       isBottle: latestLetter.isBottle
     });
   });

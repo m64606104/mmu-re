@@ -11,12 +11,12 @@ export interface LetterMigrationData {
   version: string;
   exportDate: number;
   letters: Letter[];
-  customPenPals: BottleAI[];
+  customFriends: BottleAI[];
   statistics: {
     totalLetters: number;
     sentLetters: number;
     repliedLetters: number;
-    customPenPalsCount: number;
+    customFriendsCount: number;
   };
 }
 
@@ -29,22 +29,22 @@ export function exportAllLetterData(): LetterMigrationData {
   const letters: Letter[] = lettersJson ? JSON.parse(lettersJson) : [];
   
   // 获取自定义笔友
-  const customPenPalsJson = localStorage.getItem('custom_pen_pals');
-  const customPenPals: BottleAI[] = customPenPalsJson ? JSON.parse(customPenPalsJson) : [];
+  const customFriendsJson = localStorage.getItem('custom_pen_pals');
+  const customFriends: BottleAI[] = customFriendsJson ? JSON.parse(customFriendsJson) : [];
   
   // 统计数据
   const statistics = {
     totalLetters: letters.length,
     sentLetters: letters.filter(l => l.status === 'sent').length,
     repliedLetters: letters.filter(l => l.status === 'replied').length,
-    customPenPalsCount: customPenPals.length
+    customFriendsCount: customFriends.length
   };
   
   return {
     version: '1.0.0',
     exportDate: Date.now(),
     letters,
-    customPenPals,
+    customFriends,
     statistics
   };
 }
@@ -94,7 +94,7 @@ export function importAllLetterData(
     if (mode === 'replace') {
       // 替换模式：直接覆盖
       localStorage.setItem('slow_letters', JSON.stringify(data.letters));
-      localStorage.setItem('custom_pen_pals', JSON.stringify(data.customPenPals || []));
+      localStorage.setItem('custom_pen_pals', JSON.stringify(data.customFriends || []));
     } else {
       // 合并模式：合并现有数据
       const existingLettersJson = localStorage.getItem('slow_letters');
@@ -108,21 +108,21 @@ export function importAllLetterData(
       localStorage.setItem('slow_letters', JSON.stringify(mergedLetters));
       
       // 合并自定义笔友
-      const existingPenPalsJson = localStorage.getItem('custom_pen_pals');
-      const existingPenPals: BottleAI[] = existingPenPalsJson ? JSON.parse(existingPenPalsJson) : [];
+      const existingFriendsJson = localStorage.getItem('custom_pen_pals');
+      const existingFriends: BottleAI[] = existingFriendsJson ? JSON.parse(existingFriendsJson) : [];
       
-      const existingPenPalIds = new Set(existingPenPals.map(p => p.id));
-      const newPenPals = (data.customPenPals || []).filter(p => !existingPenPalIds.has(p.id));
-      const mergedPenPals = [...existingPenPals, ...newPenPals];
+      const existingFriendIds = new Set(existingFriends.map(p => p.id));
+      const newFriends = (data.customFriends || []).filter(p => !existingFriendIds.has(p.id));
+      const mergedFriends = [...existingFriends, ...newFriends];
       
-      localStorage.setItem('custom_pen_pals', JSON.stringify(mergedPenPals));
+      localStorage.setItem('custom_pen_pals', JSON.stringify(mergedFriends));
     }
     
     return {
       success: true,
       message: mode === 'replace' 
-        ? `成功导入 ${data.letters.length} 封信件和 ${data.customPenPals?.length || 0} 个自定义笔友`
-        : `成功合并数据，共 ${data.letters.length} 封信件和 ${data.customPenPals?.length || 0} 个自定义笔友`
+        ? `成功导入 ${data.letters.length} 封信件和 ${data.customFriends?.length || 0} 个自定义笔友`
+        : `成功合并数据，共 ${data.letters.length} 封信件和 ${data.customFriends?.length || 0} 个自定义笔友`
     };
   } catch (error) {
     console.error('导入数据失败:', error);

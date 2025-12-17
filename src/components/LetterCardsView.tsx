@@ -8,7 +8,7 @@ import { ArrowLeft, Check, Zap, UserPlus, FileDown, Trash2, Reply, Star, RotateC
 import { Letter } from '../types/letter';
 import { getCurrentStamp } from '../utils/stampSystem';
 import { useEffect, useRef, useState } from 'react';
-import { urgeLetter, addAsPenPal, canContinueReply, deleteUserLetter, deleteAIReply, getLetterById, favoriteAIReply, generateReply, forceGetPenPalCode } from '../utils/letterService';
+import { urgeLetter, addAsFriend, canContinueReply, deleteUserLetter, deleteAIReply, getLetterById, favoriteAIReply, generateReply, forceGetFriendCode } from '../utils/letterService';
 import { getAIDisplayName } from '../utils/letterNicknameManager';
 import PDFExportModal from './PDFExportModal';
 
@@ -71,11 +71,11 @@ export default function LetterCardsView({ letter, onBack, onViewTimeline, userNa
     }
   };
   
-  const handleAddAsPenPal = () => {
-    const success = addAsPenPal(localLetter.id);
+  const handleAddAsFriend = () => {
+    const success = addAsFriend(localLetter.id);
     if (success) {
       alert(`💌 已将 ${localLetter.receiverName} 加为笔友！\n\n现在可以无限制地交流啦～`);
-      setLocalLetter({ ...localLetter, isPenPalAdded: true });
+      setLocalLetter({ ...localLetter, isFriendAdded: true });
       // 刷新页面以更新笔友列表
       window.location.reload();
     } else {
@@ -125,10 +125,10 @@ export default function LetterCardsView({ letter, onBack, onViewTimeline, userNa
     }
   };
   
-  const handleForceGetPenPalCode = () => {
-    const result = forceGetPenPalCode(localLetter.id);
+  const handleForceGetFriendCode = () => {
+    const result = forceGetFriendCode(localLetter.id);
     if (result.success) {
-      alert(`${result.message}\n\n笔友码：${result.penPalCode}\n\n请查看最新的回信！`);
+      alert(`${result.message}\n\n好友码：${result.friendCode}\n\n请查看最新的回信！`);
       // 刷新信件数据
       const updatedLetter = getLetterById(localLetter.id);
       if (updatedLetter) {
@@ -141,8 +141,8 @@ export default function LetterCardsView({ letter, onBack, onViewTimeline, userNa
   
   const replyStatus = canContinueReply(localLetter.id);
   
-  // 检查是否可以强制获取笔友码（被拒绝3次且未给出）
-  const canForceGetPenPalCode = (localLetter.penPalCodeRejectedCount || 0) >= 3 && !localLetter.penPalCodeGiven;
+  // 检查是否可以强制获取好友码（被拒绝3次且未给出）
+  const canForceGetFriendCode = (localLetter.friendCodeRejectedCount || 0) >= 3 && !localLetter.friendCodeGiven;
   
   useEffect(() => {
     if (scrollToRound && roundRefs.current[scrollToRound]) {
@@ -609,7 +609,7 @@ export default function LetterCardsView({ letter, onBack, onViewTimeline, userNa
           )}
           
           {/* 漂流瓶加为笔友提示和按钮 */}
-          {localLetter.isBottle && !localLetter.isPenPalAdded && (
+          {localLetter.isBottle && !localLetter.isFriendAdded && (
             <div className="mt-6 space-y-3">
               {/* 轮数提示 */}
               {replyStatus.isLastRound && (
@@ -642,21 +642,21 @@ export default function LetterCardsView({ letter, onBack, onViewTimeline, userNa
 
       {/* 悬浮按钮组 */}
       <div className="fixed bottom-6 right-6 z-10 flex flex-col gap-3">
-        {/* 死缠烂打获取笔友码按钮 */}
-        {canForceGetPenPalCode && (
+        {/* 死缠烂打获取好友码按钮 */}
+        {canForceGetFriendCode && (
           <button
-            onClick={handleForceGetPenPalCode}
+            onClick={handleForceGetFriendCode}
             className="w-14 h-14 bg-gradient-to-r from-red-500 to-pink-500 text-white rounded-full shadow-lg hover:shadow-xl transition-all flex items-center justify-center animate-pulse"
-            title="死缠烂打获取笔友码"
+            title="死缠烂打获取好友码"
           >
             <Heart size={24} />
           </button>
         )}
         
         {/* 加为笔友按钮 */}
-        {localLetter.isBottle && !localLetter.isPenPalAdded && (
+        {localLetter.isBottle && !localLetter.isFriendAdded && (
           <button
-            onClick={handleAddAsPenPal}
+            onClick={handleAddAsFriend}
             className="w-14 h-14 bg-gradient-to-r from-pink-500 to-rose-500 text-white rounded-full shadow-lg hover:shadow-xl transition-all flex items-center justify-center"
             title="加为笔友"
           >

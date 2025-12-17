@@ -4,12 +4,12 @@
 
 import React, { useState, useEffect } from 'react';
 import { Conversation } from '../types';
-import { sendLetter, getAllPresetAIs, getCustomPenPals, saveCustomPenPal, continueReply } from '../utils/letterService';
+import { sendLetter, getAllPresetAIs, getCustomFriends, saveCustomFriend, continueReply } from '../utils/letterService';
 import { BottleAI, Letter } from '../types/letter';
 import { getSafeAvatar } from '../utils/avatarHelper';
 import { ArrowLeft, Send, Sparkles, Users, UserPlus } from 'lucide-react';
 import LetterSendingAnimation from './LetterSendingAnimation';
-import CustomPenPalCreator from './CustomPenPalCreator';
+import CustomFriendCreator from './CustomFriendCreator';
 import LetterMenuDropdown from './LetterMenuDropdown';
 
 interface LetterWritingScreenProps {
@@ -39,8 +39,8 @@ const LetterWritingScreen: React.FC<LetterWritingScreenProps> = ({
   } | null>(null);
   const [showReceiverModal, setShowReceiverModal] = useState(false);
   const [showSendingAnimation, setShowSendingAnimation] = useState(false);
-  const [showCustomPenPalCreator, setShowCustomPenPalCreator] = useState(false);
-  const [customPenPals, setCustomPenPals] = useState<BottleAI[]>([]);
+  const [showCustomFriendCreator, setShowCustomFriendCreator] = useState(false);
+  const [customFriends, setCustomFriends] = useState<BottleAI[]>([]);
   const [isAnonymous, setIsAnonymous] = useState(false); // 匿名寄信选项
 
   // 请求通知权限
@@ -55,7 +55,7 @@ const LetterWritingScreen: React.FC<LetterWritingScreenProps> = ({
   
   // 加载自定义笔友
   useEffect(() => {
-    setCustomPenPals(getCustomPenPals());
+    setCustomFriends(getCustomFriends());
   }, [showReceiverModal]);
 
   // 如果有replyToLetter，自动选中收件人
@@ -106,7 +106,7 @@ const LetterWritingScreen: React.FC<LetterWritingScreenProps> = ({
         const letterIndex = letters.findIndex((l: any) => l.id === letter.id);
         if (letterIndex !== -1) {
           letters[letterIndex].bottleAIProfile = selectedReceiver.bottleAIProfile;
-          letters[letterIndex].isPenPalAdded = true; // 自定义笔友直接标记为笔友
+          letters[letterIndex].isFriendAdded = true; // 自定义笔友直接标记为笔友
           letters[letterIndex].maxRounds = 999; // 无限制
           localStorage.setItem('slow_letters', JSON.stringify(letters));
         }
@@ -114,11 +114,11 @@ const LetterWritingScreen: React.FC<LetterWritingScreenProps> = ({
     }
   };
   
-  const handleCreateCustomPenPal = async (penPal: BottleAI) => {
-    const success = await saveCustomPenPal(penPal);
+  const handleCreateCustomFriend = async (penPal: BottleAI) => {
+    const success = await saveCustomFriend(penPal);
     if (success) {
-      setCustomPenPals(getCustomPenPals());
-      setShowCustomPenPalCreator(false);
+      setCustomFriends(getCustomFriends());
+      setShowCustomFriendCreator(false);
       alert(`✨ 成功创建笔友「${penPal.name}」\n\n已自动加入笔友列表，可以随时写信交流！`);
     } else {
       alert('创建失败，请重试');
@@ -442,13 +442,13 @@ const LetterWritingScreen: React.FC<LetterWritingScreenProps> = ({
               ))}
               
               {/* 自定义笔友区 */}
-              {customPenPals.length > 0 && (
+              {customFriends.length > 0 && (
                 <>
                   <div className="p-3 bg-purple-50 text-xs text-purple-700 font-medium flex items-center gap-2">
                     <Sparkles size={14} />
                     我的自定义笔友
                   </div>
-                  {customPenPals.map((penPal) => (
+                  {customFriends.map((penPal) => (
                     <button
                       key={penPal.id}
                       onClick={() => {
@@ -488,7 +488,7 @@ const LetterWritingScreen: React.FC<LetterWritingScreenProps> = ({
               <button
                 onClick={() => {
                   setShowReceiverModal(false);
-                  setShowCustomPenPalCreator(true);
+                  setShowCustomFriendCreator(true);
                 }}
                 className="w-full px-6 py-4 hover:bg-purple-50 transition-colors border-b-2 border-purple-200 text-left bg-gradient-to-r from-purple-50 to-pink-50"
               >
@@ -527,10 +527,10 @@ const LetterWritingScreen: React.FC<LetterWritingScreenProps> = ({
       />
       
       {/* 自定义笔友创建器 */}
-      {showCustomPenPalCreator && (
-        <CustomPenPalCreator
-          onClose={() => setShowCustomPenPalCreator(false)}
-          onConfirm={handleCreateCustomPenPal}
+      {showCustomFriendCreator && (
+        <CustomFriendCreator
+          onClose={() => setShowCustomFriendCreator(false)}
+          onConfirm={handleCreateCustomFriend}
         />
       )}
     </div>

@@ -5,27 +5,27 @@
 
 import React, { useState, useEffect } from 'react';
 import { Letter, BottleAI } from '../types/letter';
-import { getAllPenPals, getPenPalStats, getCustomPenPals, loadCustomPenPals, saveCustomPenPal, generateSelfIntroByAI } from '../utils/letterService';
+import { getAllFriends, getFriendStats, getCustomFriends, loadCustomFriends, saveCustomFriend, generateSelfIntroByAI } from '../utils/letterService';
 import { ArrowLeft, MapPin, Heart, MessageCircle, Mail, Sparkles, ChevronDown, ChevronUp, Edit, X, Save } from 'lucide-react';
 import LetterDetailModal from './LetterDetailModal';
 
-interface PenPalListScreenProps {
+interface FriendListScreenProps {
   onBack: () => void;
   onWriteTo: (receiverId: string, receiverName: string, receiverAvatar: string) => void;
   userName: string;
 }
 
-const PenPalListScreen: React.FC<PenPalListScreenProps> = ({
+const FriendListScreen: React.FC<FriendListScreenProps> = ({
   onBack,
   onWriteTo,
   userName
 }) => {
-  const [penPals, setPenPals] = useState<Letter[]>([]);
-  const [customPenPals, setCustomPenPals] = useState<BottleAI[]>([]);
-  const [stats, setStats] = useState<ReturnType<typeof getPenPalStats>>();
+  const [penPals, setFriends] = useState<Letter[]>([]);
+  const [customFriends, setCustomFriends] = useState<BottleAI[]>([]);
+  const [stats, setStats] = useState<ReturnType<typeof getFriendStats>>();
   const [selectedLetter, setSelectedLetter] = useState<Letter | null>(null);
   const [isCustomExpanded, setIsCustomExpanded] = useState(false); // 默认折叠
-  const [editingPenPal, setEditingPenPal] = useState<BottleAI | null>(null);
+  const [editingFriend, setEditingFriend] = useState<BottleAI | null>(null);
 
   useEffect(() => {
     // 先加载数据，再生成介绍
@@ -34,14 +34,14 @@ const PenPalListScreen: React.FC<PenPalListScreenProps> = ({
 
   const initializeData = async () => {
     // 1. 先加载所有数据
-    await loadPenPals();
+    await loadFriends();
     // 2. 数据加载完成后，为自定义笔友生成AI介绍
-    await generateIntrosForCustomPenPals();
+    await generateIntrosForCustomFriends();
   };
 
   // 为所有没有customBackground的自定义笔友生成介绍
-  const generateIntrosForCustomPenPals = async () => {
-    const customPals = getCustomPenPals(); // 此时缓存已经加载
+  const generateIntrosForCustomFriends = async () => {
+    const customPals = getCustomFriends(); // 此时缓存已经加载
     for (const penPal of customPals) {
       if (!penPal.customBackground || !penPal.customBackground.trim()) {
         // 异步生成，不阻塞UI
@@ -50,12 +50,12 @@ const PenPalListScreen: React.FC<PenPalListScreenProps> = ({
     }
   };
 
-  const loadPenPals = async () => {
-    const pals = getAllPenPals();
-    const customPals = await loadCustomPenPals(); // 从IndexedDB异步加载
-    const statistics = getPenPalStats();
-    setPenPals(pals);
-    setCustomPenPals(customPals);
+  const loadFriends = async () => {
+    const pals = getAllFriends();
+    const customPals = await loadCustomFriends(); // 从IndexedDB异步加载
+    const statistics = getFriendStats();
+    setFriends(pals);
+    setCustomFriends(customPals);
     setStats(statistics);
   };
 
@@ -80,10 +80,10 @@ const PenPalListScreen: React.FC<PenPalListScreenProps> = ({
       
       // 更新并保存
       penPal.customBackground = intro;
-      await saveCustomPenPal(penPal);
+      await saveCustomFriend(penPal);
       
       // 刷新列表
-      loadPenPals();
+      loadFriends();
     } catch (error) {
       console.error('生成自我介绍失败:', error);
     }
@@ -150,7 +150,7 @@ const PenPalListScreen: React.FC<PenPalListScreenProps> = ({
 
       {/* 笔友列表 */}
       <div className="flex-1 overflow-y-auto px-4 pb-4">
-        {penPals.length === 0 && customPenPals.length === 0 ? (
+        {penPals.length === 0 && customFriends.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full text-gray-400">
             <Heart size={64} className="mb-4 opacity-30" />
             <div className="text-lg mb-2">还没有笔友</div>
@@ -159,7 +159,7 @@ const PenPalListScreen: React.FC<PenPalListScreenProps> = ({
         ) : (
           <div className="space-y-4">
             {/* 自定义笔友区 */}
-            {customPenPals.length > 0 && (
+            {customFriends.length > 0 && (
               <>
                 <button
                   onClick={() => setIsCustomExpanded(!isCustomExpanded)}
@@ -167,11 +167,11 @@ const PenPalListScreen: React.FC<PenPalListScreenProps> = ({
                 >
                   <div className="flex items-center gap-2">
                     <Sparkles size={16} />
-                    我的自定义笔友 ({customPenPals.length})
+                    我的自定义笔友 ({customFriends.length})
                   </div>
                   {isCustomExpanded ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
                 </button>
-                {isCustomExpanded && customPenPals.map((penPal) => (
+                {isCustomExpanded && customFriends.map((penPal) => (
                   <div
                     key={penPal.id}
                     className="bg-gradient-to-br from-orange-50/80 to-amber-50/80 rounded-2xl shadow-md p-4 hover:shadow-lg transition-all border border-orange-200/50"
@@ -209,7 +209,7 @@ const PenPalListScreen: React.FC<PenPalListScreenProps> = ({
                           <button
                             onClick={(e) => {
                               e.stopPropagation();
-                              setEditingPenPal(penPal);
+                              setEditingFriend(penPal);
                             }}
                             className="px-3 py-2 bg-white/80 hover:bg-white border border-orange-200 rounded-xl text-sm font-medium text-orange-600 transition-all flex items-center justify-center gap-1"
                           >
@@ -238,7 +238,7 @@ const PenPalListScreen: React.FC<PenPalListScreenProps> = ({
             {/* 已通信笔友区 */}
             {penPals.length > 0 && (
               <>
-                {customPenPals.length > 0 && (
+                {customFriends.length > 0 && (
                   <div className="flex items-center gap-2 text-sm font-semibold text-amber-700 px-3 py-2 bg-amber-50/80 rounded-xl mt-2">
                     <Heart size={16} />
                     已通信笔友 ({penPals.length})
@@ -329,30 +329,30 @@ const PenPalListScreen: React.FC<PenPalListScreenProps> = ({
           letter={selectedLetter}
           onClose={() => {
             setSelectedLetter(null);
-            loadPenPals();
+            loadFriends();
           }}
           onUrge={() => {
-            loadPenPals();
+            loadFriends();
           }}
           userName={userName}
         />
       )}
 
       {/* 编辑自定义笔友弹窗 */}
-      {editingPenPal && (
+      {editingFriend && (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
           <div className="bg-white rounded-3xl shadow-2xl max-w-md w-full max-h-[80vh] overflow-y-auto">
             {/* 头部 */}
             <div className="sticky top-0 bg-gradient-to-r from-orange-500 to-amber-500 px-6 py-4 flex items-center justify-between rounded-t-3xl">
               <div className="flex items-center gap-3">
-                <div className="text-3xl">{editingPenPal.avatar}</div>
+                <div className="text-3xl">{editingFriend.avatar}</div>
                 <div>
                   <h2 className="text-lg font-bold text-white">编辑笔友信息</h2>
                   <p className="text-xs text-orange-100">修改后会应用到后续回信中</p>
                 </div>
               </div>
               <button
-                onClick={() => setEditingPenPal(null)}
+                onClick={() => setEditingFriend(null)}
                 className="p-2 hover:bg-white/20 rounded-full transition-colors"
               >
                 <X size={20} className="text-white" />
@@ -368,8 +368,8 @@ const PenPalListScreen: React.FC<PenPalListScreenProps> = ({
                 </label>
                 <input
                   type="text"
-                  value={editingPenPal.name}
-                  onChange={(e) => setEditingPenPal({...editingPenPal, name: e.target.value})}
+                  value={editingFriend.name}
+                  onChange={(e) => setEditingFriend({...editingFriend, name: e.target.value})}
                   className="w-full px-4 py-2.5 border border-gray-300 rounded-xl focus:ring-2 focus:ring-orange-500 focus:border-transparent"
                   placeholder="给笔友起个名字"
                 />
@@ -382,8 +382,8 @@ const PenPalListScreen: React.FC<PenPalListScreenProps> = ({
                 </label>
                 <input
                   type="text"
-                  value={editingPenPal.avatar}
-                  onChange={(e) => setEditingPenPal({...editingPenPal, avatar: e.target.value})}
+                  value={editingFriend.avatar}
+                  onChange={(e) => setEditingFriend({...editingFriend, avatar: e.target.value})}
                   className="w-full px-4 py-2.5 border border-gray-300 rounded-xl focus:ring-2 focus:ring-orange-500 focus:border-transparent text-2xl text-center"
                   placeholder="😊"
                   maxLength={2}
@@ -396,8 +396,8 @@ const PenPalListScreen: React.FC<PenPalListScreenProps> = ({
                   角色设定 <span className="text-red-500">*</span>
                 </label>
                 <textarea
-                  value={editingPenPal.customRolePrompt || ''}
-                  onChange={(e) => setEditingPenPal({...editingPenPal, customRolePrompt: e.target.value})}
+                  value={editingFriend.customRolePrompt || ''}
+                  onChange={(e) => setEditingFriend({...editingFriend, customRolePrompt: e.target.value})}
                   className="w-full px-4 py-2.5 border border-gray-300 rounded-xl focus:ring-2 focus:ring-orange-500 focus:border-transparent resize-none"
                   rows={4}
                   placeholder="例如：你是一个热爱旅行的摄影师，喜欢分享世界各地的美景..."
@@ -413,8 +413,8 @@ const PenPalListScreen: React.FC<PenPalListScreenProps> = ({
                   背景故事
                 </label>
                 <textarea
-                  value={editingPenPal.customBackground || ''}
-                  onChange={(e) => setEditingPenPal({...editingPenPal, customBackground: e.target.value})}
+                  value={editingFriend.customBackground || ''}
+                  onChange={(e) => setEditingFriend({...editingFriend, customBackground: e.target.value})}
                   className="w-full px-4 py-2.5 border border-gray-300 rounded-xl focus:ring-2 focus:ring-orange-500 focus:border-transparent resize-none"
                   rows={3}
                   placeholder="例如：小时候在海边长大，梦想是环游世界..."
@@ -427,16 +427,16 @@ const PenPalListScreen: React.FC<PenPalListScreenProps> = ({
               {/* 操作按钮 */}
               <div className="flex gap-3 pt-4">
                 <button
-                  onClick={() => setEditingPenPal(null)}
+                  onClick={() => setEditingFriend(null)}
                   className="flex-1 px-4 py-3 bg-gray-100 hover:bg-gray-200 rounded-xl font-semibold text-gray-700 transition-colors"
                 >
                   取消
                 </button>
                 <button
                   onClick={async () => {
-                    if (await saveCustomPenPal(editingPenPal)) {
-                      setEditingPenPal(null);
-                      loadPenPals();
+                    if (await saveCustomFriend(editingFriend)) {
+                      setEditingFriend(null);
+                      loadFriends();
                     } else {
                       alert('保存失败：请填写角色设定');
                     }
@@ -459,4 +459,4 @@ const PenPalListScreen: React.FC<PenPalListScreenProps> = ({
   );
 };
 
-export default PenPalListScreen;
+export default FriendListScreen;

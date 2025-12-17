@@ -258,7 +258,7 @@ export function checkLetterAchievements() {
   updateAchievementProgress('letter_sender_100', letters.length);
   
   // 笔友数量成就
-  const penPalCount = letters.filter((l: any) => l.isPenPalAdded).length;
+  const penPalCount = letters.filter((l: any) => l.isFriendAdded).length;
   updateAchievementProgress('first_penpal', penPalCount);
   updateAchievementProgress('penpal_5', penPalCount);
   updateAchievementProgress('penpal_10', penPalCount);

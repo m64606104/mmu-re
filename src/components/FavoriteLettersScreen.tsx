@@ -95,7 +95,7 @@ const FavoriteLettersScreen: React.FC<FavoriteLettersScreenProps> = ({
                               漂流瓶
                             </span>
                           )}
-                          {letter.isPenPalAdded && (
+                          {letter.isFriendAdded && (
                             <span className="text-xs bg-pink-100 text-pink-600 px-2 py-0.5 rounded-full">
                               笔友
                             </span>

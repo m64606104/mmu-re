@@ -161,7 +161,7 @@ export function getAllNicknamedAIs(): Array<{
 /**
  * 搜索AI笔友（按备注名和原名）
  */
-export function searchAIPenPals(query: string): Array<{
+export function searchAIFriends(query: string): Array<{
   receiverId: string;
   nickname?: string;
   originalName: string;

@@ -1,14 +1,14 @@
 /**
- * 笔友码请求检测器
- * 检测用户是否在信件中请求笔友码/联系方式
+ * 好友码请求检测器
+ * 检测用户是否在信件中请求好友码/联系方式
  */
 
 /**
- * 检测用户是否在请求笔友码
+ * 检测用户是否在请求好友码
  */
-export function detectPenPalCodeRequest(userMessage: string): boolean {
+export function detectFriendCodeRequest(userMessage: string): boolean {
   const keywords = [
-    '笔友码',
+    '好友码',
     '好友码',
     '联系方式',
     '微信',
@@ -33,26 +33,26 @@ export function detectPenPalCodeRequest(userMessage: string): boolean {
 }
 
 /**
- * 生成AI判断笔友码请求的系统提示
+ * 生成AI判断好友码请求的系统提示
  */
-export function generatePenPalCodeJudgmentPrompt(
+export function generateFriendCodeJudgmentPrompt(
   userMessage: string,
   currentRound: number,
   conversationHistory: string
 ): string {
   return `
-【特殊任务：判断是否给出笔友码】
+【特殊任务：判断是否给出好友码】
 
-⚠️ **重要**：用户在信中提到了想要获取你的联系方式或笔友码，但这**不是**信件的全部内容！
+⚠️ **重要**：用户在信中提到了想要获取你的联系方式或好友码，但这**不是**信件的全部内容！
 
 📮 **你必须做到**：
 1. **完整回复信件的所有内容**：用户可能还说了其他事情、分享了生活、提出了问题等
-2. **自然融入笔友码话题**：不要只回复笔友码相关内容，要把它自然地融入整封回信中
-3. **保持信件的完整性**：这是一封完整的信，不是只为了要笔友码
+2. **自然融入好友码话题**：不要只回复好友码相关内容，要把它自然地融入整封回信中
+3. **保持信件的完整性**：这是一封完整的信，不是只为了要好友码
 
 ---
 
-**关于是否给出笔友码的判断**：
+**关于是否给出好友码的判断**：
 
 当前是第${currentRound}轮交流，你需要根据以下因素判断：
 
@@ -72,15 +72,15 @@ export function generatePenPalCodeJudgmentPrompt(
 
 ---
 
-**如果决定给出笔友码**：
+**如果决定给出好友码**：
 
 1. **先回复信件的其他内容**（如果有的话）
-2. **然后自然过渡到笔友码话题**，在合适的地方包含这个标记：\`[GIVE_PENPAL_CODE]\`
+2. **然后自然过渡到好友码话题**，在合适的地方包含这个标记：\`[GIVE_PENPAL_CODE]\`
 3. **示例**：
 
 "（先回复用户说的其他事情...）
 
-说到进一步交流，我们确实聊了挺久了，我觉得你是个很真诚的人。既然你想和我成为好友，那我就把笔友码给你吧：[GIVE_PENPAL_CODE]
+说到进一步交流，我们确实聊了挺久了，我觉得你是个很真诚的人。既然你想和我成为好友，那我就把好友码给你吧：[GIVE_PENPAL_CODE]
 
 你可以用它在私聊软件中添加我，这样我们就能更方便地聊天了。
 
@@ -91,10 +91,10 @@ export function generatePenPalCodeJudgmentPrompt(
 **如果决定拒绝**：
 
 1. **同样要先回复信件的其他内容**
-2. **委婉地拒绝笔友码请求**，比如：
+2. **委婉地拒绝好友码请求**，比如：
    - "我们才刚认识不久，要不再多聊聊？"
    - "我觉得我们可以先通过信件多了解一下彼此"
-   - "笔友码是很私密的东西，我想等我们更熟悉一些再说"
+   - "好友码是很私密的东西，我想等我们更熟悉一些再说"
 3. **不要让拒绝显得生硬**，要自然地融入回信中
 
 ---
@@ -109,9 +109,9 @@ ${conversationHistory}
 
 **再次强调**：
 - ✅ 完整回复用户信件中的所有内容
-- ✅ 自然融入笔友码话题（同意或拒绝）
+- ✅ 自然融入好友码话题（同意或拒绝）
 - ✅ 保持信件的完整性和连贯性
-- ❌ 不要只回复笔友码相关内容
+- ❌ 不要只回复好友码相关内容
 - ❌ 不要忽略用户说的其他事情
 
 现在开始写回信。
@@ -119,16 +119,16 @@ ${conversationHistory}
 }
 
 /**
- * 检测AI回复中是否包含笔友码给出标记
+ * 检测AI回复中是否包含好友码给出标记
  */
-export function detectPenPalCodeGiven(aiReply: string): boolean {
+export function detectFriendCodeGiven(aiReply: string): boolean {
   return aiReply.includes('[GIVE_PENPAL_CODE]');
 }
 
 /**
- * 从AI回复中移除笔友码标记，替换为实际的笔友码
+ * 从AI回复中移除好友码标记，替换为实际的好友码
  */
-export function replacePenPalCodeMarker(aiReply: string, actualCode: string): string {
+export function replaceFriendCodeMarker(aiReply: string, actualCode: string): string {
   return aiReply.replace(/\[GIVE_PENPAL_CODE\]/g, actualCode);
 }
 

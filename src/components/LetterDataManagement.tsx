@@ -147,12 +147,12 @@ const LetterDataManagement: React.FC<LetterDataManagementProps> = ({
           version: '1.0.0',
           exportDate: Date.now(),
           letters: data,
-          customPenPals: [],
+          customFriends: [],
           statistics: {
             totalLetters: data.length,
             sentLetters: 0,
             repliedLetters: 0,
-            customPenPalsCount: 0
+            customFriendsCount: 0
           }
         };
       } else if (data.id && data.content) {
@@ -161,12 +161,12 @@ const LetterDataManagement: React.FC<LetterDataManagementProps> = ({
           version: '1.0.0',
           exportDate: Date.now(),
           letters: [data],
-          customPenPals: [],
+          customFriends: [],
           statistics: {
             totalLetters: 1,
             sentLetters: 0,
             repliedLetters: 0,
-            customPenPalsCount: 0
+            customFriendsCount: 0
           }
         };
       } else {

@@ -9,15 +9,15 @@ import { getCachedData, setCachedData, save } from './storage';
 import { checkAndMergeAnonymousLetters } from './anonymousLetterMerger';
 import { cleanAIMessage } from './messageFormatter';
 import { 
-  detectPenPalCodeRequest, 
-  generatePenPalCodeJudgmentPrompt,
-  detectPenPalCodeGiven,
-  replacePenPalCodeMarker,
+  detectFriendCodeRequest, 
+  generateFriendCodeJudgmentPrompt,
+  detectFriendCodeGiven,
+  replaceFriendCodeMarker,
   generateConversationSummary
-} from './penPalCodeDetector';
-import { generatePenPalCode } from './penPalCodeSystem';
+} from './friendCodeDetector';
+import { generateFriendCode } from './friendCodeSystem';
 import { updateLetterMemoryFromLetter } from './letterMemorySystem';
-import { getRandomForceGetMessage } from './penPalCodeMessages';
+import { getRandomForceGetMessage } from './friendCodeMessages';
 
 // 📮 预设AI角色池 - 用户可主动选择的固定角色
 export const PRESET_AI_POOL: BottleAI[] = [
@@ -527,7 +527,7 @@ export function sendLetter(
     }],
     currentRound: 1,
     maxRounds: isBottle ? 3 : 999,  // 漂流瓶限制3轮，其他无限制
-    isPenPalAdded: false,
+    isFriendAdded: false,
     
     // 管理初始化
     isArchived: false
@@ -1207,22 +1207,22 @@ ${ageProfile.notKnowingExamples.map(e => `  • ${e}`).join('\n')}
 `;
   }
 
-  // 🎫 检测是否请求笔友码
-  const isPenPalCodeRequest = detectPenPalCodeRequest(currentRound.userLetter.content);
-  let penPalCodePrompt = '';
+  // 🎫 检测是否请求好友码
+  const isFriendCodeRequest = detectFriendCodeRequest(currentRound.userLetter.content);
+  let friendCodePrompt = '';
   
-  if (isPenPalCodeRequest) {
+  if (isFriendCodeRequest) {
     // 初始化计数器
-    if (!letter.penPalCodeRequestCount) letter.penPalCodeRequestCount = 0;
-    if (!letter.penPalCodeRejectedCount) letter.penPalCodeRejectedCount = 0;
+    if (!letter.friendCodeRequestCount) letter.friendCodeRequestCount = 0;
+    if (!letter.friendCodeRejectedCount) letter.friendCodeRejectedCount = 0;
     
-    letter.penPalCodeRequestCount++;
+    letter.friendCodeRequestCount++;
     
     // 生成对话历史摘要
     const conversationSummary = generateConversationSummary(letter.conversationRounds);
     
-    // 添加笔友码判断提示
-    penPalCodePrompt = generatePenPalCodeJudgmentPrompt(
+    // 添加好友码判断提示
+    friendCodePrompt = generateFriendCodeJudgmentPrompt(
       currentRound.userLetter.content,
       targetRoundNumber,
       conversationSummary
@@ -1239,7 +1239,7 @@ ${senderInfo}
 【对方本轮的来信内容】:
 ${currentRound.userLetter.content}
 
-${penPalCodePrompt}
+${friendCodePrompt}
 
 ---
 
@@ -1559,25 +1559,25 @@ ${aiProfile.customBackground}
   // 清理AI回复中的Markdown/引用/链接等不自然内容
   replyContent = cleanAIMessage(replyContent);
   
-  // 🎫 处理笔友码
-  if (isPenPalCodeRequest) {
-    const isGiven = detectPenPalCodeGiven(replyContent);
+  // 🎫 处理好友码
+  if (isFriendCodeRequest) {
+    const isGiven = detectFriendCodeGiven(replyContent);
     
     if (isGiven) {
-      // AI同意给出笔友码
-      if (!letter.penPalCode) {
-        letter.penPalCode = generatePenPalCode(letter.receiverId);
+      // AI同意给出好友码
+      if (!letter.friendCode) {
+        letter.friendCode = generateFriendCode(letter.receiverId);
       }
       
-      // 替换标记为实际笔友码
-      replyContent = replacePenPalCodeMarker(replyContent, letter.penPalCode);
-      letter.penPalCodeGiven = true;
+      // 替换标记为实际好友码
+      replyContent = replaceFriendCodeMarker(replyContent, letter.friendCode);
+      letter.friendCodeGiven = true;
       
-      console.log(`🎫 AI同意给出笔友码: ${letter.penPalCode}`);
+      console.log(`🎫 AI同意给出好友码: ${letter.friendCode}`);
     } else {
-      // AI拒绝给出笔友码
-      letter.penPalCodeRejectedCount = (letter.penPalCodeRejectedCount || 0) + 1;
-      console.log(`❌ AI拒绝给出笔友码（第${letter.penPalCodeRejectedCount}次）`);
+      // AI拒绝给出好友码
+      letter.friendCodeRejectedCount = (letter.friendCodeRejectedCount || 0) + 1;
+      console.log(`❌ AI拒绝给出好友码（第${letter.friendCodeRejectedCount}次）`);
     }
     
     // 保存更新后的信件
@@ -1671,7 +1671,7 @@ export function getLettersFromStorage(): Letter[] {
           conversationRounds: rounds,
           currentRound: letter.currentRound || 1,
           maxRounds: letter.maxRounds || (letter.isBottle ? 3 : 999),
-          isPenPalAdded: letter.isPenPalAdded || false
+          isFriendAdded: letter.isFriendAdded || false
         };
       }
       return letter;
@@ -2250,20 +2250,20 @@ export function getAllFavoriteReplies(): FavoriteReply[] {
  * 获取所有笔友（已加为笔友的漂流瓶AI）
  * 按receiverId去重，只返回每个笔友的最新一封信
  */
-export function getAllPenPals(): Letter[] {
+export function getAllFriends(): Letter[] {
   const letters = getLettersFromStorage()
-    .filter(l => l.isPenPalAdded && !l.isArchived)
+    .filter(l => l.isFriendAdded && !l.isArchived)
     .sort((a, b) => (b.repliedAt || b.sentAt) - (a.repliedAt || a.sentAt));
   
   // 按receiverId去重，只保留最新的一封信
-  const uniquePenPals = new Map<string, Letter>();
+  const uniqueFriends = new Map<string, Letter>();
   for (const letter of letters) {
-    if (!uniquePenPals.has(letter.receiverId)) {
-      uniquePenPals.set(letter.receiverId, letter);
+    if (!uniqueFriends.has(letter.receiverId)) {
+      uniqueFriends.set(letter.receiverId, letter);
     }
   }
   
-  return Array.from(uniquePenPals.values());
+  return Array.from(uniqueFriends.values());
 }
 
 /**
@@ -2287,8 +2287,8 @@ export function getArchivedLetters(): Letter[] {
 /**
  * 获取笔友统计信息
  */
-export function getPenPalStats() {
-  const penPals = getAllPenPals();
+export function getFriendStats() {
+  const penPals = getAllFriends();
   
   return {
     total: penPals.length,
@@ -2360,7 +2360,7 @@ export function continueReply(
   }
   
   // 检查是否已加为笔友或是否还在轮数限制内
-  const canContinue = letter.isPenPalAdded || letter.currentRound < letter.maxRounds;
+  const canContinue = letter.isFriendAdded || letter.currentRound < letter.maxRounds;
   
   if (!canContinue) {
     console.log(`⚠️ 已达到最大轮数限制 (${letter.maxRounds}轮)`);
@@ -2411,7 +2411,7 @@ export function continueReply(
  * 加为笔友
  * 将漂流瓶AI加为长期笔友，解除轮数限制
  */
-export function addAsPenPal(letterId: string): boolean {
+export function addAsFriend(letterId: string): boolean {
   const letters = getLettersFromStorage();
   const letter = letters.find(l => l.id === letterId);
   
@@ -2420,7 +2420,7 @@ export function addAsPenPal(letterId: string): boolean {
   }
   
   // 标记为已加笔友
-  letter.isPenPalAdded = true;
+  letter.isFriendAdded = true;
   letter.maxRounds = 999; // 解除轮数限制
   
   updateLetterInStorage(letter);
@@ -2434,12 +2434,12 @@ export function addAsPenPal(letterId: string): boolean {
 }
 
 /**
- * 强制获取笔友码（被拒绝3次后）
+ * 强制获取好友码（被拒绝3次后）
  */
-export function forceGetPenPalCode(letterId: string): {
+export function forceGetFriendCode(letterId: string): {
   success: boolean;
   message: string;
-  penPalCode?: string;
+  friendCode?: string;
 } {
   const letters = getLettersFromStorage();
   const letter = letters.find(l => l.id === letterId);
@@ -2452,25 +2452,25 @@ export function forceGetPenPalCode(letterId: string): {
   }
   
   // 检查是否被拒绝3次
-  if ((letter.penPalCodeRejectedCount || 0) < 3) {
+  if ((letter.friendCodeRejectedCount || 0) < 3) {
     return {
       success: false,
-      message: `还需要被拒绝${3 - (letter.penPalCodeRejectedCount || 0)}次才能强制获取`
+      message: `还需要被拒绝${3 - (letter.friendCodeRejectedCount || 0)}次才能强制获取`
     };
   }
   
-  // 生成笔友码
-  if (!letter.penPalCode) {
-    letter.penPalCode = generatePenPalCode(letter.receiverId);
+  // 生成好友码
+  if (!letter.friendCode) {
+    letter.friendCode = generateFriendCode(letter.receiverId);
   }
   
   // 标记为已给出
-  letter.penPalCodeGiven = true;
+  letter.friendCodeGiven = true;
   
-  // 创建一封系统回信，包含笔友码
+  // 创建一封系统回信，包含好友码
   const now = Date.now();
   const systemMessage = getRandomForceGetMessage();
-  const fullMessage = `${systemMessage}\n\n笔友码：${letter.penPalCode}\n\n你可以在私聊软件中使用这个笔友码添加我为好友。`;
+  const fullMessage = `${systemMessage}\n\n好友码：${letter.friendCode}\n\n你可以在私聊软件中使用这个好友码添加我为好友。`;
   
   // 添加到最后一轮的AI回复（如果还没有回复）
   const lastRound = letter.conversationRounds[letter.conversationRounds.length - 1];
@@ -2487,7 +2487,7 @@ export function forceGetPenPalCode(letterId: string): {
     const newRound: LetterRound = {
       roundNumber: letter.currentRound + 1,
       userLetter: {
-        content: '[系统：强制获取笔友码]',
+        content: '[系统：强制获取好友码]',
         sentAt: now
       },
       aiReply: {
@@ -2511,12 +2511,12 @@ export function forceGetPenPalCode(letterId: string): {
     console.error('更新信件记忆失败:', error);
   }
   
-  console.log(`🎫 强制获取笔友码成功: ${letter.penPalCode}`);
+  console.log(`🎫 强制获取好友码成功: ${letter.friendCode}`);
   
   return {
     success: true,
     message: systemMessage,
-    penPalCode: letter.penPalCode
+    friendCode: letter.friendCode
   };
 }
 
@@ -2545,7 +2545,7 @@ export function canContinueReply(letterId: string): {
   // ✅ 允许连续寄信：移除status检查，允许在等待回复时继续寄信
   
   // 已加为笔友或非漂流瓶，无限制
-  if (letter.isPenPalAdded || !letter.isBottle) {
+  if (letter.isFriendAdded || !letter.isBottle) {
     return {
       canContinue: true,
       currentRound: letter.currentRound,
@@ -2572,15 +2572,15 @@ export function canContinueReply(letterId: string): {
 const CUSTOM_PENPALS_KEY = 'custom_pen_pals';
 
 // 内存缓存
-let customPenPalsCache: BottleAI[] | null = null;
+let customFriendsCache: BottleAI[] | null = null;
 
 /**
  * 获取所有自定义笔友（从IndexedDB）
  */
-export function getCustomPenPals(): BottleAI[] {
+export function getCustomFriends(): BottleAI[] {
   // 返回缓存数据
-  if (customPenPalsCache !== null) {
-    return customPenPalsCache;
+  if (customFriendsCache !== null) {
+    return customFriendsCache;
   }
   
   // 如果缓存未初始化，返回空数组（异步加载中）
@@ -2590,7 +2590,7 @@ export function getCustomPenPals(): BottleAI[] {
 /**
  * 异步加载自定义笔友数据
  */
-export async function loadCustomPenPals(): Promise<BottleAI[]> {
+export async function loadCustomFriends(): Promise<BottleAI[]> {
   try {
     const { load, save } = await import('./storage');
     
@@ -2633,7 +2633,7 @@ export async function loadCustomPenPals(): Promise<BottleAI[]> {
       console.log('ℹ️ localStorage中没有旧数据');
     }
     
-    customPenPalsCache = penpals;
+    customFriendsCache = penpals;
     console.log(`📚 最终加载了${penpals.length}个自定义笔友`);
     if (penpals.length > 0) {
       console.log('👥 笔友名单:', penpals.map(p => `${p.name}(${p.id})`).join(', '));
@@ -2641,7 +2641,7 @@ export async function loadCustomPenPals(): Promise<BottleAI[]> {
     return penpals;
   } catch (error) {
     console.error('❌ 读取自定义笔友失败:', error);
-    customPenPalsCache = [];
+    customFriendsCache = [];
     return [];
   }
 }
@@ -2714,7 +2714,7 @@ export async function generateSelfIntroByAI(rolePrompt: string, apiConfig: any):
 /**
  * 保存自定义笔友（到IndexedDB）
  */
-export async function saveCustomPenPal(penPal: BottleAI): Promise<boolean> {
+export async function saveCustomFriend(penPal: BottleAI): Promise<boolean> {
   try {
     // 验证必填字段
     if (!penPal.customRolePrompt || !penPal.customRolePrompt.trim()) {
@@ -2722,22 +2722,22 @@ export async function saveCustomPenPal(penPal: BottleAI): Promise<boolean> {
       return false;
     }
     
-    const customPenPals = getCustomPenPals();
+    const customFriends = getCustomFriends();
     
     // 检查是否已存在（更新）
-    const existingIndex = customPenPals.findIndex(p => p.id === penPal.id);
+    const existingIndex = customFriends.findIndex(p => p.id === penPal.id);
     if (existingIndex !== -1) {
-      customPenPals[existingIndex] = penPal;
+      customFriends[existingIndex] = penPal;
     } else {
-      customPenPals.push(penPal);
+      customFriends.push(penPal);
     }
     
     // 更新缓存
-    customPenPalsCache = customPenPals;
+    customFriendsCache = customFriends;
     
     // 保存到IndexedDB
     const { save } = await import('./storage');
-    await save(CUSTOM_PENPALS_KEY, customPenPals);
+    await save(CUSTOM_PENPALS_KEY, customFriends);
     
     console.log(`✨ 已保存自定义笔友: ${penPal.name}`);
     return true;
@@ -2750,17 +2750,17 @@ export async function saveCustomPenPal(penPal: BottleAI): Promise<boolean> {
 /**
  * 删除自定义笔友（从IndexedDB）
  */
-export async function deleteCustomPenPal(penPalId: string): Promise<boolean> {
+export async function deleteCustomFriend(penPalId: string): Promise<boolean> {
   try {
-    const customPenPals = getCustomPenPals();
-    const filtered = customPenPals.filter(p => p.id !== penPalId);
+    const customFriends = getCustomFriends();
+    const filtered = customFriends.filter(p => p.id !== penPalId);
     
-    if (filtered.length === customPenPals.length) {
+    if (filtered.length === customFriends.length) {
       return false; // 未找到
     }
     
     // 更新缓存
-    customPenPalsCache = filtered;
+    customFriendsCache = filtered;
     
     // 保存到IndexedDB
     const { save } = await import('./storage');
@@ -2777,8 +2777,8 @@ export async function deleteCustomPenPal(penPalId: string): Promise<boolean> {
 /**
  * 获取单个自定义笔友
  */
-export function getCustomPenPalById(penPalId: string): BottleAI | undefined {
-  return getCustomPenPals().find(p => p.id === penPalId);
+export function getCustomFriendById(penPalId: string): BottleAI | undefined {
+  return getCustomFriends().find(p => p.id === penPalId);
 }
 
 /**

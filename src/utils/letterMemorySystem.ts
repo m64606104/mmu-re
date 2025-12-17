@@ -190,7 +190,7 @@ ${memoryText}
 
 ⚠️ 重要说明：
 - 这些是你们通过慢邮件（不是即时聊天）交流的内容
-- 你已经给了对方笔友码，对方通过笔友码加你是预期内的事情
+- 你已经给了对方好友码，对方通过好友码加你是预期内的事情
 - **不需要在第一句话就提及信件内容**，像正常加了新好友一样自然聊天即可
 - 只有在聊天中自然涉及到相关话题时，才可以提及信件里的内容
 - 记住这些信息作为背景，但不要刻意强调"我记得你在信里说过..."
@@ -198,9 +198,9 @@ ${memoryText}
 }
 
 /**
- * 关联笔友码添加的角色与信件记忆
+ * 关联好友码添加的角色与信件记忆
  */
-export function linkPenPalToLetterMemory(conversationId: string, letterId: string): void {
+export function linkFriendToLetterMemory(conversationId: string, letterId: string): void {
   const memories = getAllLetterMemories();
   
   // 通过letterId找到对应的信件，获取aiId

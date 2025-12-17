@@ -13,7 +13,7 @@ import LetterDataManagement from './LetterDataManagement';
 interface LetterBoxScreenProps {
   onBack: () => void;
   onWriteNew: () => void;
-  onToPenPals: () => void;
+  onToFriends: () => void;
   toArchived: () => void;
   onToRecycleBin: () => void;
   onToAchievements: () => void;
@@ -29,7 +29,7 @@ interface LetterBoxScreenProps {
 const LetterBoxScreen: React.FC<LetterBoxScreenProps> = ({
   onBack,
   onWriteNew,
-  onToPenPals,
+  onToFriends,
   onToRecycleBin,
   onToAchievements,
   onToFavorites,
@@ -209,7 +209,7 @@ const LetterBoxScreen: React.FC<LetterBoxScreenProps> = ({
         <div className="flex items-center gap-1 overflow-x-auto scrollbar-hide">
           {/* 我的笔友 */}
           <button
-            onClick={onToPenPals}
+            onClick={onToFriends}
             className="flex flex-col items-center gap-1 px-3 py-2 rounded-xl hover:bg-pink-50 transition-colors flex-shrink-0 min-w-[64px]"
           >
             <div className="w-10 h-10 rounded-full bg-gradient-to-br from-pink-100 to-rose-100 flex items-center justify-center">
@@ -345,12 +345,12 @@ const LetterBoxScreen: React.FC<LetterBoxScreenProps> = ({
                   <div className="flex-1">
                     <div className="font-bold text-gray-800 text-lg">{letter.receiverName}</div>
                     <div className="flex items-center gap-2 mt-1">
-                      {letter.isPenPalAdded && (
+                      {letter.isFriendAdded && (
                         <span className="text-xs bg-gradient-to-r from-pink-400 to-rose-400 text-white px-2.5 py-0.5 rounded-full shadow-sm">
                           ❤️ 笔友
                         </span>
                       )}
-                      {letter.isBottle && !letter.isPenPalAdded && (
+                      {letter.isBottle && !letter.isFriendAdded && (
                         <span className="text-xs bg-gradient-to-r from-blue-400 to-cyan-400 text-white px-2.5 py-0.5 rounded-full shadow-sm">
                           🌊 漂流瓶
                         </span>

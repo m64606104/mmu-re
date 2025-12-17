@@ -32,7 +32,7 @@ export interface Letter {
   conversationRounds: LetterRound[];  // 完整的交流记录（包含来回的信件）
   currentRound: number;  // 当前轮数（从1开始）
   maxRounds: number;  // 最大轮数限制（漂流瓶专属，默认3轮）
-  isPenPalAdded: boolean;  // 是否已加为笔友
+  isFriendAdded: boolean;  // 是否已加为笔友
   
   // 管理相关
   isArchived: boolean;  // 是否已归档（放入回收站）
