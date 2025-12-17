@@ -4,7 +4,7 @@
  */
 
 import { useState, useEffect } from 'react';
-import { ArrowLeft, Send, Clock, Edit2, Check, MessageCircle } from 'lucide-react';
+import { ArrowLeft, Send, Clock, Edit2, Check, MessageCircle, Settings } from 'lucide-react';
 import { 
   getGroupedLetterList, 
   getLettersByReceiver,
@@ -15,6 +15,7 @@ import {
 import { setAINickname, getAINickname } from '../utils/letterNicknameManager';
 import { Letter } from '../types/letter';
 import LetterDetailView from './LetterDetailView';
+import LetterDataManagement from './LetterDataManagement';
 
 import { getAllLetters } from '../utils/letterService';
 
@@ -40,6 +41,7 @@ export default function GroupedLetterBoxScreen({
   const [editingNickname, setEditingNickname] = useState<string | null>(null);
   const [nicknameInput, setNicknameInput] = useState('');
   const [activeTab, setActiveTab] = useState<'all' | 'penpal' | 'bottle' | 'unanswered'>('all');
+  const [showDataManagement, setShowDataManagement] = useState(false);
 
   // 处理初始信件跳转
   useEffect(() => {
@@ -122,6 +124,20 @@ export default function GroupedLetterBoxScreen({
           .sort((a, b) => b.lastActivity - a.lastActivity);
     }
   };
+
+  // 如果显示数据管理界面
+  if (showDataManagement) {
+    return (
+      <LetterDataManagement
+        onClose={() => {
+          setShowDataManagement(false);
+          refreshData(); // 刷新数据以反映可能的导入更改
+        }}
+        letters={getAllLetters()}
+        onRefresh={refreshData}
+      />
+    );
+  }
 
   // 如果选择了具体信件，显示信件详情
   if (selectedLetter) {
@@ -302,12 +318,21 @@ export default function GroupedLetterBoxScreen({
             {letterData.total}个联系人{letterData.unreadTotal > 0 && ` · ${letterData.unreadTotal}条未读`}
           </div>
         </div>
-        <button
-          onClick={onWriteNew}
-          className="p-2 hover:bg-orange-100 rounded-full transition-colors"
-        >
-          <Send size={20} className="text-orange-600" />
-        </button>
+        <div className="flex gap-2">
+          <button
+            onClick={() => setShowDataManagement(true)}
+            className="p-2 hover:bg-gray-100 rounded-full transition-colors"
+            title="数据管理"
+          >
+            <Settings size={20} className="text-gray-600" />
+          </button>
+          <button
+            onClick={onWriteNew}
+            className="p-2 hover:bg-orange-100 rounded-full transition-colors"
+          >
+            <Send size={20} className="text-orange-600" />
+          </button>
+        </div>
       </div>
 
       {/* 筛选标签栏 - 优雅设计 */}
