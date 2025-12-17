@@ -4,13 +4,14 @@
  * 参考慢邮件App的卡片设计
  */
 
-import { ArrowLeft, Check, Zap, UserPlus, FileDown, Trash2, Reply, Star, RotateCcw, MoreVertical, Heart } from 'lucide-react';
+import { ArrowLeft, Check, Zap, UserPlus, FileDown, Trash2, Reply, Star, RotateCcw, MoreVertical, Heart, Share2 } from 'lucide-react';
 import { Letter } from '../types/letter';
 import { getCurrentStamp } from '../utils/stampSystem';
 import { useEffect, useRef, useState } from 'react';
 import { urgeLetter, addAsFriend, canContinueReply, deleteUserLetter, deleteAIReply, getLetterById, favoriteAIReply, generateReply, forceGetFriendCode } from '../utils/letterService';
 import { getAIDisplayName } from '../utils/letterNicknameManager';
 import PDFExportModal from './PDFExportModal';
+import PenPalShareModal from './PenPalShareModal';
 
 interface LetterCardsViewProps {
   letter: Letter;
@@ -29,6 +30,7 @@ export default function LetterCardsView({ letter, onBack, onViewTimeline, userNa
   const [showPDFExport, setShowPDFExport] = useState(false);
   const [viewMode, setViewMode] = useState<'all' | 'sent' | 'reply'>('all');
   const [showRoundMenu, setShowRoundMenu] = useState<number | null>(null);
+  const [showPenPalShare, setShowPenPalShare] = useState(false);
   
   useEffect(() => {
     setLocalLetter(letter);
@@ -230,6 +232,13 @@ export default function LetterCardsView({ letter, onBack, onViewTimeline, userNa
           </div>
         </div>
         <div className="flex gap-2">
+          <button 
+            onClick={() => setShowPenPalShare(true)}
+            className="p-2 hover:bg-purple-100 rounded-full transition-colors"
+            title="分享笔友"
+          >
+            <Share2 size={20} className="text-purple-600" />
+          </button>
           <button 
             onClick={() => setShowPDFExport(true)}
             className="p-2 hover:bg-orange-100 rounded-full transition-colors"
@@ -680,6 +689,14 @@ export default function LetterCardsView({ letter, onBack, onViewTimeline, userNa
         <PDFExportModal
           letter={localLetter}
           onClose={() => setShowPDFExport(false)}
+        />
+      )}
+
+      {showPenPalShare && (
+        <PenPalShareModal
+          letter={localLetter}
+          userName={userName}
+          onClose={() => setShowPenPalShare(false)}
         />
       )}
     </div>

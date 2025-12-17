@@ -7,10 +7,11 @@ import { Conversation } from '../types';
 import { sendLetter, getAllPresetAIs, getCustomFriends, saveCustomFriend, continueReply } from '../utils/letterService';
 import { BottleAI, Letter } from '../types/letter';
 import { getSafeAvatar } from '../utils/avatarHelper';
-import { ArrowLeft, Send, Sparkles, Users, UserPlus } from 'lucide-react';
+import { ArrowLeft, Send, Sparkles, Users, UserPlus, Key } from 'lucide-react';
 import LetterSendingAnimation from './LetterSendingAnimation';
 import CustomFriendCreator from './CustomFriendCreator';
 import LetterMenuDropdown from './LetterMenuDropdown';
+import { findPenPalShareCode, createConversationFromPenPalShare } from '../utils/penPalShareSystem';
 
 interface LetterWritingScreenProps {
   onBack: () => void;
