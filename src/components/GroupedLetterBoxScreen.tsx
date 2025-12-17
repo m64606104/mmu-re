@@ -184,11 +184,59 @@ export default function GroupedLetterBoxScreen({
           </button>
         </div>
 
-        {/* 轮次列表 */}
+        {/* 信件列表 */}
         <div className="flex-1 overflow-y-auto px-4 py-4">
           <div className="max-w-2xl mx-auto space-y-3">
-            {/* 显示所有轮次，倒序排列 */}
-            {selectedGroup && receiverLetters[0] && receiverLetters[0].conversationRounds ? 
+            {/* 如果是匿名信件，显示所有独立的匿名信件；否则显示轮次 */}
+            {selectedGroup && receiverLetters.length > 0 && receiverLetters[0].isAnonymous ? 
+              // 匿名信件：显示每封独立的信
+              receiverLetters.map((anonymousLetter) => {
+                const firstRound = anonymousLetter.conversationRounds[0];
+                const totalRounds = anonymousLetter.conversationRounds.length;
+                const hasReply = anonymousLetter.conversationRounds.some(r => r.aiReply);
+                
+                return (
+                  <div
+                    key={anonymousLetter.id}
+                    onClick={() => handleLetterClick(anonymousLetter)}
+                    className="bg-white rounded-2xl shadow-md hover:shadow-lg transform hover:scale-[1.02] transition-all duration-200 cursor-pointer p-4 border border-gray-100 hover:border-purple-200"
+                  >
+                    <div className="flex items-start justify-between mb-3">
+                      <div className="flex items-center gap-2">
+                        <div className="w-2 h-2 bg-purple-400 rounded-full"></div>
+                        <div className="text-sm font-medium text-gray-800">
+                          第 {anonymousLetter.anonymousSequence || 1} 次寄信
+                        </div>
+                      </div>
+                      <div className="text-xs text-gray-500">
+                        {formatLastActivity(firstRound.userLetter.sentAt)}
+                      </div>
+                    </div>
+                    
+                    <div className="text-sm text-gray-700 line-clamp-2 mb-3">
+                      "{firstRound.userLetter.content}"
+                    </div>
+                    
+                    <div className="flex items-center justify-between text-xs">
+                      <div className="flex items-center gap-2">
+                        <span className={`px-2 py-1 rounded-full flex items-center gap-1 ${hasReply ? 'bg-green-100 text-green-700' : 'bg-orange-100 text-orange-700'}`}>
+                          {hasReply ? <Check size={12} /> : <Clock size={12} />}
+                          {hasReply ? '有回信' : '等待回信'}
+                        </span>
+                        <span className="text-gray-500">
+                          {totalRounds} 轮往来
+                        </span>
+                      </div>
+                      
+                      <div className="text-xs text-gray-400">
+                        点击查看详情 →
+                      </div>
+                    </div>
+                  </div>
+                );
+              })
+            : selectedGroup && receiverLetters[0] && receiverLetters[0].conversationRounds ? 
+              // 非匿名信件：显示所有轮次
               [...receiverLetters[0].conversationRounds].reverse().map((round) => {
                 const letter = receiverLetters[0];
                 
@@ -196,19 +244,15 @@ export default function GroupedLetterBoxScreen({
                 let status = '';
                 let statusColor = '';
                 if (round.aiReply) {
-                  // AI已回复
                   status = '已回复';
                   statusColor = 'bg-green-100 text-green-700';
                 } else if (round.userLetter.willReplyAt && Date.now() < round.userLetter.willReplyAt) {
-                  // 预计回复时间还没到，正在等待中
                   status = '等待回信';
                   statusColor = 'bg-orange-100 text-orange-700';
                 } else if (round.userLetter.willReplyAt && Date.now() >= round.userLetter.willReplyAt) {
-                  // 预计回复时间已过，但AI还没回复
                   status = '未回信';
                   statusColor = 'bg-blue-100 text-blue-700';
                 } else {
-                  // 没有设置willReplyAt（异常情况）
                   status = '等待回信';
                   statusColor = 'bg-orange-100 text-orange-700';
                 }

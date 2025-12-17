@@ -393,14 +393,8 @@ export function sendLetter(
   
   // 🔍 检查是否存在与同一收件人的现有信件（非漂流瓶情况）
   if (!isBottle) {
-    // 🎭 如果是匿名信件，检查是否需要合并
-    if (isAnonymous) {
-      const existingAnonymousLetter = checkAndMergeAnonymousLetters(receiverId);
-      if (existingAnonymousLetter) {
-        console.log('📬 找到现有匿名信件，合并到同一对话:', existingAnonymousLetter.id);
-        return continueExistingLetter(existingAnonymousLetter.id, content, senderName);
-      }
-    } else {
+    // 🎭 匿名信件不再自动合并，每次都创建新的独立信件
+    if (!isAnonymous) {
       // 非匿名信件，按原逻辑查找
       const existingLetters = getLettersFromStorage();
       const existingLetter = existingLetters.find(letter => 
@@ -478,10 +472,29 @@ export function sendLetter(
     }
   }
   
-  // 🎭 生成匿名名字（如果选择匿名）
+  // 🎭 生成匿名名字和关联标记（如果选择匿名）
   let anonymousName: string | undefined;
+  let anonymousUserId: string | undefined;
+  let anonymousSequence: number | undefined;
+  
   if (isAnonymous) {
     anonymousName = generateRandomBottleAI().name;
+    
+    // 生成或获取匿名用户ID（基于真实用户+收件人的组合）
+    const anonymousKey = `anonymous_user_${receiverId}`;
+    anonymousUserId = localStorage.getItem(anonymousKey) || `anon_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    localStorage.setItem(anonymousKey, anonymousUserId);
+    
+    // 计算这是第几次给该角色寄匿名信
+    const existingLetters = getLettersFromStorage();
+    const previousAnonymousLetters = existingLetters.filter(l => 
+      l.receiverId === receiverId && 
+      l.isAnonymous && 
+      l.anonymousUserId === anonymousUserId
+    );
+    anonymousSequence = previousAnonymousLetters.length + 1;
+    
+    console.log(`🎭 匿名信件: 第${anonymousSequence}次给${receiverName}寄信`);
   }
   
   const letter: Letter = {
@@ -515,6 +528,8 @@ export function sendLetter(
     // 匿名相关
     isAnonymous,
     anonymousName,
+    anonymousUserId,
+    anonymousSequence,
     
     // 多轮交流初始化，第一轮也有独立的预计回复时间和催促状态
     conversationRounds: [{

@@ -43,6 +43,8 @@ export interface Letter {
   // 隐私相关
   isAnonymous?: boolean;  // 是否匿名寄信（非漂流瓶也可选择匿名）
   anonymousName?: string;  // 匿名时使用的随机名字
+  anonymousUserId?: string;  // 匿名用户的唯一标识（用于AI识别同一用户）
+  anonymousSequence?: number;  // 该用户给该角色的第几次匿名寄信
   
   // 装饰元素
   stampStyle?: 'default' | 'vintage' | 'flower' | 'sea';  // 邮票样式
