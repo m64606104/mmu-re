@@ -4,11 +4,11 @@
  * 参考慢邮件App的卡片设计
  */
 
-import { ArrowLeft, Check, Zap, UserPlus, FileDown, Trash2, Reply, Star, RotateCcw, MoreVertical } from 'lucide-react';
+import { ArrowLeft, Check, Zap, UserPlus, FileDown, Trash2, Reply, Star, RotateCcw, MoreVertical, Heart } from 'lucide-react';
 import { Letter } from '../types/letter';
 import { getCurrentStamp } from '../utils/stampSystem';
 import { useEffect, useRef, useState } from 'react';
-import { urgeLetter, addAsPenPal, canContinueReply, deleteUserLetter, deleteAIReply, getLetterById, favoriteAIReply, generateReply } from '../utils/letterService';
+import { urgeLetter, addAsPenPal, canContinueReply, deleteUserLetter, deleteAIReply, getLetterById, favoriteAIReply, generateReply, forceGetPenPalCode } from '../utils/letterService';
 import { getAIDisplayName } from '../utils/letterNicknameManager';
 import PDFExportModal from './PDFExportModal';
 
@@ -125,7 +125,24 @@ export default function LetterCardsView({ letter, onBack, onViewTimeline, userNa
     }
   };
   
+  const handleForceGetPenPalCode = () => {
+    const result = forceGetPenPalCode(localLetter.id);
+    if (result.success) {
+      alert(`${result.message}\n\n笔友码：${result.penPalCode}\n\n请查看最新的回信！`);
+      // 刷新信件数据
+      const updatedLetter = getLetterById(localLetter.id);
+      if (updatedLetter) {
+        setLocalLetter(updatedLetter);
+      }
+    } else {
+      alert(result.message);
+    }
+  };
+  
   const replyStatus = canContinueReply(localLetter.id);
+  
+  // 检查是否可以强制获取笔友码（被拒绝3次且未给出）
+  const canForceGetPenPalCode = (localLetter.penPalCodeRejectedCount || 0) >= 3 && !localLetter.penPalCodeGiven;
   
   useEffect(() => {
     if (scrollToRound && roundRefs.current[scrollToRound]) {
@@ -625,6 +642,17 @@ export default function LetterCardsView({ letter, onBack, onViewTimeline, userNa
 
       {/* 悬浮按钮组 */}
       <div className="fixed bottom-6 right-6 z-10 flex flex-col gap-3">
+        {/* 死缠烂打获取笔友码按钮 */}
+        {canForceGetPenPalCode && (
+          <button
+            onClick={handleForceGetPenPalCode}
+            className="w-14 h-14 bg-gradient-to-r from-red-500 to-pink-500 text-white rounded-full shadow-lg hover:shadow-xl transition-all flex items-center justify-center animate-pulse"
+            title="死缠烂打获取笔友码"
+          >
+            <Heart size={24} />
+          </button>
+        )}
+        
         {/* 加为笔友按钮 */}
         {localLetter.isBottle && !localLetter.isPenPalAdded && (
           <button
