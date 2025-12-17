@@ -6,6 +6,7 @@
 import { Letter, BottleAI } from '../types/letter';
 import { Conversation, CharacterSettings } from '../types';
 import { getLettersFromStorage } from './letterService';
+import { updateLetterMemoryFromLetter, linkPenPalToLetterMemory } from './letterMemorySystem';
 
 /**
  * 生成笔友码
@@ -110,8 +111,10 @@ export function createConversationFromLetter(
     disableWorldbook: true,
   };
 
+  const conversationId = `penpal-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+  
   const newConversation: Conversation = {
-    id: `penpal-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+    id: conversationId,
     type: 'private',
     name: bottleAI.name,
     avatar: bottleAI.avatar,
@@ -128,6 +131,15 @@ export function createConversationFromLetter(
     lastMessageTime: Date.now(),
     unreadCount: 0,
   };
+
+  // 🔗 关联信件记忆到这个私聊角色
+  try {
+    updateLetterMemoryFromLetter(letter, conversationId);
+    linkPenPalToLetterMemory(conversationId, letter.id);
+    console.log(`📮 已关联${bottleAI.name}的信件记忆到私聊角色`);
+  } catch (error) {
+    console.error('关联信件记忆失败:', error);
+  }
 
   return newConversation;
 }

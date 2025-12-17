@@ -16,6 +16,7 @@ import {
   generateConversationSummary
 } from './penPalCodeDetector';
 import { generatePenPalCode } from './penPalCodeSystem';
+import { updateLetterMemoryFromLetter } from './letterMemorySystem';
 
 // 📮 预设AI角色池 - 用户可主动选择的固定角色
 export const PRESET_AI_POOL: BottleAI[] = [
@@ -737,6 +738,13 @@ export async function generateReply(letterId: string, retryCount: number = 0, ro
     }
     
     updateLetterInStorage(letter);
+    
+    // 📮 更新信件记忆库
+    try {
+      updateLetterMemoryFromLetter(letter);
+    } catch (error) {
+      console.error('更新信件记忆失败:', error);
+    }
     
     // 触发通知
     console.log(`📬 收到来自 ${letter.receiverName} 的第${targetRound}轮回信！`);
