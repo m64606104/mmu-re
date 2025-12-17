@@ -9,7 +9,7 @@ import { BottleAI, Letter } from '../types/letter';
 import { getSafeAvatar } from '../utils/avatarHelper';
 import { ArrowLeft, Send, Sparkles, Users, UserPlus, Key } from 'lucide-react';
 import LetterSendingAnimation from './LetterSendingAnimation';
-import CustomFriendCreator from './CustomFriendCreator';
+import CustomPenPalCreator from './CustomPenPalCreator';
 import LetterMenuDropdown from './LetterMenuDropdown';
 import { findPenPalShareCode, createConversationFromPenPalShare } from '../utils/penPalShareSystem';
 
@@ -625,7 +625,7 @@ const LetterWritingScreen: React.FC<LetterWritingScreenProps> = ({
       
       {/* 自定义笔友创建器 */}
       {showCustomFriendCreator && (
-        <CustomFriendCreator
+        <CustomPenPalCreator
           onClose={() => setShowCustomFriendCreator(false)}
           onConfirm={handleCreateCustomFriend}
         />

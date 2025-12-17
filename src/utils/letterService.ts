@@ -18,6 +18,7 @@ import {
 import { generateFriendCode } from './friendCodeSystem';
 import { updateLetterMemoryFromLetter } from './letterMemorySystem';
 import { getRandomForceGetMessage } from './friendCodeMessages';
+import { detectAgeFromBottleContent } from './bottleAgeDetector';
 
 // 📮 预设AI角色池 - 用户可主动选择的固定角色
 export const PRESET_AI_POOL: BottleAI[] = [

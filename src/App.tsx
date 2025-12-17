@@ -21,7 +21,7 @@ import OrderHistoryScreen from './components/OrderHistoryScreen';
 import DatabaseScreen from './components/DatabaseScreen';
 import GroupedLetterBoxScreen from './components/GroupedLetterBoxScreen';
 import LetterWritingScreen from './components/LetterWritingScreen';
-import FriendListScreen from './components/FriendListScreen';
+import PenPalListScreen from './components/PenPalListScreen';
 import ArchivedLettersScreen from './components/ArchivedLettersScreen';
 import FavoriteLettersScreen from './components/FavoriteLettersScreen';
 import AchievementScreen from './components/AchievementScreen';
@@ -1120,7 +1120,7 @@ function App() {
         );
       case 'pen-pals':
         return (
-          <FriendListScreen
+          <PenPalListScreen
             onBack={() => navigateTo('letter-writing')}
             onWriteTo={() => {
               // 跟转到写信页面

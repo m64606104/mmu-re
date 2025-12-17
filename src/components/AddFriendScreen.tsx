@@ -14,10 +14,10 @@ interface AddFriendScreenProps {
   }) => void;
   onBack: () => void;
   conversations?: Conversation[]; // 用于好友码添加
-  onAddFriend?: (conversation: Conversation) => void; // 好友码添加回调
+  onAddPenPal?: (conversation: Conversation) => void; // 好友码添加回调
 }
 
-export default function AddFriendScreen({ onAddFriend, onBack, conversations, onAddFriend }: AddFriendScreenProps) {
+export default function AddFriendScreen({ onAddFriend, onBack, conversations, onAddPenPal }: AddFriendScreenProps) {
   const [nickname, setNickname] = useState('');
   const [username, setUsername] = useState('');
   const [avatar, setAvatar] = useState('');
@@ -62,7 +62,7 @@ export default function AddFriendScreen({ onAddFriend, onBack, conversations, on
       return;
     }
 
-    if (!conversations || !onAddFriend) {
+    if (!conversations || !onAddPenPal) {
       alert('好友码功能未启用');
       return;
     }
@@ -88,7 +88,7 @@ export default function AddFriendScreen({ onAddFriend, onBack, conversations, on
       }
 
       // 调用回调
-      onAddFriend(newConversation);
+      onAddPenPal(newConversation);
       
       alert(`✅ 成功添加笔友 ${newConversation.name}！\n\n可以开始聊天了`);
       onBack();

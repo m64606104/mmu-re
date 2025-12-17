@@ -8,6 +8,7 @@ import { generateXianyuStyleName } from './randomNameGenerator';
 import { generateAgeAppropriateBottle } from './ageAppropriateBottleGenerator';
 import { recordBottleContent, evaluateContentDiversity } from './bottleContentDiversityManager';
 import { generateIntelligentBottle, checkAPIAvailability } from './intelligentBottleGenerator';
+import { generateBottleTrash, type BottleTrash } from './bottleTrash';
 
 const FISHING_STORAGE_KEY = 'bottle_fishing_record';
 const STATS_STORAGE_KEY = 'bottle_stats';
@@ -523,25 +524,26 @@ export function generateRandomBottleOld(): BottleLetter {
 
 /**
  * 智能生成漂流瓶内容 (异步版本)
+ * 失败时返回垃圾而非简略内容
  */
-export async function generateRandomBottleAsync(): Promise<BottleLetter> {
-  let bottle: BottleLetter;
+export async function generateRandomBottleAsync(): Promise<BottleLetter | BottleTrash> {
+  let bottle: BottleLetter | null = null;
   let attempts = 0;
   const maxAttempts = 3;
   
   // 检查API是否可用
   const apiAvailable = checkAPIAvailability();
   
+  if (!apiAvailable) {
+    console.warn('API不可用，返回垃圾');
+    return generateBottleTrash();
+  }
+  
   // 尝试生成高质量内容
   do {
     try {
-      if (apiAvailable && Math.random() < 0.9) {
-        // 90% 概率使用AI智能生成
-        bottle = await generateIntelligentBottle();
-      } else {
-        // 降级到年龄匹配生成器
-        bottle = generateAgeAppropriateBottle();
-      }
+      // 使用AI智能生成
+      bottle = await generateIntelligentBottle();
       
       // 评估多样性
       const diversity = evaluateContentDiversity(bottle);
@@ -549,12 +551,17 @@ export async function generateRandomBottleAsync(): Promise<BottleLetter> {
         break;
       }
     } catch (error) {
-      console.warn('智能生成失败，使用降级方案:', error);
-      bottle = generateAgeAppropriateBottle();
-      break;
+      console.warn(`智能生成失败 (尝试 ${attempts + 1}/${maxAttempts}):`, error);
+      bottle = null;
     }
     attempts++;
   } while (attempts < maxAttempts);
+  
+  // 如果所有尝试都失败，返回垃圾
+  if (!bottle) {
+    console.warn('所有生成尝试失败，返回垃圾');
+    return generateBottleTrash();
+  }
   
   // 记录生成的内容
   recordBottleContent(bottle);
@@ -595,7 +602,7 @@ export function generateRandomBottle(): BottleLetter {
 /**
  * 智能打捞漂流瓶 (异步版本，推荐使用)
  */
-export async function fishBottleIntelligent(): Promise<{ success: boolean; bottle?: BottleLetter; error?: string }> {
+export async function fishBottleIntelligent(): Promise<{ success: boolean; bottle?: BottleLetter; trash?: BottleTrash; error?: string }> {
   const check = canFishToday();
   
   if (!check.can) {
@@ -604,7 +611,17 @@ export async function fishBottleIntelligent(): Promise<{ success: boolean; bottl
   
   try {
     // 智能生成漂流瓶
-    const bottle = await generateRandomBottleAsync();
+    const result = await generateRandomBottleAsync();
+    
+    // 检查是否是垃圾
+    if ('type' in result && result.type === 'trash') {
+      // 捞到垃圾，不消耗次数，不更新记录
+      console.log('捞到垃圾:', result.name);
+      return { success: true, trash: result };
+    }
+    
+    // 捞到真正的漂流瓶
+    const bottle = result as BottleLetter;
     
     // 更新打捞记录
     const record = getTodayFishingRecord();
@@ -630,8 +647,8 @@ export async function fishBottleIntelligent(): Promise<{ success: boolean; bottl
     return { success: true, bottle };
   } catch (error) {
     console.error('智能打捞失败:', error);
-    // 降级到同步版本
-    return fishBottle();
+    // 返回垃圾
+    return { success: true, trash: generateBottleTrash() };
   }
 }
 
