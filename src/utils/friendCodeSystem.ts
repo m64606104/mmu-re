@@ -22,7 +22,7 @@ export function generateFriendCode(receiverId: string): string {
  * 验证好友码格式
  */
 export function validateFriendCodeFormat(code: string): boolean {
-  const pattern = /^PENPAL-[A-Z0-9]{8}-[A-Z0-9]{4}$/;
+  const pattern = /^PENPAL-[A-Z0-9_]{1,20}-[A-Z0-9]{4}$/;
   return pattern.test(code);
 }
 

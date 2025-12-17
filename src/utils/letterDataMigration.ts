@@ -65,11 +65,17 @@ export function exportSingleLetter(letterId: string): Letter | null {
 /**
  * 导出多个信件
  */
-export function exportMultipleLetters(letterIds: string[]): Letter[] {
-  const lettersJson = localStorage.getItem('slow_letters');
-  if (!lettersJson) return [];
+export function exportMultipleLetters(letterIds: string[], sourceLetters?: Letter[]): Letter[] {
+  let letters: Letter[] = [];
   
-  const letters: Letter[] = JSON.parse(lettersJson);
+  if (sourceLetters) {
+    letters = sourceLetters;
+  } else {
+    const lettersJson = localStorage.getItem('slow_letters');
+    if (!lettersJson) return [];
+    letters = JSON.parse(lettersJson);
+  }
+  
   return letters.filter(l => letterIds.includes(l.id));
 }
 

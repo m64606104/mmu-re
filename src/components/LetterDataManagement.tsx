@@ -72,7 +72,7 @@ const LetterDataManagement: React.FC<LetterDataManagementProps> = ({
       return;
     }
 
-    const result = exportAndDownloadMultiple(Array.from(selectedLetterIds));
+    const result = exportAndDownloadMultiple(Array.from(selectedLetterIds), letters);
     if (result.success) {
       setMessage({
         type: 'success',
