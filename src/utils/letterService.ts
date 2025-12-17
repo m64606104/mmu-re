@@ -17,6 +17,7 @@ import {
 } from './penPalCodeDetector';
 import { generatePenPalCode } from './penPalCodeSystem';
 import { updateLetterMemoryFromLetter } from './letterMemorySystem';
+import { getRandomForceGetMessage } from './penPalCodeMessages';
 
 // 📮 预设AI角色池 - 用户可主动选择的固定角色
 export const PRESET_AI_POOL: BottleAI[] = [
@@ -2430,6 +2431,93 @@ export function addAsPenPal(letterId: string): boolean {
   console.log(`💌 已将 ${letter.receiverName} 加为笔友！`);
   
   return true;
+}
+
+/**
+ * 强制获取笔友码（被拒绝3次后）
+ */
+export function forceGetPenPalCode(letterId: string): {
+  success: boolean;
+  message: string;
+  penPalCode?: string;
+} {
+  const letters = getLettersFromStorage();
+  const letter = letters.find(l => l.id === letterId);
+  
+  if (!letter) {
+    return {
+      success: false,
+      message: '信件不存在'
+    };
+  }
+  
+  // 检查是否被拒绝3次
+  if ((letter.penPalCodeRejectedCount || 0) < 3) {
+    return {
+      success: false,
+      message: `还需要被拒绝${3 - (letter.penPalCodeRejectedCount || 0)}次才能强制获取`
+    };
+  }
+  
+  // 生成笔友码
+  if (!letter.penPalCode) {
+    letter.penPalCode = generatePenPalCode(letter.receiverId);
+  }
+  
+  // 标记为已给出
+  letter.penPalCodeGiven = true;
+  
+  // 创建一封系统回信，包含笔友码
+  const now = Date.now();
+  const systemMessage = getRandomForceGetMessage();
+  const fullMessage = `${systemMessage}\n\n笔友码：${letter.penPalCode}\n\n你可以在私聊软件中使用这个笔友码添加我为好友。`;
+  
+  // 添加到最后一轮的AI回复（如果还没有回复）
+  const lastRound = letter.conversationRounds[letter.conversationRounds.length - 1];
+  if (!lastRound.aiReply) {
+    lastRound.aiReply = {
+      content: fullMessage,
+      repliedAt: now
+    };
+    letter.status = 'replied';
+    letter.replyContent = fullMessage;
+    letter.repliedAt = now;
+  } else {
+    // 如果已经有回复，创建新一轮
+    const newRound: LetterRound = {
+      roundNumber: letter.currentRound + 1,
+      userLetter: {
+        content: '[系统：强制获取笔友码]',
+        sentAt: now
+      },
+      aiReply: {
+        content: fullMessage,
+        repliedAt: now
+      }
+    };
+    letter.conversationRounds.push(newRound);
+    letter.currentRound++;
+    letter.status = 'replied';
+    letter.replyContent = fullMessage;
+    letter.repliedAt = now;
+  }
+  
+  updateLetterInStorage(letter);
+  
+  // 更新信件记忆
+  try {
+    updateLetterMemoryFromLetter(letter);
+  } catch (error) {
+    console.error('更新信件记忆失败:', error);
+  }
+  
+  console.log(`🎫 强制获取笔友码成功: ${letter.penPalCode}`);
+  
+  return {
+    success: true,
+    message: systemMessage,
+    penPalCode: letter.penPalCode
+  };
 }
 
 /**
