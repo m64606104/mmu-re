@@ -47,6 +47,9 @@ export interface Letter {
   // 装饰元素
   stampStyle?: 'default' | 'vintage' | 'flower' | 'sea';  // 邮票样式
   paperStyle?: 'white' | 'vintage' | 'blue';  // 信纸样式
+  
+  // 笔友码系统
+  penPalCode?: string;  // 笔友码，用于添加为私聊好友
 }
 
 // 单轮交流记录

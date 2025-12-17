@@ -13,10 +13,12 @@ const ANONYMOUS_USER_ID = 'anonymous_user'; // 统一的匿名用户ID
 /**
  * 合并匿名信件
  * 将所有发给同一角色的匿名信件合并到一个统一的匿名ID下
+ * @param autoRun 是否自动运行（应用启动时调用）
  */
-export function mergeAnonymousLetters(): {
+export function mergeAnonymousLetters(autoRun: boolean = false): {
   merged: number;
   totalAnonymous: number;
+  details: Array<{ receiverName: string; count: number }>;
 } {
   const letters = getLettersFromStorage();
   
@@ -24,8 +26,8 @@ export function mergeAnonymousLetters(): {
   const anonymousLettersByReceiver = new Map<string, Letter[]>();
   
   letters.forEach(letter => {
-    // 只处理匿名信件（非漂流瓶）
-    if (letter.isAnonymous && !letter.isBottle && letter.senderId === 'user') {
+    // 只处理匿名信件（非漂流瓶且未归档）
+    if (letter.isAnonymous && !letter.isBottle && letter.senderId === 'user' && !letter.isArchived) {
       const receiverId = letter.receiverId;
       
       if (!anonymousLettersByReceiver.has(receiverId)) {
@@ -39,6 +41,7 @@ export function mergeAnonymousLetters(): {
   let mergedCount = 0;
   const totalAnonymous = Array.from(anonymousLettersByReceiver.values())
     .reduce((sum, letters) => sum + letters.length, 0);
+  const details: Array<{ receiverName: string; count: number }> = [];
   
   // 对每个收件人的匿名信件进行合并
   anonymousLettersByReceiver.forEach((receiverLetters, receiverId) => {
@@ -78,13 +81,25 @@ export function mergeAnonymousLetters(): {
       // 更新主信件
       updateLetterInStorage(mainLetter);
       
-      console.log(`📬 合并了 ${receiverLetters.length} 封发给 ${mainLetter.receiverName} 的匿名信件`);
+      details.push({
+        receiverName: mainLetter.receiverName,
+        count: receiverLetters.length
+      });
+      
+      if (!autoRun) {
+        console.log(`📬 合并了 ${receiverLetters.length} 封发给 ${mainLetter.receiverName} 的匿名信件`);
+      }
     }
   });
   
+  if (!autoRun && mergedCount > 0) {
+    console.log(`✅ 总共合并了 ${mergedCount} 封匿名信件`);
+  }
+  
   return {
     merged: mergedCount,
-    totalAnonymous
+    totalAnonymous,
+    details
   };
 }
 

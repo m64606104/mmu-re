@@ -234,6 +234,8 @@ export interface CharacterSettings {
   };
   // 📚 世界书禁用开关
   disableWorldbook?: boolean; // 是否禁用世界书（默认false）
+  // 📮 笔友来源标记
+  penPalSourceLetterId?: string; // 如果是从信箱笔友添加的，记录来源信件ID
 }
 
 // 气泡装饰配置接口
