@@ -50,6 +50,9 @@ export interface Letter {
   
   // 笔友码系统
   penPalCode?: string;  // 笔友码，用于添加为私聊好友
+  penPalCodeRequestCount?: number;  // 用户请求笔友码的次数
+  penPalCodeRejectedCount?: number;  // AI拒绝给出笔友码的次数
+  penPalCodeGiven?: boolean;  // 是否已经给出笔友码
 }
 
 // 单轮交流记录

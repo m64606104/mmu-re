@@ -8,6 +8,14 @@ import { checkLetterAchievements } from './achievementSystem';
 import { getCachedData, setCachedData, save } from './storage';
 import { checkAndMergeAnonymousLetters } from './anonymousLetterMerger';
 import { cleanAIMessage } from './messageFormatter';
+import { 
+  detectPenPalCodeRequest, 
+  generatePenPalCodeJudgmentPrompt,
+  detectPenPalCodeGiven,
+  replacePenPalCodeMarker,
+  generateConversationSummary
+} from './penPalCodeDetector';
+import { generatePenPalCode } from './penPalCodeSystem';
 
 // 📮 预设AI角色池 - 用户可主动选择的固定角色
 export const PRESET_AI_POOL: BottleAI[] = [
@@ -1190,6 +1198,28 @@ ${ageProfile.notKnowingExamples.map(e => `  • ${e}`).join('\n')}
 `;
   }
 
+  // 🎫 检测是否请求笔友码
+  const isPenPalCodeRequest = detectPenPalCodeRequest(currentRound.userLetter.content);
+  let penPalCodePrompt = '';
+  
+  if (isPenPalCodeRequest) {
+    // 初始化计数器
+    if (!letter.penPalCodeRequestCount) letter.penPalCodeRequestCount = 0;
+    if (!letter.penPalCodeRejectedCount) letter.penPalCodeRejectedCount = 0;
+    
+    letter.penPalCodeRequestCount++;
+    
+    // 生成对话历史摘要
+    const conversationSummary = generateConversationSummary(letter.conversationRounds);
+    
+    // 添加笔友码判断提示
+    penPalCodePrompt = generatePenPalCodeJudgmentPrompt(
+      currentRound.userLetter.content,
+      targetRoundNumber,
+      conversationSummary
+    );
+  }
+
   const prompt = `${personality}
 
 ${roundInfo}${historyContext}${bottleContext}${ageGuidance}
@@ -1199,6 +1229,8 @@ ${senderInfo}
 
 【对方本轮的来信内容】:
 ${currentRound.userLetter.content}
+
+${penPalCodePrompt}
 
 ---
 
@@ -1517,6 +1549,31 @@ ${aiProfile.customBackground}
 
   // 清理AI回复中的Markdown/引用/链接等不自然内容
   replyContent = cleanAIMessage(replyContent);
+  
+  // 🎫 处理笔友码
+  if (isPenPalCodeRequest) {
+    const isGiven = detectPenPalCodeGiven(replyContent);
+    
+    if (isGiven) {
+      // AI同意给出笔友码
+      if (!letter.penPalCode) {
+        letter.penPalCode = generatePenPalCode(letter.receiverId);
+      }
+      
+      // 替换标记为实际笔友码
+      replyContent = replacePenPalCodeMarker(replyContent, letter.penPalCode);
+      letter.penPalCodeGiven = true;
+      
+      console.log(`🎫 AI同意给出笔友码: ${letter.penPalCode}`);
+    } else {
+      // AI拒绝给出笔友码
+      letter.penPalCodeRejectedCount = (letter.penPalCodeRejectedCount || 0) + 1;
+      console.log(`❌ AI拒绝给出笔友码（第${letter.penPalCodeRejectedCount}次）`);
+    }
+    
+    // 保存更新后的信件
+    updateLetterInStorage(letter);
+  }
   
   // 根据性格类型和动机验证字数
   let minLength = 100;

@@ -212,6 +212,20 @@ function App() {
         }
       }
 
+      // 📮 自动合并匿名信件
+      try {
+        const { mergeAnonymousLetters } = await import('./utils/anonymousLetterMerger');
+        const mergeResult = mergeAnonymousLetters(true); // true表示自动运行
+        if (mergeResult.merged > 0) {
+          console.log(`📬 自动合并了${mergeResult.merged}封匿名信件`);
+          mergeResult.details.forEach(detail => {
+            console.log(`  - ${detail.receiverName}: ${detail.count}封信件合并`);
+          });
+        }
+      } catch (error) {
+        console.error('❌ 匿名信件合并失败:', error);
+      }
+
       // 💰 智能财务系统：批量激活所有AI
       if (loadedConversations.length > 0 && apiConfig) {
         try {
