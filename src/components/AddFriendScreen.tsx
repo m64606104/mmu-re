@@ -1,5 +1,6 @@
 import { useState, useRef } from 'react';
-import { ChevronLeft, Upload } from 'lucide-react';
+import { ChevronLeft, Upload, Key } from 'lucide-react';
+import { Conversation } from '../types';
 
 interface AddFriendScreenProps {
   onAddFriend: (friendData: {
@@ -12,9 +13,11 @@ interface AddFriendScreenProps {
     languageExample: string;
   }) => void;
   onBack: () => void;
+  conversations?: Conversation[]; // 用于笔友码添加
+  onAddPenPal?: (conversation: Conversation) => void; // 笔友码添加回调
 }
 
-export default function AddFriendScreen({ onAddFriend, onBack }: AddFriendScreenProps) {
+export default function AddFriendScreen({ onAddFriend, onBack, conversations, onAddPenPal }: AddFriendScreenProps) {
   const [nickname, setNickname] = useState('');
   const [username, setUsername] = useState('');
   const [avatar, setAvatar] = useState('');
@@ -22,6 +25,7 @@ export default function AddFriendScreen({ onAddFriend, onBack }: AddFriendScreen
   const [personality, setPersonality] = useState('');
   const [languageStyle, setLanguageStyle] = useState('');
   const [languageExample, setLanguageExample] = useState('');
+  const [penPalCode, setPenPalCode] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleAvatarUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -52,6 +56,48 @@ export default function AddFriendScreen({ onAddFriend, onBack }: AddFriendScreen
     });
   };
 
+  const handleAddByPenPalCode = async () => {
+    if (!penPalCode.trim()) {
+      alert('请输入笔友码');
+      return;
+    }
+
+    if (!conversations || !onAddPenPal) {
+      alert('笔友码功能未启用');
+      return;
+    }
+
+    try {
+      // 动态导入笔友码系统
+      const { findLetterByPenPalCode, createConversationFromLetter } = await import('../utils/penPalCodeSystem');
+      
+      // 查找信件
+      const letter = findLetterByPenPalCode(penPalCode.trim().toUpperCase());
+      
+      if (!letter) {
+        alert('❌ 笔友码无效\n\n请检查笔友码是否正确');
+        return;
+      }
+
+      // 创建私聊角色
+      const newConversation = createConversationFromLetter(letter, conversations);
+      
+      if (!newConversation) {
+        alert('❌ 该笔友已经添加过了');
+        return;
+      }
+
+      // 调用回调
+      onAddPenPal(newConversation);
+      
+      alert(`✅ 成功添加笔友 ${newConversation.name}！\n\n可以开始聊天了`);
+      onBack();
+    } catch (error) {
+      console.error('添加笔友失败:', error);
+      alert('❌ 添加失败：' + (error instanceof Error ? error.message : String(error)));
+    }
+  };
+
   return (
     <div className="h-full bg-gray-50 flex flex-col">
       {/* Header */}
@@ -64,6 +110,41 @@ export default function AddFriendScreen({ onAddFriend, onBack }: AddFriendScreen
 
       {/* Content */}
       <div className="flex-1 overflow-y-auto p-4 space-y-4">
+        {/* 笔友码输入 */}
+        <div className="bg-gradient-to-r from-orange-50 to-amber-50 border-2 border-orange-200 rounded-lg shadow-sm p-4">
+          <div className="flex items-center gap-2 mb-3">
+            <Key className="w-5 h-5 text-orange-600" />
+            <label className="block text-sm font-semibold text-orange-900">
+              通过笔友码添加
+            </label>
+          </div>
+          <p className="text-xs text-orange-700 mb-3">
+            📮 如果你收到了笔友的笔友码，可以在这里输入添加为好友
+          </p>
+          <div className="flex gap-2">
+            <input
+              type="text"
+              value={penPalCode}
+              onChange={(e) => setPenPalCode(e.target.value.toUpperCase())}
+              placeholder="输入笔友码（如：PENPAL-PRESET12-AB3C）"
+              className="flex-1 px-3 py-2 border-2 border-orange-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 font-mono text-sm"
+            />
+            <button
+              onClick={handleAddByPenPalCode}
+              className="px-4 py-2 bg-orange-500 text-white rounded-lg font-medium hover:bg-orange-600 active:bg-orange-700 transition-colors whitespace-nowrap"
+            >
+              添加
+            </button>
+          </div>
+        </div>
+
+        {/* 分隔线 */}
+        <div className="flex items-center gap-3">
+          <div className="flex-1 h-px bg-gray-300"></div>
+          <span className="text-sm text-gray-500">或手动创建角色</span>
+          <div className="flex-1 h-px bg-gray-300"></div>
+        </div>
+
         {/* Avatar */}
         <div className="bg-white rounded-lg shadow-sm p-4">
           <label className="block text-sm font-medium text-gray-700 mb-3">
