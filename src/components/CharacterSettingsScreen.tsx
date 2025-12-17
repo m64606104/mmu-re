@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
-import { ChevronLeft, Upload, Brain, Trash2, Download, FileUp, Zap, X, Camera, RefreshCw, BookOpen, Plus, Edit, FileText, Users, Video, Image as ImageIcon, Book, MessagesSquare } from 'lucide-react';
+import { ChevronLeft, Upload, Brain, Trash2, Download, FileUp, Zap, X, Camera, RefreshCw, BookOpen, Plus, Edit, FileText, Users, Video, Image as ImageIcon, Book, MessagesSquare, Palette } from 'lucide-react';
 import { Conversation, ApiConfig, KnowledgeBaseItem, BubbleDecoration } from '../types';
 import { WorldbookMountConfig } from '../types/worldbook';
 import MemoryManager from './MemoryManager';
@@ -9,6 +9,7 @@ import CallHistoryModal from './CallHistoryModal';
 import RelationshipManagementScreen from './RelationshipManagementScreen';
 import { addMomentPost } from '../utils/aiMomentsGenerator';
 import { parseComplexFrequencyRules, getCurrentFrequencyRule, getRulesSummary } from '../utils/momentsFrequencyParser';
+import { bubbleStylePresets, getAllCategories, type BubbleStylePreset } from '../utils/bubbleStylePresets';
 import '../styles/relationshipAnimations.css';
 
 interface CharacterSettingsScreenProps {
@@ -140,6 +141,10 @@ export default function CharacterSettingsScreen({
     offsetX: 0,
     offsetY: -10
   });
+  
+  // 气泡样式库状态
+  const [showStyleLibrary, setShowStyleLibrary] = useState(false);
+  const [selectedCategory, setSelectedCategory] = useState<BubbleStylePreset['category']>('渐变');
   const [isParsingFile, setIsParsingFile] = useState(false);
   const [doiInput, setDoiInput] = useState('');
   const [isFetchingDOI, setIsFetchingDOI] = useState(false);
@@ -1016,6 +1021,18 @@ export default function CharacterSettingsScreen({
                     </div>
                   </div>
                 )}
+              </div>
+              
+              {/* 样式库按钮 */}
+              <div className="flex items-center gap-2 mb-2">
+                <button
+                  onClick={() => setShowStyleLibrary(true)}
+                  className="flex items-center gap-2 px-3 py-2 bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 text-white text-sm rounded-lg transition-all active:scale-95"
+                >
+                  <Palette className="w-4 h-4" />
+                  <span>气泡样式库</span>
+                </button>
+                <span className="text-xs text-gray-500">12个精选预设，一键应用</span>
               </div>
               
               <textarea
@@ -2334,6 +2351,115 @@ export default function CharacterSettingsScreen({
               >
                 取消
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 🎨 气泡样式库弹窗 */}
+      {showStyleLibrary && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-4xl max-h-[90vh] overflow-hidden flex flex-col">
+            {/* 头部 */}
+            <div className="px-6 py-4 border-b border-gray-200 flex items-center justify-between bg-gradient-to-r from-purple-50 to-pink-50">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center">
+                  <Palette className="w-5 h-5 text-white" />
+                </div>
+                <div>
+                  <h2 className="text-lg font-bold text-gray-900">气泡样式库</h2>
+                  <p className="text-xs text-gray-500">选择预设样式，一键应用到聊天气泡</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setShowStyleLibrary(false)}
+                className="p-2 hover:bg-white/50 rounded-lg transition-colors"
+              >
+                <X className="w-5 h-5 text-gray-500" />
+              </button>
+            </div>
+
+            {/* 分类标签 */}
+            <div className="px-6 py-3 border-b border-gray-200 bg-gray-50">
+              <div className="flex gap-2 overflow-x-auto">
+                {getAllCategories().map(category => (
+                  <button
+                    key={category}
+                    onClick={() => setSelectedCategory(category)}
+                    className={`px-4 py-2 rounded-lg text-sm font-medium whitespace-nowrap transition-all ${
+                      selectedCategory === category
+                        ? 'bg-gradient-to-r from-purple-500 to-pink-500 text-white shadow-md'
+                        : 'bg-white text-gray-600 hover:bg-gray-100'
+                    }`}
+                  >
+                    {category}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* 样式列表 */}
+            <div className="flex-1 overflow-y-auto p-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {bubbleStylePresets
+                  .filter(preset => preset.category === selectedCategory)
+                  .map(preset => (
+                    <div
+                      key={preset.id}
+                      className="border border-gray-200 rounded-xl p-4 hover:border-purple-300 hover:shadow-lg transition-all cursor-pointer group"
+                      onClick={() => {
+                        setCustomBubbleCss(preset.css);
+                        setShowStyleLibrary(false);
+                      }}
+                    >
+                      {/* 预览区 */}
+                      <div className="mb-3 p-3 bg-gray-50 rounded-lg space-y-2">
+                        <div className="flex justify-end">
+                          <div
+                            className="px-3 py-2 rounded-2xl text-xs text-white max-w-[70%]"
+                            style={{ background: preset.preview.userBg }}
+                          >
+                            用户消息预览
+                          </div>
+                        </div>
+                        <div className="flex justify-start">
+                          <div
+                            className="px-3 py-2 rounded-2xl text-xs max-w-[70%]"
+                            style={{ 
+                              background: preset.preview.aiBg,
+                              color: preset.preview.aiBg === 'transparent' ? '#374151' : undefined
+                            }}
+                          >
+                            AI消息预览
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* 信息 */}
+                      <div className="space-y-1">
+                        <h3 className="font-semibold text-gray-900 flex items-center justify-between">
+                          {preset.name}
+                          <span className="text-xs px-2 py-0.5 bg-purple-100 text-purple-600 rounded-full">
+                            {preset.category}
+                          </span>
+                        </h3>
+                        <p className="text-xs text-gray-500">{preset.description}</p>
+                      </div>
+
+                      {/* 应用按钮 */}
+                      <button className="mt-3 w-full py-2 bg-gradient-to-r from-purple-500 to-pink-500 text-white text-sm rounded-lg opacity-0 group-hover:opacity-100 transition-opacity">
+                        点击应用此样式
+                      </button>
+                    </div>
+                  ))}
+              </div>
+            </div>
+
+            {/* 底部提示 */}
+            <div className="px-6 py-3 border-t border-gray-200 bg-gray-50">
+              <p className="text-xs text-gray-500 text-center">
+                💡 提示：点击任意样式卡片即可应用到聊天气泡，应用后可在编辑框中继续调整
+              </p>
             </div>
           </div>
         </div>

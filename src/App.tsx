@@ -179,6 +179,7 @@ function App() {
                 languageStyle: '偶尔会使用网络用语，语气轻松活泼',
                 languageExample: '哈哈哈太好笑了吧！今天又在小红书上刷到好多有趣的东西～',
                 memoryEvents: '',
+                disableWorldbook: true, // 预设角色默认关闭世界书
               },
               enabledFeatures: ['memory-system'], // 默认启用记忆系统
               lastMessageTime: Date.now(),
@@ -199,6 +200,7 @@ function App() {
                 languageStyle: '',
                 languageExample: '',
                 memoryEvents: '',
+                disableWorldbook: true, // 预设角色默认关闭世界书
               },
               enabledFeatures: ['memory-system'], // 默认启用记忆系统
               lastMessageTime: Date.now(),
@@ -250,6 +252,31 @@ function App() {
               console.log('👨‍👩‍👧‍👦 检测到AI儿童需要更新用户称呼设置，开始修复硬编码"妈妈"问题...');
               const titleResult = await updateAllUserTitleReferences();
               console.log(`✅ 用户称呼优化完成: 更新了${titleResult.updatedAI}个AI，现在会使用个性化称呼！`);
+            }
+            
+            // 📚 批量关闭所有现有角色的世界书
+            console.log('📚 开始批量关闭所有现有角色的世界书...');
+            let worldbookDisabledCount = 0;
+            const updatedConversations = loadedConversations.map(conv => {
+              if (conv.characterSettings && conv.characterSettings.disableWorldbook !== true) {
+                worldbookDisabledCount++;
+                return {
+                  ...conv,
+                  characterSettings: {
+                    ...conv.characterSettings,
+                    disableWorldbook: true
+                  }
+                };
+              }
+              return conv;
+            });
+            
+            if (worldbookDisabledCount > 0) {
+              setConversations(updatedConversations);
+              await save('conversations', updatedConversations);
+              console.log(`✅ 世界书批量关闭完成: 已为${worldbookDisabledCount}个角色关闭世界书`);
+            } else {
+              console.log('✅ 所有角色的世界书已经是关闭状态');
             }
             
             // 📊 修复理解力数据显示问题
@@ -798,6 +825,7 @@ function App() {
         languageStyle: friendData.languageStyle,
         languageExample: friendData.languageExample,
         memoryEvents: '',
+        disableWorldbook: true, // 新建角色默认关闭世界书
       },
       enabledFeatures: ['memory-system'], // 默认启用记忆系统
       lastMessageTime: Date.now(),
