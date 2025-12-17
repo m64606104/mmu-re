@@ -1176,8 +1176,39 @@ ${allDetails}
   let senderInfo = '';
   
   if (letter.isAnonymous) {
+    // 检查是否有其他来自同一匿名用户的信件
+    const allLetters = getLettersFromStorage();
+    const sameUserLetters = allLetters.filter(l => 
+      l.receiverId === letter.receiverId && 
+      l.isAnonymous && 
+      l.anonymousUserId === letter.anonymousUserId &&
+      l.id !== letter.id
+    ).sort((a, b) => (a.anonymousSequence || 0) - (b.anonymousSequence || 0));
+    
     if (isRevealingIdentity) {
       senderInfo = `⚠️ 重要：这封信来自之前的匿名寄信人"${letter.anonymousName}"，但在这封信中，ta主动透露了自己的身份或表示不再匿名。请仔细阅读信件内容中的身份信息，并适当地回应这种身份转换。你应该意识到这可能是你们之前通过匿名方式认识的那个人。`;
+    } else if (sameUserLetters.length > 0) {
+      // 有来自同一用户的其他匿名信
+      const previousContents = sameUserLetters.map(l => {
+        const firstRound = l.conversationRounds[0];
+        return `第${l.anonymousSequence}次寄信: "${firstRound.userLetter.content.substring(0, 100)}${firstRound.userLetter.content.length > 100 ? '...' : ''}"`;
+      }).join('\n');
+      
+      senderInfo = `⚠️ 重要身份信息：这是一封匿名信，寄信人使用化名"${letter.anonymousName}"。
+
+🔍 关键：虽然每次都是匿名，但这是**同一个人**给你的第${letter.anonymousSequence}次匿名来信！
+
+📮 ta之前给你寄过的信：
+${previousContents}
+
+💡 你应该：
+- 意识到这些匿名信都来自同一个人
+- 可以在回信中自然地提及"你之前也给我写过信"
+- 可以引用之前信件中的内容
+- 但不要直接说出ta的真实身份（因为ta选择匿名）
+- 保持对ta匿名选择的尊重
+
+当前这封信是ta的第${letter.anonymousSequence}次来信，内容可能与之前有关联。`;
     } else {
       senderInfo = `这是一封来自陌生人的匿名信，寄信人使用化名"${letter.anonymousName}"，你不认识ta。这是一个完全陌生的笔友，你们之前没有任何关系。`;
     }

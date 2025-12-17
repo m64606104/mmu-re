@@ -355,7 +355,10 @@ export default function LetterCardsView({ letter, onBack, onViewTimeline, userNa
                       <div className="flex items-center gap-2">
                         <Check size={16} className="text-green-600" />
                         <span className="text-sm font-medium text-gray-700">
-                          第 {round.roundNumber} 轮 - {letter.isBottle && round.roundNumber === 1 ? '回复漂流瓶' : `to ${letter.receiverName}`}
+                          {round.roundNumber === 1 
+                            ? (letter.isBottle ? '回复漂流瓶' : '我的寄信')
+                            : `我的第${round.roundNumber - 1}封回信`
+                          } - to {letter.receiverNickname || letter.receiverName}
                         </span>
                       </div>
                       <div className="flex items-center gap-3">
@@ -448,7 +451,7 @@ export default function LetterCardsView({ letter, onBack, onViewTimeline, userNa
                             {letter.receiverAvatar}
                           </div>
                           <span className="text-sm font-medium text-gray-700">
-                            第 {round.roundNumber} 轮 - {letter.receiverName}
+                            {letter.receiverNickname || letter.receiverName}的第{round.roundNumber}封回信
                           </span>
                         </div>
                         <div className="flex items-center gap-3">
