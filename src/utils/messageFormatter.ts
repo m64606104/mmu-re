@@ -26,6 +26,8 @@ export const cleanAIMessage = (message: string): string => {
   // 3. 移除引用标记和引用链接
   // 移除 [1][2] 这种引用标记
   cleaned = cleaned.replace(/\[\d+\]/g, '');
+  // 移除 [citation:3] / [CITATION: 6] 这类学术风格引用标记
+  cleaned = cleaned.replace(/\[\s*citation\s*:\s*\d+\s*\]/gi, '');
   // 移除引用说明文字（从"引用："开始到文末的所有内容）
   cleaned = cleaned.replace(/(?:主要)?引用[:：]\s*[\s\S]*$/gmi, '');
   cleaned = cleaned.replace(/参考资料[:：]\s*[\s\S]*$/gmi, '');

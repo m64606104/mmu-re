@@ -1022,6 +1022,12 @@ function App() {
           <AddFriendScreen 
             onAddFriend={addFriend}
             onBack={() => navigateTo('new-conversation')}
+            conversations={conversations}
+            onAddPenPal={(newConversation) => {
+              setConversations(prev => [newConversation, ...prev]);
+              setCurrentConversationId(newConversation.id);
+              navigateTo('chat', newConversation.id);
+            }}
           />
         );
       case 'create-group':
