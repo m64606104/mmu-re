@@ -48,11 +48,11 @@ export interface Letter {
   stampStyle?: 'default' | 'vintage' | 'flower' | 'sea';  // 邮票样式
   paperStyle?: 'white' | 'vintage' | 'blue';  // 信纸样式
   
-  // 笔友码系统
-  penPalCode?: string;  // 笔友码，用于添加为私聊好友
-  penPalCodeRequestCount?: number;  // 用户请求笔友码的次数
-  penPalCodeRejectedCount?: number;  // AI拒绝给出笔友码的次数
-  penPalCodeGiven?: boolean;  // 是否已经给出笔友码
+  // 好友码系统
+  friendCode?: string; // 好友码（用于添加为私聊好友）
+  friendCodeRequestCount?: number; // 请求好友码的次数
+  friendCodeRejectedCount?: number; // AI拒绝给出好友码的次数
+  friendCodeGiven?: boolean; // 是否已给出好友码
 }
 
 // 单轮交流记录
