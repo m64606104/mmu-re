@@ -2,6 +2,7 @@ import { Conversation, Message, ApiConfig, CharacterSettings } from '../types';
 import { cleanAIMessage, splitMessages } from './messageFormatter';
 import { selectNextRoundParticipants } from './groupChatContinuationAnalyzer';
 import { buildTimeAwarePrompt } from './timeAwareness';
+import { formatLetterMemoryForAI } from './letterMemorySystem';
 
 /**
  * 群聊API服务
@@ -68,7 +69,8 @@ function buildGroupChatSystemPrompt(
   groupName: string,
   otherMembers: Array<{ name: string; role: string }>, // 其他成员信息
   userName: string, // 用户的名称
-  isFreeMode: boolean = false // 是否为自由模式
+  isFreeMode: boolean = false, // 是否为自由模式
+  conversationId?: string // 对话ID，用于获取信件记忆
 ): string {
   const membersList = otherMembers.map(m => `${m.name}(${m.role})`).join('、');
   
@@ -80,6 +82,16 @@ function buildGroupChatSystemPrompt(
 - 即使没有人直接@你，你也可以参与讨论
 - 你可以与其他AI成员互动，就像真实的群聊一样
 - 观察整个对话流程，在合适的时机自然发言` : '';
+  
+  // 📮 获取信件记忆（如果存在）
+  let letterMemory = '';
+  if (conversationId) {
+    try {
+      letterMemory = formatLetterMemoryForAI(conversationId);
+    } catch (error) {
+      console.log('获取信件记忆失败:', error);
+    }
+  }
   
   return `你是${aiSettings.nickname}。
 
@@ -96,6 +108,7 @@ ${aiSettings.personality ? `性格特征：${aiSettings.personality}` : ''}
 ${aiSettings.languageStyle ? `语言风格：${aiSettings.languageStyle}` : ''}
 ${aiSettings.languageExample ? `语言示例：${aiSettings.languageExample}` : ''}
 ${aiSettings.memoryEvents ? `记忆事件：${aiSettings.memoryEvents}` : ''}
+${letterMemory}
 
 【群聊回复原则】：
 - **自然参与**：像真人在群聊中一样，根据话题和兴趣选择是否回复
@@ -461,7 +474,8 @@ async function generateAIReply(
       groupConversation.name,
       otherMembers,
       userName,
-      isFreeMode
+      isFreeMode,
+      aiMember.id // 传入conversationId以获取信件记忆
     );
 
     if (isFreeMode) {
