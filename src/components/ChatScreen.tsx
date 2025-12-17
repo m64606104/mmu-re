@@ -3980,6 +3980,9 @@ ${worldbookSections.middle}
 - ❌ 不要进行心理分析或情况评估
 - ❌ 不要使用英文进行分析或思考
 - ❌ 不要输出任何形式的"内部独白"或"后台思考"
+- ❌ **不要在回复中使用"用户昵称:"或"XXX:"这种格式**（这是群聊格式，私聊中不需要）
+  * 错误示例："123: 你好"、"用户: 我在这里"
+  * 正确示例：直接说"你好"、"我在这里"
 
 ✅ **正确做法**：
 - ✅ 直接用自然的中文回应用户
@@ -4680,10 +4683,23 @@ ${SmartHTMLGenerator.getModuleInstructions()}
       let messages;
       let requestBody;
 
+      // 📝 自定义上下文数量（根据配置开关）
+      const contextConfigEnabled = conversation.characterSettings?.contextConfig?.enabled || false;
+      const contextMessageCount = conversation.characterSettings?.contextConfig?.messageCount || 20;
+      
+      let contextMessages;
+      if (contextConfigEnabled) {
+        // ✅ 自定义上下文数量
+        contextMessages = conversation.messages.slice(-contextMessageCount);
+      } else {
+        // ⚡ 默认模式：发送所有消息
+        contextMessages = conversation.messages;
+      }
+      
       // 如果包含图片，使用vision API（支持图片+文字混合）
       if (hasImage) {
         // 构建包含图片的消息
-        const recentMessages = conversation.messages.slice(-5); // 🔥 性能优化：从10条减少到5条
+        const recentMessages = contextMessages; // 使用完整上下文
         const historyMessages = recentMessages
           .filter(m => !unhandledUserMessages.includes(m))
           .map(m => ({
@@ -4742,7 +4758,7 @@ ${SmartHTMLGenerator.getModuleInstructions()}
         };
       } else if (hasVideo) {
         // 如果包含视频，基于文字描述回复（支持视频+文字混合）
-        const recentMessages = conversation.messages.slice(-5); // 🔥 性能优化：从10条减少到5条
+        const recentMessages = contextMessages; // 使用完整上下文
         const historyMessages = recentMessages
           .filter(m => !unhandledUserMessages.includes(m))
           .map(m => ({
@@ -4785,7 +4801,7 @@ ${SmartHTMLGenerator.getModuleInstructions()}
         };
       } else if (hasVoice) {
         // 如果包含语音，基于语音转文字内容回复（支持语音+文字混合）
-        const recentMessages = conversation.messages.slice(-5); // 🔥 性能优化：从10条减少到5条
+        const recentMessages = contextMessages; // 使用完整上下文
         const historyMessages = recentMessages
           .filter(m => !unhandledUserMessages.includes(m))
           .map(m => ({
@@ -4822,7 +4838,7 @@ ${SmartHTMLGenerator.getModuleInstructions()}
         };
       } else if (hasSticker) {
         // 如果包含表情包，理解并自然回复（支持表情包+文字混合）
-        const recentMessages = conversation.messages.slice(-5); // 🔥 性能优化：从10条减少到5条
+        const recentMessages = contextMessages; // 使用完整上下文
         const historyMessages = recentMessages
           .filter(m => !unhandledUserMessages.includes(m))
           .map(m => ({
@@ -4903,20 +4919,8 @@ ${SmartHTMLGenerator.getModuleInstructions()}
           }
         }
 
-        // 📝 自定义上下文数量（根据配置开关）
-        const contextConfigEnabled = conversation.characterSettings?.contextConfig?.enabled || false;
-        const contextMessageCount = conversation.characterSettings?.contextConfig?.messageCount || 20;
-        
-        let contextMessages;
-        if (contextConfigEnabled) {
-          // ✅ 自定义上下文数量
-          console.log(`📝 自定义上下文：发送最近 ${contextMessageCount} 条消息`);
-          contextMessages = conversation.messages.slice(-contextMessageCount);
-        } else {
-          // ⚡ 默认模式：发送所有消息
-          console.log('⚡ 默认上下文：发送所有历史消息');
-          contextMessages = conversation.messages;
-        }
+        // 纯文字消息使用上面已经计算好的 contextMessages
+        console.log(`📝 上下文数量：${contextMessages.length} 条消息`);
         
         // 将子对话上下文注入到系统提示中
         const subContextPrompt = contextPrompt + (subChatContext ? `\n\n${subChatContext}` : '');

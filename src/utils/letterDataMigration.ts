@@ -5,6 +5,8 @@
 
 import { Letter } from '../types/letter';
 import { BottleAI } from '../types/letter';
+import { getLettersFromStorage, updateLetterInStorage } from './letterService';
+import { getCachedData, setCachedData, save } from './storage';
 
 // 数据迁移格式
 export interface LetterMigrationData {
@@ -24,12 +26,9 @@ export interface LetterMigrationData {
  * 导出所有信件数据
  */
 export function exportAllLetterData(): LetterMigrationData {
-  // 获取所有信件
-  const lettersJson = localStorage.getItem('slow_letters');
-  console.log(`📤 [导出] localStorage 中 'slow_letters' 的原始数据:`, lettersJson ? `${lettersJson.substring(0, 100)}...` : 'null');
-  
-  const letters: Letter[] = lettersJson ? JSON.parse(lettersJson) : [];
-  console.log(`📤 [导出] 读取到 ${letters.length} 封信件`);
+  // 从 IndexedDB/内存缓存获取所有信件
+  const letters: Letter[] = getLettersFromStorage();
+  console.log(`📤 [导出] 从 IndexedDB 读取到 ${letters.length} 封信件`);
   
   if (letters.length > 0) {
     console.log(`📤 [导出] 第一封信件示例:`, {
@@ -125,9 +124,9 @@ export function importAllLetterData(
     }
     
     if (mode === 'merge') {
-      const existingLettersJson = localStorage.getItem('slow_letters');
-      const existingLetters: Letter[] = existingLettersJson ? JSON.parse(existingLettersJson) : [];
-      console.log(`📥 [导入] 现有 ${existingLetters.length} 封信件`);
+      // 从 IndexedDB/内存缓存获取现有信件
+      const existingLetters: Letter[] = getLettersFromStorage();
+      console.log(`📥 [导入] 从 IndexedDB 读取到现有 ${existingLetters.length} 封信件`);
       
       // 创建一个 Map 用于快速查找和合并
       const letterMap = new Map<string, Letter>();
@@ -153,7 +152,12 @@ export function importAllLetterData(
       const finalLetters = Array.from(letterMap.values());
       const sortedLetters = finalLetters.sort((a, b) => b.sentAt - a.sentAt);
       console.log(`✅ [导入] 合并后共有 ${sortedLetters.length} 封信件`);
-      localStorage.setItem('slow_letters', JSON.stringify(sortedLetters));
+      
+      // 保存到 IndexedDB
+      setCachedData('slow_letters', sortedLetters);
+      save('slow_letters', sortedLetters).catch(err => {
+        console.error('❌ [导入] 保存到 IndexedDB 失败:', err);
+      });
       
       // 同样的逻辑处理自定义笔友
       const existingFriendsJson = localStorage.getItem('custom_pen_pals');
@@ -183,14 +187,19 @@ export function importAllLetterData(
       // 替换模式：直接覆盖
       console.log(`⚠️ [导入] 替换模式，将覆盖所有现有数据`);
       const sortedLetters = data.letters.sort((a, b) => b.sentAt - a.sentAt);
-      localStorage.setItem('slow_letters', JSON.stringify(sortedLetters));
+      
+      // 保存到 IndexedDB
+      setCachedData('slow_letters', sortedLetters);
+      save('slow_letters', sortedLetters).catch(err => {
+        console.error('❌ [导入] 保存到 IndexedDB 失败:', err);
+      });
+      
       localStorage.setItem('custom_pen_pals', JSON.stringify(data.customFriends || []));
       console.log(`✅ [导入] 替换完成：${sortedLetters.length} 封信件, ${data.customFriends?.length || 0} 个笔友`);
     }
     
     // 获取最终的数据统计
-    const finalLettersJson = localStorage.getItem('slow_letters');
-    const finalLetters: Letter[] = finalLettersJson ? JSON.parse(finalLettersJson) : [];
+    const finalLetters: Letter[] = getLettersFromStorage();
     const finalFriendsJson = localStorage.getItem('custom_pen_pals');
     const finalFriends: BottleAI[] = finalFriendsJson ? JSON.parse(finalFriendsJson) : [];
     

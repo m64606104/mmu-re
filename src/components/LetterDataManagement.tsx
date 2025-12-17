@@ -53,6 +53,28 @@ const LetterDataManagement: React.FC<LetterDataManagementProps> = ({
     setSelectedLetterIds(newSet);
   };
 
+  // 检查当前数据
+  const handleCheckData = () => {
+    const lettersJson = localStorage.getItem('slow_letters');
+    const customFriendsJson = localStorage.getItem('custom_pen_pals');
+    
+    const letters = lettersJson ? JSON.parse(lettersJson) : [];
+    const customFriends = customFriendsJson ? JSON.parse(customFriendsJson) : [];
+    
+    console.log('🔍 [检查] localStorage 中的数据:');
+    console.log('  slow_letters:', letters.length, '封信件');
+    console.log('  custom_pen_pals:', customFriends.length, '个笔友');
+    
+    if (letters.length > 0) {
+      console.log('  第一封信件:', letters[0]);
+    }
+    
+    setMessage({
+      type: 'success',
+      text: `当前 localStorage 中有 ${letters.length} 封信件和 ${customFriends.length} 个笔友`
+    });
+  };
+  
   // 导出全部数据
   const handleExportAll = () => {
     const result = exportAndDownloadAll();
