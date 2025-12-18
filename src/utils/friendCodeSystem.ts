@@ -30,46 +30,82 @@ export function generateFriendCode(receiverId: string): string {
 
 /**
  * 验证好友码格式
+ *
+ * 兼容两种情况：
+ * 1. 新格式：PENPAL-XXXXXXXXXX（10位数字）
+ * 2. 旧格式：以 PENPAL- 开头，后面为 3~32 位大写字母/数字/下划线/短横线
  */
 export function validateFriendCodeFormat(code: string): boolean {
-  const pattern = /^PENPAL-[0-9]{10}$/;
-  return pattern.test(code);
+  if (!code) return false;
+  const normalized = code.trim().toUpperCase();
+  if (!normalized.startsWith('PENPAL-')) {
+    return false;
+  }
+
+  const body = normalized.slice('PENPAL-'.length);
+
+  // 新格式：10位数字
+  if (/^[0-9]{10}$/.test(body)) {
+    return true;
+  }
+
+  // 旧格式：允许字母/数字/下划线/短横线，长度 3~32
+  return /^[A-Z0-9_-]{3,32}$/.test(body);
 }
 
 /**
- * 从好友码提取固定数字码部分
+ * 从好友码提取主体部分（去掉前缀 PENPAL-）
  */
 function extractFriendCodeCore(code: string): string {
-  const parts = code.split('-');
-  if (parts.length !== 2) return '';
-  return parts[1];
+  const normalized = code.trim().toUpperCase();
+  const prefix = 'PENPAL-';
+  if (!normalized.startsWith(prefix)) return '';
+  return normalized.slice(prefix.length);
 }
 
 /**
  * 根据好友码查找对应的信件
  */
 export function findLetterByFriendCode(code: string): Letter | null {
-  if (!validateFriendCodeFormat(code)) {
+  const normalized = code.trim().toUpperCase();
+
+  if (!validateFriendCodeFormat(normalized)) {
     return null;
   }
 
-  const core = extractFriendCodeCore(code);
+  const core = extractFriendCodeCore(normalized);
   if (!core) {
     return null;
   }
 
   const letters = getLettersFromStorage();
 
-  // 对每封信根据 receiverId 算出固定数字码，精确匹配
-  const matchingLetter = letters.find(letter => {
-    if (letter.isArchived || !(letter.isBottle || letter.isFriendAdded || letter.bottleAIProfile)) {
-      return false;
-    }
-    const expectedCore = computeFriendCodeCore(letter.receiverId);
-    return expectedCore === core;
-  });
+  // 先过滤出有可能成为笔友的信件
+  const candidates = letters.filter(letter =>
+    !letter.isArchived && (letter.isBottle || letter.isFriendAdded || !!letter.bottleAIProfile)
+  );
 
-  return matchingLetter || null;
+  // 1. 优先按存储在信件上的 friendCode 精确匹配（兼容旧格式和新格式）
+  const directMatch = candidates.find(letter =>
+    letter.friendCode && letter.friendCode.trim().toUpperCase() === normalized
+  );
+  if (directMatch) {
+    return directMatch;
+  }
+
+  // 2. 回退：仅当为新格式（10位数字）时，按 receiverId 重新计算哈希匹配
+  if (/^[0-9]{10}$/.test(core)) {
+    const matchingLetter = candidates.find(letter => {
+      const expectedCore = computeFriendCodeCore(letter.receiverId);
+      return expectedCore === core;
+    });
+
+    if (matchingLetter) {
+      return matchingLetter;
+    }
+  }
+
+  return null;
 }
 
 /**
