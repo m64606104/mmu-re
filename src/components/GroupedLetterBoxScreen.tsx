@@ -4,7 +4,7 @@
  */
 
 import { useState, useEffect } from 'react';
-import { ArrowLeft, Send, Clock, Edit2, Check, MessageCircle, Settings } from 'lucide-react';
+import { ArrowLeft, Send, Clock, Edit2, Check, MessageCircle, Settings, Archive } from 'lucide-react';
 import { 
   getGroupedLetterList, 
   getLettersByReceiver,
@@ -17,7 +17,7 @@ import { Letter } from '../types/letter';
 import LetterDetailView from './LetterDetailView';
 import LetterDataManagement from './LetterDataManagement';
 
-import { getAllLetters } from '../utils/letterService';
+import { getAllLetters, archiveLettersByReceiver } from '../utils/letterService';
 
 interface GroupedLetterBoxScreenProps {
   onBack: () => void;
@@ -96,6 +96,7 @@ export default function GroupedLetterBoxScreen({
       setAINickname(receiverId, nicknameInput.trim(), originalName, avatar);
       refreshData();
     }
+    // 保存后关闭编辑弹窗
     setEditingNickname(null);
     setNicknameInput('');
   };
@@ -103,6 +104,26 @@ export default function GroupedLetterBoxScreen({
   const handleNicknameCancel = () => {
     setEditingNickname(null);
     setNicknameInput('');
+  };
+
+  // 一键归档当前选中的联系人（将该收件人的所有信件标记为归档）
+  const handleArchiveCurrentContact = () => {
+    if (!selectedGroup) return;
+
+    const name = selectedGroup.displayName || selectedGroup.receiverName;
+    const confirmed = confirm(
+      `确定要归档与 ${name} 的所有信件吗？\n\n这些信件将移入回收站，可在回收站中恢复。`
+    );
+    if (!confirmed) return;
+
+    const count = archiveLettersByReceiver(selectedGroup.receiverId);
+    if (count > 0) {
+      alert(`📦 已归档与 ${name} 的 ${count} 封信件\n\n可以在回收站中查看和恢复。`);
+      setSelectedGroup(null);
+      refreshData();
+    } else {
+      alert('没有可归档的信件');
+    }
   };
 
   const getFilteredGroups = () => {
@@ -197,13 +218,22 @@ export default function GroupedLetterBoxScreen({
               </div>
             </div>
           </div>
-          <button
-            onClick={() => handleNicknameEdit(selectedGroup.receiverId)}
-            className="p-2 hover:bg-indigo-100 rounded-full transition-colors"
-            title="编辑备注名"
-          >
-            <Edit2 size={20} className="text-gray-600" />
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => handleArchiveCurrentContact()}
+              className="p-2 hover:bg-red-50 rounded-full transition-colors"
+              title="归档此联系人（将所有信件移入回收站）"
+            >
+              <Archive size={20} className="text-red-500" />
+            </button>
+            <button
+              onClick={() => handleNicknameEdit(selectedGroup.receiverId)}
+              className="p-2 hover:bg-indigo-100 rounded-full transition-colors"
+              title="编辑备注名"
+            >
+              <Edit2 size={20} className="text-gray-600" />
+            </button>
+          </div>
         </div>
 
         {/* 交流列表 */}
@@ -373,7 +403,7 @@ export default function GroupedLetterBoxScreen({
                 : 'bg-white/80 text-gray-700 hover:bg-white hover:shadow-md'
             }`}
           >
-            ❤️ 笔友 ({letterData.penPals.length + letterData.contacts.length})
+            ❤️ 笔友 ({letterData.penPals.length})
           </button>
           <button
             onClick={() => setActiveTab('bottle')}

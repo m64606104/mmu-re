@@ -2416,6 +2416,11 @@ export function getAllFavoriteReplies(): FavoriteReply[] {
   const favoriteReplies: FavoriteReply[] = [];
   
   letters.forEach(letter => {
+    // 跳过已归档的信件，避免归档联系人在收藏列表中继续出现
+    if (letter.isArchived) {
+      return;
+    }
+
     letter.conversationRounds.forEach(round => {
       if (round.aiReply && round.aiReply.isFavorite && !round.aiReply.isDeleted) {
         favoriteReplies.push({
@@ -2474,6 +2479,31 @@ export function getArchivedLetters(): Letter[] {
   return getLettersFromStorage()
     .filter(l => l.isArchived)
     .sort((a, b) => (b.archivedAt || 0) - (a.archivedAt || 0));
+}
+
+/**
+ * 按收件人ID批量归档所有相关信件
+ * 用于在分组信箱中一键归档某位笔友/联系人的所有往来信件
+ * @returns 实际归档的信件数量
+ */
+export function archiveLettersByReceiver(receiverId: string): number {
+  const letters = getLettersFromStorage();
+  let count = 0;
+
+  letters.forEach(letter => {
+    if (letter.receiverId === receiverId && !letter.isArchived) {
+      letter.isArchived = true;
+      letter.archivedAt = Date.now();
+      updateLetterInStorage(letter);
+      count++;
+    }
+  });
+
+  if (count > 0) {
+    console.log(`🗑️ 已批量归档与 ${receiverId} 相关的 ${count} 封信件`);
+  }
+
+  return count;
 }
 
 /**
