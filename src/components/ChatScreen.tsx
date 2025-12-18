@@ -4757,7 +4757,7 @@ ${SmartHTMLGenerator.getModuleInstructions()}
         requestBody = {
           model: apiConfig.modelName,
           messages,
-          temperature: 0.4,
+          temperature: 0.7,
           max_tokens: 2000
         };
       } else if (hasVideo) {
@@ -5079,7 +5079,7 @@ ${doc.content}`;
             
             if (isShort) {
                 // 🎲 40% 概率不回复（既读不回）
-                if (Math.random() < 0.4) {
+                if (Math.random() < 0.15) {
                     console.log('🎯 [拟人化] 短回合对话，AI选择不回复 (短回合策略)');
                     // 🔥 结束本次loading状态，再走统一的不回复提示逻辑
                     setShowSendingHint(false);
@@ -5092,7 +5092,7 @@ ${doc.content}`;
                     console.log('🎯 [拟人化] 短回合对话，强制AI短回复');
                     messages.push({ 
                       role: 'system', 
-                      content: '【指令】用户发送了简短的确认/结束语。请务必仅用1-5个字+一个表情回复。绝对不要长篇大论。例如：好的👌、晚安💤、哈哈😄' 
+                      content: '【指令】用户发送了简短的确认/结束语。可以根据上下文用简短口语回应，也可以适度展开，不强制字数限制。' 
                     });
                 }
             }
@@ -5720,6 +5720,14 @@ ${doc.content}`;
     >
       {/* 注入自定义气泡样式 */}
       {customCss && <style>{customCss}</style>}
+      {/* 全局统一：给用户气泡加玻璃质感（保持原颜色，只增加描边+模糊） */}
+      <style>{`
+        .message-bubble.user {
+          backdrop-filter: blur(10px) !important;
+          border: 1px solid rgba(255,255,255,0.3) !important;
+          box-shadow: 0 6px 24px rgba(0,0,0,0.06) !important;
+        }
+      `}</style>
       {/* 如果开启了隐藏尾巴，注入隐藏样式 */}
       {hideBubbleTail && <style>{`.message-tail { display: none !important; }`}</style>}
       {/* 注入气泡装饰样式 */}
