@@ -232,6 +232,29 @@ export interface CharacterSettings {
     enabled: boolean; // 是否允许使用该角色的历史聊天内容生成论坛动态
     lastGeneratedAt?: number; // 上次生成时间
   };
+  // 📞 通话配置
+  callSettings?: {
+    // 视频通话配置
+    videoCall?: {
+      // AI角色在视频通话中的显示方式
+      aiDisplayMode: 'avatar' | 'animated' | 'custom'; // 头像 | 动图 | 自定义
+      customVideoUrl?: string; // 自定义视频/动图URL
+      // 用户视图配置
+      userViewSettings?: {
+        showUserAvatar: boolean; // 是否显示用户头像
+        userAvatarSize: 'small' | 'medium' | 'large'; // 用户头像大小
+        userAvatarPosition: 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right'; // 用户头像位置
+      };
+    };
+    // 语音通话配置
+    voiceCall?: {
+      // 语音模式下的背景效果
+      backgroundEffect: 'blur' | 'gradient' | 'custom';
+      customBackgroundUrl?: string; // 自定义背景图
+      // 头像动画效果
+      avatarAnimation: 'pulse' | 'rotate' | 'bounce' | 'none';
+    };
+  };
   // 📚 世界书禁用开关
   disableWorldbook?: boolean; // 是否禁用世界书（默认false）
   // 📮 笔友来源标记

@@ -130,8 +130,27 @@ export default function CharacterSettingsScreen({
   const [editingKnowledge, setEditingKnowledge] = useState<KnowledgeBaseItem | null>(null);
   const [knowledgeTitle, setKnowledgeTitle] = useState('');
   const [knowledgeContent, setKnowledgeContent] = useState('');
-  const [customBubbleCss, setCustomBubbleCss] = useState(settings.customBubbleCss || '');
   const [hideBubbleTail, setHideBubbleTail] = useState(settings.hideBubbleTail || false);
+  const [customBubbleCss, setCustomBubbleCss] = useState(settings.customBubbleCss || '');
+  
+  // 通话设置状态
+  const [callSettings, setCallSettings] = useState(settings.callSettings || {
+    videoCall: {
+      aiDisplayMode: 'avatar' as 'avatar' | 'animated' | 'custom',
+      customVideoUrl: '',
+      userViewSettings: {
+        showUserAvatar: true,
+        userAvatarSize: 'small' as 'small' | 'medium' | 'large',
+        userAvatarPosition: 'top-left' as 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right',
+      }
+    },
+    voiceCall: {
+      backgroundEffect: 'blur' as 'blur' | 'gradient' | 'custom',
+      customBackgroundUrl: '',
+      avatarAnimation: 'none' as 'pulse' | 'rotate' | 'bounce' | 'none',
+    }
+  });
+
   const [decorationConfig, setDecorationConfig] = useState<BubbleDecoration>(settings.bubbleDecoration || {
     show: false,
     type: 'text',
@@ -323,6 +342,7 @@ export default function CharacterSettingsScreen({
           customBubbleCss,
           hideBubbleTail,
           bubbleDecoration: decorationConfig,
+          callSettings: callSettings,
           contextConfig: {
             enabled: contextConfigEnabled,
             messageCount: contextMessageCount,
@@ -1828,6 +1848,200 @@ export default function CharacterSettingsScreen({
             <ChevronLeft className="w-4 h-4 text-gray-500 transition-transform group-open:-rotate-90" />
           </summary>
           <div className="p-4 space-y-4">
+            
+            {/* 通话设置 */}
+            <div className="bg-white rounded-lg border border-gray-100 p-3">
+              <div className="flex items-center gap-2 mb-3">
+                <Video className="w-5 h-5 text-blue-500" />
+                <label className="text-sm font-medium text-gray-700">
+                  通话设置
+                </label>
+              </div>
+              
+              {/* 视频通话设置 */}
+              <div className="space-y-3 mb-4">
+                <div className="text-xs font-medium text-gray-600 border-b border-gray-200 pb-1">视频通话</div>
+                
+                {/* AI显示模式 */}
+                <div>
+                  <label className="block text-xs text-gray-600 mb-1">AI角色显示</label>
+                  <select
+                    value={callSettings.videoCall?.aiDisplayMode || 'avatar'}
+                    onChange={(e) => setCallSettings(prev => ({
+                      ...prev,
+                      videoCall: {
+                        ...prev.videoCall!,
+                        aiDisplayMode: e.target.value as 'avatar' | 'animated' | 'custom'
+                      }
+                    }))}
+                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    <option value="avatar">静态头像</option>
+                    <option value="animated">动图效果</option>
+                    <option value="custom">自定义视频</option>
+                  </select>
+                </div>
+                
+                {/* 自定义视频URL */}
+                {(callSettings.videoCall?.aiDisplayMode === 'animated' || callSettings.videoCall?.aiDisplayMode === 'custom') && (
+                  <div>
+                    <label className="block text-xs text-gray-600 mb-1">自定义视频/动图URL</label>
+                    <input
+                      type="text"
+                      value={callSettings.videoCall?.customVideoUrl || ''}
+                      onChange={(e) => setCallSettings(prev => ({
+                        ...prev,
+                        videoCall: {
+                          ...prev.videoCall!,
+                          customVideoUrl: e.target.value
+                        }
+                      }))}
+                      placeholder="输入动图或视频URL"
+                      className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                  </div>
+                )}
+                
+                {/* 用户视图设置 */}
+                <div className="text-xs font-medium text-gray-600 border-b border-gray-200 pb-1 pt-2">用户视图</div>
+                
+                <div className="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    checked={callSettings.videoCall?.userViewSettings?.showUserAvatar ?? true}
+                    onChange={(e) => setCallSettings(prev => ({
+                      ...prev,
+                      videoCall: {
+                        ...prev.videoCall!,
+                        userViewSettings: {
+                          ...prev.videoCall!.userViewSettings!,
+                          showUserAvatar: e.target.checked
+                        }
+                      }
+                    }))}
+                    className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                  />
+                  <label className="text-xs text-gray-600">显示用户头像</label>
+                </div>
+                
+                {callSettings.videoCall?.userViewSettings?.showUserAvatar && (
+                  <>
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <label className="block text-xs text-gray-600 mb-1">头像大小</label>
+                        <select
+                          value={callSettings.videoCall?.userViewSettings?.userAvatarSize || 'small'}
+                          onChange={(e) => setCallSettings(prev => ({
+                            ...prev,
+                            videoCall: {
+                              ...prev.videoCall!,
+                              userViewSettings: {
+                                ...prev.videoCall!.userViewSettings!,
+                                userAvatarSize: e.target.value as 'small' | 'medium' | 'large'
+                              }
+                            }
+                          }))}
+                          className="w-full px-2 py-1 text-xs border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        >
+                          <option value="small">小</option>
+                          <option value="medium">中</option>
+                          <option value="large">大</option>
+                        </select>
+                      </div>
+                      
+                      <div>
+                        <label className="block text-xs text-gray-600 mb-1">头像位置</label>
+                        <select
+                          value={callSettings.videoCall?.userViewSettings?.userAvatarPosition || 'top-left'}
+                          onChange={(e) => setCallSettings(prev => ({
+                            ...prev,
+                            videoCall: {
+                              ...prev.videoCall!,
+                              userViewSettings: {
+                                ...prev.videoCall!.userViewSettings!,
+                                userAvatarPosition: e.target.value as 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right'
+                              }
+                            }
+                          }))}
+                          className="w-full px-2 py-1 text-xs border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        >
+                          <option value="top-left">左上</option>
+                          <option value="top-right">右上</option>
+                          <option value="bottom-left">左下</option>
+                          <option value="bottom-right">右下</option>
+                        </select>
+                      </div>
+                    </div>
+                  </>
+                )}
+              </div>
+              
+              {/* 语音通话设置 */}
+              <div className="space-y-3">
+                <div className="text-xs font-medium text-gray-600 border-b border-gray-200 pb-1">语音通话</div>
+                
+                {/* 背景效果 */}
+                <div>
+                  <label className="block text-xs text-gray-600 mb-1">背景效果</label>
+                  <select
+                    value={callSettings.voiceCall?.backgroundEffect || 'blur'}
+                    onChange={(e) => setCallSettings(prev => ({
+                      ...prev,
+                      voiceCall: {
+                        ...prev.voiceCall!,
+                        backgroundEffect: e.target.value as 'blur' | 'gradient' | 'custom'
+                      }
+                    }))}
+                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    <option value="blur">模糊头像</option>
+                    <option value="gradient">渐变色</option>
+                    <option value="custom">自定义背景</option>
+                  </select>
+                </div>
+                
+                {/* 自定义背景URL */}
+                {callSettings.voiceCall?.backgroundEffect === 'custom' && (
+                  <div>
+                    <label className="block text-xs text-gray-600 mb-1">自定义背景图URL</label>
+                    <input
+                      type="text"
+                      value={callSettings.voiceCall?.customBackgroundUrl || ''}
+                      onChange={(e) => setCallSettings(prev => ({
+                        ...prev,
+                        voiceCall: {
+                          ...prev.voiceCall!,
+                          customBackgroundUrl: e.target.value
+                        }
+                      }))}
+                      placeholder="输入背景图片URL"
+                      className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                  </div>
+                )}
+                
+                {/* 头像动画 */}
+                <div>
+                  <label className="block text-xs text-gray-600 mb-1">头像动画效果</label>
+                  <select
+                    value={callSettings.voiceCall?.avatarAnimation || 'none'}
+                    onChange={(e) => setCallSettings(prev => ({
+                      ...prev,
+                      voiceCall: {
+                        ...prev.voiceCall!,
+                        avatarAnimation: e.target.value as 'pulse' | 'rotate' | 'bounce' | 'none'
+                      }
+                    }))}
+                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    <option value="none">无动画</option>
+                    <option value="pulse">脉冲</option>
+                    <option value="rotate">旋转</option>
+                    <option value="bounce">弹跳</option>
+                  </select>
+                </div>
+              </div>
+            </div>
             
             {/* Call History */}
             <div className="bg-white rounded-lg border border-gray-100 p-3">

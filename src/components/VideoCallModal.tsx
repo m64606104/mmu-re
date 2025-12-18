@@ -303,17 +303,43 @@ export default function VideoCallModal({
         {callType === 'video' ? (
           // 视频模式：全屏铺满
           <div className="absolute inset-0 w-full h-full">
-             {conversation.avatar ? (
-               <img 
-                 src={conversation.avatar} 
-                 alt={conversation.name} 
-                 className="w-full h-full object-cover" 
-               />
-             ) : (
-               <div className="w-full h-full bg-gradient-to-br from-blue-400 to-purple-500 flex items-center justify-center text-white text-4xl font-bold">
-                 {conversation.name[0]}
-               </div>
-             )}
+             {/* AI角色显示 */}
+             {(() => {
+               const videoCallSettings = conversation.characterSettings?.callSettings?.videoCall;
+               const displayMode = videoCallSettings?.aiDisplayMode || 'avatar';
+               
+               if (displayMode === 'custom' && videoCallSettings?.customVideoUrl) {
+                 return (
+                   <img 
+                     src={videoCallSettings.customVideoUrl} 
+                     alt={conversation.name} 
+                     className="w-full h-full object-cover" 
+                   />
+                 );
+               } else if (displayMode === 'animated' && videoCallSettings?.customVideoUrl) {
+                 return (
+                   <img 
+                     src={videoCallSettings.customVideoUrl} 
+                     alt={conversation.name} 
+                     className="w-full h-full object-cover animate-pulse" 
+                   />
+                 );
+               } else {
+                 // 默认头像模式
+                 return conversation.avatar ? (
+                   <img 
+                     src={conversation.avatar} 
+                     alt={conversation.name} 
+                     className="w-full h-full object-cover" 
+                   />
+                 ) : (
+                   <div className="w-full h-full bg-gradient-to-br from-blue-400 to-purple-500 flex items-center justify-center text-white text-4xl font-bold">
+                     {conversation.name[0]}
+                   </div>
+                 );
+               }
+             })()}
+             
              {/* 视频通话时的全屏遮罩 */}
              <div className="absolute inset-0 bg-gradient-to-b from-black/30 via-transparent to-black/60" />
              
@@ -325,15 +351,41 @@ export default function VideoCallModal({
         ) : (
           // 语音模式：保留原有的模糊背景+中间头像
           <>
-            {conversation.avatar && (
-              <div 
-                className="absolute inset-0 bg-cover bg-center opacity-30 blur-xl transform scale-110"
-                style={{ backgroundImage: `url(${conversation.avatar})` }}
-              />
-            )}
+            {(() => {
+              const voiceCallSettings = conversation.characterSettings?.callSettings?.voiceCall;
+              const backgroundEffect = voiceCallSettings?.backgroundEffect || 'blur';
+              
+              if (backgroundEffect === 'custom' && voiceCallSettings?.customBackgroundUrl) {
+                return (
+                  <div 
+                    className="absolute inset-0 bg-cover bg-center opacity-30"
+                    style={{ backgroundImage: `url(${voiceCallSettings.customBackgroundUrl})` }}
+                  />
+                );
+              } else if (backgroundEffect === 'gradient') {
+                return (
+                  <div className="absolute inset-0 bg-gradient-to-br from-purple-600 via-blue-600 to-teal-500 opacity-40" />
+                );
+              } else {
+                // 默认模糊背景
+                return conversation.avatar && (
+                  <div 
+                    className="absolute inset-0 bg-cover bg-center opacity-30 blur-xl transform scale-110"
+                    style={{ backgroundImage: `url(${conversation.avatar})` }}
+                  />
+                );
+              }
+            })()}
             
             <div className="relative z-10 flex flex-col items-center">
-              <div className="w-40 h-40 rounded-full overflow-hidden border-4 border-white/10 shadow-2xl relative">
+              <div className={`w-40 h-40 rounded-full overflow-hidden border-4 border-white/10 shadow-2xl relative ${(() => {
+                const voiceCallSettings = conversation.characterSettings?.callSettings?.voiceCall;
+                const animation = voiceCallSettings?.avatarAnimation || 'none';
+                if (animation === 'pulse') return 'animate-pulse';
+                if (animation === 'rotate') return 'animate-spin';
+                if (animation === 'bounce') return 'animate-bounce';
+                return '';
+              })()}`}>
                 {conversation.avatar ? (
                   <img 
                     src={conversation.avatar} 
