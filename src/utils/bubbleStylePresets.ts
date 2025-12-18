@@ -45,7 +45,7 @@ export const bubbleStylePresets: BubbleStylePreset[] = [
     category: '纯色',
     css: `/* 用户消息 - 粉色渐变 */
 .message-bubble.user {
-  background: linear-gradient(135deg, #FFB6C1, #FF69B4) !important;
+  background: linear-gradient(135deg, rgba(255,182,193,0.85), rgba(255,105,180,0.85)) !important;
   border: none;
   box-shadow: 0 4px 15px rgba(255, 105, 180, 0.3);
 }
@@ -130,7 +130,7 @@ export const bubbleStylePresets: BubbleStylePreset[] = [
     category: '纯色',
     css: `/* 用户消息 - 橙色渐变 */
 .message-bubble.user {
-  background: linear-gradient(135deg, #F59E0B, #F97316) !important;
+  background: linear-gradient(135deg, rgba(245,158,11,0.85), rgba(249,115,22,0.85)) !important;
   border: none;
   box-shadow: 0 4px 15px rgba(249, 115, 22, 0.3);
 }
@@ -157,7 +157,7 @@ export const bubbleStylePresets: BubbleStylePreset[] = [
     category: '纯色',
     css: `/* 用户消息 - 绿色渐变 */
 .message-bubble.user {
-  background: linear-gradient(135deg, #10B981, #059669) !important;
+  background: linear-gradient(135deg, rgba(16,185,129,0.85), rgba(5,150,105,0.85)) !important;
   border: none;
   box-shadow: 0 4px 15px rgba(16, 185, 129, 0.3);
 }
