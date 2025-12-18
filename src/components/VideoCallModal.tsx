@@ -1,5 +1,5 @@
-import { useState, useEffect, useRef } from 'react';
-import { Mic, MicOff, Video as VideoIcon, VideoOff, PhoneOff, Send, Maximize2, Minimize2, Volume2 } from 'lucide-react';
+import { useState, useRef, useEffect } from 'react';
+import { Phone, PhoneOff, Volume2, VolumeX, Mic, MicOff, Video, VideoOff, MessageCircle, Minimize2, Move, Send, X } from 'lucide-react';
 import { Conversation, Message, ApiConfig, CallLog, UserProfile } from '../types';
 
 interface VideoCallModalProps {
@@ -19,25 +19,30 @@ export default function VideoCallModal({
   currentUserProfile,
   apiConfig,
   onSaveCallLog,
-  callType = 'video'
+  callType = 'video',
 }: VideoCallModalProps) {
-  const [messages, setMessages] = useState<Message[]>([]);
-  const [inputValue, setInputValue] = useState('');
-  const [isMuted, setIsMuted] = useState(false);
-  const [isVideoOn, setIsVideoOn] = useState(callType === 'video');
-  const [duration, setDuration] = useState(0);
-  const [startTime, setStartTime] = useState(0);
-  const [isAiTyping, setIsAiTyping] = useState(false);
-  
-  // 悬浮窗状态
   const [isMinimized, setIsMinimized] = useState(false);
+  const [position, setPosition] = useState({ x: 20, y: 20 });
+  const [isDragging, setIsDragging] = useState(false);
+  const [showQuickReply, setShowQuickReply] = useState(false);
+  const [quickReplyText, setQuickReplyText] = useState('');
+  const [isMuted, setIsMuted] = useState(false);
+  const [isSpeakerOff, setIsSpeakerOff] = useState(false);
+  const [isVideoOff, setIsVideoOff] = useState(callType === 'voice');
+  const [duration, setDuration] = useState(0);
+  const [messages, setMessages] = useState<Message[]>([]);
+  const [newMessage, setNewMessage] = useState('');
+  const [isAiTyping, setIsAiTyping] = useState(false);
+  const [callStartTime] = useState(Date.now());
+  const callStartTimeRef = useRef(Date.now());
   const [position, setPosition] = useState({ x: window.innerWidth - 160, y: 100 });
   const [isDragging, setIsDragging] = useState(false);
+  const [showQuickReply, setShowQuickReply] = useState(false);
+  const [quickReplyText, setQuickReplyText] = useState('');
   const dragStartPos = useRef({ x: 0, y: 0 });
   
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
-  const callStartTimeRef = useRef<number>(0); // 通话开始时间戳
 
   // 初始化通话
   useEffect(() => {
@@ -73,6 +78,163 @@ export default function VideoCallModal({
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, isAiTyping]);
+
+  // 拖拽相关函数
+  const handleMouseDown = (e: React.MouseEvent) => {
+    setIsDragging(true);
+    dragStartPos.current = {
+      x: e.clientX - position.x,
+      y: e.clientY - position.y
+    };
+  };
+
+  const handleMouseMove = (e: MouseEvent) => {
+    if (!isDragging) return;
+    
+    const newX = e.clientX - dragStartPos.current.x;
+    const newY = e.clientY - dragStartPos.current.y;
+    
+    // 限制在窗口范围内
+    const maxX = window.innerWidth - 160; // 小窗宽度
+    const maxY = window.innerHeight - 120; // 小窗高度
+    
+    setPosition({
+      x: Math.max(0, Math.min(newX, maxX)),
+      y: Math.max(0, Math.min(newY, maxY))
+    });
+  };
+
+  const handleMouseUp = () => {
+    setIsDragging(false);
+  };
+
+  useEffect(() => {
+    if (isDragging) {
+      document.addEventListener('mousemove', handleMouseMove);
+      document.addEventListener('mouseup', handleMouseUp);
+      
+      return () => {
+        document.removeEventListener('mousemove', handleMouseMove);
+        document.removeEventListener('mouseup', handleMouseUp);
+      };
+    }
+  }, [isDragging]);
+
+  // 快捷回复处理
+  const handleQuickReply = async () => {
+    if (!quickReplyText.trim() || isAiTyping) return;
+
+    const newMessage: Message = {
+      id: Date.now().toString(),
+      role: 'user',
+      content: quickReplyText.trim(),
+      timestamp: Date.now()
+    };
+
+    setMessages(prev => [...prev, newMessage]);
+    setQuickReplyText('');
+    setShowQuickReply(false);
+    setIsAiTyping(true);
+
+    try {
+      // 构建上下文（复用原有逻辑）
+      const systemPrompt = conversation.characterSettings?.systemPrompt || '你是一个友好的AI助手。';
+      
+      const now = Date.now();
+      const callElapsedMinutes = Math.floor((now - callStartTimeRef.current) / 60000);
+      const currentTimeStr = new Date(now).toLocaleString('zh-CN', {
+        hour: '2-digit',
+        minute: '2-digit'
+      });
+      
+      let callPrompt = '';
+
+      if (callType === 'video') {
+        callPrompt = `\n\n【视频通话模式（Video Call）】
+现在你和用户正在视频通话。请像真人聊天一样自然说话。
+- 回复的重点是你在说的话，用口语化中文，通常 1–3 句，不要只回 1、2 个字。
+- 仅当画面有明显变化时，用 *...* 加一段画面描写（表情变化、头部动作、手势、切换摄像头、环境变化等）。
+- 如果画面基本保持不变（角度、表情、环境都差不多），就不要添加画面描写。
+- 画面描写要真实自然，有画面感，可以描述：你的长相特征、表情变化、头部动作、手势、周围环境细节、切换前后摄像头看到的景象等。
+- 不要写长篇旁白、内心独白或过于玄乎的描述，保持轻松真实的聊天风格。
+- 优先根据用户刚才说的话来接话、回应、吐槽或反问。
+【时间感知】现在时间是 ${currentTimeStr}，通话已进行 ${callElapsedMinutes} 分钟。请基于真实时间流逝来理解对话节奏。`;
+      } else {
+        callPrompt = `\n\n【语音通话模式（Voice Call）】
+现在你和用户正在语音通话，用户只能听到你的声音：
+- 用口语化中文连续说 1–3 句完整的话，保持正常对话长度。除非对方只是"嗯/好/晚安"这类结束语，否则不要只回 1–3 个字。
+- 仅在需要时，用 *...* 加一小段声音/环境描写（呼吸声、笑声、背景音乐、信号不好、卡顿等），不要每条都加。
+- 不要描述具体画面/动作，除非这些动作会发出能听到的声音（例如 *手机被放到桌子上，发出轻轻一声闷响*）。
+- 始终围绕用户刚才说的内容自然接话。
+【时间感知】现在时间是 ${currentTimeStr}，通话已进行 ${callElapsedMinutes} 分钟。请基于真实时间流逝来理解对话节奏。`;
+      }
+
+      // 构建上下文消息
+      const recentGlobalMessages = conversation.messages.slice(-20).map(m => ({
+        role: m.role === 'user' ? 'user' : 'assistant',
+        content: m.content
+      }));
+      
+      const recentCallMessages = messages.slice(-10).map(m => ({
+        role: m.role === 'user' ? 'user' : 'assistant',
+        content: m.content
+      }));
+      
+      const contextMessages = [
+        { role: 'system', content: systemPrompt + callPrompt },
+        ...recentGlobalMessages,
+        { role: 'system', content: '--- 以下是通话内的对话 ---' },
+        ...recentCallMessages,
+        { role: 'user', content: newMessage.content }
+      ];
+
+      const response = await fetch(`${apiConfig.baseUrl}/chat/completions`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${apiConfig.apiKey}`,
+        },
+        body: JSON.stringify({
+          model: apiConfig.modelName,
+          messages: contextMessages,
+          max_tokens: 150,
+          temperature: 0.85,
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`API request failed: ${response.status}`);
+      }
+
+      const data = await response.json();
+      const rawContent = data.choices[0]?.message?.content || (callType === 'video' ? '*网络信号有点不好...*' : '喂？信号似乎不太好...');
+      
+      const stageMatches = rawContent.match(/\*[^*]+\*/g) || [];
+      const stageText = stageMatches.map((s: string) => s.slice(1, -1).trim()).filter(Boolean).join(' ');
+      const speechContent = rawContent.replace(/\*[^*]+\*/g, '').trim();
+
+      const aiMessage: Message = {
+        content: speechContent || rawContent,
+        stageText: stageText || undefined,
+        role: 'assistant',
+        id: Date.now().toString(),
+        timestamp: Date.now()
+      };
+
+      setMessages(prev => [...prev, aiMessage]);
+    } catch (error) {
+      console.error('AI回复失败:', error);
+      const errorMessage: Message = {
+        content: callType === 'video' ? '*网络信号不好，听不清楚...*' : '信号不太好，能再说一遍吗？',
+        role: 'assistant',
+        id: Date.now().toString(),
+        timestamp: Date.now()
+      };
+      setMessages(prev => [...prev, errorMessage]);
+    } finally {
+      setIsAiTyping(false);
+    }
+  };
 
   const formatTime = (seconds: number) => {
     const mins = Math.floor(seconds / 60);
@@ -237,57 +399,126 @@ export default function VideoCallModal({
 
   if (!isOpen) return null;
 
-  // ------------------------------------------
-  // 最小化悬浮窗模式
-  // ------------------------------------------
+  // 缩小状态：悬浮小窗
   if (isMinimized) {
     return (
       <div 
-        className="fixed z-[100] w-32 h-48 rounded-xl overflow-hidden shadow-2xl border-2 border-white/20 cursor-move transition-transform active:scale-95 bg-black"
-        style={{ left: position.x, top: position.y }}
-        onMouseDown={handleMouseDown}
-        onMouseMove={handleMouseMove}
-        onMouseUp={handleMouseUp}
-        onMouseLeave={handleMouseUp}
-        onClick={() => {
-            if (!isDragging) setIsMinimized(false); 
+        className="fixed z-50 bg-gray-900 rounded-lg shadow-2xl border border-gray-700 cursor-move"
+        style={{ 
+          left: position.x, 
+          top: position.y,
+          width: '140px',
+          height: '100px'
         }}
+        onMouseDown={handleMouseDown}
       >
-        {/* 背景 */}
-        <div className="absolute inset-0 flex items-center justify-center bg-gray-800">
-           {conversation.avatar ? (
-             <img src={conversation.avatar} className="w-full h-full object-cover opacity-80" />
-           ) : (
-             <div className="text-white text-2xl font-bold">{conversation.name[0]}</div>
-           )}
-           
-           {/* 语音模式遮罩 */}
-           {callType === 'voice' && (
-             <div className="absolute inset-0 bg-black/60 flex items-center justify-center">
-               <div className="w-12 h-12 bg-green-500/20 rounded-full flex items-center justify-center animate-pulse">
-                 <PhoneOff className="w-6 h-6 text-green-500 rotate-135" />
-               </div>
-             </div>
-           )}
+        {/* 拖拽区域 */}
+        <div className="absolute inset-0 flex items-center justify-center">
+          {conversation.avatar ? (
+            <img 
+              src={conversation.avatar} 
+              alt={conversation.name} 
+              className="w-full h-full object-cover rounded-lg opacity-80"
+            />
+          ) : (
+            <div className="w-full h-full bg-gradient-to-br from-blue-400 to-purple-500 rounded-lg flex items-center justify-center text-white font-bold">
+              {conversation.name[0]}
+            </div>
+          )}
         </div>
         
-        {/* 覆盖层信息 */}
-        <div className="absolute inset-0 bg-gradient-to-b from-transparent via-transparent to-black/80 flex flex-col justify-between p-3">
-           <div className="self-end">
-             <Maximize2 className="w-4 h-4 text-white/80 drop-shadow-md" />
-           </div>
-           <div>
-             <div className="text-white text-xs font-medium truncate shadow-black drop-shadow-md">{conversation.name}</div>
-             <div className="text-green-400 text-[10px] font-mono mt-0.5">{formatTime(duration)}</div>
-           </div>
+        {/* 通话信息 */}
+        <div className="absolute top-1 left-1 right-1 text-center">
+          <div className="text-white text-xs font-medium truncate">{conversation.name}</div>
+          <div className="text-green-400 text-xs flex items-center justify-center gap-1">
+            <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></div>
+            {formatTime(duration)}
+          </div>
         </div>
+        
+        {/* 控制按钮 */}
+        <div className="absolute bottom-1 right-1 flex gap-1">
+          <button
+            onClick={() => setShowQuickReply(!showQuickReply)}
+            className="p-1 bg-blue-500 text-white rounded hover:bg-blue-600 transition-colors"
+            title="快捷回复"
+          >
+            <MessageCircle className="w-3 h-3" />
+          </button>
+          <button
+            onClick={() => setIsMinimized(false)}
+            className="p-1 bg-gray-600 text-white rounded hover:bg-gray-700 transition-colors"
+            title="恢复"
+          >
+            <Minimize2 className="w-3 h-3 rotate-180" />
+          </button>
+        </div>
+        
+        {/* AI消息气泡 */}
+        {messages.filter(m => m.role === 'assistant').slice(-1).map(msg => (
+          <div 
+            key={msg.id}
+            className="absolute -top-8 left-1/2 transform -translate-x-1/2 bg-black/80 text-white text-xs px-2 py-1 rounded-lg whitespace-nowrap max-w-[120px] truncate"
+          >
+            {msg.content}
+            {msg.stageText && (
+              <div className="text-yellow-300/80 italic text-xs">
+                {msg.stageText}
+              </div>
+            )}
+          </div>
+        ))}
+        
+        {/* 快捷回复输入框 */}
+        {showQuickReply && (
+          <div className="absolute bottom-full left-0 right-0 mb-2 p-2 bg-gray-800 rounded-lg border border-gray-600">
+            <div className="flex gap-1">
+              <input
+                type="text"
+                value={quickReplyText}
+                onChange={(e) => setQuickReplyText(e.target.value)}
+                onKeyPress={(e) => e.key === 'Enter' && handleQuickReply()}
+                placeholder="快捷回复..."
+                className="flex-1 bg-gray-700 text-white px-2 py-1 rounded text-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
+                autoFocus
+              />
+              <button
+                onClick={handleQuickReply}
+                disabled={!quickReplyText.trim() || isAiTyping}
+                className="p-1 bg-blue-500 text-white rounded hover:bg-blue-600 disabled:bg-gray-600 disabled:cursor-not-allowed"
+              >
+                <Send className="w-3 h-3" />
+              </button>
+              <button
+                onClick={() => {
+                  setShowQuickReply(false);
+                  setQuickReplyText('');
+                }}
+                className="p-1 bg-gray-600 text-white rounded hover:bg-gray-700"
+              >
+                <X className="w-3 h-3" />
+              </button>
+            </div>
+          </div>
+        )}
+        
+        {/* 说话状态指示 */}
+        {isAiTyping && (
+          <div className="absolute top-8 left-1/2 transform -translate-x-1/2">
+            <div className="text-green-400 text-xs flex items-center gap-1">
+              <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></div>
+              说话中...
+            </div>
+          </div>
+        )}
       </div>
     );
   }
 
   // ------------------------------------------
-  // 全屏模式
+  // 全屏通话模式
   // ------------------------------------------
+
   return (
     <div className="fixed inset-0 z-50 bg-black flex flex-col h-full w-full overflow-hidden">
       {/* 最小化按钮 */}
