@@ -424,18 +424,44 @@ export default function VideoCallModal({
 
         {/* 用户小窗口 (仅视频模式显示) */}
         {callType === 'video' && (
-          <div className="absolute top-4 right-4 w-28 h-40 bg-gray-800 rounded-xl border border-white/20 overflow-hidden shadow-lg z-20">
-            {currentUserProfile?.avatar ? (
-              <img src={currentUserProfile.avatar} alt="Me" className="w-full h-full object-cover" />
-            ) : (
-              <div className="w-full h-full flex items-center justify-center bg-gray-700 text-white/50 text-xs">
-                无摄像头
+          (() => {
+            const videoCallSettings = conversation.characterSettings?.callSettings?.videoCall;
+            const showUserAvatar = videoCallSettings?.userViewSettings?.showUserAvatar ?? true;
+            const avatarSize = videoCallSettings?.userViewSettings?.userAvatarSize || 'small';
+            const avatarPosition = videoCallSettings?.userViewSettings?.userAvatarPosition || 'top-right';
+            
+            if (!showUserAvatar) return null;
+            
+            // 根据大小设置样式
+            const sizeClasses = {
+              small: 'w-28 h-40',
+              medium: 'w-32 h-48',
+              large: 'w-40 h-56'
+            };
+            
+            // 根据位置设置样式
+            const positionClasses = {
+              'top-left': 'top-4 left-4',
+              'top-right': 'top-4 right-4',
+              'bottom-left': 'bottom-4 left-4',
+              'bottom-right': 'bottom-4 right-4'
+            };
+            
+            return (
+              <div className={`absolute ${positionClasses[avatarPosition]} ${sizeClasses[avatarSize]} bg-gray-800 rounded-xl border border-white/20 overflow-hidden shadow-lg z-20`}>
+                {currentUserProfile?.avatar ? (
+                  <img src={currentUserProfile.avatar} alt="Me" className="w-full h-full object-cover" />
+                ) : (
+                  <div className="w-full h-full flex items-center justify-center bg-gray-700 text-white/50 text-xs">
+                    无摄像头
+                  </div>
+                )}
+                <div className="absolute bottom-1 left-0 right-0 text-center text-[10px] text-white/80 bg-black/30">
+                  我
+                </div>
               </div>
-            )}
-            <div className="absolute bottom-1 left-0 right-0 text-center text-[10px] text-white/80 bg-black/30">
-              我
-            </div>
-          </div>
+            );
+          })()
         )}
       </div>
 
