@@ -37,11 +37,14 @@ export default function VideoCallModal({
   
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
+  const callStartTimeRef = useRef<number>(0); // 通话开始时间戳
 
   // 初始化通话
   useEffect(() => {
     if (isOpen) {
-      setStartTime(Date.now());
+      const now = Date.now();
+      setStartTime(now);
+      callStartTimeRef.current = now; // 记录通话开始时间
       setDuration(0);
       setMessages([]); 
       setIsVideoOn(callType === 'video');
@@ -94,30 +97,53 @@ export default function VideoCallModal({
     try {
       // 构建上下文
       const systemPrompt = conversation.characterSettings?.systemPrompt || '你是一个友好的AI助手。';
+      
+      // 时间感知：计算通话开始到现在的真实时间
+      const now = Date.now();
+      const callElapsedMinutes = Math.floor((now - callStartTimeRef.current) / 60000);
+      const currentTimeStr = new Date(now).toLocaleString('zh-CN', {
+        hour: '2-digit',
+        minute: '2-digit'
+      });
+      
       let callPrompt = '';
 
       if (callType === 'video') {
         callPrompt = `\n\n【视频通话模式（Video Call）】
 现在你和用户正在视频通话。请像真人聊天一样自然说话。
 - 回复的重点是你在说的话，用口语化中文，通常 1–3 句，不要只回 1、2 个字。
-- 可以在回复开头或结尾，用一段用 *...* 包起来的简短画面描写（镜头里的你、表情、环境等），最多 1–2 句。
+- 仅在需要时，用 *...* 加一句简短画面/状态提示（镜头、表情、环境、卡顿、信号等），不要每条都加。
 - 不要写长篇旁白，不要写小说或大段内心独白，整体保持轻松随意的聊天风格。
-- 优先根据用户刚才说的话来接话、回应、吐槽或反问。`;
+- 优先根据用户刚才说的话来接话、回应、吐槽或反问。
+【时间感知】现在时间是 ${currentTimeStr}，通话已进行 ${callElapsedMinutes} 分钟。请基于真实时间流逝来理解对话节奏。`;
       } else {
         callPrompt = `\n\n【语音通话模式（Voice Call）】
 现在你和用户正在语音通话，用户只能听到你的声音：
 - 用口语化中文连续说 1–3 句完整的话，保持正常对话长度。除非对方只是“嗯/好/晚安”这类结束语，否则不要只回 1–3 个字。
-- 可以在回复开头或结尾，用 *...* 包一小段声音/环境描写（呼吸声、笑声、背景音乐等），不超过 1 句。
+- 仅在需要时，用 *...* 加一小段声音/环境描写（呼吸声、笑声、背景音乐、信号不好、卡顿等），不要每条都加。
 - 不要描述具体画面/动作，除非这些动作会发出能听到的声音（例如 *手机被放到桌子上，发出轻轻一声闷响*）。
-- 始终围绕用户刚才说的内容自然接话。`;
+- 始终围绕用户刚才说的内容自然接话。
+【时间感知】现在时间是 ${currentTimeStr}，通话已进行 ${callElapsedMinutes} 分钟。请基于真实时间流逝来理解对话节奏。`;
       }
 
+      // 1. 取全局聊天最近 20 条作为上下文（帮助理解为什么发起通话）
+      const recentGlobalMessages = conversation.messages.slice(-20).map(m => ({
+        role: m.role === 'user' ? 'user' : 'assistant',
+        content: m.content
+      }));
+
+      // 2. 取通话内最近 10 条
+      const recentCallMessages = messages.slice(-10).map(m => ({
+        role: m.role === 'user' ? 'user' : 'assistant',
+        content: m.content
+      }));
+
+      // 3. 组合上下文：先全局（带分隔），再通话，最后当前输入
       const contextMessages = [
         { role: 'system', content: systemPrompt + callPrompt },
-        ...messages.slice(-10).map(m => ({
-          role: m.role === 'user' ? 'user' : 'assistant',
-          content: m.content
-        })),
+        ...recentGlobalMessages,
+        { role: 'system', content: '--- 以下是通话内的对话 ---' },
+        ...recentCallMessages,
         { role: 'user', content: newMessage.content }
       ];
 
@@ -151,7 +177,7 @@ export default function VideoCallModal({
         id: Date.now().toString(),
         role: 'assistant',
         content: speechContent || rawContent,
-        timestamp: Date.now(),
+        timestamp: Date.now(), // 记录真实发送时间
         stageText: stageText || undefined
       };
 
