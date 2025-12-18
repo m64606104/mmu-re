@@ -65,6 +65,11 @@ export const cleanAIMessage = (message: string): string => {
   
   // 10. 再次清理可能产生的空括号或多余标点
   cleaned = cleaned.replace(/[\(（]\s*[\)）]/g, '');
+
+  // 11. 移除模型内部使用的角色标记，防止诸如 <|assistant|> / <|user|> 直接出现在对话中
+  cleaned = cleaned.replace(/<\|assistant\|>/gi, '');
+  cleaned = cleaned.replace(/<\|user\|>/gi, '');
+  cleaned = cleaned.replace(/<\|system\|>/gi, '');
   
   return cleaned.trim();
 };

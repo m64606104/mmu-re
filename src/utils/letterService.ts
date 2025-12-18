@@ -370,6 +370,37 @@ export function calculateReplyDelay(isUrged: boolean): number {
 }
 
 /**
+ * 重新生成指定轮次的AI回信（覆盖旧内容，不进入回收站）
+ * 常用于历史轮次不满意时的覆盖式重写
+ */
+export async function regenerateAIReply(letterId: string, roundNumber: number): Promise<boolean> {
+  const letters = getLettersFromStorage();
+  const letter = letters.find(l => l.id === letterId);
+
+  if (!letter) {
+    return false;
+  }
+
+  const round = letter.conversationRounds.find(r => r.roundNumber === roundNumber);
+
+  // 必须存在当前轮次且已有AI回信，才支持重新生成
+  if (!round || !round.aiReply) {
+    return false;
+  }
+
+  // 硬覆盖：直接移除旧的AI回信，不做回收站记录
+  round.aiReply = undefined;
+
+  // 先保存一次，确保后续generateReply看到的是“未回复”状态
+  updateLetterInStorage(letter);
+
+  // 复用现有生成逻辑重新生成该轮回信
+  await generateReply(letterId, 0, roundNumber);
+
+  return true;
+}
+
+/**
  * 寄出信件
  * @param isBottle - true时随机生成新AI人设，false时使用传入的receiver信息
  * @param isAnonymous - 是否匿名寄信（非漂流瓶也可选择匿名）
@@ -1830,13 +1861,30 @@ export function initializeLetterTimers() {
 
 /**
  * 清除指定信件的定时器
+ * @param letterId 信件ID
+ * @param roundNumber 可选：指定轮次，只清除该轮计时；不传则清除此信件所有轮次的计时器
  */
-export function clearLetterTimer(letterId: string) {
-  if (activeTimers.has(letterId)) {
-    clearTimeout(activeTimers.get(letterId)!);
-    activeTimers.delete(letterId);
-    console.log(`🗑️ 已清除信件 ${letterId} 的定时器`);
+export function clearLetterTimer(letterId: string, roundNumber?: number) {
+  // 清除指定轮次
+  if (typeof roundNumber === 'number') {
+    const timerKey = `${letterId}-${roundNumber}`;
+    if (activeTimers.has(timerKey)) {
+      clearTimeout(activeTimers.get(timerKey)!);
+      activeTimers.delete(timerKey);
+      console.log(`🗑️ 已清除信件 ${letterId} 第${roundNumber}轮的定时器`);
+    }
+    return;
   }
+
+  // 清除此信件的所有轮次定时器
+  const prefix = `${letterId}-`;
+  for (const [key, timer] of activeTimers.entries()) {
+    if (key.startsWith(prefix)) {
+      clearTimeout(timer);
+      activeTimers.delete(key);
+    }
+  }
+  console.log(`🗑️ 已清除信件 ${letterId} 的所有定时器`);
 }
 
 /**
@@ -1985,6 +2033,11 @@ export function deleteUserLetter(letterId: string, roundNumber: number): boolean
   round.userLetter.isDeleted = true;
   round.userLetter.deletedAt = Date.now();
   
+  // 如果 AI 回信也已经被删除，则整轮硬删除并重排
+  if (round.aiReply && round.aiReply.isDeleted) {
+    return retractLetterRound(letterId, roundNumber);
+  }
+  
   // 保存更新
   updateLetterInStorage(letter);
   
@@ -2016,6 +2069,11 @@ export function deleteAIReply(letterId: string, roundNumber: number): boolean {
   // 标记为已删除，放入回收站
   round.aiReply.isDeleted = true;
   round.aiReply.deletedAt = Date.now();
+  
+  // 如果用户信件也已经被删除，则整轮硬删除并重排
+  if (round.userLetter.isDeleted) {
+    return retractLetterRound(letterId, roundNumber);
+  }
   
   // 保存更新
   updateLetterInStorage(letter);
@@ -2214,12 +2272,93 @@ export function permanentlyDeleteItem(letterId: string, roundNumber: number, typ
   if (letter.conversationRounds.length === 0) {
     return deleteLetter(letterId);
   }
-  
-  // 保存更新
+
+  // 重新编号剩余轮次
+  letter.conversationRounds.forEach((round, i) => {
+    round.roundNumber = i + 1;
+  });
+  letter.currentRound = letter.conversationRounds.length;
+
+  // 根据最后一轮更新信件级别状态（用于旧代码兼容）
+  const lastRound = letter.conversationRounds[letter.conversationRounds.length - 1];
+  if (lastRound.aiReply) {
+    letter.replyContent = lastRound.aiReply.content;
+    letter.repliedAt = lastRound.aiReply.repliedAt;
+    letter.status = 'replied';
+  } else {
+    letter.replyContent = undefined;
+    letter.repliedAt = undefined;
+    letter.status = 'sent';
+    letter.willReplyAt = lastRound.userLetter.willReplyAt;
+    letter.hasUrged = !!lastRound.userLetter.hasUrged;
+  }
+
   updateLetterInStorage(letter);
-  
   console.log(`☠️ 已永久删除 ${type === 'userLetter' ? '用户信件' : 'AI回信'}`);
+  return true;
+}
+
+/**
+ * 撤回整轮对话（删除该轮的寄信和回信，不进入回收站）
+ * 目前只允许撤回当前最新一轮，避免影响后续轮次和定时器
+ */
+export function retractLetterRound(letterId: string, roundNumber: number): boolean {
+  const letters = getLettersFromStorage();
+  const letter = letters.find(l => l.id === letterId);
   
+  if (!letter) {
+    return false;
+  }
+  const index = letter.conversationRounds.findIndex(r => r.roundNumber === roundNumber);
+  if (index === -1) {
+    return false;
+  }
+
+  // 清除此轮的定时器（如果有）
+  clearLetterTimer(letterId, roundNumber);
+
+  // 删除该轮次
+  letter.conversationRounds.splice(index, 1);
+
+  // 如果没有轮次了，直接删除整封信
+  if (letter.conversationRounds.length === 0) {
+    return deleteLetter(letterId);
+  }
+
+  // 重新按顺序重排轮次编号
+  letter.conversationRounds.forEach((round, index) => {
+    round.roundNumber = index + 1;
+  });
+
+  // 更新 currentRound 为新的最后一轮
+  letter.currentRound = letter.conversationRounds.length;
+
+  // 根据最后一轮更新信件级别状态（与 permanentlyDeleteItem 保持一致）
+  const lastRound = letter.conversationRounds[letter.conversationRounds.length - 1];
+  if (lastRound.aiReply) {
+    letter.replyContent = lastRound.aiReply.content;
+    letter.repliedAt = lastRound.aiReply.repliedAt;
+    letter.status = 'replied';
+    letter.willReplyAt = undefined;
+    letter.hasUrged = !!lastRound.userLetter.hasUrged;
+  } else {
+    letter.replyContent = undefined;
+    letter.repliedAt = undefined;
+    letter.status = 'sent';
+    letter.willReplyAt = lastRound.userLetter.willReplyAt;
+    letter.hasUrged = !!lastRound.userLetter.hasUrged;
+  }
+
+  // 重建该信件的所有自动回信定时器
+  clearLetterTimer(letterId);
+  letter.conversationRounds.forEach(round => {
+    if (round.userLetter.willReplyAt && !round.aiReply) {
+      scheduleAutoReply(letter, round.roundNumber);
+    }
+  });
+
+  updateLetterInStorage(letter);
+  console.log(`♻️ 已撤回信件 ${letterId} 的第 ${roundNumber} 轮对话`);
   return true;
 }
 

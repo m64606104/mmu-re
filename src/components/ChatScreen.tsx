@@ -13,7 +13,8 @@ import SelectContactModal from './SelectContactModal';
 import { parseEnhancedDocument } from '../utils/enhancedDocumentParser';
 import { subChatMemoryManager } from '../utils/subChatMemoryManager';
 import { saveDocument as saveToLibrary } from '../utils/documentLibrary';
-import WeChatLinkPreview from './WeChatLinkPreview';
+import WeChatLinkPreview, { LinkPreviewData } from './WeChatLinkPreview';
+import XiaohongshuLinkModal from './XiaohongshuLinkModal';
 import { SmartLinkParser } from '../utils/smartLinkParser';
 import XiaohongshuFeed from './XiaohongshuFeed';
 import MusicShareModal from './MusicShareModal';
@@ -942,6 +943,7 @@ export default function ChatScreen({
   const [showSendDocumentModal, setShowSendDocumentModal] = useState(false);
   const [showDocumentLibrary, setShowDocumentLibrary] = useState(false);
   const [viewingDocument, setViewingDocument] = useState<Message['document'] | null>(null);
+  const [viewingXiaohongshuLink, setViewingXiaohongshuLink] = useState<LinkPreviewData | null>(null);
   const [selectedLibraryDoc, setSelectedLibraryDoc] = useState<SavedDocument | null>(null);
   const [showSelectContact, setShowSelectContact] = useState(false);
   const [forwardingDocument, setForwardingDocument] = useState<Message['document'] | null>(null);
@@ -1124,9 +1126,11 @@ ${recentMessages}
 
       if (response.ok) {
         const data = await response.json();
-        const contextualHint = data.choices[0]?.message?.content?.trim();
-        if (contextualHint) {
-          return contextualHint;
+        const contextualHintRaw = data.choices[0]?.message?.content?.trim();
+        if (contextualHintRaw) {
+          // 使用与普通对话相同的清洗逻辑，避免模型把内部格式/标签直接吐出来
+          const cleanedHint = cleanAIMessage(contextualHintRaw);
+          return cleanedHint || contextualHintRaw;
         }
       }
     } catch (error) {
@@ -5077,7 +5081,10 @@ ${doc.content}`;
                 // 🎲 40% 概率不回复（既读不回）
                 if (Math.random() < 0.4) {
                     console.log('🎯 [拟人化] 短回合对话，AI选择不回复 (短回合策略)');
-                    // 直接复用统一的 AI 不回复处理逻辑
+                    // 🔥 结束本次loading状态，再走统一的不回复提示逻辑
+                    setShowSendingHint(false);
+                    setShowTyping(false);
+                    setIsGenerating(false);
                     void handleAINoReply(conversation.id);
                     return; 
                 } else {
@@ -6164,13 +6171,21 @@ ${doc.content}`;
                       <WeChatLinkPreview
                         data={message.linkPreview}
                         onClick={() => {
-                          // 如果有完整内容，打开文档查看器
+                          // 小红书链接：在应用内打开专用的小红书详情模态框
+                          if (message.linkPreview!.platform === 'xiaohongshu') {
+                            setViewingXiaohongshuLink(message.linkPreview!);
+                            return;
+                          }
+
+                          // 其它平台：如果有完整内容，使用文档查看器；否则尝试按URL打开
                           if (message.linkPreview!.content) {
                             setViewingDocument({
                               title: message.linkPreview!.title,
                               content: message.linkPreview!.content,
                               type: 'text'
                             });
+                          } else if (message.linkPreview!.url) {
+                            window.open(message.linkPreview!.url, '_blank');
                           }
                         }}
                       />
@@ -7829,6 +7844,14 @@ ${doc.content}`;
           setViewingDocument(null);
           setShowSelectContact(true);
         }}
+      />
+    )}
+
+    {/* 小红书链接详情模态框（AI 生成的小红书卡片点击后打开） */}
+    {viewingXiaohongshuLink && (
+      <XiaohongshuLinkModal
+        data={viewingXiaohongshuLink}
+        onClose={() => setViewingXiaohongshuLink(null)}
       />
     )}
 

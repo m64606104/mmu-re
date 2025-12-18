@@ -54,10 +54,10 @@ export function mergeAnonymousLetters(autoRun: boolean = false): {
       for (let i = 1; i < sortedLetters.length; i++) {
         const letterToMerge = sortedLetters[i];
         
-        // 合并对话轮次
+        // 合并对话轮次（暂时保留原有 roundNumber，稍后统一重排）
         mainLetter.conversationRounds.push(...letterToMerge.conversationRounds);
         
-        // 更新当前轮数
+        // 更新当前轮数（使用较大的轮次）
         mainLetter.currentRound = Math.max(
           mainLetter.currentRound,
           letterToMerge.currentRound
@@ -77,6 +77,13 @@ export function mergeAnonymousLetters(autoRun: boolean = false): {
         
         mergedCount++;
       }
+      
+      // 🔧 合并完成后：按时间重新排序轮次，并重排 roundNumber，避免不同信封之间的轮次号冲突
+      mainLetter.conversationRounds.sort((a, b) => a.userLetter.sentAt - b.userLetter.sentAt);
+      mainLetter.conversationRounds.forEach((round, index) => {
+        round.roundNumber = index + 1;
+      });
+      mainLetter.currentRound = mainLetter.conversationRounds.length;
       
       // 更新主信件
       updateLetterInStorage(mainLetter);

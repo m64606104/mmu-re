@@ -4,11 +4,11 @@
  * 参考慢邮件App的卡片设计
  */
 
-import { ArrowLeft, Check, Zap, UserPlus, FileDown, Trash2, Reply, Star, RotateCcw, MoreVertical, Heart, Share2 } from 'lucide-react';
+import { ArrowLeft, Check, Zap, UserPlus, FileDown, Trash2, Reply, Star, RotateCcw, MoreVertical, Heart, Share2, RefreshCcw } from 'lucide-react';
 import { Letter } from '../types/letter';
 import { getCurrentStamp } from '../utils/stampSystem';
 import { useEffect, useRef, useState } from 'react';
-import { urgeLetter, addAsFriend, canContinueReply, deleteUserLetter, deleteAIReply, getLetterById, favoriteAIReply, generateReply, forceGetFriendCode } from '../utils/letterService';
+import { urgeLetter, addAsFriend, canContinueReply, deleteUserLetter, deleteAIReply, getLetterById, favoriteAIReply, generateReply, forceGetFriendCode, retractLetterRound, regenerateAIReply } from '../utils/letterService';
 import { getAIDisplayName } from '../utils/letterNicknameManager';
 import PDFExportModal from './PDFExportModal';
 import PenPalShareModal from './PenPalShareModal';
@@ -95,6 +95,49 @@ export default function LetterCardsView({ letter, onBack, onViewTimeline, userNa
           alert('✅ 已删除该寄信（已放入回收站）');
         }
       }
+    }
+  };
+
+  // 重新生成指定轮次的AI回信（覆盖旧内容，不进入回收站）
+  const handleRegenerateAIReply = async (roundNumber: number) => {
+    if (!confirm(`确定要重新生成第 ${roundNumber} 轮的回信吗？\n\n旧的回信内容将被覆盖且无法恢复。`)) {
+      return;
+    }
+
+    try {
+      const success = await regenerateAIReply(localLetter.id, roundNumber);
+      if (success) {
+        // 与手动重试保持一致：给后端一点时间写入，再刷新本地数据
+        setTimeout(() => {
+          const updatedLetter = getLetterById(localLetter.id);
+          if (updatedLetter) {
+            setLocalLetter(updatedLetter);
+          }
+        }, 2000);
+        alert('✅ 已重新生成回信，请稍后查看最新内容。');
+      } else {
+        alert('无法重新生成该轮回信：信件状态不正确或已不存在');
+      }
+    } catch (error) {
+      alert('❌ 重新生成回信失败，请检查API配置或稍后重试。');
+    }
+  };
+
+  // 撤回整轮对话（删除该轮的寄信和回信）
+  const handleRetractRound = (roundNumber: number) => {
+    if (!confirm(`确定要撤回第 ${roundNumber} 轮的寄信和回信吗？\n\n撤回后这轮将在时间线上消失，且无法从回收站恢复。`)) {
+      return;
+    }
+
+    const success = retractLetterRound(localLetter.id, roundNumber);
+    if (success) {
+      const updatedLetter = getLetterById(localLetter.id);
+      if (updatedLetter) {
+        setLocalLetter(updatedLetter);
+      }
+      alert('✅ 已撤回本轮对话，可以重新写信。');
+    } else {
+      alert('无法撤回本轮：信件状态不正确或已不存在');
     }
   };
   
@@ -366,9 +409,16 @@ export default function LetterCardsView({ letter, onBack, onViewTimeline, userNa
                         <button
                           onClick={() => handleDeleteUserLetter(round.roundNumber)}
                           className="p-1.5 hover:bg-white/50 rounded-full transition-colors"
-                          title="删除这封寄信"
+                          title="删除这封寄信（软删除，可在回收站恢复）"
                         >
                           <Trash2 size={16} className="text-gray-500" />
+                        </button>
+                        <button
+                          onClick={() => handleRetractRound(round.roundNumber)}
+                          className="p-1.5 hover:bg-white/50 rounded-full transition-colors"
+                          title="撤回这一轮（寄信和回信都会一起移除）"
+                        >
+                          <RotateCcw size={16} className="text-gray-500" />
                         </button>
                         
                         {/* 精致邮票 */}
@@ -471,10 +521,26 @@ export default function LetterCardsView({ letter, onBack, onViewTimeline, userNa
                           <button
                             onClick={() => handleDeleteAIReply(round.roundNumber)}
                             className="p-1.5 hover:bg-white/50 rounded-full transition-colors"
-                            title="删除这封回信"
+                            title="删除这封回信（软删除，可在回收站恢复）"
                           >
                             <Trash2 size={16} className="text-gray-400" />
                           </button>
+                          <button
+                            onClick={() => handleRegenerateAIReply(round.roundNumber)}
+                            className="p-1.5 hover:bg-white/50 rounded-full transition-colors"
+                            title="重新生成这封回信（覆盖旧内容，不可恢复）"
+                          >
+                            <RefreshCcw size={16} className="text-blue-500" />
+                          </button>
+                          {localLetter.currentRound === round.roundNumber && (
+                            <button
+                              onClick={() => handleRetractRound(round.roundNumber)}
+                              className="p-1.5 hover:bg-white/50 rounded-full transition-colors"
+                              title="撤回这一轮（当前最新一轮的寄信和回信都会一起移除）"
+                            >
+                              <RotateCcw size={16} className="text-gray-500" />
+                            </button>
+                          )}
                           
                           <div className="text-xs text-blue-600 font-medium">
                             {formatDate(round.aiReply.repliedAt)}
