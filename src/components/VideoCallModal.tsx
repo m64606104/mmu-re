@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
-import { Phone, PhoneOff, Volume2, VolumeX, Mic, MicOff, Video, VideoOff, MessageCircle, Minimize2, Move, Send, X } from 'lucide-react';
+import { Phone, PhoneOff, Volume2, VolumeX, Mic, MicOff, Video, VideoOff, MessageCircle, Minimize2, Maximize2, Send, X } from 'lucide-react';
 import { Conversation, Message, ApiConfig, CallLog, UserProfile } from '../types';
 
 interface VideoCallModalProps {
@@ -22,16 +22,15 @@ export default function VideoCallModal({
   callType = 'video',
 }: VideoCallModalProps) {
   const [isMinimized, setIsMinimized] = useState(false);
-  const [position, setPosition] = useState({ x: 20, y: 20 });
-  const [isDragging, setIsDragging] = useState(false);
-  const [showQuickReply, setShowQuickReply] = useState(false);
-  const [quickReplyText, setQuickReplyText] = useState('');
   const [isMuted, setIsMuted] = useState(false);
   const [isSpeakerOff, setIsSpeakerOff] = useState(false);
   const [isVideoOff, setIsVideoOff] = useState(callType === 'voice');
   const [duration, setDuration] = useState(0);
   const [messages, setMessages] = useState<Message[]>([]);
   const [newMessage, setNewMessage] = useState('');
+  const [inputValue, setInputValue] = useState('');
+  const [isVideoOn, setIsVideoOn] = useState(callType === 'video');
+  const [startTime, setStartTime] = useState(Date.now());
   const [isAiTyping, setIsAiTyping] = useState(false);
   const [callStartTime] = useState(Date.now());
   const callStartTimeRef = useRef(Date.now());
@@ -373,30 +372,7 @@ export default function VideoCallModal({
     onClose();
   };
 
-  // 拖拽事件处理
-  const handleMouseDown = (e: React.MouseEvent) => {
-    if (!isMinimized) return;
-    e.preventDefault(); // 防止选中文本
-    setIsDragging(true);
-    dragStartPos.current = {
-      x: e.clientX - position.x,
-      y: e.clientY - position.y
-    };
-  };
-
-  const handleMouseMove = (e: React.MouseEvent) => {
-    if (isDragging) {
-      setPosition({
-        x: e.clientX - dragStartPos.current.x,
-        y: e.clientY - dragStartPos.current.y
-      });
-    }
-  };
-
-  const handleMouseUp = () => {
-    setIsDragging(false);
-  };
-
+  
   if (!isOpen) return null;
 
   // 缩小状态：悬浮小窗
@@ -783,7 +759,7 @@ export default function VideoCallModal({
                 !isVideoOn ? 'bg-white text-gray-900' : 'bg-white/10 text-white hover:bg-white/20 border border-white/10'
               }`}
             >
-              {isVideoOn ? <VideoIcon className="w-7 h-7" /> : <VideoOff className="w-7 h-7" />}
+              {isVideoOn ? <Video className="w-7 h-7" /> : <VideoOff className="w-7 h-7" />}
             </button>
           ) : (
             <div className="w-[60px]" /> // 占位符，保持布局平衡
