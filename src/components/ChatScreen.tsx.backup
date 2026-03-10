@@ -3705,206 +3705,6 @@ ${characterInfo?.languageStyle ? `语言风格：${characterInfo.languageStyle}`
     }
   };
 
-  const handleGenerate = async () => {
-    if (!apiConfig.baseUrl || !apiConfig.apiKey || !apiConfig.modelName) {
-      alert('请先在设置中配置 API');
-      return;
-    }
-
-    if (conversation.messages.length === 0) {
-      alert('请先发送消息');
-      return;
-    }
-
-    // 判断是否为群聊
-    if (conversation.type === 'group') {
-      await handleGroupChatGenerate();
-      return;
-    }
-
-    // 🚀 启动后台生成任务
-    backgroundGenerationService.startGeneration(conversation.id);
-    setIsGenerating(true);
-    setShowSendingHint(true);
-
-    try {
-      // 🔧 辅助函数：格式化历史消息内容（避免格式泄露）
-      const formatHistoryMessageContent = (msg: Message): string => {
-        // 使用统一的格式化函数（包含转发内容处理）
-        return formatMessageForAI(msg);
-      };
-
-      // 🕐 辅助函数：根据时间戳获取时间标签（今天/昨天/前天/几天前）
-      const getTimeLabel = (timestamp: number): string => {
-        const now = new Date();
-        const msgDate = new Date(timestamp);
-        const nowDay = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-        const msgDay = new Date(msgDate.getFullYear(), msgDate.getMonth(), msgDate.getDate());
-        const daysDiff = Math.floor((nowDay.getTime() - msgDay.getTime()) / (1000 * 60 * 60 * 24));
-        
-        if (daysDiff === 0) return '今天';
-        if (daysDiff === 1) return '昨天';
-        if (daysDiff === 2) return '前天';
-        if (daysDiff < 7) return `${daysDiff}天前`;
-        const weeksDiff = Math.floor(daysDiff / 7);
-        return `${weeksDiff}周前`;
-      };
-
-      // 获取最近的用户消息（支持混合消息类型）
-      const userMessages = conversation.messages.filter(m => m.role === 'user');
-      const lastUserMsgForTime = userMessages[userMessages.length - 1];
-      const lastUserTimestamp = lastUserMsgForTime?.timestamp;
-      
-      // 获取自上次AI回复后的所有用户消息
-      const lastAssistantIndex = conversation.messages.map(m => m.role).lastIndexOf('assistant');
-      const unhandledUserMessages = lastAssistantIndex >= 0 
-        ? conversation.messages.slice(lastAssistantIndex + 1).filter(m => m.role === 'user')
-        : userMessages.slice(-5); // 如果没有AI回复，取最近5条
-      
-      // 🕐 计算最早未回复消息的时间戳（用于时间跨度分析）
-      const oldestUnrepliedTimestamp = unhandledUserMessages.length > 0 
-        ? Math.min(...unhandledUserMessages.map(m => m.timestamp))
-        : undefined;
-      
-      // 检查未处理的消息中是否包含各种媒体类型
-      const hasImage = unhandledUserMessages.some(m => m.mediaType === 'image' && m.mediaUrl);
-      const hasVideo = unhandledUserMessages.some(m => m.mediaType === 'video' && m.mediaDescription);
-      const hasVoice = unhandledUserMessages.some(m => m.mediaType === 'voice' && m.mediaDescription);
-      const hasSticker = unhandledUserMessages.some(m => m.mediaType === 'sticker' && m.mediaDescription);
-      
-      // 获取所有包含图片的消息（支持多图片）
-      const imageMessages = unhandledUserMessages.filter(m => m.mediaType === 'image' && m.mediaUrl);
-      // 获取纯文字消息
-      const textMessages = unhandledUserMessages.filter(m => !m.mediaType);
-      
-      // 🆕 收集所有待回复消息的详细信息
-      const unrepliedMessagesInfo: UnrepliedMessageInfo[] = unhandledUserMessages.map((msg, index) => ({
-        timestamp: msg.timestamp,
-        content: msg.content || '[媒体消息]',
-        index: index + 1
-      }));
-      
-      // 🤖 获取最后一条AI消息的时间戳（用于AI时间感知）
-      const aiMessages = conversation.messages.filter(m => m.role === 'assistant');
-      const lastAIMessage = aiMessages[aiMessages.length - 1];
-      const lastAITimestamp = lastAIMessage?.timestamp;
-      
-      // 🔍 扫描未回复消息，找到最近一条包含行为关键词的消息（用于增强的短时间预估）
-      let actionMessage: Message | undefined;
-      for (let i = unhandledUserMessages.length - 1; i >= 0; i--) {
-        const msg = unhandledUserMessages[i];
-        if (msg.content && hasActionKeywords(msg.content)) {
-          actionMessage = msg;
-          break; // 找到最近的一条就停止
-        }
-      }
-      
-      // 🕐 生成增强的时间感知提示词（包含时间跨度分析+AI消息时间感知+行为时长分析+通话时间）
-      // 最近一次通话（视频/语音），用于避免几天后还说“你刚刚给我打的视频/电话”
-      const lastCall = conversation.callHistory && conversation.callHistory.length > 0
-        ? conversation.callHistory[conversation.callHistory.length - 1]
-        : undefined;
-      const lastCallEndTimestamp = lastCall?.endTime;
-      const lastCallType = lastCall?.type;
-
-      const timeAwarePrompt = buildTimeAwarePrompt(
-        lastUserTimestamp, 
-        lastUserMsgForTime?.content,
-        lastAITimestamp, // 🆕 添加AI消息时间戳
-        oldestUnrepliedTimestamp,
-        unrepliedMessagesInfo,
-        actionMessage?.content, // 🆕 用于行为分析的消息内容
-        actionMessage?.timestamp, // 🆕 用于行为分析的消息时间戳
-        lastCallEndTimestamp,
-        lastCallType
-      );
-      
-      // 构建用户资料提示
-      let userInfoPrompt = '';
-      if (currentUserProfile?.personalInfo) {
-        const info = currentUserProfile.personalInfo;
-        const infoParts = [];
-        if (info.name) infoParts.push(`姓名：${info.name}`);
-        if (info.gender) infoParts.push(`性别：${info.gender}`);
-        if (info.age) infoParts.push(`年龄：${info.age}`);
-        if (info.background) infoParts.push(`背景：${info.background}`);
-        
-        if (infoParts.length > 0) {
-          userInfoPrompt = `\n\n【对话用户信息】：\n${infoParts.join('、')}\n注意：这是对话用户的基本信息，用于更好地理解对话语境。`;
-        }
-      }
-      
-      // 构建资料库内容
-      let knowledgeBaseContent = '';
-      if (conversation.characterSettings?.knowledgeBase && conversation.characterSettings.knowledgeBase.length > 0) {
-        knowledgeBaseContent = '\n\n【专属资料库】\n以下是你需要了解和参考的专业资料，在对话中遇到相关内容时请调取这些知识：\n\n';
-        conversation.characterSettings.knowledgeBase.forEach((item, index) => {
-          knowledgeBaseContent += `${index + 1}. ${item.title}\n${item.content}\n\n`;
-        });
-      }
-
-      // 🌉 检查群聊到私聊的记忆桥接
-      let groupContextContent = '';
-      if (conversation.type === 'private' && currentUserProfile) {
-        const groupContext = groupToPrivateMemoryService.getGroupContextForPrivate(
-          conversation.id, 
-          currentUserProfile.username
-        );
-        
-        if (groupContext.hasContext) {
-          groupContextContent = `
-【群聊对话背景】
-${groupContext.contextSummary}
-
-重要：用户刚刚从群聊来到私聊，你需要基于群聊中的对话内容进行回复，记住你在群聊中说过的话。
-`.trim();
-          
-          console.log('🌉 检测到群聊到私聊的记忆桥接:', {
-            fromGroupId: groupContext.fromGroupId,
-            bridgeMessage: groupContext.bridgeMessage?.substring(0, 50) + '...'
-          });
-        }
-      }
-      
-      // 📚 获取世界书内容（检查是否启用）
-      let worldbookSections = { before: '', middle: '', after: '' };
-      
-      // 检查是否禁用世界书（优先检查全局禁用开关）
-      const isWorldbookDisabled = conversation.characterSettings?.disableWorldbook === true;
-      
-      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-      console.log('📚 [世界书检查] 开始');
-      console.log('📚 [世界书检查] 对话:', conversation.name);
-      console.log('📚 [世界书检查] 禁用开关:', isWorldbookDisabled ? '❌ 已禁用' : '✅ 已启用');
-      
-      if (!isWorldbookDisabled) {
-        console.log('📚 [世界书检查] ➡️  调用buildWorldbookPrompt...');
-        worldbookSections = await buildWorldbookPrompt(conversation);
-        
-        const hasWorldbook = !!(worldbookSections.before || worldbookSections.middle || worldbookSections.after);
-        console.log('📚 [世界书检查] 结果:', hasWorldbook ? '✅ 已加载世界书内容' : '⚠️  没有世界书内容');
-      } else {
-        console.log('📚 [世界书检查] ❌ 用户已禁用，跳过加载');
-        console.log('📚 [世界书检查] ⚠️  注意：即使有全局世界书，也不会加载');
-      }
-      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
-      
-      // 📦 获取表情包提示
-      let stickerPrompt = '';
-      try {
-        console.log('📦 [表情包] 开始加载可用表情包...');
-        stickerPrompt = await buildStickerPrompt(conversation.id);
-        if (stickerPrompt) {
-          console.log('📦 [表情包] ✅ 已加载表情包提示');
-        } else {
-          console.log('📦 [表情包] ⚠️  没有可用的表情包');
-        }
-      } catch (error) {
-        console.error('📦 [表情包] ❌ 加载失败:', error);
-      }
-      
-      let systemPrompt = conversation.characterSettings
-        ? `${worldbookSections.before}你是${conversation.characterSettings.nickname}。
 ${conversation.characterSettings.systemPrompt ? `人物设定：${conversation.characterSettings.systemPrompt}` : ''}
 ${conversation.characterSettings.personality ? `性格特征：${conversation.characterSettings.personality}` : ''}
 ${conversation.characterSettings.languageStyle ? `语言风格：${conversation.characterSettings.languageStyle}` : ''}
@@ -7298,13 +7098,23 @@ ${doc.content}`;
                 style={{ height: '24px' }}
               />
             </div>
-            <button
-              onClick={handleSendMessage}
-              disabled={!currentInput.trim()}
-              className="w-10 h-10 bg-blue-500 text-white rounded-full hover:bg-blue-600 active:scale-95 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex-shrink-0 flex items-center justify-center shadow-md"
-            >
-              <Send className="w-5 h-5" />
-            </button>
+            {currentInput.trim() ? (
+              <button
+                onClick={handleSendMessage}
+                disabled={false}
+                className="w-10 h-10 bg-blue-500 text-white rounded-full hover:bg-blue-600 active:scale-95 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex-shrink-0 flex items-center justify-center shadow-md"
+              >
+                <Send className="w-5 h-5" />
+              </button>
+            ) : (
+              <button
+                onClick={handleGenerate}
+                disabled={isGenerating || conversation.messages.length === 0}
+                className="w-10 h-10 bg-gray-900 text-white rounded-full hover:bg-gray-800 active:scale-95 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex-shrink-0 flex items-center justify-center shadow-md"
+              >
+                <Sparkles className={`w-5 h-5 ${isGenerating ? 'animate-spin' : ''}`} />
+              </button>
+            )}
           </div>
         </div>
       </div>
