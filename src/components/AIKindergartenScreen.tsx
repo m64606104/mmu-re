@@ -20,7 +20,7 @@ import {
 } from '../utils/aiKindergartenManager';
 import { WordCard } from '../utils/wordCardLibrary';
 import { TopicCard, getRandomTopics, getRecommendedTopicDifficulty } from '../utils/topicCardLibrary';
-import { generateDailyCards, getNextRound, markWordSelected, updateLastRound, resetDailyPool, DailyCardPool } from '../utils/smartCardGenerator';
+import { generateRoundCards, generateDailyCards, getNextRound, markWordSelected, updateLastRound, resetDailyPool, DailyCardPool } from '../utils/smartCardGenerator';
 import { getMaxChildren, canCreateNewChild, shouldShowSwitchButton, UpgradeMessages } from '../config/kindergartenConfig';
 
 interface AIKindergartenScreenProps {
@@ -97,7 +97,7 @@ export default function AIKindergartenScreen({ onBack, onOpenChat, apiConfig }: 
     loadDailyData();
   }, [selectedChild]);
 
-  // 初始化每日词卡池
+  // 生成当轮4张词卡（按需生成）
   const initDailyCardPool = async () => {
     if (!selectedChild || !selectedChild.aiChildData) return;
     
@@ -105,27 +105,22 @@ export default function AIKindergartenScreen({ onBack, onOpenChat, apiConfig }: 
     setLoadError(null);
     try {
       const learnedWords = selectedChild.aiChildData.vocabulary.map(w => w.word);
-      const pool = await generateDailyCards(
-        selectedChild.id, // childId
+      const { cards, pool } = await generateRoundCards(
+        selectedChild.id,
         selectedChild.aiChildData.vocabulary.length,
         learnedWords,
         selectedChild.aiChildData.stage,
         apiConfig
       );
       setCardPool(pool);
-      
-      // 加载当前轮次的词卡
-      const nextCards = getNextRound(pool);
-      if (nextCards.length > 0) {
-        setCurrentCards(nextCards);
-        // 更新上一轮的词
-        await updateLastRound(selectedChild.id, nextCards.map(c => c.word));
+      if (cards.length > 0) {
+        setCurrentCards(cards);
       }
       setLoadError(null);
     } catch (error: any) {
       console.error('生成词卡失败:', error);
       const isTimeout = error.name === 'AbortError';
-      setLoadError(isTimeout ? '⏱️ API响应超时（30秒）' : `❌ 生成失败: ${error.message || '未知错误'}`);
+      setLoadError(isTimeout ? '⏱️ API响应超时（20秒）' : `❌ 生成失败: ${error.message || '未知错误'}`);
     } finally {
       setIsLoadingCards(false);
     }
@@ -160,23 +155,30 @@ export default function AIKindergartenScreen({ onBack, onOpenChat, apiConfig }: 
     refreshCards();
   };
 
-  // 刷新词卡（百词斩模式：刷新整轮4张卡）
+  // 刷新词卡（按需生成新一轮4张卡）
   const refreshCards = async () => {
-    if (!cardPool || !selectedChild) return;
+    if (!selectedChild || !selectedChild.aiChildData) return;
     
-    // 重新加载词卡池（确保获取最新的selectedWords）
-    const { smartLoad } = await import('../utils/storage');
-    const allPools = await smartLoad('daily_card_pools') as Record<string, DailyCardPool> || {};
-    const freshPool = allPools[selectedChild.id];
-    
-    if (!freshPool) return;
-    
-    const nextCards = getNextRound(freshPool);
-    if (nextCards.length > 0) {
-      setCurrentCards(nextCards);
-      // 更新上一轮的词
-      await updateLastRound(selectedChild.id, nextCards.map(c => c.word));
-      setCardPool(freshPool); // 更新本地pool
+    setIsLoadingCards(true);
+    setLoadError(null);
+    try {
+      const learnedWords = selectedChild.aiChildData.vocabulary.map(w => w.word);
+      const { cards, pool } = await generateRoundCards(
+        selectedChild.id,
+        selectedChild.aiChildData.vocabulary.length,
+        learnedWords,
+        selectedChild.aiChildData.stage,
+        apiConfig
+      );
+      setCardPool(pool);
+      if (cards.length > 0) {
+        setCurrentCards(cards);
+      }
+    } catch (error: any) {
+      console.error('刷新词卡失败:', error);
+      setLoadError(`❌ 刷新失败: ${error.message || '未知错误'}`);
+    } finally {
+      setIsLoadingCards(false);
     }
     setSelectedCard(null);
     setTeachResult('');
@@ -194,9 +196,9 @@ export default function AIKindergartenScreen({ onBack, onOpenChat, apiConfig }: 
     }
   };
 
-  // 打开教学模式时初始化词卡池
+  // 打开教学模式时生成第一轮词卡
   useEffect(() => {
-    if (teachingMode && selectedChild && !cardPool) {
+    if (teachingMode && selectedChild && currentCards.length === 0) {
       initDailyCardPool();
     }
   }, [teachingMode, selectedChild]);
@@ -390,8 +392,7 @@ export default function AIKindergartenScreen({ onBack, onOpenChat, apiConfig }: 
             }
           ],
           temperature: 0.7,
-          max_tokens: 200,
-          response_format: { type: 'json_object' }
+          max_tokens: 200
         })
       });
 

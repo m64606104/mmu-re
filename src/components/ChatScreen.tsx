@@ -40,6 +40,7 @@ import { addTransaction as addAIFinanceTransaction, getAIFinanceData } from '../
 import { detectExpenseFromMessage, recordAIExpense } from '../utils/aiExpenseDetector';
 import { detectIncomeFromMessage, recordAIIncome } from '../utils/aiIncomeDetector';
 import { backgroundGenerationService, GenerationTask } from '../utils/backgroundGenerationService';
+import { schedulePendingReply, onTypingChange, isGenerating as isConvGenerating, initPendingReplyService } from '../utils/pendingReplyService';
 import { handleAIGroupRedPacketClaiming } from '../utils/aiGroupRedPacketDecision';
 import { processExpiredRedPacketRefund } from '../utils/groupRedPacket';
 import { calculateDeliveryStatus, formatEstimatedTime, getActiveStageIndex, getRiderInfo } from '../utils/orderDeliverySimulator';
@@ -962,7 +963,7 @@ export default function ChatScreen({
   const videoInputRef = useRef<HTMLInputElement>(null);
   const [showSendingHint, setShowSendingHint] = useState(false);
   const [isGroupProcessing, setIsGroupProcessing] = useState(false); // 🚀 新增：群聊处理中状态
-  const [showTyping, setShowTyping] = useState(false);
+  const [showTyping, setShowTyping] = useState(() => isConvGenerating(conversation.id));
   const [pendingMessages, setPendingMessages] = useState<string[]>([]);
   const [showAllSentHint, setShowAllSentHint] = useState(false);
   
@@ -1046,7 +1047,26 @@ export default function ChatScreen({
     }
   }, [conversation.id, conversation.unreadCount, onUpdateConversation]);
 
-  // 🚀 订阅后台生成服务的状态更新
+  // 🚀 初始化延后回复服务
+  useEffect(() => {
+    initPendingReplyService(
+      onUpdateConversation,
+      (id: string) => conversations.find(c => c.id === id),
+      () => apiConfig,
+      () => currentUserProfile || { personalInfo: {} }
+    );
+  }, [onUpdateConversation, conversations, apiConfig, currentUserProfile]);
+
+  // 🚀 订阅延后回复服务的 typing 状态更新
+  useEffect(() => {
+    const unsub = onTypingChange((convId, typing) => {
+      if (convId === conversation.id) setShowTyping(typing);
+    });
+    setShowTyping(isConvGenerating(conversation.id));
+    return unsub;
+  }, [conversation.id]);
+
+  // 🚀 订阅后台生成服务的状态更新（保留用于群聊等其他功能）
   useEffect(() => {
     // 订阅当前对话的生成任务状态
     const unsubscribe = backgroundGenerationService.subscribe(
@@ -2310,6 +2330,10 @@ ${characterInfo?.languageStyle ? `语言风格：${characterInfo.languageStyle}`
           console.error('❌ 处理AI儿童经验失败：', error);
         });
     }
+    
+    // 🚀 调度延后回复（替代点击生成按钮）
+    const bufferSeconds = conversation.messageBufferSeconds ?? 15;
+    schedulePendingReply(conversation.id, bufferSeconds);
     
     inputRef.current?.focus();
   };
