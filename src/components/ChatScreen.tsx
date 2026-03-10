@@ -1053,7 +1053,7 @@ export default function ChatScreen({
       onUpdateConversation,
       (id: string) => conversations.find(c => c.id === id),
       () => apiConfig,
-      () => currentUserProfile || { personalInfo: {} }
+      () => currentUserProfile || { username: '我', bio: '', personalInfo: {} }
     );
   }, [onUpdateConversation, conversations, apiConfig, currentUserProfile]);
 

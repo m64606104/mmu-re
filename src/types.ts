@@ -358,6 +358,7 @@ export interface Conversation {
     selectedIds: string[];
     categoryFilter?: string;
   };
+  messageBufferSeconds?: number; // 消息缓冲时间（秒），用于延后回复
 }
 
 export interface UserProfile {
