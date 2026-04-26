@@ -72,12 +72,19 @@ function buildMessageCountSnapshot(conversations: Conversation[]): Record<string
   }, {});
 }
 
+function assetUrl(relativePath: string): string {
+  const base = (import.meta as any)?.env?.BASE_URL || '/';
+  const normalizedBase = String(base).endsWith('/') ? String(base) : `${base}/`;
+  const normalizedPath = relativePath.startsWith('/') ? relativePath.slice(1) : relativePath;
+  return `${normalizedBase}${normalizedPath}`;
+}
+
 function normalizePresetAaAvatar(conversations: Conversation[]): Conversation[] {
   return conversations.map((conv) => {
     const isPresetAa = conv.id.startsWith('preset-aa-') || conv.name === 'aa';
     const isPresetWorker = conv.id.startsWith('preset-worker-') || conv.name === '测';
     if (!isPresetAa && !isPresetWorker) return conv;
-    const avatarPath = isPresetAa ? '/avatars/aa-default.png' : '/avatars/ce-default.png';
+    const avatarPath = isPresetAa ? assetUrl('avatars/aa-default.png') : assetUrl('avatars/ce-default.png');
     const nextCharacterSettings = conv.characterSettings
       ? { ...conv.characterSettings, avatar: avatarPath }
       : conv.characterSettings;
@@ -245,10 +252,10 @@ function App() {
               id: 'preset-aa-' + Date.now(),
               type: 'private',
               name: 'aa',
-              avatar: '/avatars/aa-default.png',
+              avatar: assetUrl('avatars/aa-default.png'),
               messages: [],
               characterSettings: {
-                avatar: '/avatars/aa-default.png',
+                avatar: assetUrl('avatars/aa-default.png'),
                 nickname: 'aa',
                 username: 'aa不是研究生',
                 systemPrompt: '你叫aa，女生，是我的网友，和我关系很好，在上海读研。',
@@ -266,10 +273,10 @@ function App() {
               id: 'preset-worker-' + Date.now(),
               type: 'private',
               name: '测',
-              avatar: '/avatars/ce-default.png',
+              avatar: assetUrl('avatars/ce-default.png'),
               messages: [],
               characterSettings: {
-                avatar: '/avatars/ce-default.png',
+                avatar: assetUrl('avatars/ce-default.png'),
                 nickname: '测',
                 username: '只要涨薪不要996',
                 systemPrompt: '你是一个上班族，26岁，男，在公司做总裁助理。',
