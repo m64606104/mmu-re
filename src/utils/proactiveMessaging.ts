@@ -6,6 +6,7 @@
 import { Conversation, Message, ApiConfig } from '../types';
 import { getMemoryBank } from './memorySystem';
 import { cleanAIMessage, splitMessages } from './messageFormatter';
+import { MEDIA_DECISION_GUIDANCE } from './mediaDecisionPrompt';
 
 const STORAGE_KEY = 'proactive_messaging_state';
 
@@ -182,6 +183,8 @@ const buildProactiveMessagePrompt = (conversation: Conversation): string => {
 4. **表达关心**: 如果对方之前提到什么事，可以问后续
 5. **真实感**: 像真人朋友一样，不要像机器人
 
+${MEDIA_DECISION_GUIDANCE}
+
 📝 示例（好的主动消息）：
 - "我刚看到一个好笑的视频，想起了你之前说的..."
 - "诶，你上次提到的那个事怎么样了？"
@@ -246,7 +249,18 @@ export const sendProactiveMessage = async (
     
     // 清洗并拆分为多条单条气泡
     const cleaned = cleanAIMessage(aiMessage.trim());
-    const parts = splitMessages(cleaned);
+    const parts = splitMessages(cleaned, {
+      preference: conversation.replySplitPreference ?? 'smart',
+      conversationType: conversation.type,
+      maxBubbles: 3,
+      characterProfileText: [
+        conversation.characterSettings?.personality,
+        conversation.characterSettings?.languageStyle,
+        conversation.characterSettings?.systemPrompt,
+      ]
+        .filter(Boolean)
+        .join('\n'),
+    });
     const finalParts = parts.length > 0 ? parts : [cleaned];
     
     const baseTime = Date.now();

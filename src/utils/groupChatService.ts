@@ -3,6 +3,8 @@ import { cleanAIMessage, splitMessages } from './messageFormatter';
 import { selectNextRoundParticipants } from './groupChatContinuationAnalyzer';
 import { buildTimeAwarePrompt } from './timeAwareness';
 import { formatLetterMemoryForAI } from './letterMemorySystem';
+import { MEDIA_DECISION_GUIDANCE } from './mediaDecisionPrompt';
+import { getNoActionRoleplayPrompt } from './chatStylePrompt';
 
 /**
  * 群聊API服务
@@ -145,6 +147,8 @@ ${letterMemory}
 4. 😊 **表情包**：[表情包:表情描述]
    示例："[表情包:笑哭了]"
    使用场景：回应搞笑内容、表达情绪
+
+${MEDIA_DECISION_GUIDANCE}
 
 5. 📄 **文档消息**：[文档:标题:类型:内容摘要]
    示例："[文档:会议记录:记录:今天的讨论要点]"
@@ -489,23 +493,8 @@ async function generateAIReply(
 - 如果觉得不需要回复或插不上话，请输出 [不回复]`;
     }
     
-    // 🚀 优化：禁止动作描述提示
-    // ⚠️ 群聊统一采用微信风格，不允许语C/小说式动作描写
-    systemPrompt += `
-    
-【❌ 严格禁止动作描述】：
-- 绝对禁止使用任何括号描述动作或神态，包括（）()【】[]
-- 禁止使用星号描述动作，如 *看着你*、*点头*
-- 必须像真实人类在微信/QQ聊天一样，只发送文字、图片或表情
-- 不要像写小说一样描述场景和动作
-- 示例：
-  ❌ 错误：（笑着说）好的呀！
-  ❌ 错误：(开心地点头) 好的呀！
-  ❌ 错误：【带着笑意】好的呀！
-  ✅ 正确：好的呀！😊
-  ✅ 正确：好的呀！[表情包:开心]
-
-⚠️ 再次强调：不要使用任何形式的括号来描述动作、神态、语气！`;
+    // 🚫 群聊也统一禁止语C/小说式动作描写
+    systemPrompt += `\n\n${getNoActionRoleplayPrompt({ includeAsteriskRule: true })}`;
     
     // 构建消息历史（支持：关闭=全部上下文；开启=自定义条数）
     const contextEnabled = groupConversation.groupContextConfig?.enabled || false;

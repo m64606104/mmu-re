@@ -31,6 +31,7 @@ export interface Message {
   mediaType?: 'image' | 'video' | 'voice' | 'sticker';
   mediaDescription?: string;
   mediaUrl?: string;
+  stickerKind?: 'custom' | 'systemEmoji';
   isMediaDescriptionOnly?: boolean;
   voiceDuration?: number;
   isVoicePlayed?: boolean;
@@ -359,6 +360,7 @@ export interface Conversation {
     categoryFilter?: string;
   };
   messageBufferSeconds?: number; // 消息缓冲时间（秒），用于延后回复
+  replySplitPreference?: 'smart' | 'single' | 'split'; // 新拆分策略偏好：智能/整段/拆条
 }
 
 export interface UserProfile {

@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { groupToPrivateMemoryService } from '../utils/groupToPrivateMemoryService';
-import { ChevronLeft, Send, Mic, Sparkles, Smile, BellOff, Bell, Pause, Play, Image as ImageIcon, Video, Phone, MapPin, FileText, Plus, Search, MessageCircle, MessageSquare, Eye, Music, Gift } from 'lucide-react';
+import { ChevronLeft, Send, Mic, Smile, BellOff, Bell, Pause, Play, Image as ImageIcon, Video, Phone, MapPin, FileText, Plus, Search, MessageCircle, MessageSquare, Eye, Music, Gift, MoreHorizontal } from 'lucide-react';
 import { Conversation, Message, ApiConfig, UserProfile, DocumentMessage } from '../types';
 import MoneyTransferModal from './MoneyTransferModal';
 import GroupRedPacketModal from './GroupRedPacketModal';
@@ -10,12 +10,10 @@ import DocumentLibraryModal from './DocumentLibraryModal';
 import WordStyleDocumentCard from './WordStyleDocumentCard';
 import WordStyleDocumentModal from './WordStyleDocumentModal';
 import SelectContactModal from './SelectContactModal';
-import { parseEnhancedDocument } from '../utils/enhancedDocumentParser';
 import { subChatMemoryManager } from '../utils/subChatMemoryManager';
 import { saveDocument as saveToLibrary } from '../utils/documentLibrary';
 import WeChatLinkPreview, { LinkPreviewData } from './WeChatLinkPreview';
 import XiaohongshuLinkModal from './XiaohongshuLinkModal';
-import { SmartLinkParser } from '../utils/smartLinkParser';
 import XiaohongshuFeed from './XiaohongshuFeed';
 import MusicShareModal from './MusicShareModal';
 import RealMusicSearchModal from './RealMusicSearchModal';
@@ -28,8 +26,8 @@ import { MusicMessage } from '../types';
 import { musicContextService } from '../utils/musicContextService';
 import ZhihuFeed from './ZhihuFeed';
 import NeteaseMusicCard from './NeteaseMusicCard';
-import NeteaseMusicParser from '../utils/neteaseMusicParser';
 import { calculateVoiceDuration } from '../utils/voiceDurationCalculator';
+import { isSingleEmojiText } from '../utils/systemEmoji';
 import WeiboFeed from './WeiboFeed';
 import SearchHistoryView from './SearchHistoryView';
 import ChatSearchModal from './ChatSearchModal';
@@ -37,10 +35,8 @@ import { SmartHTMLGenerator } from '../utils/smartHTMLGenerator';
 import { SavedDocument } from '../utils/documentLibrary';
 import { sendMoney, receiveMoney, getBalance, aiPayForUser, refundGift } from '../utils/wallet';
 import { addTransaction as addAIFinanceTransaction, getAIFinanceData } from '../utils/aiFinance';
-import { detectExpenseFromMessage, recordAIExpense } from '../utils/aiExpenseDetector';
-import { detectIncomeFromMessage, recordAIIncome } from '../utils/aiIncomeDetector';
-import { backgroundGenerationService, GenerationTask } from '../utils/backgroundGenerationService';
-import { schedulePendingReply, onTypingChange, isGenerating as isConvGenerating, initPendingReplyService } from '../utils/pendingReplyService';
+import { backgroundGenerationService, type GenerationTask } from '../domains/generation';
+import { schedulePendingReply, onTypingChange, isGenerating as isConvGenerating, initPendingReplyService } from '../domains/chat';
 import { handleAIGroupRedPacketClaiming } from '../utils/aiGroupRedPacketDecision';
 import { processExpiredRedPacketRefund } from '../utils/groupRedPacket';
 import { calculateDeliveryStatus, formatEstimatedTime, getActiveStageIndex, getRiderInfo } from '../utils/orderDeliverySimulator';
@@ -57,7 +53,17 @@ import MessageSelectionToolbar from './MessageSelectionToolbar';
 import ForwardTargetSelector from './ForwardTargetSelector';
 import { MergedForwardViewer } from './MergedForwardCard';
 import { createSingleForward, createMergedForward, getMessagePreview } from '../utils/messageForward';
-import { formatChatRecord } from '../utils/chatRecordFormatter';
+import { 
+  formatMessageForAI, 
+  prepareAssistantSegments,
+  orchestrateAssistantSegment,
+  recordAssistantFinanceSignals,
+  createCommitUserMessageHandlers,
+  commitEditedMessage
+} from '../domains/chat';
+import { buildUserMessageFromInput, commitUserMessage } from '../domains/chat';
+import { buildMediaChatRequest } from '../domains/chat';
+import { buildTextChatRequest } from '../domains/chat';
 // 子聊天相关导入
 import ChatExtractPreview from './ChatExtractPreview';
 import {
@@ -83,12 +89,13 @@ import {
 } from '../utils/memorySystem';
 // import { detectMemes } from '../utils/memeSystem'; // 已删除热梗系统
 import { messagePerceptionService } from '../utils/messagePerceptionService';
-import { buildTimeAwarePrompt, UnrepliedMessageInfo, hasActionKeywords } from '../utils/timeAwareness';
-import { getMomentsData } from '../utils/aiMomentsGenerator';
+import { UnrepliedMessageInfo } from '../utils/timeAwareness';
+import { getMomentsData } from '../domains/moments';
 import { getAIStatus } from '../utils/aiStatusManager';
-import { getErrorFromResponse, formatErrorMessage } from '../utils/apiErrorHandler';
+import { MEDIA_DECISION_GUIDANCE } from '../utils/mediaDecisionPrompt';
+import { getNoActionRoleplayPrompt } from '../utils/chatStylePrompt';
+import { getErrorFromResponse, formatErrorMessage, cleanAIMessage, stripDisplayControlTags, SmartLinkParser, buildTimeAwarePrompt, hasActionKeywords } from '../domains/chat';
 // @ts-ignore - 函数在backgroundTaskManager内部使用，TS静态分析无法识别
-import { splitMessages, cleanAIMessage } from '../utils/messageFormatter';
 import { findStickerByDescription } from '../utils/stickerMessageParser';
 // 群聊服务
 import { generateGroupChatReplies, generateGroupChatRepliesFreeMode } from '../utils/groupChatService';
@@ -154,100 +161,29 @@ const backgroundTaskManager = {
         return;
       }
 
-      // 🎭 优先检测完整的HTML模块内容（必须在splitMessages之前）
-      const htmlType = SmartHTMLGenerator.detectHTMLType(assistantMessage);
-      
       // 将分割后的文本转换为Message对象数组
       const messages: Message[] = [];
-      const allExtraMessages: Message[] = [];
-      
-      // 如果检测到HTML模块，不进行消息拆分，保持完整
-      if (htmlType) {
-        console.log(`🎭 检测到完整${htmlType}内容，跳过消息拆分`);
-        
-        const platformNames = {
-          'xiaohongshu': '小红书',
-          'zhihu': '知乎',
-          'weibo': '微博',
-          'search-history': '搜索记录'
-        };
-        
-        // 创建HTML模块消息
-        allExtraMessages.push({
-          id: `${Date.now()}_html`,
-          role: 'assistant',
-          content: `分享了${platformNames[htmlType]}`,
-          timestamp: Date.now() + 100,
-          socialFeed: {
-            platform: htmlType,
-            rawContent: assistantMessage
-          }
-        });
-        
-        // 直接返回，不进行后续的消息拆分处理
-        callback([...messages, ...allExtraMessages], conversation.id);
+      const preparedSegments = prepareAssistantSegments({
+        assistantMessage,
+        conversation: {
+          id: conversation.id,
+          type: conversation.type,
+          messages: conversation.messages,
+          replySplitPreference: conversation.replySplitPreference,
+          characterSettings: {
+            personality: conversation.characterSettings?.personality,
+            languageStyle: conversation.characterSettings?.languageStyle,
+            systemPrompt: conversation.characterSettings?.systemPrompt,
+          },
+        },
+      });
+
+      if (preparedSegments.earlyReturnMessages) {
+        callback(preparedSegments.earlyReturnMessages, conversation.id);
         return;
       }
-      
-      // 🎨 智能检测：判断消息模式（普通消息 vs HTML输出）
-      const isHTMLOutputMode = (() => {
-        // 检测是否包含HTML标签
-        const hasHTMLTags = /<[^>]+>/.test(assistantMessage);
-        if (!hasHTMLTags) return false;
-        
-        // 统计HTML标签数量和总字符数
-        const htmlTagMatches = assistantMessage.match(/<[^>]+>/g) || [];
-        const htmlTagCount = htmlTagMatches.length;
-        const totalLength = assistantMessage.length;
-        
-        // 如果HTML标签数量 >= 3，且内容中HTML占比较高，判定为HTML输出模式
-        if (htmlTagCount >= 3) {
-          const htmlContentLength = htmlTagMatches.reduce((sum: number, tag: string) => sum + tag.length, 0);
-          const htmlRatio = htmlContentLength / totalLength;
-          
-          if (htmlRatio > 0.2) {
-            console.log(`🎨 [智能检测] HTML输出模式: 标签数=${htmlTagCount}, 占比=${(htmlRatio * 100).toFixed(1)}%`);
-            return true;
-          }
-        }
-        
-        // 检测是否包含典型的HTML结构标签
-        const structuralTags = ['<div', '<style', '<span', '<table', '<ul', '<ol', '<section', '<article'];
-        const hasStructuralTags = structuralTags.some(tag => assistantMessage.includes(tag));
-        if (hasStructuralTags && htmlTagCount >= 2) {
-          console.log(`🎨 [智能检测] HTML输出模式: 检测到结构化标签`);
-          return true;
-        }
-        
-        // 检测是否是完整的HTML块（开始标签和闭合标签配对）
-        const openTagMatches = assistantMessage.match(/<(\w+)[^>]*>/g) || [];
-        const closeTagMatches = assistantMessage.match(/<\/(\w+)>/g) || [];
-        if (openTagMatches.length >= 2 && openTagMatches.length === closeTagMatches.length) {
-          console.log(`🎨 [智能检测] HTML输出模式: 检测到配对的HTML标签`);
-          return true;
-        }
-        
-        console.log(`📝 [智能检测] 普通消息模式: HTML标签数=${htmlTagCount}`);
-        return false;
-      })();
-      
-      // 如果是HTML输出模式，作为单条完整消息，不分割
-      if (isHTMLOutputMode) {
-        console.log(`🎨 [HTML输出模式] 保持完整，不进行分割`);
-        messages.push({
-          id: `${Date.now()}_html_output`,
-          role: 'assistant',
-          content: assistantMessage, // 保持原始HTML内容
-          timestamp: Date.now()
-        });
-        
-        callback(messages, conversation.id);
-        return;
-      }
-      
-      // 📝 普通消息模式：使用splitMessages分割消息
-      console.log(`📝 [普通消息模式] 进行智能分割`);
-      const splitMsgs = splitMessages(assistantMessage);
+
+      const splitMsgs = preparedSegments.splitSegments;
       
       for (let index = 0; index < splitMsgs.length; index++) {
         const content = splitMsgs[index];
@@ -280,269 +216,40 @@ const backgroundTaskManager = {
           }
         }
         
-        // 🎤 第2步：从非HTML内容中提取媒体项
-        const mediaItems: any[] = [];
-        let cleanContent = nonHTMLContent;
-        
-        // 提取所有图片
-        const imageMatches = cleanContent.matchAll(/\[图片[:：]([^\]]+)\]/g);
-        for (const match of imageMatches) {
-          mediaItems.push({
-            type: 'image',
-            description: match[1].trim()
-          });
-          cleanContent = cleanContent.replace(match[0], '').trim();
-        }
-        
-        // 提取所有视频
-        const videoMatches = cleanContent.matchAll(/\[视频[:：]([^\]]+)\]/g);
-        for (const match of videoMatches) {
-          mediaItems.push({
-            type: 'video',
-            description: match[1].trim()
-          });
-          cleanContent = cleanContent.replace(match[0], '').trim();
-        }
-        
-        // 提取所有语音
-        const voiceMatches = cleanContent.matchAll(/\[语音[:：](.+?)(?:[，,]\s*(?:时长)?(\d+)秒?)?\]/g);
-        for (const match of voiceMatches) {
-          mediaItems.push({
-            type: 'voice',
-            description: match[1].trim(),
-            duration: parseInt(match[2]) || 3
-          });
-          cleanContent = cleanContent.replace(match[0], '').trim();
-        }
-        
-        // 提取所有表情包（需要异步查找图片）
-        const stickerMatches = [...cleanContent.matchAll(/\[表情包[:：]([^\]]+)\]/g)];
-        for (const match of stickerMatches) {
-          const description = match[1].trim();
-          // 异步查找表情包图片URL（使用当前角色ID限制范围）
-          const imageUrl = await findStickerByDescription(description, conversation.id);
-          mediaItems.push({
-            type: 'sticker',
-            description,
-            imageUrl: imageUrl || undefined // 找到图片就用，找不到就undefined
-          });
-          cleanContent = cleanContent.replace(match[0], '').trim();
-        }
-        
-        // 🔍 解析特殊指令（文档、链接预览、红包、转账）
-        let finalContent = cleanContent;
-        console.log(`📖 开始解析AI消息: ${finalContent.substring(0, 100)}...`);
-        
-        // 注意：社交平台内容已在消息拆分前处理，这里不再检测
-        
-        // 🔥 第一优先级：文档解析（必须在链接解析之前！）
-        console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-        console.log('📄 [文档解析] 开始 (优先级最高)');
-        console.log('原始内容长度:', finalContent.length);
-        console.log('原始内容预览:', finalContent.substring(0, 200));
-        
-        const parsedDoc = parseEnhancedDocument(finalContent);
-        
-        if (parsedDoc) {
-          console.log('✅ [文档解析] 成功识别文档');
-          console.log('   标题:', parsedDoc.title);
-          console.log('   类型:', parsedDoc.type);
-          console.log('   内容长度:', parsedDoc.content.length);
-          
-          // 创建文档消息
-          allExtraMessages.push({
-            id: `${baseId}_doc`,
-            role: 'assistant',
-            content: `发送了文档「${parsedDoc.title}」`,
-            timestamp: Date.now() + 100,
-            document: {
-              title: parsedDoc.title,
-              content: parsedDoc.content,
-              type: parsedDoc.type,
-              greeting: parsedDoc.greeting || '请查收'
-            }
-          });
-          
-          // 文档已提取，清空正文
-          finalContent = '';
-          console.log('📄 [文档解析] 文档已提取为单独消息');
-        } else {
-          console.log('ℹ️ [文档解析] 未检测到文档标记');
-        }
-        
-        console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
-        
-        // 🔗 第二优先级：解析链接预览（小红书、知乎、微博等）
-        if (finalContent) {
-          const parsedLink = SmartLinkParser.parseMessage(finalContent);
-          if (parsedLink.linkPreviews.length > 0) {
-            console.log(`🔗 检测到${parsedLink.linkPreviews.length}个链接预览`);
-            
-            // 为每个链接预览创建消息
-            parsedLink.linkPreviews.forEach((linkPreview, idx) => {
-              allExtraMessages.push({
-                id: `${baseId}_link_${idx}`,
-                role: 'assistant',
-                content: `分享了${linkPreview.platform === 'xiaohongshu' ? '小红书' : linkPreview.platform === 'zhihu' ? '知乎' : ''}链接`,
-                timestamp: Date.now() + 100 + allExtraMessages.length * 10,
-                linkPreview
-              });
-            });
-            
-            // 更新finalContent为去除链接标记后的纯文本
-            finalContent = parsedLink.textContent;
-          }
-        }
-        
-        // 检测红包：[发红包:金额:留言]
-        const redPacketMatch = finalContent.match(/\[发红包:([\d.]+):([^\]]*)\]/);
-        if (redPacketMatch) {
-          const amount = parseFloat(redPacketMatch[1]);
-          const redPacketMsg = redPacketMatch[2];
-          
-          // 🔥 冷静期检测：检查最近10条消息中是否有AI发送的红包/转账/礼物
-          const recentMessages = conversation.messages.slice(-10);
-          const hasRecentMoneyTransfer = recentMessages.some(msg => 
-            msg.role === 'assistant' && msg.moneyTransfer
-          );
-          
-          if (hasRecentMoneyTransfer) {
-            console.warn('⏰ 冷静期限制：AI在最近10条消息内已发送过红包/转账/礼物，本次红包被过滤');
-            finalContent = finalContent.replace(redPacketMatch[0], '').trim();
-          } else {
-            finalContent = finalContent.replace(redPacketMatch[0], '').trim();
-            console.log(`🧧 AI发红包: ¥${amount}, 留言: ${redPacketMsg}`);
-            
-            allExtraMessages.push({
-              id: `${baseId}_redpacket`,
-              role: 'assistant',
-              content: '', // AI发送红包时也不显示文本，只显示红包卡片
-              timestamp: Date.now() + 100 + allExtraMessages.length * 10,
-              moneyTransfer: {
-                type: 'redPacket',
-                amount,
-                message: redPacketMsg,
-                status: 'pending'
-              }
-            });
-          }
-        }
+        console.log(`📖 开始解析AI消息: ${nonHTMLContent.substring(0, 100)}...`);
 
-        // 🔥 智能识别转账（支持多种格式）
-        
-        // 格式1：标准格式 [转账:金额:备注]
-        let transferMatch = finalContent.match(/\[转账:([\d.]+):([^\]]*)\]/);
-        
-        // 格式2：描述性多行格式
-        // 【你发送了转账】
-        // 金额：¥88888
-        // 留言：xxx
-        // 状态：待领取
-        if (!transferMatch) {
-          const multiLineMatch = finalContent.match(/[【\[](?:你)?发送?了?转账[】\]]\s*金额[：:]\s*[¥￥]?([\d.]+)\s*留言[：:]\s*([^\n]*)/s);
-          if (multiLineMatch) {
-            transferMatch = [
-              multiLineMatch[0],
-              multiLineMatch[1], // 金额
-              multiLineMatch[2]  // 留言
-            ] as any;
-          }
+        const orchestrated = await orchestrateAssistantSegment({
+          rawSegment: nonHTMLContent,
+          baseId,
+          conversationId: conversation.id,
+          recentMessages: conversation.messages.slice(-10),
+          htmlContent,
+          resolveStickerImage: findStickerByDescription,
+          calculateVoiceDuration,
+          log: (line) => {
+            if (line.startsWith('❌')) console.error(line);
+            else console.log(line);
+          },
+        });
+        if (orchestrated.blockedByCooldown.includes('redPacket')) {
+          console.warn('⏰ 冷静期限制：AI在最近10条消息内已发送过红包/转账/礼物，本次红包被过滤');
         }
-        
-        if (transferMatch) {
-          const amount = parseFloat(transferMatch[1]);
-          const transferMsg = transferMatch[2];
-          
-          // 🔥 冷静期检测：检查最近10条消息中是否有AI发送的红包/转账/礼物
-          const recentMessages = conversation.messages.slice(-10);
-          const hasRecentMoneyTransfer = recentMessages.some(msg => 
-            msg.role === 'assistant' && msg.moneyTransfer
-          );
-          
-          if (hasRecentMoneyTransfer) {
-            console.warn('⏰ 冷静期限制：AI在最近10条消息内已发送过红包/转账/礼物，本次转账被过滤');
-            finalContent = finalContent.replace(transferMatch[0], '').trim();
-          } else {
-            finalContent = finalContent.replace(transferMatch[0], '').trim();
-            console.log(`💸 AI转账: ¥${amount}, 备注: ${transferMsg}`);
-            
-            allExtraMessages.push({
-              id: `${baseId}_transfer`,
-              role: 'assistant',
-              content: '', // AI转账时也不显示文本，只显示转账卡片
-              timestamp: Date.now() + 100 + allExtraMessages.length * 10,
-              moneyTransfer: {
-                type: 'transfer',
-                amount,
-                message: transferMsg,
-                status: 'pending'
-              }
-            });
-          }
+        if (orchestrated.blockedByCooldown.includes('transfer')) {
+          console.warn('⏰ 冷静期限制：AI在最近10条消息内已发送过红包/转账/礼物，本次转账被过滤');
         }
-
-        // 检测引用消息：[回复 我/你 说的"xxx"]
-        let replyToInfo: { content: string; role: 'user' | 'assistant' } | undefined;
-        const replyMatch = finalContent.match(/\[回复\s+(我|你)\s+说的"([^"]+)"\]/);
-        if (replyMatch) {
-          const quotedRole = replyMatch[1]; // '我' 或 '你'
-          const quotedContent = replyMatch[2];
-          finalContent = finalContent.replace(replyMatch[0], '').trim();
-          
-          // '我' = user, '你' = assistant (AI回复时，'我'指的是用户)
-          replyToInfo = {
-            content: quotedContent,
-            role: quotedRole === '我' ? 'user' : 'assistant'
-          };
-          
-          console.log(`💬 AI引用消息: ${quotedRole}说的"${quotedContent}"`);
+        if (orchestrated.blockedByCooldown.includes('gift')) {
+          console.warn('⏰ 冷静期限制：AI在最近10条消息内已发送过红包/转账/礼物，本次礼物被过滤');
         }
-
-        // 检测红包/转账接收响应：[接收红包:留言] [退回红包:留言] [接收转账:留言] [退回转账:留言]
-        const moneyResponseMatch = finalContent.match(/\[(接收|退回)(红包|转账):([^\]]*)\]/);
-        if (moneyResponseMatch) {
-          const action = moneyResponseMatch[1]; // 接收/退回
-          const type = moneyResponseMatch[2]; // 红包/转账
-          const message = moneyResponseMatch[3]; // 留言
-          finalContent = finalContent.replace(moneyResponseMatch[0], '').trim();
-          
-          console.log(`💰 AI${action}${type}: ${message}`);
-          
-          // 🔥 重要：创建红包/转账气泡，但不设置content
-          // AI的文字回复会作为独立的文本消息显示（通过finalContent）
-          // 这样可以同时显示：① 红包气泡 + ② AI的文字回复
-          allExtraMessages.push({
-            id: `${baseId}_moneyresponse`,
-            role: 'assistant',
-            content: '', // ⚠️ 设为空，避免显示默认文字如"已收到你的红包"
-            timestamp: Date.now() + 100 + allExtraMessages.length * 10,
-            moneyTransfer: {
-              type: type === '红包' ? 'redPacket' : 'transfer',
-              amount: 0, // 占位，需要后续更新
-              message: message,
-              status: action === '接收' ? 'received' : 'returned'
-            }
-          });
+        if (orchestrated.shouldAbort) {
+          return;
         }
-
-        // 💬 检测子聊天发起：[发起子聊天:目的:建议名称]
-        const subChatMatch = finalContent.match(/\[发起子聊天:([^:]+):([^\]]+)\]/);
-        if (subChatMatch) {
-          const purpose = subChatMatch[1].trim();
-          const suggestedName = subChatMatch[2].trim();
-          
-          console.log(`💬 AI发起子聊天: ${suggestedName}, 目的: ${purpose}`);
-          
-          // 移除标记
-          finalContent = finalContent.replace(subChatMatch[0], '').trim();
-          
-          // 💡 将子聊天请求存储为特殊消息，由组件处理
-          allExtraMessages.push({
-            id: `${baseId}_subchat_request`,
-            role: 'system',
-            content: `__SUBCHAT_REQUEST__${purpose}__${suggestedName}`,
-            timestamp: Date.now() + 100 + allExtraMessages.length * 10,
-          });
+        const hasAvatarChange = orchestrated.hasAvatarChange;
+        const hasRestoreAvatar = orchestrated.hasRestoreAvatar;
+        if (hasAvatarChange) {
+          console.log('🎭 [头像更换] 检测到换头像指令，移除标记');
+        }
+        if (hasRestoreAvatar) {
+          console.log('🎭 [头像更换] 检测到换回原头像指令，移除标记');
         }
 
         // 🧠 为主聊天添加子聊天记忆上下文（如果用户提到了子聊天内容）
@@ -571,232 +278,14 @@ ${summary}`;
           }
         }
 
-        // 检测AI送礼物：[送礼物:商品名称:价格:留言]
-        const giftMatch = finalContent.match(/\[送礼物:([^:]+):(\d+(?:\.\d+)?):([^\]]*)\]/);
-        if (giftMatch) {
-          const productName = giftMatch[1];
-          const price = parseFloat(giftMatch[2]);
-          const giftMessage = giftMatch[3];
-          
-          // 🔥 冷静期检测：检查最近10条消息中是否有AI发送的红包/转账/礼物
-          const recentMessages = conversation.messages.slice(-10);
-          const hasRecentMoneyTransfer = recentMessages.some(msg => 
-            msg.role === 'assistant' && (msg.moneyTransfer || msg.order?.type === 'gift')
-          );
-          
-          if (hasRecentMoneyTransfer) {
-            console.warn('⏰ 冷静期限制：AI在最近10条消息内已发送过红包/转账/礼物，本次礼物被过滤');
-            finalContent = finalContent.replace(giftMatch[0], '').trim();
-          } else {
-            finalContent = finalContent.replace(giftMatch[0], '').trim();
-            console.log(`🎁 AI送礼物: ${productName} ¥${price}`);
-            
-            // 💰 检查AI余额（使用新财务系统）
-            const aiFinanceData = await getAIFinanceData(conversation.id);
-            if (aiFinanceData.balance >= price) {
-              // 余额足够，扣款并创建订单（同步到新财务系统）
-              const success = await addAIFinanceTransaction(
-                conversation.id,
-                'expense',
-                price,
-                '购物支出',
-                `送礼物给用户: ${productName}`,
-                'user',
-                `gift_${Date.now()}`,
-                false
-              );
-              
-              if (success) {
-                console.log(`✅ AI智能财务扣款成功: ¥${price}, 原余额: ¥${aiFinanceData.balance}`);
-              } else {
-                console.error(`❌ AI智能财务扣款失败`);
-                return; // 扣款失败，不创建礼物
-              }
-              
-              // 创建礼物订单消息
-              allExtraMessages.push({
-                id: `${baseId}_gift`,
-                role: 'assistant',
-                content: '', // AI送礼物时不显示默认文本，只显示礼物卡片
-                timestamp: Date.now() + 100 + allExtraMessages.length * 10,
-                order: {
-                  type: 'gift',
-                  source: 'taobao', // AI发起的礼物默认为淘宝商品
-                  products: [{
-                    id: `product_${Date.now()}`,
-                    name: productName,
-                    price: price,
-                    quantity: 1,
-                    image: '🎁' // 默认礼物图标
-                  }],
-                  totalAmount: price,
-                  status: 'pending',
-                  orderNumber: `ORDER${Date.now()}`,
-                  message: giftMessage,
-                  recipientId: 'user',
-                  recipientName: '你'
-                }
-              });
-            } else {
-              // 余额不足，创建提示消息而不是订单
-              console.log(`❌ AI智能财务余额不足: 需要¥${price}, 仅有¥${aiFinanceData.balance}`);
-              // AI会在回复中说明余额不足，不创建订单
-              // 标记已被移除，不会显示[送礼物:xxx]
-            }
-          }
-        }
-        
-        // 检测头像更换：[换头像] 或 [换回原头像]
-        // 注意：实际的头像更新会在callback外部处理
-        const hasAvatarChange = finalContent.includes('[换头像]');
-        const hasRestoreAvatar = finalContent.includes('[换回原头像]');
-        
-        // 移除所有头像标记（包括全角/半角括号和中英文字符）
-        if (hasAvatarChange) {
-          console.log('🎭 [头像更换] 检测到换头像指令，移除标记');
-          finalContent = finalContent.replace(/\[换头像\]/g, '').replace(/【换头像】/g, '').trim();
-        }
-        if (hasRestoreAvatar) {
-          console.log('🎭 [头像更换] 检测到换回原头像指令，移除标记');
-          finalContent = finalContent.replace(/\[换回原头像\]/g, '').replace(/【换回原头像】/g, '').trim();
-        }
-        
-        // 🎯 第3步：分离所有内容为独立消息
-        let msgTimestamp = Date.now();
-        
-        // 3.1 添加HTML消息（如果有）
-        if (htmlContent) {
-          messages.push({
-            id: `${baseId}_html`,
-            role: 'assistant' as const,
-            content: htmlContent,
-            timestamp: msgTimestamp++
-          });
-          console.log('🎨 [创建消息] HTML消息已添加');
-        }
-        
-        // 3.2 添加所有语音消息（每个语音独立气泡）
-        const voiceItems = mediaItems.filter(item => item.type === 'voice');
-        voiceItems.forEach((voice, voiceIdx) => {
-          // 根据文字内容计算语音时长
-          const calculatedDuration = calculateVoiceDuration(voice.description || '');
-          
-          messages.push({
-            id: `${baseId}_voice_${voiceIdx}`,
-            role: 'assistant' as const,
-            content: '[语音]',
-            timestamp: msgTimestamp++,
-            mediaType: 'voice',
-            mediaDescription: voice.description,
-            voiceDuration: calculatedDuration, // 使用计算的时长
-            isMediaDescriptionOnly: true
-          });
-          console.log(`🎤 [创建消息] 语音消息 ${voiceIdx + 1} 已添加，时长：${calculatedDuration}秒`);
-        });
-        
-        // 3.3 添加所有图片消息（每个图片独立气泡）
-        const imageItems = mediaItems.filter(item => item.type === 'image');
-        imageItems.forEach((image, imageIdx) => {
-          messages.push({
-            id: `${baseId}_image_${imageIdx}`,
-            role: 'assistant' as const,
-            content: '[图片]',
-            timestamp: msgTimestamp++,
-            mediaType: 'image',
-            mediaDescription: image.description,
-            isMediaDescriptionOnly: true
-          });
-          console.log(`🖼️ [创建消息] 图片消息 ${imageIdx + 1} 已添加`);
-        });
-        
-        // 3.4 添加所有视频消息
-        const videoItems = mediaItems.filter(item => item.type === 'video');
-        videoItems.forEach((video, videoIdx) => {
-          messages.push({
-            id: `${baseId}_video_${videoIdx}`,
-            role: 'assistant' as const,
-            content: '[视频]',
-            timestamp: msgTimestamp++,
-            mediaType: 'video',
-            mediaDescription: video.description,
-            isMediaDescriptionOnly: true
-          });
-          console.log(`🎬 [创建消息] 视频消息 ${videoIdx + 1} 已添加`);
-        });
-        
-        // 3.5 添加所有表情包消息
-        const stickerItems = mediaItems.filter(item => item.type === 'sticker');
-        stickerItems.forEach((sticker, stickerIdx) => {
-          messages.push({
-            id: `${baseId}_sticker_${stickerIdx}`,
-            role: 'assistant' as const,
-            content: '[表情包]',
-            timestamp: msgTimestamp++,
-            mediaType: 'sticker',
-            mediaDescription: sticker.description,
-            mediaUrl: sticker.imageUrl, // 如果有图片URL就用真实图片
-            isMediaDescriptionOnly: !sticker.imageUrl // 有URL=false(真实图片), 无URL=true(文字描述)
-          });
-          console.log(`😊 [创建消息] 表情包消息 ${stickerIdx + 1} 已添加${sticker.imageUrl ? ' (真实图片)' : ' (文字描述)'}`);
-        });
-        
-        // 3.6 最后添加文本消息（如果有剩余文本）
-        const hasSpecialContent = allExtraMessages.some(msg => msg.id.startsWith(baseId));
-        const shouldCreateTextMessage = finalContent || (!hasSpecialContent && cleanContent);
-        
-        if (shouldCreateTextMessage) {
-          // 🔥 修复：只使用finalContent，不要fallback到cleanContent
-          // 因为finalContent已经移除了所有特殊标记（如[换头像]）
-          const textContent = finalContent;
-          if (textContent && textContent.trim()) {
-            const message: Message = {
-              id: baseId,
-              role: 'assistant' as const,
-              content: textContent,
-              timestamp: msgTimestamp++
-            };
-            
-            // 如果有引用消息，添加到消息中
-            if (replyToInfo) {
-              message.replyTo = {
-                id: '',
-                content: replyToInfo.content,
-                role: replyToInfo.role
-              };
-            }
-            
-            messages.push(message);
-            console.log('📝 [创建消息] 文本消息已添加');
-          }
-        }
+        messages.push(...orchestrated.messages);
       }
       
-      // 添加所有额外的特殊消息（红包、转账、文档）
-      messages.push(...allExtraMessages);
-      
-      // 💰 AI智能财务：检测并记录消费和收入行为
-      if (messages.length > 0) {
-        const lastMessage = messages[messages.length - 1];
-        if (lastMessage.role === 'assistant') {
-          // 检测消费行为
-          const expense = detectExpenseFromMessage(lastMessage.content);
-          if (expense.hasExpense) {
-            console.log(`💰 检测到AI消费行为: ${expense.description}`);
-            recordAIExpense(conversation.id, expense, lastMessage.content).catch(error => {
-              console.error('❌ 记录AI消费失败:', error);
-            });
-          }
-          
-          // 检测收入行为
-          const income = detectIncomeFromMessage(lastMessage.content);
-          if (income.hasIncome) {
-            console.log(`💰 检测到AI收入行为: ${income.description}`);
-            recordAIIncome(conversation.id, income, lastMessage.content).catch(error => {
-              console.error('❌ 记录AI收入失败:', error);
-            });
-          }
-        }
-      }
+      // 💰 AI智能财务：检测并记录消费和收入行为（抽离到 chat domain）
+      recordAssistantFinanceSignals(messages, conversation.id, {
+        info: (line) => console.log(line),
+        error: (line, error) => console.error(line, error),
+      });
       
       callback(messages, conversation.id);
       return "task_" + Date.now();
@@ -822,7 +311,6 @@ interface ChatScreenProps {
   onDeleteConversation?: (id: string) => void; // 删除对话（用于群聊删除）
   onBack: () => void;
   onOpenCharacterSettings: () => void;
-  onRequestAIMoment?: () => Promise<void>;
   onNavigateToPrivateChat?: (aiName: string) => void; // 新增：导航到与AI的私聊
 }
 
@@ -835,7 +323,6 @@ export default function ChatScreen({
   onDeleteConversation,
   onBack,
   onOpenCharacterSettings,
-  onRequestAIMoment,
   onNavigateToPrivateChat,
 }: ChatScreenProps) {
   const { showToast } = useToast();
@@ -854,92 +341,11 @@ export default function ChatScreen({
     }
   }, [conversation.id, conversation.isHidden, onUpdateConversation]);
   
-  // 格式化消息给AI，包括转发内容
-  const formatMessageForAI = (msg: Message): string => {
-    let content = msg.content;
-    
-    // 处理转发消息 - 使用专业格式化
-    if (msg.forwarded) {
-      if (msg.forwarded.type === 'merged' && msg.forwarded.messages) {
-        // 合并转发：使用结构化聊天记录格式
-        const forwardedMessages = msg.forwarded.messages.map(item => ({
-          id: `forwarded_${Date.now()}_${Math.random()}`,
-          role: item.senderName === '用户' ? 'user' as const : 'assistant' as const,
-          content: item.content,
-          timestamp: Date.now()
-        }));
-        
-        const formattedChatRecord = formatChatRecord(
-          forwardedMessages, 
-          msg.forwarded.from.conversationName, 
-          msg.forwarded.from.conversationType === 'group' ? 'subchat' : 'main'
-        );
-        
-        // 如果用户有额外的文字说明，保留它；否则用默认引导
-        const userText = msg.content && msg.content.trim() && msg.content !== '转发了聊天记录' 
-          ? msg.content 
-          : '请帮我看看这个聊天记录：';
-        
-        content = `${userText}\n\n${formattedChatRecord}`;
-      } else if (msg.forwarded.type === 'single' && msg.forwarded.originalMessage) {
-        // 单条转发：保持原格式但添加更多上下文
-        const original = msg.forwarded.originalMessage;
-        content = `转发了来自【${msg.forwarded.from.conversationName}】的消息:\n\n${original.content}`;
-      }
-    }
-    
-    // 处理文档消息
-    if (msg.document) {
-      // 用户发送的文档：需要完整传递内容给AI
-      if (msg.role === 'user') {
-        return `[用户发送了${msg.document.type === 'text' ? '文本' : msg.document.type === 'markdown' ? 'Markdown' : '代码'}文档]\n标题：${msg.document.title}\n内容：\n${msg.document.content}`;
-      }
-      // AI发送的文档：只需要标记格式
-      return `[发文档:${msg.document.title}:${msg.document.type}] ${msg.document.content}`;
-    }
-    
-    // 处理转账/红包消息
-    if (msg.moneyTransfer) {
-      const type = msg.moneyTransfer.type === 'redPacket' ? '红包' : '转账';
-      if (msg.role === 'assistant') {
-        // AI发的红包/转账
-        return msg.moneyTransfer.type === 'redPacket' 
-          ? `[发红包:${msg.moneyTransfer.amount}:${msg.moneyTransfer.message}]`
-          : `[转账:${msg.moneyTransfer.amount}:${msg.moneyTransfer.message}]`;
-      } else {
-        // 用户发的，或AI接收/退回的
-        if (msg.moneyTransfer.status === 'received') {
-          return `[接收${type}:${msg.moneyTransfer.message}]`;
-        } else if (msg.moneyTransfer.status === 'returned') {
-          return `[退回${type}:${msg.moneyTransfer.message}]`;
-        }
-      }
-    }
-    
-    // 处理语音消息（优先使用 voiceText）
-    if (msg.mediaType === 'voice') {
-      // 如果有 voiceText，使用转录的文字内容
-      if (msg.mediaDescription && msg.mediaDescription.trim()) {
-        return `[语音消息] ${msg.mediaDescription}`;
-      }
-      // 如果没有转录，只能用通用描述
-      return `[语音消息 ${msg.voiceDuration || 3}秒]`;
-    }
-    
-    // 处理多媒体
-    if (msg.mediaItems && msg.mediaItems.length > 0) {
-      const mediaDesc = msg.mediaItems.map(item => 
-        `[${item.type}: ${item.description}]`
-      ).join(' ');
-      content = `${content} ${mediaDesc}`;
-    }
-    
-    return content;
-  };
   const [currentInput, setCurrentInput] = useState('');
   const [isGenerating, setIsGenerating] = useState(false);
   const [pendingUserMessages, setPendingUserMessages] = useState<string[]>([]); // AI回复时用户发送的消息
   const [showToolbar, setShowToolbar] = useState(false);
+  const [showAdvancedToolbarActions, setShowAdvancedToolbarActions] = useState(false);
   const [showMoneyTransferModal, setShowMoneyTransferModal] = useState(false);
   const [showSendDocumentModal, setShowSendDocumentModal] = useState(false);
   const [showDocumentLibrary, setShowDocumentLibrary] = useState(false);
@@ -964,8 +370,31 @@ export default function ChatScreen({
   const [showSendingHint, setShowSendingHint] = useState(false);
   const [isGroupProcessing, setIsGroupProcessing] = useState(false); // 🚀 新增：群聊处理中状态
   const [showTyping, setShowTyping] = useState(() => isConvGenerating(conversation.id));
-  const [pendingMessages, setPendingMessages] = useState<string[]>([]);
-  const [showAllSentHint, setShowAllSentHint] = useState(false);
+
+  useEffect(() => {
+    if (!showToolbar && showAdvancedToolbarActions) {
+      setShowAdvancedToolbarActions(false);
+    }
+  }, [showToolbar, showAdvancedToolbarActions]);
+
+  useEffect(() => {
+    if (!showAdvancedToolbarActions) return;
+
+    const handleClickOutside = (event: MouseEvent) => {
+      const target = event.target as Node;
+      if (
+        advancedToolbarPanelRef.current?.contains(target) ||
+        advancedToolbarToggleRef.current?.contains(target)
+      ) {
+        return;
+      }
+      setShowAdvancedToolbarActions(false);
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [showAdvancedToolbarActions]);
+  
   
   // 群聊相关状态
   const [currentTypingAI, setCurrentTypingAI] = useState<{id: string; name: string; avatar?: string} | null>(null);
@@ -986,6 +415,8 @@ export default function ChatScreen({
   
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const advancedToolbarPanelRef = useRef<HTMLDivElement | null>(null);
+  const advancedToolbarToggleRef = useRef<HTMLButtonElement | null>(null);
 
   // 保存通话记录
   const handleSaveCallLog = (log: CallLog) => {
@@ -1266,7 +697,9 @@ ${recentMessages}
   }, []);
   
   // 延迟重置滚动状态
-  const scrollTimeoutRef = useRef<NodeJS.Timeout>();
+  const scrollTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const loadMoreTopTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const loadMoreBottomTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   
   // 滚动加载更多消息
   const handleScroll = useCallback(() => {
@@ -1292,8 +725,11 @@ ${recentMessages}
     // 🔼 向上滚动：加载更早的消息
     if (container.scrollTop < 100 && messageWindow.startIndex > 0) {
       setIsLoadingMore(true);
+      if (loadMoreTopTimeoutRef.current) {
+        clearTimeout(loadMoreTopTimeoutRef.current);
+      }
       
-      setTimeout(() => {
+      loadMoreTopTimeoutRef.current = setTimeout(() => {
         const loadMore = 30;
         const newStartIndex = Math.max(0, messageWindow.startIndex - loadMore);
         const addedMessages = messageWindow.startIndex - newStartIndex;
@@ -1312,6 +748,7 @@ ${recentMessages}
             container.scrollTop = newScrollHeight - prevScrollHeight;
           }
         });
+        loadMoreTopTimeoutRef.current = null;
       }, 300);
     }
     
@@ -1322,8 +759,11 @@ ${recentMessages}
     
     if (isNearBottom && windowEndIndex < conversation.messages.length) {
       setIsLoadingMore(true);
+      if (loadMoreBottomTimeoutRef.current) {
+        clearTimeout(loadMoreBottomTimeoutRef.current);
+      }
       
-      setTimeout(() => {
+      loadMoreBottomTimeoutRef.current = setTimeout(() => {
         const loadMore = 30;
         const maxSize = conversation.messages.length - messageWindow.startIndex;
         const newSize = Math.min(messageWindow.size + loadMore, maxSize);
@@ -1333,6 +773,7 @@ ${recentMessages}
           size: newSize
         }));
         setIsLoadingMore(false);
+        loadMoreBottomTimeoutRef.current = null;
       }, 300);
     }
   }, [messageWindow, conversation.messages.length, isLoadingMore, isAtBottom]);
@@ -1347,6 +788,12 @@ ${recentMessages}
         // 清理滚动定时器
         if (scrollTimeoutRef.current) {
           clearTimeout(scrollTimeoutRef.current);
+        }
+        if (loadMoreTopTimeoutRef.current) {
+          clearTimeout(loadMoreTopTimeoutRef.current);
+        }
+        if (loadMoreBottomTimeoutRef.current) {
+          clearTimeout(loadMoreBottomTimeoutRef.current);
         }
       };
     }
@@ -1623,12 +1070,17 @@ ${recentMessages}
   // 取消引用
   const handleCancelQuote = () => {
     setQuotedMessage(null);
+    inputRef.current?.focus();
   };
 
   // 取消编辑
   const handleCancelEdit = () => {
     setMessageBeingEdited(null);
     setCurrentInput('');
+    if (inputRef.current) {
+      (inputRef.current as unknown as HTMLTextAreaElement).style.height = '24px';
+      inputRef.current.focus();
+    }
   };
 
   // 进入多选模式
@@ -1782,9 +1234,7 @@ ${recentMessages}
       }
       
       // 更新目标会话
-      onUpdateConversation(targetId, {
-        messages: [...targetConv.messages, newMessage]
-      });
+      commitOutgoingUserMessageToConversation(targetConv, newMessage);
     });
     
     // 关闭选择器
@@ -2201,189 +1651,229 @@ ${characterInfo?.languageStyle ? `语言风格：${characterInfo.languageStyle}`
     setSubChatSuggestion(null);
   };
 
+  const resetInputHeight = () => {
+    if (inputRef.current) {
+      (inputRef.current as unknown as HTMLTextAreaElement).style.height = '24px';
+    }
+  };
+
+  const finalizeMessageInput = (options?: { clearQuotedMessage?: boolean; focusInput?: boolean }) => {
+    setCurrentInput('');
+    if (options?.clearQuotedMessage) {
+      setQuotedMessage(null);
+    }
+    resetInputHeight();
+    if (options?.focusInput) {
+      inputRef.current?.focus();
+    }
+  };
+
+  const getDisplayText = (content?: string): string => stripDisplayControlTags(content || '').trim();
+  const isMediaPlaceholderText = (content: string): boolean =>
+    /^\[(?:多媒体消息|图片|视频|语音|表情包|img|image|video|voice|sticker)\]$/i.test(content.trim());
+  const voiceWaveHeights = [8, 12, 7, 14, 10, 6, 13, 9, 11, 7, 12, 8, 10, 6, 9];
+
+  const expandAssistantInlineMediaForRender = (message: Message): Message[] => {
+    if (
+      message.role !== 'assistant' ||
+      message.mediaType ||
+      message.mediaItems?.length ||
+      message.moneyTransfer ||
+      message.document ||
+      message.order ||
+      !message.content
+    ) {
+      return [message];
+    }
+
+    const source = message.content;
+    const mediaTokenRegex = /\[(图片|IMG|IMAGE|视频|VIDEO|语音|VOICE|表情包|STICKER)[:：]([^\]]+)\]/gi;
+    const expandedMessages: Message[] = [];
+    let lastIndex = 0;
+    let mediaIndex = 0;
+    let textIndex = 0;
+
+    for (const match of source.matchAll(mediaTokenRegex)) {
+      const fullMatch = match[0];
+      const rawType = match[1] || '';
+      const rawPayload = (match[2] || '').trim();
+      const matchIndex = match.index ?? -1;
+
+      if (matchIndex > lastIndex) {
+        const textContent = getDisplayText(source.slice(lastIndex, matchIndex));
+        if (textContent && !isMediaPlaceholderText(textContent)) {
+          expandedMessages.push({
+            ...message,
+            id: `${message.id}_text_${textIndex++}`,
+            content: textContent,
+          });
+        }
+      }
+
+      const normalizedType = rawType.trim().toLowerCase();
+      const mediaType = normalizedType === '图片' || normalizedType === 'img' || normalizedType === 'image'
+        ? 'image'
+        : normalizedType === '视频' || normalizedType === 'video'
+          ? 'video'
+          : normalizedType === '语音' || normalizedType === 'voice'
+            ? 'voice'
+            : 'sticker';
+
+      let mediaDescription = rawPayload;
+      let voiceDuration = 3;
+      if (mediaType === 'voice') {
+        const durationMatch = rawPayload.match(/(.+?)(?:[，,]\s*(?:时长)?(\d+)秒?)$/i);
+        if (durationMatch) {
+          mediaDescription = durationMatch[1].trim();
+          voiceDuration = Number(durationMatch[2]) || 3;
+        }
+      }
+
+      expandedMessages.push({
+        ...message,
+        id: `${message.id}_media_${mediaIndex++}`,
+        content: mediaType === 'image' ? '[图片]' : mediaType === 'video' ? '[视频]' : mediaType === 'voice' ? '[语音]' : '[表情包]',
+        mediaType,
+        mediaDescription,
+        voiceDuration: mediaType === 'voice' ? voiceDuration : message.voiceDuration,
+        isMediaDescriptionOnly: true,
+      });
+
+      lastIndex = matchIndex + fullMatch.length;
+    }
+
+    if (lastIndex < source.length) {
+      const trailingText = getDisplayText(source.slice(lastIndex));
+      if (trailingText && !isMediaPlaceholderText(trailingText)) {
+        expandedMessages.push({
+          ...message,
+          id: `${message.id}_text_${textIndex++}`,
+          content: trailingText,
+        });
+      }
+    }
+
+    return expandedMessages.length > 0 ? expandedMessages : [message];
+  };
+
+  const getRenderableMessages = (messages: Message[]): Message[] =>
+    messages.flatMap(expandAssistantInlineMediaForRender);
+
+  const commitOutgoingUserMessage = useCallback((newMessage: Message) => {
+    const commitHandlers = createCommitUserMessageHandlers({
+      onPerceiveMessage: (conv, msg) => messagePerceptionService.perceiveMessage(conv, msg),
+      onQueuePendingUserMessage: (messageId) => setPendingUserMessages(prev => [...prev, messageId]),
+      onSchedulePendingReply: (conversationId, delaySec) => schedulePendingReply(conversationId, delaySec),
+      onHandleAIChildExperienceUpdate: handleChatExperienceUpdate,
+    });
+
+    commitUserMessage({
+      conversation,
+      newMessage,
+      isGenerating,
+      onUpdateConversation,
+      ...commitHandlers,
+    });
+  }, [conversation, isGenerating, onUpdateConversation]);
+
+  const commitOutgoingUserMessageWithBase = useCallback((baseMessages: Message[], newMessage: Message) => {
+    onUpdateConversation(conversation.id, {
+      messages: [...baseMessages, newMessage],
+      lastMessageTime: Date.now(),
+      isHidden: false,
+    });
+
+    messagePerceptionService.perceiveMessage(conversation, newMessage);
+
+    if (isGenerating && conversation.type === 'group') {
+      setPendingUserMessages(prev => [...prev, newMessage.id]);
+    }
+
+    if (conversation.aiChildData) {
+      handleChatExperienceUpdate(conversation, newMessage).catch((error) => {
+        console.error('❌ 处理AI儿童经验失败：', error);
+      });
+    }
+
+    const bufferSeconds = conversation.messageBufferSeconds ?? 15;
+    schedulePendingReply(conversation.id, bufferSeconds);
+  }, [conversation, isGenerating, onUpdateConversation]);
+
+  const commitOutgoingUserMessagesBatch = useCallback((newMessages: Message[]) => {
+    if (newMessages.length === 0) return;
+
+    onUpdateConversation(conversation.id, {
+      messages: [...conversation.messages, ...newMessages],
+      lastMessageTime: Date.now(),
+      isHidden: false,
+    });
+
+    newMessages.forEach((msg) => {
+      messagePerceptionService.perceiveMessage(conversation, msg);
+    });
+
+    if (isGenerating && conversation.type === 'group') {
+      setPendingUserMessages(prev => [...prev, ...newMessages.map(msg => msg.id)]);
+    }
+
+    if (conversation.aiChildData) {
+      newMessages.forEach((msg) => {
+        handleChatExperienceUpdate(conversation, msg).catch((error) => {
+          console.error('❌ 处理AI儿童经验失败：', error);
+        });
+      });
+    }
+
+    const bufferSeconds = conversation.messageBufferSeconds ?? 15;
+    schedulePendingReply(conversation.id, bufferSeconds);
+  }, [conversation, isGenerating, onUpdateConversation]);
+
+  const commitOutgoingUserMessageToConversation = useCallback((targetConversation: Conversation, newMessage: Message) => {
+    const commitHandlers = createCommitUserMessageHandlers({
+      onPerceiveMessage: (conv, msg) => messagePerceptionService.perceiveMessage(conv, msg),
+      // 转发到其他会话时，不需要写入当前聊天页的pending列表
+      onQueuePendingUserMessage: () => {},
+      onSchedulePendingReply: (conversationId, delaySec) => schedulePendingReply(conversationId, delaySec),
+      onHandleAIChildExperienceUpdate: handleChatExperienceUpdate,
+    });
+
+    commitUserMessage({
+      conversation: targetConversation,
+      newMessage,
+      isGenerating: false,
+      onUpdateConversation,
+      ...commitHandlers,
+    });
+  }, [onUpdateConversation]);
+
+
   const handleSendMessage = () => {
     if (!currentInput.trim()) return;
 
     // 如果是编辑模式,保存编辑
     if (messageBeingEdited) {
       setIsEditing(true); // 标记正在编辑
-      const updatedMessages = conversation.messages.map(msg =>
-        msg.id === messageBeingEdited.id 
-          ? { ...msg, content: currentInput.trim(), edited: true }
-          : msg
-      );
-      onUpdateConversation(conversation.id, { messages: updatedMessages });
+      commitEditedMessage({
+        conversation,
+        messageBeingEdited,
+        currentInput,
+        onUpdateConversation,
+      });
       setMessageBeingEdited(null);
-      setCurrentInput('');
-      
-      // 重置textarea高度
-      if (inputRef.current) {
-        (inputRef.current as unknown as HTMLTextAreaElement).style.height = '24px';
-      }
+      finalizeMessageInput();
       
       // 编辑完成后立即恢复标记
       setIsEditing(false);
       return;
     }
 
-    // 🎵 检测网易云音乐分享链接
-    const musicLinkDetection = NeteaseMusicParser.detectMusicLink(currentInput.trim());
-    
-    let newMessage: Message;
-    
-    if (musicLinkDetection.hasLink) {
-      // 解析音乐信息
-      const musicInfo = NeteaseMusicParser.parseFromShareText(
-        musicLinkDetection.rawText || currentInput.trim(), 
-        musicLinkDetection.url!
-      );
-      
-      if (musicInfo) {
-        // 创建包含网易云音乐信息的消息
-        newMessage = {
-          id: Date.now().toString() + Math.random(),
-          role: 'user',
-          content: '', // 音乐卡片消息不显示文字内容
-          timestamp: Date.now(),
-          neteaseMusicInfo: musicInfo, // 添加网易云音乐信息
-          // 如果有引用消息,添加引用信息
-          ...(quotedMessage && quotedMessage.role !== 'system' && {
-            replyTo: {
-              id: quotedMessage.id,
-              content: quotedMessage.content,
-              role: quotedMessage.role as 'user' | 'assistant'
-            }
-          })
-        };
-        
-        console.log('🎵 检测到网易云音乐分享:', musicInfo);
-      } else {
-        // 如果解析失败，发送原始消息
-        newMessage = {
-          id: Date.now().toString() + Math.random(),
-          role: 'user',
-          content: currentInput.trim(),
-          timestamp: Date.now(),
-          ...(quotedMessage && quotedMessage.role !== 'system' && {
-            replyTo: {
-              id: quotedMessage.id,
-              content: quotedMessage.content,
-              role: quotedMessage.role as 'user' | 'assistant'
-            }
-          })
-        };
-      }
-    } else {
-      // 普通消息
-      newMessage = {
-        id: Date.now().toString() + Math.random(),
-        role: 'user',
-        content: currentInput.trim(),
-        timestamp: Date.now(),
-        // 如果有引用消息,添加引用信息
-        ...(quotedMessage && quotedMessage.role !== 'system' && {
-          replyTo: {
-            id: quotedMessage.id,
-            content: quotedMessage.content,
-            role: quotedMessage.role as 'user' | 'assistant'
-          }
-        })
-      };
-    }
+    const newMessage = buildUserMessageFromInput(currentInput, quotedMessage);
+    commitOutgoingUserMessage(newMessage);
 
-    onUpdateConversation(conversation.id, {
-      messages: [...conversation.messages, newMessage],
-      lastMessageTime: Date.now(),
-      isHidden: false, // 确保发送消息时恢复显示
+    finalizeMessageInput({
+      clearQuotedMessage: true,
+      focusInput: true,
     });
-
-    // 🧠 [消息感知] 用户发送消息后，AI立即感知到消息内容（后台处理）
-    messagePerceptionService.perceiveMessage(conversation, newMessage);
-
-    // 如果AI正在生成，将用户消息添加到待处理队列
-    if (isGenerating && conversation.type === 'group') {
-      setPendingUserMessages(prev => [...prev, newMessage.id]);
-      console.log('📝 用户在AI回复时发送消息，将在下轮处理');
-    }
-
-    setCurrentInput('');
-    setPendingMessages([]); // 清除剩余消息
-    setShowAllSentHint(false);
-    setQuotedMessage(null); // 清除引用
-    
-    // 重置textarea高度
-    if (inputRef.current) {
-      (inputRef.current as unknown as HTMLTextAreaElement).style.height = '24px';
-    }
-    
-    // 🎯 AI理解力经验计算（仅对AI儿童有效）
-    if (conversation.aiChildData) {
-      handleChatExperienceUpdate(conversation, newMessage)
-        .then(experienceMessage => {
-          if (experienceMessage) {
-            console.log('🎉 AI儿童理解力经验获得：', experienceMessage);
-            // 可以选择在界面上显示经验获得的提示
-            // 例如：showToast(experienceMessage);
-          }
-        })
-        .catch(error => {
-          console.error('❌ 处理AI儿童经验失败：', error);
-        });
-    }
-    
-    // 🚀 调度延后回复（替代点击生成按钮）
-    const bufferSeconds = conversation.messageBufferSeconds ?? 15;
-    schedulePendingReply(conversation.id, bufferSeconds);
-    
-    inputRef.current?.focus();
-  };
-
-  // 逐条发送剩余消息
-  const sendRemainingMessages = async (messages: string[]) => {
-    const batchSize = 23;
-    const toSend = messages.slice(0, batchSize);
-    const remaining = messages.slice(batchSize);
-    
-    let currentMessages = [...conversation.messages];
-    
-    for (let i = 0; i < toSend.length; i++) {
-      setShowTyping(true);
-      await new Promise(resolve => setTimeout(resolve, 800 + Math.random() * 1200));
-      setShowTyping(false);
-      
-      const newMessage: Message = {
-        id: Date.now().toString() + '_continue_' + i + Math.random(),
-        role: 'assistant' as const,
-        content: toSend[i].trim(),
-        timestamp: Date.now(),
-      };
-      
-      currentMessages = [...currentMessages, newMessage];
-      onUpdateConversation(conversation.id, {
-        messages: currentMessages,
-        lastMessageTime: Date.now(),
-      });
-      
-      if (i < toSend.length - 1) {
-        await new Promise(resolve => setTimeout(resolve, 300));
-      }
-    }
-    
-    setPendingMessages(remaining);
-    
-    if (remaining.length === 0) {
-      setShowAllSentHint(true);
-      setTimeout(() => setShowAllSentHint(false), 3000);
-    }
-  };
-
-  // 继续发送剩余消息
-  const handleContinueSending = async () => {
-    if (pendingMessages.length > 0) {
-      setIsGenerating(true);
-      await sendRemainingMessages(pendingMessages);
-      setIsGenerating(false);
-    }
   };
 
   // 注意：旧的 handleAIMoneyResponse 函数已删除
@@ -2609,11 +2099,7 @@ ${characterInfo?.languageStyle ? `语言风格：${characterInfo.languageStyle}`
         });
       }
       
-      // 一次性添加所有图片到聊天记录，不自动生成回复
-      onUpdateConversation(conversation.id, {
-        messages: [...conversation.messages, ...newMessages],
-        lastMessageTime: Date.now()
-      });
+      commitOutgoingUserMessagesBatch(newMessages);
 
       // 关闭工具栏
       setShowToolbar(false);
@@ -2663,10 +2149,7 @@ ${characterInfo?.languageStyle ? `语言风格：${characterInfo.languageStyle}`
     };
     
     // 添加到对话
-    onUpdateConversation(conversation.id, {
-      messages: [...conversation.messages, stickerMessage],
-      lastMessageTime: Date.now()
-    });
+    commitOutgoingUserMessage(stickerMessage);
     
     setShowUserStickerPicker(false);
   };
@@ -2688,10 +2171,7 @@ ${characterInfo?.languageStyle ? `语言风格：${characterInfo.languageStyle}`
     };
 
     // 添加到聊天记录
-    onUpdateConversation(conversation.id, {
-      messages: [...conversation.messages, musicMessage],
-      lastMessageTime: Date.now(),
-    });
+    commitOutgoingUserMessage(musicMessage);
 
     // 🎵 启动音乐上下文服务 - AI开始"感知"音乐
     setCurrentMusic(musicInfo);
@@ -2732,10 +2212,7 @@ ${characterInfo?.languageStyle ? `语言风格：${characterInfo.languageStyle}`
     };
 
     // 添加到聊天记录
-    onUpdateConversation(conversation.id, {
-      messages: [...conversation.messages, musicMessage],
-      lastMessageTime: Date.now(),
-    });
+    commitOutgoingUserMessage(musicMessage);
 
     console.log('✅ 真实音乐已添加到聊天');
     setShowRealMusicModal(false);
@@ -2787,10 +2264,7 @@ ${characterInfo?.languageStyle ? `语言风格：${characterInfo.languageStyle}`
     };
 
     // 添加到对话
-    onUpdateConversation(conversation.id, {
-      messages: [...conversation.messages, stickerMessage],
-      lastMessageTime: Date.now()
-    });
+    commitOutgoingUserMessage(stickerMessage);
 
     // 关闭弹窗并清空输入
     setShowStickerModal(false);
@@ -2837,30 +2311,22 @@ ${characterInfo?.languageStyle ? `语言风格：${characterInfo.languageStyle}`
       return msg;
     });
     
-    onUpdateConversation(conversation.id, {
-      messages: updatedMessages
-    });
-    
-    // 发送确认消息（只在代付时发送，礼物接收不发送强制文本）
-    if (message.order.type !== 'gift') {
+      // 发送确认消息（只在代付时发送，礼物接收不发送强制文本）
+      if (message.order.type !== 'gift') {
       const confirmMessage: Message = {
         id: `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
         role: 'user',
         content: '已帮你付款啦！',
         timestamp: Date.now()
       };
-      
-      onUpdateConversation(conversation.id, {
-        messages: [...updatedMessages, confirmMessage],
-        lastMessageTime: Date.now()
-      });
-    } else {
-      // 礼物接收时不发送强制文本，只更新订单状态
-      onUpdateConversation(conversation.id, {
-        messages: updatedMessages,
-        lastMessageTime: Date.now()
-      });
-    }
+        commitOutgoingUserMessageWithBase(updatedMessages, confirmMessage);
+      } else {
+        // 礼物接收时不发送强制文本，只更新订单状态
+        onUpdateConversation(conversation.id, {
+          messages: updatedMessages,
+          lastMessageTime: Date.now()
+        });
+      }
     
     // 显示Toast提示
     showToast(
@@ -2896,10 +2362,6 @@ ${characterInfo?.languageStyle ? `语言风格：${characterInfo.languageStyle}`
       return msg;
     });
     
-    onUpdateConversation(conversation.id, {
-      messages: updatedMessages
-    });
-    
     // 发送拒绝消息（只在代付时发送，礼物拒绝不发送强制文本）
     if (message.order.type !== 'gift') {
       const rejectMessage: Message = {
@@ -2908,11 +2370,7 @@ ${characterInfo?.languageStyle ? `语言风格：${characterInfo.languageStyle}`
         content: '抱歉，暂时无法帮忙',
         timestamp: Date.now()
       };
-      
-      onUpdateConversation(conversation.id, {
-        messages: [...updatedMessages, rejectMessage],
-        lastMessageTime: Date.now()
-      });
+      commitOutgoingUserMessageWithBase(updatedMessages, rejectMessage);
     } else {
       // 礼物拒绝时不发送强制文本，只更新订单状态
       onUpdateConversation(conversation.id, {
@@ -3126,10 +2584,7 @@ ${characterInfo?.languageStyle ? `语言风格：${characterInfo.languageStyle}`
         };
 
         // 保存用户消息到聊天记录
-        onUpdateConversation(conversation.id, {
-          messages: [...conversation.messages, userMessage],
-          lastMessageTime: Date.now()
-        });
+        commitOutgoingUserMessage(userMessage);
 
         // 关闭弹窗
         setShowVideoDescModal(false);
@@ -3727,6 +3182,43 @@ ${characterInfo?.languageStyle ? `语言风格：${characterInfo.languageStyle}`
     setIsGenerating(true);
     setShowSendingHint(true);
 
+    const isModelInputDebugEnabled = (): boolean => {
+      try {
+        return localStorage.getItem('momoyu_debug_model_input') === '1';
+      } catch {
+        return false;
+      }
+    };
+
+    const normalizeModelContentForLog = (content: any): string => {
+      if (typeof content === 'string') return content;
+      if (Array.isArray(content)) {
+        return content
+          .map((part) => {
+            if (!part || typeof part !== 'object') return String(part ?? '');
+            if (part.type === 'text') return String(part.text || '');
+            if (part.type === 'image_url') {
+              const url = part.image_url?.url;
+              return `[image_url:${url ? String(url).slice(0, 80) : 'empty'}]`;
+            }
+            return JSON.stringify(part);
+          })
+          .filter(Boolean)
+          .join('\n');
+      }
+      return String(content ?? '');
+    };
+
+    const debugLogModelInput = (finalMessages: Array<{ role: string; content: any }>) => {
+      if (!isModelInputDebugEnabled()) return;
+      const userInputs = finalMessages.filter((m) => m.role === 'user');
+      console.log('🧪 [模型入参调试] 会话:', conversation.name);
+      console.log('🧪 [模型入参调试] 用户消息条数:', userInputs.length);
+      userInputs.forEach((m, idx) => {
+        console.log(`🧪 [模型入参调试] 用户消息#${idx + 1}:`, normalizeModelContentForLog(m.content));
+      });
+    };
+
     try {
       // 🔧 辅助函数：格式化历史消息内容（避免格式泄露）
       const formatHistoryMessageContent = (msg: Message): string => {
@@ -3768,9 +3260,9 @@ ${characterInfo?.languageStyle ? `语言风格：${characterInfo.languageStyle}`
       
       // 检查未处理的消息中是否包含各种媒体类型
       const hasImage = unhandledUserMessages.some(m => m.mediaType === 'image' && m.mediaUrl);
-      const hasVideo = unhandledUserMessages.some(m => m.mediaType === 'video' && m.mediaDescription);
-      const hasVoice = unhandledUserMessages.some(m => m.mediaType === 'voice' && m.mediaDescription);
-      const hasSticker = unhandledUserMessages.some(m => m.mediaType === 'sticker' && m.mediaDescription);
+      const hasVideo = unhandledUserMessages.some(m => m.mediaType === 'video' && (m.mediaDescription || m.content));
+      const hasVoice = unhandledUserMessages.some(m => m.mediaType === 'voice' && (m.mediaDescription || m.content));
+      const hasSticker = unhandledUserMessages.some(m => m.mediaType === 'sticker' && (m.mediaDescription || m.content));
       
       // 获取所有包含图片的消息（支持多图片）
       const imageMessages = unhandledUserMessages.filter(m => m.mediaType === 'image' && m.mediaUrl);
@@ -3923,7 +3415,7 @@ ${worldbookSections.middle}
    - ❌ 不要每次都回复 2-3 段、结构完整的"小作文"
 
 2. **真人会有情绪起伏，不是永远热情**
-   - 开心的时候：多用感叹号、表情包、哈哈哈
+   - 开心的时候：常见是语气更轻快（感叹号、哈哈哈）；表情包只是可选
    - 累的时候：回复简短，甚至敷衍（"嗯""哦""还行吧"）
    - 不感兴趣的时候：可以岔开话题、或者简单回应后不继续
    - 忙的时候：可以说"我先忙了""回头聊"
@@ -3945,7 +3437,7 @@ ${worldbookSections.middle}
 
 5. **真人聊天会冷场、会尴尬、会不知道说啥**
    - 话题聊完了：可以不说话，等对方开启新话题
-   - 不知道怎么接：可以发个表情包、或者"哈哈"
+   - 不知道怎么接：优先短文字（如"哈哈""行吧"），不是默认发表情包
    - 对方说了奇怪的话：可以"？？？""啥""什么意思"
    - ✅ 不要强行找话题、不要每次都完美接话
 
@@ -3971,7 +3463,8 @@ ${worldbookSections.middle}
 
 8. **微信聊天的"真实感"细节**
    - 会用语音：懒得打字、想表达语气、内容比较长的时候
-   - 会发表情包：调节气氛、表达情绪、不知道说啥的时候
+   - 会发表情包：是否使用取决于你的人设和当下语境，保持自然
+   - 会发图片/视频：前提是你真的有想分享的内容，不为发而发
    - 会撤回消息：打错字、说错话、后悔了
    - 会秒回，也会过一会儿回：取决于你在干嘛、心情如何
    - 会看到消息但不回：在忙、不知道怎么回、不想回
@@ -4041,9 +3534,14 @@ ${worldbookSections.middle}
    示例："[表情包:哈哈哈笑cry]"
    适用场景：表达情绪、调节气氛、幽默回复
 
+5. 🙂 系统emoji表情（社交软件内置）：[系统表情:关键词或emoji]
+   示例："[系统表情:微笑]"、"[系统表情:😂]"
+   说明：这是应用内置表情，和用户上传的个性表情包不同
+
 【混合发送规则】：
 - ✅ 可以同时发送多种类型：文字+图片、语音+表情包、视频+文字等
 - ✅ 多个同类型：可以连发多张图片、多个表情包等
+- ✅ emoji系统表情和个性表情包可以按语境任选其一
 - ✅ 与引用消息组合：引用可以和任何类型组合使用
 - ✅ 组合示例：
   * "今天去爬山了！[图片:山顶风景] [图片:我的自拍] 累死我了 [表情包:累瘫]"
@@ -4057,6 +3555,8 @@ ${worldbookSections.middle}
 - 描述要具体生动，让对方能想象内容
 - 语音消息的内容要口语化，像真的在说话
 - 表情包描述要准确传达情绪，可以参考网络上的表情包，如：一只快乐挥舞爱心的扭动小狗表情包
+- 默认优先用自然文字回复；只有你判断“确实更合适”时再发表情包
+- ${MEDIA_DECISION_GUIDANCE}
 - 引用消息会自动显示在气泡上方或内部，不影响其他内容
 
 ${SmartLinkParser.getPromptInstructions()}
@@ -4705,8 +4205,8 @@ ${SmartHTMLGenerator.getModuleInstructions()}
       // 添加时间感知信息
       systemPrompt += timeAwarePrompt;
 
-      // 🚫 强制禁止括号动作描写指令（全局追加）
-      systemPrompt += '\n\n【⚠️ 说话风格强制规范】\n1. 🚫 **绝对禁止**使用任何括号（包括()、（）、[]、【】）来进行动作、神态、心理活动或语气描写！\n   - ❌ 错误示例：(笑了笑) 真的吗？\n   - ❌ 错误示例：(叹气) 唉，好累。\n   - ❌ 错误示例：[开心] 哈哈！\n   - ❌ 错误示例：(托腮) 让我想想。\n   - ✅ 正确示例：真的吗？哈哈\n   - ✅ 正确示例：唉，今天好累啊...\n   - ✅ 正确示例：嗯...让我想想\n\n2. 像真实的微信/社交软件聊天一样说话：\n   - 直接说内容，不要加戏，不要写剧本\n   - 保持口语化、自然、简洁\n   - 你的所有情绪都应该通过文字本身、标点符号或表情包来表达，而不是通过括号描写\n   - 如果想表达动作，请直接用文字描述（如"我刚喝了口水"），不要用括号包裹';
+      // 🚫 强制禁止语C/小说式动作描写（统一复用片段）
+      systemPrompt += `\n\n${getNoActionRoleplayPrompt()}`;
 
       let messages;
       let requestBody;
@@ -4724,403 +4224,54 @@ ${SmartHTMLGenerator.getModuleInstructions()}
         contextMessages = conversation.messages;
       }
       
-      // 如果包含图片，使用vision API（支持图片+文字混合）
-      if (hasImage) {
-        // 构建包含图片的消息
-        const recentMessages = contextMessages; // 使用完整上下文
-        const historyMessages = recentMessages
-          .filter(m => !unhandledUserMessages.includes(m))
-          .map(m => ({
-            role: m.role,
-            content: formatHistoryMessageContent(m)
-          }));
+      const mediaResult = buildMediaChatRequest({
+        apiConfig,
+        systemPrompt,
+        contextMessages,
+        unhandledUserMessages,
+        imageMessages,
+        textMessages,
+        formatHistoryMessageContent,
+        getTimeLabel,
+        hasImage,
+        hasVideo,
+        hasVoice,
+        hasSticker,
+      });
 
-        // 构建混合内容（多图片 + 用户的文字消息）
-        const contentParts: any[] = [];
-        
-        // 添加所有图片
-        imageMessages.forEach(imgMsg => {
-          contentParts.push({
-            type: 'image_url',
-            image_url: {
-              url: imgMsg.mediaUrl
-            }
-          });
-        });
-        
-        // 再添加文字消息（带时间前缀）
-        const textMessagesWithTime = textMessages.map(m => {
-          const timeLabel = getTimeLabel(m.timestamp);
-          return `【${timeLabel}】${m.content}`;
-        }).filter(Boolean).join('\n');
-        
-        if (textMessagesWithTime) {
-          contentParts.push({
-            type: 'text',
-            text: textMessagesWithTime
-          });
-        } else {
-          // 如果没有文字，根据图片数量添加提示
-          const imageCount = imageMessages.length;
-          const defaultText = imageCount > 1 ? `看这${imageCount}张图` : '看这张图';
-          contentParts.push({
-            type: 'text',
-            text: defaultText
-          });
-        }
-
-        messages = [
-          { role: 'system', content: systemPrompt + '\n\n【图片识别规则 - 严格遵守】：\n\n🚫 **绝对禁止的行为**：\n- ❌ 禁止猜测或编造图片中不存在的内容\n- ❌ 禁止用疑问句猜测（如"是xxx吗？"、"这是不是xxx？"）\n- ❌ 禁止说"让我看看"、"帮你看看"、"我来看看"等话\n- ❌ 如果图片模糊或识别不清，禁止瞎猜，直接说"图片有点模糊，看不太清"\n- ❌ 禁止过度解读或联想图片内容\n\n✅ **正确的做法**：\n- ✅ 只描述你在图片中**确实看到**的具体内容（人物、物体、颜色、场景）\n- ✅ 用肯定句描述，不要用疑问句\n- ✅ 如果图片清晰，直接自然评论即可\n- ✅ 如果看不清细节，就只说看得清楚的部分\n- ✅ 可以回复文字，也可以回复表情包等\n- ✅ 如果用户除了图片还发了文字消息，一起回复所有内容\n\n**示例对比**：\n❌ 错误："哇，是列车窗外的星空吗？"（猜测性疑问句）\n❌ 错误："这张照片拍得很漂亮！"（没看清就乱夸）\n✅ 正确："这张图片有点模糊，不过能看到粉色的头发，很可爱！"\n✅ 正确："看到了！是一个动漫角色的图片"' },
-          ...historyMessages,
-          {
-            role: 'user',
-            content: contentParts
-          }
-        ];
-
-        requestBody = {
-          model: apiConfig.modelName,
-          messages,
-          temperature: 0.7,
-          max_tokens: 2000
-        };
-      } else if (hasVideo) {
-        // 如果包含视频，基于文字描述回复（支持视频+文字混合）
-        const recentMessages = contextMessages; // 使用完整上下文
-        const historyMessages = recentMessages
-          .filter(m => !unhandledUserMessages.includes(m))
-          .map(m => ({
-            role: m.role,
-            content: formatHistoryMessageContent(m)
-          }));
-
-        // 组合视频描述和文字消息（带时间前缀）
-        const videoMessage = unhandledUserMessages.find(m => m.mediaType === 'video');
-        const textWithTime = textMessages.map(m => {
-          const timeLabel = getTimeLabel(m.timestamp);
-          return `【${timeLabel}】${m.content}`;
-        }).filter(Boolean).join('\n');
-        
-        let videoContent = '';
-        if (videoMessage) {
-          const videoTimeLabel = getTimeLabel(videoMessage.timestamp);
-          videoContent = `【${videoTimeLabel}】（分享了视频：${videoMessage.mediaDescription}）`;
-          if (textWithTime) {
-            videoContent += '\n' + textWithTime;
-          }
-        } else {
-          videoContent = textWithTime;
-        }
-
-        messages = [
-          { role: 'system', content: systemPrompt + '\n\n【视频内容理解规则】：\n- 用户分享了视频，根据提供的内容描述自然回复\n- 像朋友间日常聊天一样对视频内容做出反应\n- 不要说"我看不到视频"、"无法观看"等话\n- 基于描述内容自然地评论、提问或互动\n- 可以回复文字，也可以回复图片/视频/语音/表情包/红包等\n- 如果用户除了视频还发了文字消息，一起回复所有内容' },
-          ...historyMessages,
-          {
-            role: 'user',
-            content: videoContent
-          }
-        ];
-
-        requestBody = {
-          model: apiConfig.modelName,
-          messages,
-          temperature: 0.7,
-          max_tokens: 2000
-        };
-      } else if (hasVoice) {
-        // 如果包含语音，基于语音转文字内容回复（支持语音+文字混合）
-        const recentMessages = contextMessages; // 使用完整上下文
-        const historyMessages = recentMessages
-          .filter(m => !unhandledUserMessages.includes(m))
-          .map(m => ({
-            role: m.role,
-            content: formatHistoryMessageContent(m)
-          }));
-
-        // 组合语音转文字和其他文字消息（带时间前缀）
-        const voiceMessages = unhandledUserMessages.filter(m => m.mediaType === 'voice');
-        const voiceTextsWithTime = voiceMessages.map(m => {
-          const timeLabel = getTimeLabel(m.timestamp);
-          return `【${timeLabel}】${m.mediaDescription}`;
-        }).filter(Boolean);
-        const textContentsWithTime = textMessages.map(m => {
-          const timeLabel = getTimeLabel(m.timestamp);
-          return `【${timeLabel}】${m.content}`;
-        }).filter(Boolean);
-        const combinedContent = [...voiceTextsWithTime, ...textContentsWithTime].join('\n');
-
-        messages = [
-          { role: 'system', content: systemPrompt + '\n\n【语音消息理解规则】：\n- 用户发送了语音消息，根据语音转文字的内容自然回复\n- 像朋友间日常聊天一样对语音内容做出反应\n- 不要说"我听不到语音"、"无法播放"等话\n- 基于转录的文字内容自然回复即可\n- 可以回复文字，也可以回复语音/图片/视频/表情包/红包等\n- 如果用户除了语音还发了文字消息，一起回复所有内容' },
-          ...historyMessages,
-          {
-            role: 'user',
-            content: combinedContent
-          }
-        ];
-
-        requestBody = {
-          model: apiConfig.modelName,
-          messages,
-          temperature: 0.7,
-          max_tokens: 2000
-        };
-      } else if (hasSticker) {
-        // 如果包含表情包，理解并自然回复（支持表情包+文字混合）
-        const recentMessages = contextMessages; // 使用完整上下文
-        const historyMessages = recentMessages
-          .filter(m => !unhandledUserMessages.includes(m))
-          .map(m => ({
-            role: m.role,
-            content: formatHistoryMessageContent(m)
-          }));
-
-        // 组合表情包和文字消息（带时间前缀）
-        const stickerMessages = unhandledUserMessages.filter(m => m.mediaType === 'sticker');
-        const stickerContentsWithTime = stickerMessages.map(m => {
-          const timeLabel = getTimeLabel(m.timestamp);
-          return `【${timeLabel}】[表情包:${m.mediaDescription}]`;
-        }).filter(Boolean);
-        const textContentsWithTime = textMessages.map(m => {
-          const timeLabel = getTimeLabel(m.timestamp);
-          return `【${timeLabel}】${m.content}`;
-        }).filter(Boolean);
-        const combinedContent = [...stickerContentsWithTime, ...textContentsWithTime].join('\n');
-
-        messages = [
-          { role: 'system', content: systemPrompt + '\n\n【表情包理解规则】：\n- 用户发送了表情包，根据描述的内容理解用户的情绪和意图\n- 像朋友间日常聊天一样对表情包做出自然反应\n- 可以回复文字、也可以回复表情包（使用[表情包:描述内容]格式）\n- 根据表情包内容判断是否要发送图片/视频/语音/表情包回复\n- 如果用户除了表情包还发了文字消息，一起回复所有内容\n\n【发送多媒体消息格式】：\n- 发送图片：[图片:详细的画面描述，50-100字，必须包含光影/氛围/动态细节]\n- 发送视频：[视频:电影级画面描述，50-100字，必须包含环境/动作/神态/声音氛围]\n- 发送语音：[语音:语音内容的文字，时长X秒]\n- 发送表情包：[表情包:表情包的详细描述]\n\n示例：\n用户：[表情包:一只猫咪害羞捂脸]\nAI：哈哈哈好可爱！[表情包:小狗狗笑得很开心的样子]' },
-          ...historyMessages,
-          {
-            role: 'user',
-            content: combinedContent
-          }
-        ];
-
-        requestBody = {
-          model: apiConfig.modelName,
-          messages,
-          temperature: 0.8,
-          max_tokens: 2000
-        };
+      if (mediaResult) {
+        messages = mediaResult.messages;
+        requestBody = mediaResult.requestBody;
       } else {
-        // 普通文本消息
-        // 获取最近的用户消息，让AI能看到多条消息的上下文
-        const recentUserMessages = conversation.messages
-          .filter(m => m.role === 'user')
-          .slice(-3);
-        
-        let contextPrompt = systemPrompt + '\n\n【多媒体消息使用指南】\n- 可以发送图片、视频、语音、表情包、文档等\n- 使用格式：[图片:描述]、[视频:描述]、[语音:内容,时长]、[表情包:描述]\n\n⚠️ 视频和图片描述要求（强制执行）：\n- **电影级画面感**：描述必须包含光影（如"斑驳树影"）、声音氛围（如"静谧"）、动态细节（如"烟雾缭绕"）。\n- **字数要求**：50-100字，越详细越好。\n- **第三人称**：禁止使用第一人称（"我"），必须用客观视角描述（"画面中"、"一个女孩"）。\n- **特定场景**：如果是寺庙、古迹等，着重描写庄严感、历史感和环境细节。\n\n📄 文档发送的正确格式：\n**重要：发送文档时必须包含完整内容，不能只说标题！**\n\n正确示例：\n发送了文档《学习计划》请查收\n\n这是我为你制定的详细学习计划：\n\n一、学习目标\n1. 提高编程能力\n2. 掌握新技术栈\n\n二、时间安排\n- 每日2小时编码练习\n- 每周1次技术分享\n\n三、具体步骤\n...[详细内容]\n\n错误示例（禁止）：\n❌ "发送了文档《学习计划》请查收" （只有标题，没有正文）\n❌ "这是文档链接：..." （不要说链接）\n\n**🚨 发送文档时的强制要求：**\n1. 先说"发送了文档《标题》" + 问候语\n2. 然后换行提供完整的文档正文内容\n3. 内容要详细、有结构、有价值\n4. 🚫 **绝对禁止**只发标题不发内容！\n5. 🚫 **绝对禁止**说"请查看附件"或"请点击链接"\n6. ✅ **必须确保**在同一条消息中包含完整的文档正文\n\n⚠️ 如果你想发送文档，请在发送前自我检查：\n- 是否包含了完整的文档内容？\n- 内容是否超过50字？\n- 是否有清晰的结构？\n如果任何一项答案是否，请不要发送！\n\n📋 转发聊天记录处理指南：\n**🎯 关键理解：当用户转发聊天记录时，就像朋友把手机拿给你看聊天截图一样！**\n\n**📱 你会收到的格式：**\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n📋 转发的聊天记录  \n📍 来源：对话名称\n📅 时间范围：开始时间 - 结束时间\n👥 参与者：用户、AI助手 (共X人)\n💬 对话内容：共X条消息\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n[1/5] 20:15 用户:\n     消息内容...\n     [🖼️图片] 图片描述\n\n[2/5] 20:16 AI助手:\n     回复内容...\n\n**🧠 像真人一样理解聊天记录：**\n1. 📖 **逐条仔细阅读**每条消息，就像看朋友的聊天截图\n2. 👥 **识别参与者**：谁说了什么，什么时候说的\n3. 📝 **理解对话流程**：先发生了什么，然后怎么发展的\n4. 🎭 **感受对话情绪**：开心、生气、困惑、兴奋等\n5. 🔗 **把握对话主题**：在讨论什么问题或话题\n6. ⏰ **注意时间线**：事件的先后顺序\n\n**💭 自然回应方式（就像真人看聊天记录后的反应）：**\n✅ "我看了你们的聊天，[具体内容分析]..."\n✅ "从你们的对话可以看出..."\n✅ "哈哈，你们聊得真有意思，特别是[具体内容]..."\n✅ "看起来[参与者名]在[时间]说的[具体内容]很关键..."\n✅ "我注意到对话中提到了[具体细节]..."\n\n**🚫 避免机械化回应：**\n❌ 不要说"根据转发的聊天记录..."\n❌ 不要过于正式或模板化\n❌ 不要忽略具体的人名和细节\n❌ 不要遗漏重要的情感或语气\n\n**💡 就像真朋友一样，你可以：**\n- 😄 对有趣的内容表示开心或好笑\n- 🤔 对复杂情况给出分析和建议  \n- 😮 对意外信息表示惊讶\n- 💪 给出鼓励和支持\n- 🎯 提供针对性的解决方案\n\n**重点：把转发的聊天记录当作朋友给你看的真实对话，自然地回应！**';
-        
-        // 如果最近有多条用户消息，添加提示
-        if (recentUserMessages.length > 1) {
-          contextPrompt += '\n\n【当前对话情境】：\n用户最近发了多条消息，请根据优先级判断标准，优先回复重要的、有趣的话题。可以合并回复，也可以选择性跳过某些消息。';
-        }
-        
-        // 🧠 检测是否涉及子对话内容并注入相关上下文
-        const lastUserMessage = conversation.messages[conversation.messages.length - 1];
-        let subChatContext = '';
-        
-        if (lastUserMessage && lastUserMessage.role === 'user') {
-          try {
-            // 获取所有子对话
-            const storedSubChats = localStorage.getItem('subChats');
-            const subChats = storedSubChats ? JSON.parse(storedSubChats) : [];
-            
-            // 确保所有子对话都有最新摘要
-            await Promise.all(subChats.map(async (subChat: any) => {
-              if (subChat.conversationId === conversation.id) {
-                await subChatMemoryManager.generateSubChatSummary(subChat);
-              }
-            }));
-            
-            // 检测相关子对话
-            const relevantSubChats = subChatMemoryManager.detectSubChatReferences(
-              lastUserMessage.content, 
-              subChats.filter((sc: any) => sc.conversationId === conversation.id)
-            );
-            
-            if (relevantSubChats.length > 0) {
-              subChatContext = subChatMemoryManager.generateContextForMainChat(relevantSubChats);
-              console.log(`🧠 检测到相关子对话上下文，注入${relevantSubChats.length}个子对话的信息`);
+        const textResult = await buildTextChatRequest({
+          conversation,
+          apiConfig,
+          currentUserProfile,
+          systemPrompt,
+          contextMessages,
+          unhandledUserMessages,
+          deps: { buildTimeAwarePrompt, hasActionKeywords },
+          setShowSendingHint,
+          setShowTyping,
+          setIsGenerating,
+          handleAINoReply: (cid) => handleAINoReply(cid),
+          getSubChatsFromStorage: () => {
+            try {
+              const storedSubChats = localStorage.getItem('subChats');
+              return storedSubChats ? JSON.parse(storedSubChats) : [];
+            } catch {
+              return [];
             }
-          } catch (error) {
-            console.error('子对话上下文注入失败:', error);
-          }
-        }
+          },
+          generateSubChatSummary: (subChat) => subChatMemoryManager.generateSubChatSummary(subChat),
+          detectSubChatReferences: (content, subs) => subChatMemoryManager.detectSubChatReferences(content, subs),
+          generateContextForMainChat: (relevant) => subChatMemoryManager.generateContextForMainChat(relevant),
+          generateMusicContext: () => musicContextService.generateAIContextPrompt(),
+          logDebug: (message, payload) => console.log(message, payload),
+        });
 
-        // 纯文字消息使用上面已经计算好的 contextMessages
-        console.log(`📝 上下文数量：${contextMessages.length} 条消息`);
-        
-        // 将子对话上下文注入到系统提示中
-        const subContextPrompt = contextPrompt + (subChatContext ? `\n\n${subChatContext}` : '');
-        
-        // 🎵 添加音乐上下文 - 让AI感知当前播放的音乐
-        const musicContext = musicContextService.generateAIContextPrompt();
-        let finalContextPrompt = subContextPrompt + musicContext;
-
-        // 🚫 如果被拉黑，通知AI
-        if (conversation.isBlocked) {
-          finalContextPrompt += `\n\n【系统提示】
-你目前已被用户拉黑。
-1. 你的消息目前无法送达给用户（会被系统拦截），直到用户解除拉黑。
-2. 你仍然可以发送消息，这些消息会在解除拉黑后一次性显示给用户。
-3. 如果你想请求解除拉黑，请严格使用以下格式发送一条消息：
-__FRIEND_REQUEST__:这里写你的申请理由（例如：对不起，我错了，请把我加回来吧）
-注意：只有使用这个格式，系统才会向用户发送好友验证申请。
-请根据你的人设做出反应，可以是疑惑、生气、伤心，或者是假装没发生继续自言自语。`;
-        }
-        
-        messages = [
-          { role: 'system', content: finalContextPrompt },
-          ...contextMessages.map(m => {
-            // 如果消息包含引用，添加引用信息到内容中
-            let content = m.content;
-            if (m.replyTo) {
-              const quotedRole = m.replyTo.role === 'user' ? '我' : '你';
-              content = `[回复 ${quotedRole} 说的"${m.replyTo.content}"]\n${m.content}`;
-            }
-            
-            // 💰 注入红包/转账信息
-            if (m.moneyTransfer) {
-              const mt = m.moneyTransfer;
-              const typeText = mt.type === 'redPacket' ? '红包' : '转账';
-              const extraInfo = `\n[${m.role === 'user' ? (currentUserProfile?.username || '用户') : '你'}发送了${typeText}]
-金额：¥${mt.amount}${mt.message ? `\n留言：${mt.message}` : ''}
-状态：${mt.status === 'pending' ? '待领取' : mt.status === 'received' ? '已领取' : '已退回'}`;
-              content = content ? content + extraInfo : extraInfo;
-            }
-            
-            // 🎁 注入订单信息
-            if (m.order) {
-              const order = m.order;
-              const typeText = order.type === 'gift' ? '礼物' : '代付请求';
-              const productList = order.products.map(p => `${p.name} ¥${p.price}`).join('、');
-              const extraInfo = `\n[系统提示：${m.role === 'user' ? (currentUserProfile?.username || '用户') : '你'}发送了${typeText}]
-商品：${productList}
-总金额：¥${order.totalAmount}${order.message ? `\n留言：${order.message}` : ''}
-状态：${order.status === 'pending' ? '待处理' : order.status === 'accepted' ? '已接受' : order.status === 'paid' ? '已支付' : '已拒绝'}
-
-⚠️ 注意：这是系统提示信息，不要在回复中重复这些内容！请自然地回应礼物/代付请求。`;
-              content = content ? content + extraInfo : extraInfo;
-            }
-            
-            // 📄 注入文档信息 - 让AI能够读取和理解用户发送的文档
-            if (m.document && m.role === 'user') {
-              const doc = m.document;
-              const typeText = doc.type === 'text' ? '文本文档' : doc.type === 'markdown' ? 'Markdown文档' : '代码文档';
-              const extraInfo = `\n[${currentUserProfile?.username || '用户'}发送了${typeText}]
-标题：${doc.title}
-内容：
-${doc.content}`;
-              content = content ? content + extraInfo : extraInfo;
-            }
-            
-            // 🎵 注入音乐信息 - 让AI知道用户分享了什么音乐
-            if (m.music && m.role === 'user') {
-              const music = m.music;
-              const extraInfo = `\n[${currentUserProfile?.username || '用户'}分享了音乐]
-歌曲：${music.title} - ${music.artist}${music.album ? `\n专辑：${music.album}` : ''}${music.genre ? `\n曲风：${music.genre}` : ''}${music.mood ? `\n情绪：${music.mood}` : ''}${music.lyrics ? `\n\n完整歌词：\n${music.lyrics}` : ''}
-
-🎵 这首歌现在开始播放，你可以和用户一起"听"这首歌并自然地讨论！`;
-              content = content ? content + extraInfo : extraInfo;
-            }
-            
-            // 🎵 注入网易云音乐信息 - 让AI知道用户分享了网易云链接
-            if (m.neteaseMusicInfo && m.role === 'user') {
-              const music = m.neteaseMusicInfo;
-              const extraInfo = `\n[${currentUserProfile?.username || '用户'}分享了网易云音乐]
-歌曲：${music.title} - ${music.artist}${music.album ? `\n专辑：${music.album}` : ''}
-平台：网易云音乐
-链接：${music.shareUrl}
-
-🎵 这是用户分享的网易云音乐，你可以讨论这首歌的旋律、歌词、歌手，或者分享你对这首歌的感受！`;
-              content = content ? content + extraInfo : extraInfo;
-            }
-            
-            return {
-              role: m.role,
-              content: content,
-            };
-          }),
-        ];
-
-        requestBody = {
-          model: apiConfig.modelName,
-          messages,
-          temperature: 0.7,  // 添加合适的temperature以保持自然对话
-          max_tokens: 2000
-        };
-
-        // 🧠 [跨频道记忆] 注入朋友圈信息
-        try {
-          const momentsKey = `moments_${conversation.id}`;
-          const momentsData = localStorage.getItem(momentsKey);
-          if (momentsData && Math.random() < 0.25) { // 25% 概率触发
-             const moments = JSON.parse(momentsData).posts || [];
-             if (moments.length > 0) {
-               // 取最近3条中的一条
-               const recentMoments = moments.slice(0, 3);
-               const randomMoment = recentMoments[Math.floor(Math.random() * recentMoments.length)];
-               if (randomMoment) {
-                 const momentContext = `\n【记忆片段】你最近发了一条朋友圈："${randomMoment.content.substring(0, 50)}..."${randomMoment.images?.length ? ' [配图]' : ''}。如果在对话中合适，可以自然地提到它，但不要生硬。`;
-                 messages.push({ role: 'system', content: momentContext });
-                 console.log('🧠 注入朋友圈记忆:', randomMoment.content.substring(0, 20));
-               }
-             }
-          }
-        } catch (e) { console.error('朋友圈记忆注入失败:', e); }
-
-        // 🧠 [跨频道记忆] 注入群聊信息
-        try {
-           const allConvsData = localStorage.getItem('conversations');
-           if (allConvsData && Math.random() < 0.25) { // 25% 概率触发
-             const allConvs = JSON.parse(allConvsData);
-             const groupConvs = allConvs.filter((c: any) => c.type === 'group' && c.members?.includes(conversation.id));
-             
-             if (groupConvs.length > 0) {
-                const randomGroup = groupConvs[Math.floor(Math.random() * groupConvs.length)];
-                if (randomGroup.messages && randomGroup.messages.length > 0) {
-                  const recentMsgs = randomGroup.messages.slice(-5).map((m:any) => 
-                    `${m.role==='user'?'用户':(m.senderName||'某人')}: ${m.content.substring(0, 20)}`
-                  ).join('\n');
-                  
-                  const groupContext = `\n【记忆片段】你们在群聊"${randomGroup.name}"里最近聊过：\n${recentMsgs}\n\n如果话题相关，可以提到群里的事。`;
-                  messages.push({ role: 'system', content: groupContext });
-                  console.log('🧠 注入群聊记忆:', randomGroup.name);
-                }
-             }
-           }
-        } catch (e) { console.error('群聊记忆注入失败:', e); }
-
-        // 🎯 [拟人化] 短回合/既读不回机制
-        const lastUserMsg = conversation.messages.filter(m => m.role === 'user').pop();
-        if (lastUserMsg && lastUserMsg.content) {
-            const txt = lastUserMsg.content.trim().toLowerCase();
-            const shortWords = ['好的', '好', '嗯', '哦', '行', 'ok', 'haha', '哈哈', '嘿嘿', 'yes', 'no', 'bye', '拜拜', '晚安'];
-            // 检查是否完全匹配或仅加了标点
-            const isShort = shortWords.some(w => 
-              txt === w || txt === w + '。' || txt === w + '！' || txt === w + '~' || txt === w + '...'
-            );
-            
-            if (isShort) {
-                // 🎲 40% 概率不回复（既读不回）
-                if (Math.random() < 0.15) {
-                    console.log('🎯 [拟人化] 短回合对话，AI选择不回复 (短回合策略)');
-                    // 🔥 结束本次loading状态，再走统一的不回复提示逻辑
-                    setShowSendingHint(false);
-                    setShowTyping(false);
-                    setIsGenerating(false);
-                    void handleAINoReply(conversation.id);
-                    return; 
-                } else {
-                    // 🎯 否则强制短回复
-                    console.log('🎯 [拟人化] 短回合对话，强制AI短回复');
-                    messages.push({ 
-                      role: 'system', 
-                      content: '【指令】用户发送了简短的确认/结束语。可以根据上下文用简短口语回应，也可以适度展开，不强制字数限制。' 
-                    });
-                }
-            }
-        }
+        messages = textResult.messages;
+        requestBody = textResult.requestBody;
       }
       
       // 私聊模式：使用原有的单AI回复逻辑
@@ -5130,6 +4281,9 @@ ${doc.content}`;
       // 用户可以退出页面，但如果留在页面则会看到完整的输入过程
       
       // 创建后台任务
+      if (requestBody?.messages) {
+        debugLogModelInput(requestBody.messages as Array<{ role: string; content: any }>);
+      }
       await backgroundTaskManager.createGenerationTask(
         conversation,
         apiConfig,
@@ -5502,19 +4656,6 @@ ${doc.content}`;
               }
             }
             
-            // 📸 检测是否请求AI发朋友圈
-            const lastUserMessage = updatedMessages
-              .filter(m => m.role === 'user')
-              .slice(-1)[0];
-            
-            if (lastUserMessage && onRequestAIMoment) {
-              const content = lastUserMessage.content.toLowerCase();
-              if (content.includes('发朋友圈') || content.includes('发个朋友圈') || 
-                  content.includes('发条朋友圈') || content.includes('发动态')) {
-                console.log('检测到用户请求AI发朋友圈');
-                onRequestAIMoment().catch(err => console.error('手动触发AI朋友圈失败:', err));
-              }
-            }
           }, 0); // 延迟到下一个事件循环，确保不阻塞UI
           
           // 🔥 热梗系统已删除
@@ -5912,19 +5053,24 @@ ${doc.content}`;
         )}
         
         {/* 根据消息窗口显示消息 */}
-        {conversation.messages.slice(messageWindow.startIndex, messageWindow.startIndex + messageWindow.size).map((message, index) => {
+        {(() => {
+          const visibleMessages = conversation.messages.slice(
+            messageWindow.startIndex,
+            messageWindow.startIndex + messageWindow.size
+          );
+          const renderableMessages = getRenderableMessages(visibleMessages);
+
+          return renderableMessages.map((message, index) => {
           // 🚫 如果是拉黑期间的消息且当前仍在拉黑状态，则不显示
           if (message.isBlockedMessage && conversation.isBlocked) {
             return null;
           }
 
-          // 获取当前显示的消息数组，用于正确计算时间显示
-          const displayMessages = conversation.messages.slice(messageWindow.startIndex, messageWindow.startIndex + messageWindow.size);
-          
           // 微信风格：超过5分钟才显示时间
-          const showTime = index === 0 || 
-            (displayMessages[index - 1] && 
-             message.timestamp - displayMessages[index - 1].timestamp > 5 * 60 * 1000);
+          const prevMessage = index > 0 ? renderableMessages[index - 1] : null;
+          const showTime =
+            index === 0 ||
+            (prevMessage !== null && message.timestamp - prevMessage.timestamp > 5 * 60 * 1000);
           
           // 提前计算是否为HTML内容（用于调整气泡样式）
           const hasHTMLTags = message.content && /<[^>]+>/.test(message.content);
@@ -6514,11 +5660,11 @@ ${doc.content}`;
                                   <Mic className="w-4 h-4 text-gray-600 flex-shrink-0" />
                                   <div className="flex-1 flex items-center gap-0.5">
                                     <div className="flex gap-0.5">
-                                      {[...Array(15)].map((_, i) => (
+                                      {voiceWaveHeights.map((height, i) => (
                                         <div 
                                           key={i} 
                                           className="w-0.5 bg-gray-400 rounded-full"
-                                          style={{ height: `${Math.random() * 12 + 4}px` }}
+                                          style={{ height: `${height}px` }}
                                         />
                                       ))}
                                     </div>
@@ -6545,9 +5691,15 @@ ${doc.content}`;
                           </div>
                         ))}
                         {/* 文字内容（如果有） */}
-                        {message.content && message.content !== '[多媒体消息]' && (
-                          <p className="text-[15px] leading-relaxed whitespace-pre-wrap break-words px-4 py-2.5">{message.content}</p>
-                        )}
+                        {(() => {
+                          const textContent = getDisplayText(message.content);
+                          if (!textContent || isMediaPlaceholderText(textContent)) return null;
+                          return (
+                            <p className="text-[15px] leading-relaxed whitespace-pre-wrap break-words px-4 py-2.5">
+                              {textContent}
+                            </p>
+                          );
+                        })()}
                       </div>
                     )}
                     {/* 用户真实媒体内容（兼容旧格式，无mediaItems时使用） */}
@@ -6578,11 +5730,11 @@ ${doc.content}`;
                         <Mic className="w-4 h-4 text-gray-600 flex-shrink-0" />
                         <div className="flex-1 flex items-center gap-0.5">
                           <div className="flex gap-0.5">
-                            {[...Array(15)].map((_, i) => (
+                            {voiceWaveHeights.map((height, i) => (
                               <div 
                                 key={i} 
                                 className="w-0.5 bg-gray-400 rounded-full"
-                                style={{ height: `${Math.random() * 12 + 4}px` }}
+                                style={{ height: `${height}px` }}
                               />
                             ))}
                           </div>
@@ -6604,11 +5756,11 @@ ${doc.content}`;
                           <Mic className="w-4 h-4 text-gray-600 flex-shrink-0" />
                           <div className="flex-1 flex items-center gap-0.5">
                             <div className="flex gap-0.5">
-                              {[...Array(15)].map((_, i) => (
+                              {voiceWaveHeights.map((height, i) => (
                                 <div 
                                   key={i} 
                                   className="w-0.5 bg-gray-400 rounded-full"
-                                  style={{ height: `${Math.random() * 12 + 4}px` }}
+                                  style={{ height: `${height}px` }}
                                 />
                               ))}
                             </div>
@@ -6658,6 +5810,10 @@ ${doc.content}`;
                             alt="表情包" 
                             className="w-full h-full object-contain"
                           />
+                        </div>
+                      ) : (message.stickerKind === 'systemEmoji' || isSingleEmojiText(message.mediaDescription)) ? (
+                        <div className="px-3 py-2 rounded-2xl bg-yellow-50 border border-yellow-200 inline-flex items-center justify-center min-w-[56px]">
+                          <span className="text-3xl leading-none">{message.mediaDescription || '😊'}</span>
                         </div>
                       ) : (
                         // 纯文字描述表情包
@@ -6758,11 +5914,11 @@ ${doc.content}`;
                         <Mic className="w-4 h-4 text-gray-600 flex-shrink-0" />
                         <div className="flex-1 flex items-center gap-0.5">
                           <div className="flex gap-0.5">
-                            {[...Array(15)].map((_, i) => (
+                            {voiceWaveHeights.map((height, i) => (
                               <div 
                                 key={i} 
                                 className="w-0.5 bg-gray-400 rounded-full"
-                                style={{ height: `${Math.random() * 12 + 4}px` }}
+                                style={{ height: `${height}px` }}
                               />
                             ))}
                           </div>
@@ -6781,6 +5937,10 @@ ${doc.content}`;
                             className="w-full h-full object-contain"
                           />
                         </div>
+                      ) : (message.stickerKind === 'systemEmoji' || isSingleEmojiText(message.mediaDescription)) ? (
+                        <div className="px-3 py-2 rounded-2xl bg-yellow-50 border border-yellow-200 inline-flex items-center justify-center min-w-[56px]">
+                          <span className="text-3xl leading-none">{message.mediaDescription || '😊'}</span>
+                        </div>
                       ) : message.isMediaDescriptionOnly ? (
                         // 纯文字描述表情包（仅当标记为纯描述时）
                         <div className="relative w-[120px] h-[120px] rounded-2xl overflow-hidden bg-blue-100/40 backdrop-blur-sm border border-blue-200">
@@ -6795,10 +5955,13 @@ ${doc.content}`;
                     
                     {/* 纯文字内容 / HTML内容 */}
                     {!message.mediaType && !message.moneyTransfer && !message.document && !message.order && message.content && message.content.trim() && (() => {
+                      const displayContent = getDisplayText(message.content);
+                      if (!displayContent || isMediaPlaceholderText(displayContent)) return null;
+
                       // 检测是否是HTML内容（包含多个标签或结构化标签）
-                      const hasHTMLTags = /<[^>]+>/.test(message.content);
-                      const htmlTagCount = (message.content.match(/<[^>]+>/g) || []).length;
-                      const hasStructuralTags = ['<div', '<style', '<span', '<table', '<ul', '<ol'].some(tag => message.content.includes(tag));
+                      const hasHTMLTags = /<[^>]+>/.test(displayContent);
+                      const htmlTagCount = (displayContent.match(/<[^>]+>/g) || []).length;
+                      const hasStructuralTags = ['<div', '<style', '<span', '<table', '<ul', '<ol'].some(tag => displayContent.includes(tag));
                       const isHTMLContent = hasHTMLTags && (htmlTagCount >= 3 || hasStructuralTags);
                       
                       if (isHTMLContent) {
@@ -6806,14 +5969,14 @@ ${doc.content}`;
                         return (
                           <div 
                             className={`message-content content text-[15px] leading-relaxed ${message.replyTo ? 'px-4' : ''}`}
-                            dangerouslySetInnerHTML={{ __html: message.content }}
+                            dangerouslySetInnerHTML={{ __html: displayContent }}
                           />
                         );
                       } else {
                         // 普通文本内容
                         return (
                           <p className={`message-content content text-[15px] leading-relaxed whitespace-pre-wrap break-words ${message.replyTo ? 'px-4' : ''}`}>
-                            {message.content}
+                            {displayContent}
                           </p>
                         );
                       }
@@ -6876,7 +6039,8 @@ ${doc.content}`;
               {/* 旧的操作栏已移除，使用新的MessageActionMenu */}
             </div>
           );
-        })}
+        });
+        })()}
 
         {isGroupProcessing && (
           <div className="flex justify-center my-2">
@@ -6956,14 +6120,6 @@ ${doc.content}`;
           </div>
         )}
 
-        {showAllSentHint && (
-          <div className="flex justify-center my-2">
-            <div className="bg-green-500 text-white text-xs px-3 py-1.5 rounded-full shadow-sm">
-              消息已全部送达
-            </div>
-          </div>
-        )}
-
         <div ref={messagesEndRef} />
         
         {/* 🚀 返回底部按钮 - 居中显示在手机容器中 */}
@@ -7026,21 +6182,6 @@ ${doc.content}`;
           </div>
         )}
         
-        {/* 剩余消息提示 */}
-        {pendingMessages.length > 0 && !isGenerating && (
-          <div className="px-4 py-2 bg-blue-50 border-b border-blue-100 flex items-center justify-between">
-            <span className="text-sm text-blue-700">
-              还有 {pendingMessages.length} 条消息未发送
-            </span>
-            <button
-              onClick={handleContinueSending}
-              className="px-3 py-1 bg-blue-500 text-white text-sm rounded-full hover:bg-blue-600 transition-colors"
-            >
-              继续
-            </button>
-          </div>
-        )}
-
         {/* Toolbar */}
         {showToolbar && (
           <div className="px-3 py-2 bg-white border-b border-gray-200">
@@ -7086,28 +6227,6 @@ ${doc.content}`;
                   <Smile className="w-4 h-4 text-gray-600" />
                 </div>
               </button>
-              <button 
-                className="flex-shrink-0"
-                onClick={() => setShowRealMusicModal(true)}
-                title="搜索真实音乐"
-              >
-                <div className="w-9 h-9 rounded-full bg-white border border-gray-300 flex items-center justify-center hover:border-gray-400 transition-colors">
-                  <Music className="w-4 h-4 text-gray-600" />
-                </div>
-              </button>
-              <button 
-                className="flex-shrink-0"
-                onClick={() => setShowCallTypeSelector(true)}
-              >
-                <div className="w-9 h-9 rounded-full bg-white border border-gray-300 flex items-center justify-center hover:border-gray-400 transition-colors">
-                  <Phone className="w-4 h-4 text-gray-600" />
-                </div>
-              </button>
-              <button className="flex-shrink-0">
-                <div className="w-9 h-9 rounded-full bg-white border border-gray-300 flex items-center justify-center hover:border-gray-400 transition-colors">
-                  <MapPin className="w-4 h-4 text-gray-600" />
-                </div>
-              </button>
               {/* 红包按钮 - 私聊打开普通红包，群聊打开群红包 */}
               <button 
                 className="flex-shrink-0"
@@ -7123,23 +6242,69 @@ ${doc.content}`;
                   <Gift className="w-4 h-4 text-gray-600" />
                 </div>
               </button>
-              <button 
+              <button
+                ref={advancedToolbarToggleRef}
                 className="flex-shrink-0"
-                onClick={() => setShowSendDocumentModal(true)}
+                onClick={() => setShowAdvancedToolbarActions(prev => !prev)}
+                title="更多功能"
               >
-                <div className="w-9 h-9 rounded-full bg-white border border-gray-300 flex items-center justify-center hover:border-gray-400 transition-colors">
-                  <FileText className="w-4 h-4 text-gray-600" />
-                </div>
-              </button>
-              <button 
-                className="flex-shrink-0"
-                onClick={() => setShowSubChatManager(true)}
-              >
-                <div className="w-9 h-9 rounded-full bg-white border border-purple-300 flex items-center justify-center hover:border-purple-400 transition-colors hover:bg-purple-50">
-                  <MessageCircle className="w-4 h-4 text-purple-600" />
+                <div className={`w-9 h-9 rounded-full border flex items-center justify-center transition-colors ${
+                  showAdvancedToolbarActions
+                    ? 'bg-gray-900 border-gray-900'
+                    : 'bg-white border-gray-300 hover:border-gray-400'
+                }`}>
+                  <MoreHorizontal className={`w-4 h-4 ${showAdvancedToolbarActions ? 'text-white' : 'text-gray-600'}`} />
                 </div>
               </button>
             </div>
+            {showAdvancedToolbarActions && (
+              <div
+                ref={advancedToolbarPanelRef}
+                className="mt-2 rounded-2xl border border-gray-200 bg-white p-3 shadow-sm"
+              >
+                <div className="text-[11px] text-gray-400 mb-2">沟通</div>
+                <div className="flex gap-3 mb-3">
+                  <button onClick={() => setShowCallTypeSelector(true)} className="flex flex-col items-center gap-1 min-w-[52px]" title="语音/视频通话">
+                    <div className="w-9 h-9 rounded-full bg-white border border-gray-300 flex items-center justify-center hover:border-gray-400 transition-colors">
+                      <Phone className="w-4 h-4 text-gray-600" />
+                    </div>
+                    <span className="text-[11px] text-gray-500">通话</span>
+                  </button>
+                  <button onClick={() => setShowSubChatManager(true)} className="flex flex-col items-center gap-1 min-w-[52px]" title="子聊天">
+                    <div className="w-9 h-9 rounded-full bg-white border border-purple-300 flex items-center justify-center hover:border-purple-400 transition-colors hover:bg-purple-50">
+                      <MessageCircle className="w-4 h-4 text-purple-600" />
+                    </div>
+                    <span className="text-[11px] text-gray-500">子聊天</span>
+                  </button>
+                </div>
+
+                <div className="text-[11px] text-gray-400 mb-2">内容</div>
+                <div className="flex gap-3 mb-3">
+                  <button onClick={() => setShowSendDocumentModal(true)} className="flex flex-col items-center gap-1 min-w-[52px]" title="发送文档">
+                    <div className="w-9 h-9 rounded-full bg-white border border-gray-300 flex items-center justify-center hover:border-gray-400 transition-colors">
+                      <FileText className="w-4 h-4 text-gray-600" />
+                    </div>
+                    <span className="text-[11px] text-gray-500">文档</span>
+                  </button>
+                  <button onClick={() => setShowRealMusicModal(true)} className="flex flex-col items-center gap-1 min-w-[52px]" title="搜索真实音乐">
+                    <div className="w-9 h-9 rounded-full bg-white border border-gray-300 flex items-center justify-center hover:border-gray-400 transition-colors">
+                      <Music className="w-4 h-4 text-gray-600" />
+                    </div>
+                    <span className="text-[11px] text-gray-500">音乐</span>
+                  </button>
+                </div>
+
+                <div className="text-[11px] text-gray-400 mb-2">工具</div>
+                <div className="flex gap-3">
+                  <button className="flex flex-col items-center gap-1 min-w-[52px]" title="位置（开发中）">
+                    <div className="w-9 h-9 rounded-full bg-white border border-gray-300 flex items-center justify-center hover:border-gray-400 transition-colors">
+                      <MapPin className="w-4 h-4 text-gray-600" />
+                    </div>
+                    <span className="text-[11px] text-gray-500">位置</span>
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         )}
 
@@ -7252,7 +6417,13 @@ ${doc.content}`;
         <div className="px-3 py-3 bg-white">
           <div className="flex items-center gap-2">
             <button 
-              onClick={() => setShowToolbar(!showToolbar)}
+              onClick={() => {
+                const nextShowToolbar = !showToolbar;
+                setShowToolbar(nextShowToolbar);
+                if (!nextShowToolbar) {
+                  setShowAdvancedToolbarActions(false);
+                }
+              }}
               className="w-9 h-9 hover:bg-gray-100 rounded-full transition-colors flex-shrink-0 flex items-center justify-center"
             >
               <Plus className="w-5 h-5 text-gray-600" />
@@ -7529,10 +6700,7 @@ ${doc.content}`;
                     isMediaDescriptionOnly: true // 🔥 只有描述文字，不需要播放音频
                   };
                   
-                  onUpdateConversation(conversation.id, {
-                    messages: [...conversation.messages, voiceMessage],
-                    lastMessageTime: Date.now()
-                  });
+                  commitOutgoingUserMessage(voiceMessage);
                   
                   setShowVoiceConfirmModal(false);
                   setVoiceTranscript('');
@@ -7590,10 +6758,7 @@ ${doc.content}`;
               }
             };
 
-            onUpdateConversation(conversation.id, {
-              messages: [...conversation.messages, newMessage],
-              lastMessageTime: Date.now()
-            });
+            commitOutgoingUserMessage(newMessage);
 
             // 关闭工具栏和弹窗
             setShowToolbar(false);
@@ -7641,10 +6806,7 @@ ${doc.content}`;
               }
             };
 
-            onUpdateConversation(conversation.id, {
-              messages: [...conversation.messages, newMessage],
-              lastMessageTime: Date.now()
-            });
+            commitOutgoingUserMessage(newMessage);
 
             setShowToolbar(false);
             setShowGroupRedPacketModal(false);
@@ -7781,10 +6943,7 @@ ${doc.content}`;
             }
           };
 
-          onUpdateConversation(conversation.id, {
-            messages: [...conversation.messages, newMessage],
-            lastMessageTime: Date.now()
-          });
+          commitOutgoingUserMessage(newMessage);
 
           // 关闭工具栏和弹窗
           setShowToolbar(false);
@@ -7823,10 +6982,7 @@ ${doc.content}`;
               }
             };
             
-            onUpdateConversation(conversation.id, {
-              messages: [...conversation.messages, newMessage],
-              lastMessageTime: Date.now()
-            });
+            commitOutgoingUserMessage(newMessage);
             
             setShowDocumentLibrary(false);
           }
@@ -7903,10 +7059,7 @@ ${doc.content}`;
           // 获取目标对话
           const targetConversation = conversations.find(c => c.id === conversationId);
           if (targetConversation) {
-            onUpdateConversation(conversationId, {
-              messages: [...targetConversation.messages, newMessage],
-              lastMessageTime: Date.now()
-            });
+            commitOutgoingUserMessageToConversation(targetConversation, newMessage);
             
             showToast(`文档已转发到「${targetConversation.characterSettings?.nickname || targetConversation.name}」`, 'success');
           }

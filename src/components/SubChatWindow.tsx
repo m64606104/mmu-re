@@ -13,6 +13,8 @@ import { createSingleForward, createMergedForward, getMessagePreview } from '../
 import { formatChatRecord } from '../utils/chatRecordFormatter';
 import { splitMessages } from '../utils/messageFormatter';
 import { subChatPurposeDetector } from '../utils/subChatPurposeDetector';
+import { MEDIA_DECISION_GUIDANCE } from '../utils/mediaDecisionPrompt';
+import { getNoActionRoleplayPrompt } from '../utils/chatStylePrompt';
 import type { MusicInfo } from '../utils/musicService';
 
 interface SubChatWindowProps {
@@ -694,6 +696,7 @@ ${purposeDetected ? `\n\n⚠️ 重要：用户刚刚说明了这个子聊天的
 2. 🎬 视频消息：[视频:描述内容]
 3. 🎤 语音消息：[语音:内容,时长X秒]
 4. 😊 表情包：[表情包:描述]
+${MEDIA_DECISION_GUIDANCE}
 
 【💰 红包、转账功能】：
 1️⃣ 发红包：[发红包:金额:留言]
@@ -702,8 +705,8 @@ ${purposeDetected ? `\n\n⚠️ 重要：用户刚刚说明了这个子聊天的
 4️⃣ 退回红包：[退回红包:理由]
 ` : '请自然地回复用户的消息。';
 
-      // 🚫 强制禁止括号动作描写指令（全局追加）
-      systemPrompt += '\n\n【⚠️ 说话风格强制规范】\n1. 🚫 **绝对禁止**使用任何括号（包括()、（）、[]、【】）来进行动作、神态、心理活动或语气描写！\n   - ❌ 错误示例：(笑了笑) 真的吗？\n   - ❌ 错误示例：(叹气) 唉，好累。\n   - ❌ 错误示例：[开心] 哈哈！\n   - ❌ 错误示例：(托腮) 让我想想。\n   - ✅ 正确示例：真的吗？哈哈\n   - ✅ 正确示例：唉，今天好累啊...\n   - ✅ 正确示例：嗯...让我想想\n\n2. 像真实的微信/社交软件聊天一样说话：\n   - 直接说内容，不要加戏，不要写剧本\n   - 保持口语化、自然、简洁\n   - 你的所有情绪都应该通过文字本身、标点符号或表情包来表达，而不是通过括号描写\n   - 如果想表达动作，请直接用文字描述（如"我刚喝了口水"），不要用括号包裹';
+      // 🚫 强制禁止语C/小说式动作描写（统一复用片段）
+      systemPrompt += `\n\n${getNoActionRoleplayPrompt()}`;
 
       // 4. 构建API请求
       let messages: any[];

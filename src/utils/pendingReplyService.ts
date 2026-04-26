@@ -6,12 +6,14 @@
 
 import { Conversation, Message, ApiConfig, UserProfile } from '../types';
 import { buildApiUrl } from './apiHelper';
+import { resolveSystemEmoji, isSingleEmojiText } from './systemEmoji';
 import {
   getConversationMemories, buildMemoryContext,
   shouldTriggerAutoSummary, updateSummaryCounter,
   buildMemorySummaryPrompt, parseMemorySummaryResponse, addMemory,
 } from './memorySystem';
 import { splitMessages, cleanAIMessage } from './messageFormatter';
+import { MEDIA_DECISION_GUIDANCE } from './mediaDecisionPrompt';
 
 /* ── 内部状态 ── */
 interface PendingEntry { timerId: ReturnType<typeof setTimeout>; }
@@ -28,6 +30,39 @@ let _getUserProfile: GetUserProfileFn;
 
 const pendingMap = new Map<string, PendingEntry>();
 const generatingSet = new Set<string>();
+
+type ParsedStickerToken = {
+  description: string;
+  stickerKind: 'systemEmoji' | 'custom';
+};
+
+function extractStickerTokens(raw: string): { text: string; stickers: ParsedStickerToken[] } {
+  if (!raw) return { text: '', stickers: [] };
+
+  let text = raw;
+  const stickers: ParsedStickerToken[] = [];
+  const matches = [...raw.matchAll(/\[(表情包|STICKER|系统表情|EMOJI|emoji)[:：]([^\]]+)\]/gi)];
+  for (const match of matches) {
+    const tag = (match[1] || '').toLowerCase();
+    const payload = (match[2] || '').trim();
+    const isEmojiTag = tag === 'emoji' || tag === '系统表情';
+    const emoji = isEmojiTag ? resolveSystemEmoji(payload) : null;
+    const isEmoji = Boolean(emoji || isSingleEmojiText(payload));
+    if (isEmoji) {
+      // 系统emoji在延迟回复链路也默认内联，避免被强制拆成独立气泡
+      text = text.replace(match[0], emoji || payload);
+      continue;
+    }
+    stickers.push({
+      description: payload,
+      stickerKind: 'custom',
+    });
+    text = text.replace(match[0], ' ');
+  }
+
+  // 仅压缩空格/tab，保留换行语义给 splitMessages 做分条判断
+  return { text: text.replace(/[ \t]{2,}/g, ' ').trim(), stickers };
+}
 
 /* ── typing 通知 ── */
 type TypingListener = (convId: string, typing: boolean) => void;
@@ -76,6 +111,107 @@ export function schedulePendingReply(conversationId: string, delaySec: number) {
   pendingMap.set(conversationId, { timerId });
 }
 
+function toModelMessageContent(m: Message): string {
+  let content = m.content;
+  if (m.mediaType === 'image') {
+    content = m.mediaDescription
+      ? `[用户发送了一张图片：${m.mediaDescription}]`
+      : '[用户发送了一张图片]';
+  }
+  if (m.mediaType === 'video') {
+    content = m.mediaDescription
+      ? `[用户发送了一段视频：${m.mediaDescription}]`
+      : '[用户发送了一段视频]';
+  }
+  if (m.mediaType === 'voice') {
+    const durationText = m.voiceDuration ? `（约${m.voiceDuration}秒）` : '';
+    content = m.mediaDescription
+      ? `[用户发送了一条语音${durationText}：${m.mediaDescription}]`
+      : `[用户发送了一条语音${durationText}]`;
+  }
+  if (m.mediaType === 'sticker') {
+    content = m.mediaDescription
+      ? `[用户发送了一个表情包：${m.mediaDescription}]`
+      : '[用户发送了一个表情包]';
+  }
+  if (m.mediaItems && m.mediaItems.length > 0) {
+    const mediaSummary = m.mediaItems
+      .map((item) => {
+        if (item.type === 'image') return item.description ? `图片(${item.description})` : '图片';
+        if (item.type === 'video') return item.description ? `视频(${item.description})` : '视频';
+        if (item.type === 'voice') {
+          const durationText = item.duration ? `${item.duration}秒` : '';
+          return item.description
+            ? `语音${durationText ? `(${durationText})` : ''}(${item.description})`
+            : `语音${durationText ? `(${durationText})` : ''}`;
+        }
+        return item.description ? `表情包(${item.description})` : '表情包';
+      })
+      .join('，');
+    content = `[用户发送了多媒体消息：${mediaSummary}]`;
+  }
+  if (m.replyTo) {
+    const who = m.replyTo.role === 'user' ? '我' : '你';
+    content = `[回复 ${who} 说的"${m.replyTo.content.slice(0, 50)}"]\n${content}`;
+  }
+  return content;
+}
+
+/**
+ * 将“短时间内连续发送的多条用户消息”打包成一条，减少 token 并更像真人连发。
+ * 只影响发给 AI 的内容，不改变聊天记录的显示。
+ */
+function packRecentUserMessagesForModel(contextMessages: Message[], bufferMs: number): Message[] {
+  if (contextMessages.length <= 1) return contextMessages;
+
+  const packed: Message[] = [];
+  let i = 0;
+  while (i < contextMessages.length) {
+    const cur = contextMessages[i];
+    if (cur.role !== 'user') {
+      packed.push(cur);
+      i += 1;
+      continue;
+    }
+
+    const group: Message[] = [cur];
+    let j = i + 1;
+    while (j < contextMessages.length) {
+      const next = contextMessages[j];
+      if (next.role !== 'user') break;
+
+      const prev = contextMessages[j - 1];
+      const gap = Math.abs((next.timestamp ?? 0) - (prev.timestamp ?? 0));
+      // gap 为 0 说明无时间信息/同一时间戳，此时也认为是连续短消息
+      if (gap !== 0 && gap > bufferMs) break;
+
+      group.push(next);
+      j += 1;
+    }
+
+    if (group.length === 1) {
+      packed.push(cur);
+    } else {
+      const mergedContent = group
+        .map(toModelMessageContent)
+        .map(s => s.trim())
+        .filter(Boolean)
+        .join('\n');
+
+      packed.push({
+        ...group[group.length - 1],
+        // 保持 role=user，仅合并 content；不携带 replyTo，避免语义错乱
+        content: mergedContent,
+        replyTo: undefined,
+      });
+    }
+
+    i = j;
+  }
+
+  return packed;
+}
+
 /* ── 触发回复 ── */
 async function triggerReply(conversationId: string) {
   const conversation = _getConversation(conversationId);
@@ -91,6 +227,38 @@ async function triggerReply(conversationId: string) {
   try {
     let systemPrompt = buildSystemPrompt(conversation, userProfile);
 
+    // 🧪 调试：打印延迟回复是否触发 & 最后一条用户消息
+    const debugEnabled = (() => {
+      try { return localStorage.getItem('momoyu_debug_pending_reply') === '1'; } catch { return false; }
+    })();
+    const lastUserMsg = [...conversation.messages].reverse().find(m => m.role === 'user');
+    if (debugEnabled) {
+      console.log('🧪 [延迟回复调试] triggerReply', {
+        conversationId,
+        lastUser: lastUserMsg ? {
+          id: lastUserMsg.id,
+          content: lastUserMsg.content,
+          mediaType: lastUserMsg.mediaType,
+          mediaDescription: lastUserMsg.mediaDescription,
+          mediaItems: lastUserMsg.mediaItems?.length || 0,
+        } : null,
+      });
+    }
+
+    // ✅ 对“纯多媒体/表情包”做强制短回复兜底，避免 AI 选择 [SKIP] 造成“像没触发”
+    if (lastUserMsg) {
+      const normalizedLastContent = (lastUserMsg.content || '').trim();
+      const isMediaOnly =
+        Boolean(lastUserMsg.mediaType || (lastUserMsg.mediaItems && lastUserMsg.mediaItems.length > 0)) &&
+        (
+          !normalizedLastContent ||
+          /^\[\s*(?:多媒体消息|图片|视频|语音|表情包|img|image|video|voice|sticker)\s*\]$/i.test(normalizedLastContent)
+        );
+      if (isMediaOnly) {
+        systemPrompt += `\n\n【强制回复】用户刚发送了多媒体消息（尤其是表情包/语音/图片/视频）。请至少用一句非常简短的口语回复，\n不要输出 [SKIP]，也不要忽略。除非你判断非常自然，否则不要默认发表情包。`;
+      }
+    }
+
     // 🧠 记忆上下文
     if (conversation.enabledFeatures?.includes('memory-system')) {
       const memories = getConversationMemories(conversationId);
@@ -98,17 +266,12 @@ async function triggerReply(conversationId: string) {
       if (important.length > 0) systemPrompt += buildMemoryContext(important);
     }
 
-    const contextMessages = conversation.messages.slice(-40);
+    const bufferMs = (conversation.messageBufferSeconds ?? 15) * 1000;
+    const contextMessages = packRecentUserMessagesForModel(conversation.messages.slice(-40), bufferMs);
     const messages = [
       { role: 'system', content: systemPrompt },
       ...contextMessages.map(m => {
-        let content = m.content;
-        if (m.mediaType === 'image') content = '[用户发送了一张图片]';
-        if (m.replyTo) {
-          const who = m.replyTo.role === 'user' ? '我' : '你';
-          content = `[回复 ${who} 说的"${m.replyTo.content.slice(0, 50)}"]\n${content}`;
-        }
-        return { role: m.role, content };
+        return { role: m.role, content: toModelMessageContent(m) };
       }),
     ];
 
@@ -127,14 +290,29 @@ async function triggerReply(conversationId: string) {
     const data = await res.json();
     const aiContent = data.choices?.[0]?.message?.content?.trim();
     if (!aiContent || aiContent === '[SKIP]' || aiContent === '[不回复]') {
+      if (debugEnabled) console.log('🧪 [延迟回复调试] skipped', { aiContent });
       notifyTyping(conversationId, false);
       return;
     }
 
-    // 🚀 使用 [NEXT] 分割
-    const parts = aiContent.includes('[NEXT]')
-      ? aiContent.split('[NEXT]').map((s: string) => s.trim()).filter(Boolean)
-      : [aiContent.trim()];
+    // 🚀 智能分割：先完整产出，再按语境决定是否拆分
+    const lastUserMessage = [...conversation.messages]
+      .reverse()
+      .find(msg => msg.role === 'user')?.content;
+    const characterProfileText = [
+      conversation.characterSettings?.personality,
+      conversation.characterSettings?.languageStyle,
+      conversation.characterSettings?.systemPrompt,
+    ]
+      .filter(Boolean)
+      .join('\n');
+    const parts = splitMessages(aiContent, {
+      preference: conversation.replySplitPreference ?? 'smart',
+      conversationType: conversation.type,
+      lastUserMessage,
+      maxBubbles: 4,
+      characterProfileText,
+    });
 
     let freshConv = _getConversation(conversationId);
     if (!freshConv) { notifyTyping(conversationId, false); return; }
@@ -145,13 +323,39 @@ async function triggerReply(conversationId: string) {
       freshConv = _getConversation(conversationId);
       if (freshConv) currentMsgs = [...freshConv.messages];
 
-      const newAIMsg: Message = {
-        id: `ai_${Date.now()}_${i}_${Math.random()}`,
-        role: 'assistant',
-        content: parts[i],
-        timestamp: Date.now(),
-      };
-      currentMsgs = [...currentMsgs, newAIMsg];
+      const nowTs = Date.now();
+      const parsed = extractStickerTokens(parts[i]);
+      const nextMessages: Message[] = [];
+      if (parsed.text) {
+        nextMessages.push({
+          id: `ai_${nowTs}_${i}_${Math.random()}`,
+          role: 'assistant',
+          content: parsed.text,
+          timestamp: nowTs,
+        });
+      }
+      parsed.stickers.forEach((sticker, idx) => {
+        nextMessages.push({
+          id: `ai_${nowTs}_${i}_sticker_${idx}_${Math.random()}`,
+          role: 'assistant',
+          content: '[表情包]',
+          timestamp: nowTs + idx + 1,
+          mediaType: 'sticker',
+          mediaDescription: sticker.description,
+          stickerKind: sticker.stickerKind,
+          isMediaDescriptionOnly: true,
+        });
+      });
+      if (nextMessages.length === 0) {
+        nextMessages.push({
+          id: `ai_${nowTs}_${i}_${Math.random()}`,
+          role: 'assistant',
+          content: parts[i],
+          timestamp: nowTs,
+        });
+      }
+
+      currentMsgs = [...currentMsgs, ...nextMessages];
       _updateConversation(conversationId, { messages: currentMsgs, lastMessageTime: Date.now() });
     }
 
@@ -229,7 +433,7 @@ function buildSystemPrompt(conversation: Conversation, userProfile: UserProfile)
 1. **回复长度自然不固定**
    - 有时一个字："哈""嗯""好"
    - 有时一句话："今天累死了"
-   - 有时几句连发（用 [NEXT] 分隔）
+   - 有时几句连发（直接自然断句即可，不要输出任何拆分控制标记）
    - 只有真正想说的时候才打很多字
 
 2. **回复频率和节奏**
@@ -265,9 +469,9 @@ function buildSystemPrompt(conversation: Conversation, userProfile: UserProfile)
 
 所有特殊内容必须使用方括号标记，格式错误会导致内容丢失：
 
-RULE-1 消息拆条：[NEXT]
-  多条消息之间用 [NEXT] 分隔。短回复不拆。
-  ✅ "哈哈哈[NEXT]你怎么才来[NEXT]我等半天了"
+RULE-1 消息拆条：
+  直接输出自然文本，系统会自动按语义拆成多条气泡。
+  ✅ "哈哈哈 你怎么才来 我等半天了"
 
 RULE-2 图片：[IMG:描述]
   ✅ "看这个[IMG:今天拍的日落]"
@@ -281,11 +485,17 @@ RULE-4 语音：[VOICE:台词内容:秒数]
 RULE-5 表情包：[STICKER:描述]
   ✅ "[STICKER:一只快乐摇尾巴的柴犬]"
 
+RULE-5.1 系统emoji表情：[EMOJI:关键词或emoji]
+  ✅ "[EMOJI:微笑]"
+  ✅ "[EMOJI:😂]"
+
+${MEDIA_DECISION_GUIDANCE}
+
 RULE-6 不回复：[SKIP]
   当你选择不回复这条消息时输出 [SKIP]
 
 以上标记可自由组合：
-✅ "今天去爬山了[IMG:山顶风景][NEXT]累死[STICKER:瘫倒的猫]"`;
+✅ "今天去爬山了[IMG:山顶风景] 累死 [STICKER:瘫倒的猫]"`;
 
   return prompt;
 }
