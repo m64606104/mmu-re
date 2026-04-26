@@ -72,6 +72,23 @@ function buildMessageCountSnapshot(conversations: Conversation[]): Record<string
   }, {});
 }
 
+function normalizePresetAaAvatar(conversations: Conversation[]): Conversation[] {
+  return conversations.map((conv) => {
+    const isPresetAa = conv.id.startsWith('preset-aa-') || conv.name === 'aa';
+    const isPresetWorker = conv.id.startsWith('preset-worker-') || conv.name === '测';
+    if (!isPresetAa && !isPresetWorker) return conv;
+    const avatarPath = isPresetAa ? '/avatars/aa-default.png' : '/avatars/ce-default.png';
+    const nextCharacterSettings = conv.characterSettings
+      ? { ...conv.characterSettings, avatar: avatarPath }
+      : conv.characterSettings;
+    return {
+      ...conv,
+      avatar: avatarPath,
+      characterSettings: nextCharacterSettings,
+    };
+  });
+}
+
 function App() {
   const routeSyncRef = useRef(false);
   const navigationStackRef = useRef<Array<{ screen: Screen; conversationId: string | null }>>([]);
@@ -176,10 +193,11 @@ function App() {
                 messages: await supabaseLoadMessages(conv.id, 300),
               }))
             );
-            loadedConversations = hydrated;
-            setConversations(hydrated);
-            cloudSyncMessageCountRef.current = buildMessageCountSnapshot(hydrated);
-            await save('conversations', trimConversationsForCache(hydrated));
+            const normalizedHydrated = normalizePresetAaAvatar(hydrated);
+            loadedConversations = normalizedHydrated;
+            setConversations(normalizedHydrated);
+            cloudSyncMessageCountRef.current = buildMessageCountSnapshot(normalizedHydrated);
+            await save('conversations', trimConversationsForCache(normalizedHydrated));
           }
         } catch (error) {
           console.warn('⚠️ Supabase加载失败，回退本地存储:', error);
@@ -189,7 +207,7 @@ function App() {
       if (loadedConversations.length === 0) {
         const saved = await load('conversations');
         if (saved) {
-          loadedConversations = trimConversationsForCache(saved);
+          loadedConversations = normalizePresetAaAvatar(trimConversationsForCache(saved));
           setConversations(loadedConversations);
           if (cloudEnabled) {
             // 首次迁移：将本地历史同步到云端（幂等）
@@ -216,7 +234,7 @@ function App() {
         const oldSaved = localStorage.getItem('conversations');
         if (oldSaved) {
           const parsed = JSON.parse(oldSaved);
-          loadedConversations = trimConversationsForCache(parsed);
+          loadedConversations = normalizePresetAaAvatar(trimConversationsForCache(parsed));
           setConversations(loadedConversations);
           // 保存到新存储
           await save('conversations', loadedConversations);
@@ -227,10 +245,10 @@ function App() {
               id: 'preset-aa-' + Date.now(),
               type: 'private',
               name: 'aa',
-              avatar: '👩',
+              avatar: '/avatars/aa-default.png',
               messages: [],
               characterSettings: {
-                avatar: '👩',
+                avatar: '/avatars/aa-default.png',
                 nickname: 'aa',
                 username: 'aa不是研究生',
                 systemPrompt: '你叫aa，女生，是我的网友，和我关系很好，在上海读研。',
@@ -248,10 +266,10 @@ function App() {
               id: 'preset-worker-' + Date.now(),
               type: 'private',
               name: '测',
-              avatar: '👨‍💼',
+              avatar: '/avatars/ce-default.png',
               messages: [],
               characterSettings: {
-                avatar: '👨‍💼',
+                avatar: '/avatars/ce-default.png',
                 nickname: '测',
                 username: '只要涨薪不要996',
                 systemPrompt: '你是一个上班族，26岁，男，在公司做总裁助理。',
