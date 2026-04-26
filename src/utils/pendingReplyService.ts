@@ -484,10 +484,17 @@ RULE-4 语音：[VOICE:台词内容:秒数]
 
 RULE-5 表情包：[STICKER:描述]
   ✅ "[STICKER:一只快乐摇尾巴的柴犬]"
+  使用约束：
+  - 默认优先文字，只有确实更贴切时才发
+  - 不要在相邻两条回复都发 STICKER
+  - 单条回复最多一个 STICKER
 
 RULE-5.1 系统emoji表情：[EMOJI:关键词或emoji]
   ✅ "[EMOJI:微笑]"
   ✅ "[EMOJI:😂]"
+  使用约束：
+  - EMOJI 与 STICKER 二选一，避免同条混用
+  - 如果刚发过 EMOJI/STICKER，下一条优先纯文字
 
 ${MEDIA_DECISION_GUIDANCE}
 
