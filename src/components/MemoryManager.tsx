@@ -5,6 +5,7 @@
 
 import { useState } from 'react';
 import { X, Trash2, Star, Brain, Plus } from 'lucide-react';
+import type { MemoryDiaryEntry } from '../types';
 import { 
   MemoryEntry,
   getMemoryBank, 
@@ -12,7 +13,8 @@ import {
   deleteMemory, 
   updateMemoryImportance,
   clearMemoryBank,
-  updateMemorySettings
+  updateMemorySettings,
+  saveMemoryBank,
 } from '../utils/memorySystem';
 
 interface MemoryManagerProps {
@@ -24,11 +26,15 @@ interface MemoryManagerProps {
 export default function MemoryManager({ conversationId, conversationName, onClose }: MemoryManagerProps) {
   const memoryBank = getMemoryBank(conversationId);
   const [memories, setMemories] = useState<MemoryEntry[]>(memoryBank.memories);
+  const [diaries, setDiaries] = useState<MemoryDiaryEntry[]>(memoryBank.diaryEntries || []);
+  const [aiSelfProfileText, setAiSelfProfileText] = useState(memoryBank.aiSelfProfile?.text || '');
+  const [userProfileText, setUserProfileText] = useState(memoryBank.userProfile?.text || '');
   const [settings, setSettings] = useState(memoryBank.settings);
   const [newMemoryContent, setNewMemoryContent] = useState('');
   const [newMemoryCategory, setNewMemoryCategory] = useState('其他');
   const [newMemoryImportance, setNewMemoryImportance] = useState<'low' | 'medium' | 'high'>('medium');
   const [showAddForm, setShowAddForm] = useState(false);
+  const [editingProfiles, setEditingProfiles] = useState(false);
   
   // 私聊自定义间隔相关状态
   const presetIntervals = [15, 25, 50, 100];
@@ -56,6 +62,14 @@ export default function MemoryManager({ conversationId, conversationName, onClos
     'AI经历', 'AI观点', '对话互动', '其他'
   ];
 
+  const refreshFromBank = () => {
+    const updatedBank = getMemoryBank(conversationId);
+    setMemories(updatedBank.memories);
+    setDiaries(updatedBank.diaryEntries || []);
+    setAiSelfProfileText(updatedBank.aiSelfProfile?.text || '');
+    setUserProfileText(updatedBank.userProfile?.text || '');
+  };
+
   const handleAddMemory = () => {
     if (!newMemoryContent.trim()) {
       alert('请输入记忆内容');
@@ -63,8 +77,7 @@ export default function MemoryManager({ conversationId, conversationName, onClos
     }
 
     addMemory(conversationId, newMemoryContent, newMemoryImportance, newMemoryCategory, false);
-    const updatedBank = getMemoryBank(conversationId);
-    setMemories(updatedBank.memories);
+    refreshFromBank();
     setNewMemoryContent('');
     setShowAddForm(false);
   };
@@ -72,8 +85,7 @@ export default function MemoryManager({ conversationId, conversationName, onClos
   const handleDeleteMemory = (memoryId: string) => {
     if (confirm('确定要删除这条记忆吗？')) {
       deleteMemory(conversationId, memoryId);
-      const updatedBank = getMemoryBank(conversationId);
-      setMemories(updatedBank.memories);
+      refreshFromBank();
     }
   };
 
@@ -85,20 +97,46 @@ export default function MemoryManager({ conversationId, conversationName, onClos
     };
     
     updateMemoryImportance(conversationId, memoryId, nextImportance[currentImportance]);
-    const updatedBank = getMemoryBank(conversationId);
-    setMemories(updatedBank.memories);
+    refreshFromBank();
   };
 
   const handleClearAll = () => {
     if (confirm(`确定要清空${conversationName}的所有记忆吗？此操作不可恢复！`)) {
       clearMemoryBank(conversationId);
-      setMemories([]);
+      refreshFromBank();
     }
   };
 
   const handleUpdateSettings = () => {
     updateMemorySettings(conversationId, settings);
     alert('设置已保存');
+  };
+
+  const handleSaveProfiles = () => {
+    const bank = getMemoryBank(conversationId);
+    const now = Date.now();
+    bank.aiSelfProfile = aiSelfProfileText.trim()
+      ? {
+          text: aiSelfProfileText.trim(),
+          version: (bank.aiSelfProfile?.version ?? 0) + 1,
+          updatedAt: now,
+          sourceDay: bank.aiSelfProfile?.sourceDay,
+          priority: 'override',
+        }
+      : undefined;
+    bank.userProfile = userProfileText.trim()
+      ? {
+          text: userProfileText.trim(),
+          version: (bank.userProfile?.version ?? 0) + 1,
+          updatedAt: now,
+          sourceDay: bank.userProfile?.sourceDay,
+          priority: 'override',
+        }
+      : undefined;
+    saveMemoryBank(bank);
+    setEditingProfiles(false);
+    refreshFromBank();
+    alert('动态画像已保存');
   };
 
   const getImportanceColor = (importance: 'low' | 'medium' | 'high') => {
@@ -333,6 +371,90 @@ export default function MemoryManager({ conversationId, conversationName, onClos
 
       {/* 记忆列表 */}
       <div className="flex-1 overflow-y-auto p-4">
+        {/* 自我画像与用户画像（高优先级） */}
+        <div className="mb-4 p-4 rounded-xl border border-purple-200 bg-purple-50/60">
+          <div className="flex items-center justify-between mb-2">
+            <div className="text-sm font-semibold text-purple-900">动态画像（高于初始人设）</div>
+            {!editingProfiles ? (
+              <button
+                onClick={() => setEditingProfiles(true)}
+                className="text-xs px-2 py-1 rounded border border-purple-300 text-purple-700 hover:bg-purple-100"
+              >
+                编辑
+              </button>
+            ) : (
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={handleSaveProfiles}
+                  className="text-xs px-2 py-1 rounded bg-purple-600 text-white hover:bg-purple-700"
+                >
+                  保存
+                </button>
+                <button
+                  onClick={() => {
+                    setEditingProfiles(false);
+                    refreshFromBank();
+                  }}
+                  className="text-xs px-2 py-1 rounded border border-gray-300 text-gray-600 hover:bg-gray-50"
+                >
+                  取消
+                </button>
+              </div>
+            )}
+          </div>
+          <div className="space-y-3">
+            <div>
+              <div className="text-xs text-purple-700 mb-1">自我画像（AI当前状态）</div>
+              {editingProfiles ? (
+                <textarea
+                  value={aiSelfProfileText}
+                  onChange={(e) => setAiSelfProfileText(e.target.value)}
+                  rows={3}
+                  className="w-full text-sm bg-white border border-purple-200 rounded-lg p-2 text-gray-700 resize-none"
+                  placeholder="输入AI当前自我画像"
+                />
+              ) : (
+                <div className="text-sm bg-white border border-purple-100 rounded-lg p-2 text-gray-700 whitespace-pre-wrap">
+                  {aiSelfProfileText || '暂无（会随聊天自动更新）'}
+                </div>
+              )}
+            </div>
+            <div>
+              <div className="text-xs text-purple-700 mb-1">用户画像（AI对用户的理解）</div>
+              {editingProfiles ? (
+                <textarea
+                  value={userProfileText}
+                  onChange={(e) => setUserProfileText(e.target.value)}
+                  rows={3}
+                  className="w-full text-sm bg-white border border-purple-200 rounded-lg p-2 text-gray-700 resize-none"
+                  placeholder="输入AI对用户的画像"
+                />
+              ) : (
+                <div className="text-sm bg-white border border-purple-100 rounded-lg p-2 text-gray-700 whitespace-pre-wrap">
+                  {userProfileText || '暂无（会随聊天自动更新）'}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* 日记区块 */}
+        <div className="mb-4 p-4 rounded-xl border border-blue-200 bg-blue-50/60">
+          <div className="text-sm font-semibold text-blue-900 mb-2">日记区块</div>
+          {diaries.length === 0 ? (
+            <div className="text-sm text-blue-700">暂无日记（会按消息自动生成）</div>
+          ) : (
+            <div className="space-y-2 max-h-56 overflow-y-auto">
+              {diaries.slice(0, 7).map((diary) => (
+                <div key={diary.id} className="bg-white border border-blue-100 rounded-lg p-2">
+                  <div className="text-xs text-blue-700 mb-1">{diary.day}</div>
+                  <div className="text-sm text-gray-700 whitespace-pre-wrap">{diary.content}</div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
         {/* 添加记忆按钮 */}
         {!showAddForm && (
           <button

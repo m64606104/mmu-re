@@ -1,5 +1,6 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { Screen, Conversation, ApiConfig, UserProfile, MomentPost, Message, ThemeSettings, ShopType } from './types';
+import type { CharacterSettings } from './types';
 import MessageNotification from './components/MessageNotification';
 import { renderScreen } from './navigation/renderScreen';
 import { getDefaultScreenForApp, isAppPageValue } from './navigation/appEntry';
@@ -9,6 +10,15 @@ import { RuntimeServices } from './services/RuntimeServices';
 import { load, save, initializeCache, checkMigrationNeeded, migrateData, getStorageStatus } from './domains/storage';
 import { backgroundGenerationService } from './domains/generation';
 import { initializeLetters, initializeLetterTimers } from './domains/letters';
+import { supabase } from './services/supabaseClient';
+import {
+  supabaseLoadConversations,
+  supabaseLoadMessages,
+  supabaseUpsertConversation,
+  supabaseAppendMessages,
+  supabaseSyncDerivedMemory,
+} from './services/supabaseData';
+import { trimConversationsForCache } from './services/conversationCache';
 import { Letter } from './types/letter';
 
 function safeLoadFromLocalStorage<T>(key: string, fallback: T): T {
@@ -55,9 +65,17 @@ function parseRouteHash(hash: string): { app?: AppPage; screen?: Screen; convers
   };
 }
 
+function buildMessageCountSnapshot(conversations: Conversation[]): Record<string, number> {
+  return conversations.reduce<Record<string, number>>((acc, conv) => {
+    acc[conv.id] = conv.messages?.length ?? 0;
+    return acc;
+  }, {});
+}
+
 function App() {
   const routeSyncRef = useRef(false);
   const navigationStackRef = useRef<Array<{ screen: Screen; conversationId: string | null }>>([]);
+  const cloudSyncMessageCountRef = useRef<Record<string, number>>({});
   const [currentScreen, setCurrentScreen] = useState<Screen>('home');
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [currentConversationId, setCurrentConversationId] = useState<string | null>(null);
@@ -145,23 +163,63 @@ function App() {
         console.log(`📊 迁移结果: ${result.migratedKeys.length} 成功, ${result.errors.length} 失败`);
       }
       
-      // 从新存储系统加载数据
-      const saved = await load('conversations');
-      
+      // 从云端优先加载（若已配置 Supabase），否则走本地存储
+      const cloudEnabled = Boolean(supabase);
       let loadedConversations: Conversation[] = [];
-      
-      if (saved) {
-        loadedConversations = saved;
-        setConversations(saved);
-      } else {
+      if (cloudEnabled) {
+        try {
+          const cloudConversations = await supabaseLoadConversations();
+          if (cloudConversations.length > 0) {
+            const hydrated = await Promise.all(
+              cloudConversations.map(async (conv) => ({
+                ...conv,
+                messages: await supabaseLoadMessages(conv.id, 300),
+              }))
+            );
+            loadedConversations = hydrated;
+            setConversations(hydrated);
+            cloudSyncMessageCountRef.current = buildMessageCountSnapshot(hydrated);
+            await save('conversations', trimConversationsForCache(hydrated));
+          }
+        } catch (error) {
+          console.warn('⚠️ Supabase加载失败，回退本地存储:', error);
+        }
+      }
+
+      if (loadedConversations.length === 0) {
+        const saved = await load('conversations');
+        if (saved) {
+          loadedConversations = trimConversationsForCache(saved);
+          setConversations(loadedConversations);
+          if (cloudEnabled) {
+            // 首次迁移：将本地历史同步到云端（幂等）
+            for (const conv of loadedConversations) {
+              try {
+                await supabaseUpsertConversation(conv);
+                await supabaseAppendMessages(conv.id, conv.messages || []);
+                await supabaseSyncDerivedMemory(
+                  conv.id,
+                  conv.name,
+                  conv.characterSettings as CharacterSettings | undefined,
+                  conv.messages || [],
+                  conv.messages || [],
+                  apiConfig
+                );
+              } catch (e) {
+                console.warn(`⚠️ 会话 ${conv.id} 迁移到Supabase失败:`, e);
+              }
+            }
+            cloudSyncMessageCountRef.current = buildMessageCountSnapshot(loadedConversations);
+          }
+        } else {
         // 检查旧的localStorage数据
         const oldSaved = localStorage.getItem('conversations');
         if (oldSaved) {
           const parsed = JSON.parse(oldSaved);
-          loadedConversations = parsed;
-          setConversations(parsed);
+          loadedConversations = trimConversationsForCache(parsed);
+          setConversations(loadedConversations);
           // 保存到新存储
-          await save('conversations', parsed);
+          await save('conversations', loadedConversations);
         } else {
           // 添加预设联系人
           const presetContacts: Conversation[] = [
@@ -210,7 +268,9 @@ function App() {
           ];
           loadedConversations = presetContacts;
           setConversations(presetContacts);
+          cloudSyncMessageCountRef.current = buildMessageCountSnapshot(presetContacts);
         }
+      }
       }
 
       // 📮 自动合并匿名信件
@@ -288,7 +348,7 @@ function App() {
             
             if (worldbookDisabledCount > 0) {
               setConversations(updatedConversations);
-              await save('conversations', updatedConversations);
+              await save('conversations', trimConversationsForCache(updatedConversations));
               console.log(`✅ 世界书批量关闭完成: 已为${worldbookDisabledCount}个角色关闭世界书`);
             } else {
               console.log('✅ 所有角色的世界书已经是关闭状态');
@@ -347,12 +407,50 @@ function App() {
     // 🚀 性能优化：使用防抖延迟保存，避免频繁写入localStorage阻塞主线程
     const timeoutId = setTimeout(async () => {
       if (conversations.length > 0) {
-        await save('conversations', conversations);
+        const trimmed = trimConversationsForCache(conversations);
+        await save('conversations', trimmed);
+        if (supabase) {
+          // 异步同步到云端：先会话，再做消息增量同步
+          for (const conv of conversations) {
+            try {
+              await supabaseUpsertConversation(conv);
+              const currentCount = conv.messages?.length ?? 0;
+              const lastSyncedCount = cloudSyncMessageCountRef.current[conv.id] ?? 0;
+              if (currentCount > lastSyncedCount) {
+                const deltaMessages = (conv.messages || []).slice(lastSyncedCount);
+                await supabaseAppendMessages(conv.id, deltaMessages);
+                await supabaseSyncDerivedMemory(
+                  conv.id,
+                  conv.name,
+                  conv.characterSettings as CharacterSettings | undefined,
+                  conv.messages || [],
+                  deltaMessages,
+                  apiConfig
+                );
+                cloudSyncMessageCountRef.current[conv.id] = currentCount;
+              } else if (currentCount < lastSyncedCount) {
+                // 消息被删/重置时，退回全量幂等 upsert，避免云端游标失真
+                await supabaseAppendMessages(conv.id, conv.messages || []);
+                await supabaseSyncDerivedMemory(
+                  conv.id,
+                  conv.name,
+                  conv.characterSettings as CharacterSettings | undefined,
+                  conv.messages || [],
+                  conv.messages || [],
+                  apiConfig
+                );
+                cloudSyncMessageCountRef.current[conv.id] = currentCount;
+              }
+            } catch (error) {
+              console.warn(`⚠️ 会话 ${conv.id} 同步Supabase失败:`, error);
+            }
+          }
+        }
       }
     }, 300); // 300ms防抖，合并连续的更新
     
     return () => clearTimeout(timeoutId);
-  }, [conversations]);
+  }, [conversations, apiConfig]);
 
   useEffect(() => {
     localStorage.setItem('apiConfig', JSON.stringify(apiConfig));

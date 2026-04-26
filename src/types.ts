@@ -469,10 +469,32 @@ export interface MemoryEntry {
   groupId?: string; // 如果是群聊记忆，记录群ID
 }
 
+// AI日记条目
+export interface MemoryDiaryEntry {
+  id: string;
+  day: string; // YYYY-MM-DD (UTC+8)
+  timestamp: number;
+  content: string;
+  moodTags?: string[];
+  source: 'auto' | 'manual';
+}
+
+// AI动态画像（高于初始人设）
+export interface DynamicIdentityProfile {
+  text: string;
+  version: number;
+  updatedAt: number;
+  sourceDay?: string;
+  priority: 'override' | 'supplement';
+}
+
 // AI记忆库
 export interface MemoryBank {
   conversationId: string; // 对话ID
   memories: MemoryEntry[];
+  diaryEntries?: MemoryDiaryEntry[]; // 日记区块
+  aiSelfProfile?: DynamicIdentityProfile; // 自我画像（高优先级）
+  userProfile?: DynamicIdentityProfile; // 用户画像（高优先级）
   lastSummaryMessageCount: number; // 上次总结时的消息数量（私聊）
   totalMessagesSinceLastSummary: number; // 距离上次总结的消息数量
   lastGroupSummaryCount?: number; // 上次群聊总结时的消息数量

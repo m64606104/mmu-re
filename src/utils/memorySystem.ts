@@ -3,7 +3,7 @@
  * 实现自动总结和记忆管理
  */
 
-import { MemoryBank, MemoryEntry, Message } from '../types';
+import { MemoryBank, MemoryDiaryEntry, MemoryEntry, Message } from '../types';
 import { save, load } from './storage';
 
 // 重新导出类型以便其他组件使用
@@ -33,6 +33,10 @@ export const getMemoryBank = (conversationId: string): MemoryBank => {
   const existing = banks.find(b => b.conversationId === conversationId);
   
   if (existing) {
+    // 向后兼容：老数据补齐新字段
+    if (!existing.diaryEntries) existing.diaryEntries = [];
+    if (!existing.aiSelfProfile) existing.aiSelfProfile = undefined;
+    if (!existing.userProfile) existing.userProfile = undefined;
     return existing;
   }
   
@@ -40,6 +44,9 @@ export const getMemoryBank = (conversationId: string): MemoryBank => {
   const newBank: MemoryBank = {
     conversationId,
     memories: [],
+    diaryEntries: [],
+    aiSelfProfile: undefined,
+    userProfile: undefined,
     lastSummaryMessageCount: 0,
     totalMessagesSinceLastSummary: 0,
     settings: {
@@ -218,9 +225,78 @@ export const updateMemoryImportance = (
 export const clearMemoryBank = (conversationId: string): void => {
   const bank = getMemoryBank(conversationId);
   bank.memories = [];
+  bank.diaryEntries = [];
+  bank.aiSelfProfile = undefined;
+  bank.userProfile = undefined;
   bank.lastSummaryMessageCount = 0;
   bank.totalMessagesSinceLastSummary = 0;
   saveMemoryBank(bank);
+};
+
+export const addDiaryEntry = (
+  conversationId: string,
+  day: string,
+  content: string,
+  moodTags: string[] = [],
+  source: 'auto' | 'manual' = 'auto'
+): MemoryDiaryEntry => {
+  const bank = getMemoryBank(conversationId);
+  if (!bank.diaryEntries) bank.diaryEntries = [];
+  const existingIndex = bank.diaryEntries.findIndex(entry => entry.day === day);
+  const next: MemoryDiaryEntry = {
+    id: existingIndex >= 0 ? bank.diaryEntries[existingIndex].id : `diary_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+    day,
+    timestamp: Date.now(),
+    content,
+    moodTags,
+    source,
+  };
+  if (existingIndex >= 0) bank.diaryEntries[existingIndex] = next;
+  else bank.diaryEntries.unshift(next);
+  bank.diaryEntries = bank.diaryEntries.slice(0, 30); // 保留最近30天
+  saveMemoryBank(bank);
+  return next;
+};
+
+export const updateDynamicProfiles = (
+  conversationId: string,
+  aiSelfText: string,
+  userText: string,
+  sourceDay?: string
+): void => {
+  const bank = getMemoryBank(conversationId);
+  const now = Date.now();
+  bank.aiSelfProfile = {
+    text: aiSelfText.trim(),
+    version: (bank.aiSelfProfile?.version ?? 0) + 1,
+    updatedAt: now,
+    sourceDay,
+    priority: 'override',
+  };
+  bank.userProfile = {
+    text: userText.trim(),
+    version: (bank.userProfile?.version ?? 0) + 1,
+    updatedAt: now,
+    sourceDay,
+    priority: 'override',
+  };
+  saveMemoryBank(bank);
+};
+
+export const buildDynamicProfileContext = (conversationId: string): string => {
+  const bank = getMemoryBank(conversationId);
+  const sections: string[] = [];
+  if (bank.aiSelfProfile?.text) {
+    sections.push(`【动态自我画像（高优先级，覆盖初始人设）】\n${bank.aiSelfProfile.text}`);
+  }
+  if (bank.userProfile?.text) {
+    sections.push(`【动态用户画像（高优先级）】\n${bank.userProfile.text}`);
+  }
+  const latestDiary = bank.diaryEntries?.[0];
+  if (latestDiary?.content) {
+    sections.push(`【最近日记】\n日期：${latestDiary.day}\n${latestDiary.content}`);
+  }
+  return sections.length ? `\n${sections.join('\n\n')}\n` : '';
 };
 
 /**

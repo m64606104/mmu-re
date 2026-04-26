@@ -81,6 +81,7 @@ import {
   addMemory,
   updateSummaryCounter,
   getMemoryBank,
+  buildDynamicProfileContext,
   shouldTriggerGroupMemorySummary,
   updateGroupSummaryCounter,
   buildGroupMemorySummaryPrompt,
@@ -3395,8 +3396,11 @@ ${groupContext.contextSummary}
         console.error('📦 [表情包] ❌ 加载失败:', error);
       }
       
+      const dynamicProfileContext = buildDynamicProfileContext(conversation.id);
+
       let systemPrompt = conversation.characterSettings
         ? `${worldbookSections.before}你是${conversation.characterSettings.nickname}。
+${dynamicProfileContext}
 ${conversation.characterSettings.systemPrompt ? `人物设定：${conversation.characterSettings.systemPrompt}` : ''}
 ${conversation.characterSettings.personality ? `性格特征：${conversation.characterSettings.personality}` : ''}
 ${conversation.characterSettings.languageStyle ? `语言风格：${conversation.characterSettings.languageStyle}` : ''}
