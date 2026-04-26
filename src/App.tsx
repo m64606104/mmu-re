@@ -73,10 +73,10 @@ function buildMessageCountSnapshot(conversations: Conversation[]): Record<string
 }
 
 function assetUrl(relativePath: string): string {
-  const base = (import.meta as any)?.env?.BASE_URL || '/';
-  const normalizedBase = String(base).endsWith('/') ? String(base) : `${base}/`;
+  // Use relative paths so GitHub Pages subpaths work.
+  // e.g. "avatars/aa.png" resolves to "/mmu-re/avatars/aa.png" on Pages.
   const normalizedPath = relativePath.startsWith('/') ? relativePath.slice(1) : relativePath;
-  return `${normalizedBase}${normalizedPath}`;
+  return normalizedPath;
 }
 
 function normalizePresetAaAvatar(conversations: Conversation[]): Conversation[] {
