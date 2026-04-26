@@ -19,6 +19,7 @@ import {
   getChatHistory,
   markConversationAsRead,
   startMessageSync,
+  stopMessageSync,
   type Conversation,
   type UserMessage 
 } from '../utils/messageSystem';
@@ -53,6 +54,10 @@ export default function UserSystemScreen({ onBack }: UserSystemScreenProps) {
       loadFriendsAndConversations();
       startMessageSync();
     }
+
+    return () => {
+      stopMessageSync();
+    };
   }, []);
 
   const loadFriendsAndConversations = () => {

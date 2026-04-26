@@ -8,6 +8,8 @@ import { getCurrentUser, type UserMessage } from './userSystem';
 // 重新导出UserMessage类型供其他组件使用
 export type { UserMessage } from './userSystem';
 
+let messageSyncIntervalId: number | null = null;
+
 export interface Conversation {
   id: string;
   participants: string[]; // 参与者用户码
@@ -237,16 +239,32 @@ export function processNewMessage(message: UserMessage): void {
  * 定期检查新消息（可在App启动时调用）
  */
 export function startMessageSync(): void {
+  if (messageSyncIntervalId !== null) {
+    return;
+  }
+
   // 立即检查一次
   fetchNewMessages().then(newMessages => {
     newMessages.forEach(message => processNewMessage(message));
   });
   
   // 设置定期检查（每30秒）
-  setInterval(async () => {
+  messageSyncIntervalId = window.setInterval(async () => {
     const newMessages = await fetchNewMessages();
     newMessages.forEach(message => processNewMessage(message));
   }, 30000);
   
   console.log('🔄 消息同步服务已启动');
+}
+
+/**
+ * 停止定期消息同步
+ */
+export function stopMessageSync(): void {
+  if (messageSyncIntervalId === null) {
+    return;
+  }
+  clearInterval(messageSyncIntervalId);
+  messageSyncIntervalId = null;
+  console.log('⏹️ 消息同步服务已停止');
 }

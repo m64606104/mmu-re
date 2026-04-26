@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { ChevronLeft, Users, Search, MessageCircle, Camera, User, BellOff, Plus, UserPlus, Scan, Book } from 'lucide-react';
 import { Conversation, Screen } from '../types';
+import { normalizeMessagePreviewText } from '../utils/messageFormatter';
 import StatusSelector from './StatusSelector';
 import WorldbookScreen from './WorldbookScreen';
 
@@ -176,7 +177,7 @@ export default function SocialScreen({ conversations, onNavigate, onImportCharac
         } else if (msg.mediaType === 'sticker') {
           return '[表情]';
         } else {
-          return msg.content || '暂无消息';
+          return normalizeMessagePreviewText(msg.content || '');
         }
       }
     }

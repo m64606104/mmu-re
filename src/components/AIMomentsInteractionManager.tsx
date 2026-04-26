@@ -45,16 +45,31 @@ export function AIMomentsInteractionManager({
   const isProcessingRef = useRef(false);
   const conversationsRef = useRef(conversations);
   const apiConfigRef = useRef(apiConfig);
+  const isActiveRef = useRef(isActive);
+  const isInMomentsScreenRef = useRef(isInMomentsScreen);
   const lastInteractionTime = useRef<number>(0);
   const appActivationTime = useRef<number>(0);
   const momentsScreenEntryTime = useRef<number>(0);
   const hasLeftMoments = useRef<boolean>(false); // 是否离开过朋友圈
+  const interactionTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // 更新refs以保持最新值
   useEffect(() => {
     conversationsRef.current = conversations;
     apiConfigRef.current = apiConfig;
   }, [conversations, apiConfig]);
+
+  useEffect(() => {
+    isActiveRef.current = isActive;
+    isInMomentsScreenRef.current = isInMomentsScreen;
+  }, [isActive, isInMomentsScreen]);
+
+  const clearInteractionTimer = () => {
+    if (interactionTimerRef.current) {
+      clearTimeout(interactionTimerRef.current);
+      interactionTimerRef.current = null;
+    }
+  };
 
   // 智能触发互动（随机延迟，模拟真人）
   const triggerSmartInteraction = async () => {
@@ -110,7 +125,7 @@ export function AIMomentsInteractionManager({
     const now = Date.now();
     
     // ⚡️ 朋友圈界面：适度刷新（正常人不会一直盯着看）
-    if (isInMomentsScreen) {
+    if (isInMomentsScreenRef.current) {
       const baseInterval = 600000 + Math.random() * 300000; // 10-15分钟
       return getAdjustedInterval(baseInterval, 'moments');
     }
@@ -144,11 +159,7 @@ export function AIMomentsInteractionManager({
       triggerSmartInteraction();
       
       // 取消现有的定时器并重新设置快速刷新
-      // @ts-ignore
-      if (window._aiMomentsInteractionTimer) {
-        // @ts-ignore
-        clearTimeout(window._aiMomentsInteractionTimer);
-      }
+      clearInteractionTimer();
     } else if (momentsScreenEntryTime.current > 0) {
       // 离开朋友圈
       hasLeftMoments.current = true;
@@ -156,11 +167,7 @@ export function AIMomentsInteractionManager({
       console.log('🛌 刷新频率：2-5小时/次');
       
       // 取消快速刷新定时器
-      // @ts-ignore
-      if (window._aiMomentsInteractionTimer) {
-        // @ts-ignore
-        clearTimeout(window._aiMomentsInteractionTimer);
-      }
+      clearInteractionTimer();
     }
   }, [isInMomentsScreen]);
 
@@ -186,7 +193,7 @@ export function AIMomentsInteractionManager({
       const setupNextCheck = () => {
         const nextDelay = getRefreshInterval();
         let phase = '';
-        if (isInMomentsScreen) {
+        if (isInMomentsScreenRef.current) {
           phase = '⚡️ 朋友圈模式';
         } else if (hasLeftMoments.current) {
           phase = '🛌 休眠模式';
@@ -204,10 +211,8 @@ export function AIMomentsInteractionManager({
         return setTimeout(() => {
           triggerSmartInteraction().then(() => {
             // 递归设置下一次检查
-            if (isActive) {
-              const nextTimer = setupNextCheck();
-              // @ts-ignore
-              window._aiMomentsInteractionTimer = nextTimer;
+            if (isActiveRef.current) {
+              interactionTimerRef.current = setupNextCheck();
             }
           });
         }, nextDelay);
@@ -215,19 +220,13 @@ export function AIMomentsInteractionManager({
 
       // 等待第一次触发完成后，启动周期性刷新
       const continuousTimer = setTimeout(() => {
-        const timer = setupNextCheck();
-        // @ts-ignore
-        window._aiMomentsInteractionTimer = timer;
+        interactionTimerRef.current = setupNextCheck();
       }, initialDelay + 10000); // 第一次触发后10秒开始周期
 
       return () => {
         clearTimeout(initialTimer);
         clearTimeout(continuousTimer);
-        // @ts-ignore
-        if (window._aiMomentsInteractionTimer) {
-          // @ts-ignore
-          clearTimeout(window._aiMomentsInteractionTimer);
-        }
+        clearInteractionTimer();
       };
     }
   }, [isActive]);
@@ -265,6 +264,12 @@ export function AIMomentsInteractionManager({
       delete window.triggerAIMomentsInteraction;
       // @ts-ignore
       delete window.triggerAICommentSectionInteraction;
+    };
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      clearInteractionTimer();
     };
   }, []);
 

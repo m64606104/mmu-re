@@ -15,7 +15,10 @@ interface MomentsAutoGeneratorProps {
 
 export function MomentsAutoGenerator({ conversations, apiConfig, onMomentGenerated }: MomentsAutoGeneratorProps) {
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const initialTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isGeneratingRef = useRef(false);
+  const isMountedRef = useRef(true);
+  const disposedRef = useRef(false);
   const conversationsRef = useRef(conversations);
   const apiConfigRef = useRef(apiConfig);
   const onMomentGeneratedRef = useRef(onMomentGenerated);
@@ -29,6 +32,8 @@ export function MomentsAutoGenerator({ conversations, apiConfig, onMomentGenerat
 
   // 检查并生成朋友圈
   const checkAndGenerate = async () => {
+    if (disposedRef.current || !isMountedRef.current) return;
+
     if (isGeneratingRef.current) {
       console.log('⏸️ 朋友圈生成器正在运行，跳过本次检查');
       return;
@@ -60,15 +65,19 @@ export function MomentsAutoGenerator({ conversations, apiConfig, onMomentGenerat
           const result = await shouldGenerateMoment(conversation.id);
           
           if (result.shouldGenerate && result.count > 0) {
+            if (disposedRef.current || !isMountedRef.current) break;
             console.log(`✨ ${conversation.name} 满足生成条件，开始生成 ${result.count} 条朋友圈...`);
             
             // 生成指定数量的朋友圈
             for (let i = 0; i < result.count; i++) {
+              if (disposedRef.current || !isMountedRef.current) break;
               const post = await generateAIMoment(conversation, currentApiConfig);
               
               if (post) {
                 console.log(`✅ ${conversation.name} 第 ${i + 1}/${result.count} 条朋友圈生成成功`);
-                onMomentGeneratedRef.current?.(conversation.id);
+                if (!disposedRef.current && isMountedRef.current) {
+                  onMomentGeneratedRef.current?.(conversation.id);
+                }
               } else {
                 console.log(`❌ ${conversation.name} 第 ${i + 1}/${result.count} 条朋友圈生成失败`);
               }
@@ -95,8 +104,12 @@ export function MomentsAutoGenerator({ conversations, apiConfig, onMomentGenerat
 
   // 设置定时器
   useEffect(() => {
+    disposedRef.current = false;
+    isMountedRef.current = true;
+
     // 首次启动延迟5分钟后检查（避免启动时立即请求，更自然）
-    const initialTimer = setTimeout(() => {
+    initialTimerRef.current = setTimeout(() => {
+      if (disposedRef.current || !isMountedRef.current) return;
       console.log('🚀 朋友圈自动生成器启动');
       checkAndGenerate();
     }, 5 * 60 * 1000); // 5分钟
@@ -108,9 +121,15 @@ export function MomentsAutoGenerator({ conversations, apiConfig, onMomentGenerat
     }, 24 * 60 * 60 * 1000); // 24小时
 
     return () => {
-      clearTimeout(initialTimer);
+      disposedRef.current = true;
+      isMountedRef.current = false;
+      if (initialTimerRef.current) {
+        clearTimeout(initialTimerRef.current);
+        initialTimerRef.current = null;
+      }
       if (timerRef.current) {
         clearInterval(timerRef.current);
+        timerRef.current = null;
       }
     };
   }, []); // 移除所有依赖项，只在组件挂载时创建一次定时器

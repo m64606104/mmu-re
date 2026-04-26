@@ -1,8 +1,26 @@
 import { useState, useRef, useEffect } from 'react';
 import { ChevronLeft, Camera, Heart, MessageCircle, Send, Image as ImageIcon, MoreHorizontal, Trash2, Bell } from 'lucide-react';
 import { MomentPost, UserProfile, Conversation, ApiConfig } from '../types';
-import { getAllMomentPosts, likeMomentPost, commentMomentPost, deleteMomentPost, handleUserInteractionResponse } from '../utils/aiMomentsGenerator';
 import { getUnreadNotificationCount } from '../utils/momentsNotificationManager';
+import {
+  appendMomentImages,
+  buildMomentsImagesEndpoint,
+  commentAiMomentAsUser,
+  deleteAiMomentByAuthor,
+  getMomentsImageGenConfig,
+  getMomentsImageGenerationDailyCount,
+  getMomentsImageGenerationDailyLimit,
+  increaseMomentsImageGenerationDailyCount,
+  isMomentsImageGenerationEnabled,
+  likeAiMomentAsUser,
+  loadAiMomentsFeed,
+  removeMomentComment,
+  registerMomentsRefreshHandler,
+  scheduleAICommentSectionInteractionTrigger,
+  scheduleAIMomentsInteractionTrigger,
+  scheduleAiMomentInteractionResponse,
+  triggerAIMomentsInteractionIfAvailable,
+} from '../domains/moments';
 import MomentsNotifications from './MomentsNotifications';
 import ShareCard from './ShareCard';
 
@@ -47,8 +65,16 @@ export default function MomentsScreen({
   const momentRefs = useRef<Map<string, HTMLElement>>(new Map());
   const observerRef = useRef<IntersectionObserver | null>(null);
   const scheduledRef = useRef<Map<string, number>>(new Map());
+  const pendingInteractionTimersRef = useRef<Set<number>>(new Set());
   const generatedRef = useRef<Set<string>>(new Set());
   const isGeneratingRef = useRef<boolean>(false);
+  const isMountedRef = useRef<boolean>(true);
+
+  useEffect(() => {
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
 
   const registerMomentRef = (id: string, el: HTMLElement | null) => {
     if (el) {
@@ -61,79 +87,102 @@ export default function MomentsScreen({
     }
   };
 
-  const getTodayKey = () => {
-    const d = new Date();
-    const mm = `${d.getMonth() + 1}`.padStart(2, '0');
-    const dd = `${d.getDate()}`.padStart(2, '0');
-    return `${d.getFullYear()}-${mm}-${dd}`;
-  };
-
-  const getDailyCount = () => {
-    try {
-      const key = `image_gen_moments_daily_${getTodayKey()}`;
-      return parseInt(localStorage.getItem(key) || '0', 10) || 0;
-    } catch { return 0; }
-  };
-
-  const getDailyLimit = () => {
-    try {
-      const raw = localStorage.getItem('image_gen_moments_daily_limit');
-      const val = raw ? parseInt(raw, 10) : 10;
-      return Number.isFinite(val) && val >= 0 ? val : 10;
-    } catch {
-      return 10;
+  const cleanupAsyncResources = () => {
+    scheduledRef.current.forEach((timerId) => clearTimeout(timerId));
+    scheduledRef.current.clear();
+    if (observerRef.current) {
+      observerRef.current.disconnect();
+      observerRef.current = null;
     }
-  };
-
-  const incDailyCount = (delta: number = 1) => {
-    try {
-      const key = `image_gen_moments_daily_${getTodayKey()}`;
-      const curr = getDailyCount();
-      localStorage.setItem(key, String(curr + delta));
-    } catch {}
-  };
-
-  const getImageGenConfig = () => ({
-    apiUrl: localStorage.getItem('image_gen_api_url') || '',
-    apiKey: localStorage.getItem('image_gen_api_key') || '',
-    model: localStorage.getItem('image_gen_model') || ''
-  });
-
-  const buildImagesEndpoint = (base: string) => {
-    let apiUrl = base.trim();
-    if (apiUrl.endsWith('/')) apiUrl = apiUrl.slice(0, -1);
-    if (apiUrl.includes('openai.com') || apiUrl.includes('api.openai.com')) {
-      return `${apiUrl}/v1/images/generations`;
-    }
-    if (!apiUrl.includes('/v1/')) return `${apiUrl}/v1/images/generations`;
-    return apiUrl.endsWith('/images/generations') ? apiUrl : `${apiUrl}/images/generations`;
+    pendingInteractionTimersRef.current.forEach((timerId) => clearTimeout(timerId));
+    pendingInteractionTimersRef.current.clear();
   };
 
   const persistMomentImages = async (authorId: string, momentId: string, urls: string[]) => {
     try {
-      const momentsKey = 'moments_data';
-      const stored = localStorage.getItem(momentsKey);
-      if (!stored) return;
-      const all = JSON.parse(stored);
-      const bucket = all.find((d: any) => d.contactId === authorId);
-      if (!bucket) return;
-      const post = bucket.posts.find((p: any) => p.id === momentId);
-      if (!post) return;
-      post.images = Array.isArray(post.images) ? post.images : [];
-      for (const u of urls) if (!post.images.includes(u)) post.images.push(u);
-      localStorage.setItem(momentsKey, JSON.stringify(all));
-      const updated = await getAllMomentPosts();
-      setAiMoments(updated);
+      const changed = await appendMomentImages(authorId, momentId, urls);
+      if (!changed) return;
+      const refreshedPosts = await loadAiMomentsFeed();
+      if (isMountedRef.current) {
+        setAiMoments(refreshedPosts);
+      }
     } catch (e) {
       console.error('保存朋友圈图片失败:', e);
     }
   };
 
+  const refreshAiMoments = async () => {
+    const posts = await loadAiMomentsFeed();
+    if (isMountedRef.current) {
+      setAiMoments(posts);
+    }
+    return posts;
+  };
+
+  const refreshAiMomentsSafely = async (errorLog: string) => {
+    try {
+      return await refreshAiMoments();
+    } catch (error) {
+      console.error(errorLog, error);
+      return [];
+    }
+  };
+
+  const scheduleAiAuthorInteraction = (
+    aiMoment: MomentPost,
+    type: 'like' | 'comment',
+    options?: { content?: string; minMs?: number; maxMs?: number }
+  ) => {
+    if (!aiMoment.authorId) return;
+    const aiConversation = conversations.find(c => c.id === aiMoment.authorId);
+    if (!aiConversation) return;
+    const timerId = scheduleAiMomentInteractionResponse({
+      conversation: aiConversation,
+      moment: aiMoment,
+      type,
+      apiConfig,
+      content: options?.content,
+      minMs: options?.minMs,
+      maxMs: options?.maxMs,
+    });
+    pendingInteractionTimersRef.current.add(timerId);
+  };
+
+  const runAiMutationWithRefresh = async (
+    action: () => Promise<void>,
+    successLog?: string
+  ) => {
+    await action();
+    await refreshAiMoments();
+    if (successLog) console.log(successLog);
+  };
+
+  const findAiMomentTarget = (momentId: string) => {
+    const aiMoment = aiMoments.find(m => m.id === momentId);
+    if (!aiMoment) return null;
+    const authorId = aiMoment.authorId;
+    if (!authorId) return null;
+    return { aiMoment, authorId };
+  };
+
+  const hasReachedMomentsImageGenLimit = () =>
+    getMomentsImageGenerationDailyCount() >= getMomentsImageGenerationDailyLimit();
+
+  const canAutoGenerateImageForMoment = (moment: any) => {
+    if (!isMomentsImageGenerationEnabled()) return false;
+    if (!moment || !moment.authorId) return false; // 仅AI朋友圈
+    if (Array.isArray(moment.images) && moment.images.length > 0) return false;
+    if (!Array.isArray(moment.imageDescriptions) || moment.imageDescriptions.length === 0) return false;
+    if (hasReachedMomentsImageGenLimit()) return false;
+    if (generatedRef.current.has(moment.id)) return false;
+    return true;
+  };
+
   const generateImageFromDescription = async (desc: string): Promise<string | null> => {
-    const cfg = getImageGenConfig();
+    const cfg = getMomentsImageGenConfig();
     if (!cfg.apiUrl || !cfg.apiKey || !cfg.model) return null;
     try {
-      const endpoint = buildImagesEndpoint(cfg.apiUrl);
+      const endpoint = buildMomentsImagesEndpoint(cfg.apiUrl);
       const requestBody: any = {
         prompt: `${desc}\nrealistic photography, high quality, detailed lighting, natural colors, social media style`,
         model: cfg.model,
@@ -179,26 +228,20 @@ export default function MomentsScreen({
   };
 
   const scheduleGenerateFor = (moment: any) => {
-    const enabled = (localStorage.getItem('image_gen_moments_enabled') || 'false') === 'true';
-    if (!enabled) return;
-    if (!moment || !moment.authorId) return; // 仅AI朋友圈
-    if (Array.isArray(moment.images) && moment.images.length > 0) return;
-    if (!Array.isArray(moment.imageDescriptions) || moment.imageDescriptions.length === 0) return;
-    if (getDailyCount() >= getDailyLimit()) return;
-    if (generatedRef.current.has(moment.id)) return;
+    if (!canAutoGenerateImageForMoment(moment)) return;
 
     // 去抖：进入视口后延迟1.2s
     if (!scheduledRef.current.has(moment.id)) {
       const timer = window.setTimeout(async () => {
         scheduledRef.current.delete(moment.id);
         if (isGeneratingRef.current) return; // 简单串行
-        if (getDailyCount() >= getDailyLimit()) return;
+        if (hasReachedMomentsImageGenLimit()) return;
         isGeneratingRef.current = true;
         try {
           const desc = String(moment.imageDescriptions[0] || '').slice(0, 500);
           const url = await generateImageFromDescription(desc);
           if (url) {
-            incDailyCount(1);
+            increaseMomentsImageGenerationDailyCount(1);
             await persistMomentImages(moment.authorId, moment.id, [url]);
             generatedRef.current.add(moment.id);
           }
@@ -241,37 +284,34 @@ export default function MomentsScreen({
   // 加载AI朋友圈并触发智能互动
   useEffect(() => {
     const loadAiMoments = async () => {
-      try {
-        const posts = await getAllMomentPosts();
-        setAiMoments(posts);
+      const posts = await refreshAiMomentsSafely('加载AI朋友圈失败:');
+      if (posts.length > 0) {
         console.log(`🔄 朋友圈数据已更新，共${posts.length}条`);
-      } catch (error) {
-        console.error('加载AI朋友圈失败:', error);
       }
     };
     
     // 首次加载
     loadAiMoments();
     
-    // 🎯 将刷新函数暴露到window，供AI互动后调用
-    // @ts-ignore
-    window.refreshMomentsScreen = () => {
+    // 🎯 注册刷新函数，供AI互动后调用
+    const unregisterRefreshHandler = registerMomentsRefreshHandler(() => {
       console.log('📲 收到刷新请求，重新加载朋友圈...');
       loadAiMoments();
-    };
+    });
     
     // 🎯 触发AI智能互动（模拟用户打开朋友圈，AI们也在看）
-    // @ts-ignore
-    if (window.triggerAIMomentsInteraction) {
+    if (triggerAIMomentsInteractionIfAvailable()) {
       // 随机延迟5-15秒，模拟AI不是立即看到
-      const randomDelay = 5000 + Math.random() * 10000;
-      const interactionTimer = setTimeout(() => {
-        // @ts-ignore
-        window.triggerAIMomentsInteraction?.();
-      }, randomDelay);
+      const interactionTimer = scheduleAIMomentsInteractionTrigger(5000, 15000);
+      pendingInteractionTimersRef.current.add(interactionTimer);
       
       // 清理定时器
-      return () => clearTimeout(interactionTimer);
+      return () => {
+        clearTimeout(interactionTimer);
+        pendingInteractionTimersRef.current.delete(interactionTimer);
+        cleanupAsyncResources();
+        unregisterRefreshHandler();
+      };
     }
     
     // ⚠️ 不再自动刷新，改为手动刷新或由AI互动后触发刷新
@@ -279,8 +319,8 @@ export default function MomentsScreen({
     // 仅在有新内容时由AI互动触发刷新即可
     
     return () => {
-      // @ts-ignore
-      delete window.refreshMomentsScreen;
+      cleanupAsyncResources();
+      unregisterRefreshHandler();
     };
   }, []);
 
@@ -306,7 +346,12 @@ export default function MomentsScreen({
     observerRef.current = io;
     // 绑定现有元素
     momentRefs.current.forEach((el) => io.observe(el));
-    return () => io.disconnect();
+    return () => {
+      io.disconnect();
+      if (observerRef.current === io) {
+        observerRef.current = null;
+      }
+    };
   }, [allMoments]);
 
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -349,65 +394,41 @@ export default function MomentsScreen({
       setShowNewPost(false);
       
       // 🎯 用户发布朋友圈后，触发AI互动（事件驱动）
-      setTimeout(() => {
-        // @ts-ignore
-        if (window.triggerAIMomentsInteraction) {
-          console.log('📢 用户发布了新朋友圈，AI们正在查看...');
-          // @ts-ignore
-          window.triggerAIMomentsInteraction();
-        }
-      }, 5000 + Math.random() * 10000); // 5-15秒后AI看到
+      console.log('📢 用户发布了新朋友圈，AI们正在查看...');
+      const timerId = scheduleAIMomentsInteractionTrigger(5000, 15000);
+      pendingInteractionTimersRef.current.add(timerId);
     }
   };
 
   const handleComment = async (momentId: string) => {
     if (commentContent.trim()) {
       // 检查是否是AI朋友圈
-      const aiMoment = aiMoments.find(m => m.id === momentId);
-      if (aiMoment && aiMoment.authorId) {
+      const aiTarget = findAiMomentTarget(momentId);
+      if (aiTarget) {
+        const { aiMoment, authorId } = aiTarget;
         // AI朋友圈评论
-        await commentMomentPost(aiMoment.authorId, momentId, {
-          authorId: 'user',
-          authorName: userProfile.username,
-          authorAvatar: userProfile.avatar,
-          content: commentContent,
-          replyTo: replyToComment?.id,
-          replyToName: replyToComment?.authorName
-        });
-        
-        // 🔄 立即刷新朋友圈显示
-        const updatedPosts = await getAllMomentPosts();
-        setAiMoments(updatedPosts);
-        console.log('💬 用户评论后刷新朋友圈');
+        await runAiMutationWithRefresh(async () => {
+          await commentAiMomentAsUser({
+            authorId,
+            momentId,
+            username: userProfile.username,
+            avatar: userProfile.avatar,
+            content: commentContent,
+            replyTo: replyToComment?.id,
+            replyToName: replyToComment?.authorName,
+          });
+        }, '💬 用户评论后刷新朋友圈');
         
         // 🎯 触发AI智能响应用户的评论
-        const aiConversation = conversations.find(c => c.id === aiMoment.authorId);
-        if (aiConversation) {
-          // 朋友圈作者可能回复
-          setTimeout(() => {
-            handleUserInteractionResponse(
-              aiConversation,
-              aiMoment,
-              'comment',
-              commentContent,
-              apiConfig
-            );
-          }, 2000 + Math.random() * 3000); // 2-5秒后响应，模拟真人
-          
-          // 💬 其他AI看到评论区有新评论，自主决定是否参与讨论
-          setTimeout(() => {
-            // @ts-ignore
-            if (window.triggerAICommentSectionInteraction) {
-              console.log('💬 用户评论后，其他AI正在查看评论区...');
-              // @ts-ignore
-              window.triggerAICommentSectionInteraction();
-            }
-          }, 5000 + Math.random() * 10000); // 5-15秒后，其他AI看到
-        }
-        
-        // 重新加载AI朋友圈
-        const posts = await getAllMomentPosts();
-        setAiMoments(posts);
+        scheduleAiAuthorInteraction(aiMoment, 'comment', {
+          content: commentContent,
+          minMs: 2000,
+          maxMs: 5000,
+        }); // 2-5秒后响应，模拟真人
+        // 💬 其他AI看到评论区有新评论，自主决定是否参与讨论
+        console.log('💬 用户评论后，其他AI正在查看评论区...');
+        const timerId = scheduleAICommentSectionInteractionTrigger(5000, 15000);
+        pendingInteractionTimersRef.current.add(timerId);
       } else {
         // 用户朋友圈评论
         onCommentMoment(momentId, commentContent);
@@ -428,63 +449,32 @@ export default function MomentsScreen({
   const handleDeleteComment = async (momentId: string, commentId: string) => {
     console.log(`🗑️ 尝试删除评论: momentId=${momentId}, commentId=${commentId}`);
     
-    const aiMoment = aiMoments.find(m => m.id === momentId);
-    if (!aiMoment) {
+    const aiTarget = findAiMomentTarget(momentId);
+    if (!aiTarget) {
       console.error('❌ 未找到朋友圈:', momentId);
       setSelectedComment(null);
       return;
     }
-    
-    if (!aiMoment.authorId) {
-      console.error('❌ 朋友圈缺少authorId:', aiMoment);
-      setSelectedComment(null);
-      return;
-    }
+    const { authorId } = aiTarget;
     
     try {
-      // 从 localStorage 删除评论
-      const momentsKey = `moments_data`;
-      const stored = localStorage.getItem(momentsKey);
-      if (!stored) {
-        console.error('❌ localStorage中没有朋友圈数据');
+      const result = await removeMomentComment(authorId, momentId, commentId);
+      if (!result.success) {
+        console.error('❌ 删除评论失败：未找到目标评论');
         setSelectedComment(null);
         return;
       }
-      
-      const allMomentsData = JSON.parse(stored);
-      console.log('📊 当前朋友圈数据结构:', allMomentsData);
-      
-      const momentData = allMomentsData.find((d: any) => d.contactId === aiMoment.authorId);
-      if (!momentData) {
-        console.error('❌ 未找到对应的朋友圈数据:', aiMoment.authorId);
-        setSelectedComment(null);
-        return;
-      }
-      
-      const post = momentData.posts.find((p: any) => p.id === momentId);
-      if (!post) {
-        console.error('❌ 未找到对应的朋友圈帖子:', momentId);
-        setSelectedComment(null);
-        return;
-      }
-      
-      const commentsBefore = post.comments.length;
-      post.comments = post.comments.filter((c: any) => c.id !== commentId);
-      const commentsAfter = post.comments.length;
+      const commentsBefore = result.before;
+      const commentsAfter = result.after;
       
       console.log(`📊 评论数量变化: ${commentsBefore} -> ${commentsAfter}`);
       
       if (commentsBefore === commentsAfter) {
         console.warn('⚠️ 评论数量没有变化，可能评论ID不匹配');
-        console.log('现有评论IDs:', post.comments.map((c: any) => c.id));
-        console.log('要删除的评论ID:', commentId);
       }
-      
-      localStorage.setItem(momentsKey, JSON.stringify(allMomentsData));
-      
+
       // 刷新显示
-      const updatedPosts = await getAllMomentPosts();
-      setAiMoments(updatedPosts);
+      await refreshAiMoments();
       console.log('✅ 评论删除完成，界面已刷新');
       
     } catch (error) {
@@ -506,29 +496,20 @@ export default function MomentsScreen({
 
   const handleLike = async (momentId: string) => {
     // 检查是否是AI朋友圈
-    const aiMoment = aiMoments.find(m => m.id === momentId);
-    if (aiMoment && aiMoment.authorId) {
+    const aiTarget = findAiMomentTarget(momentId);
+    if (aiTarget) {
+      const { aiMoment, authorId } = aiTarget;
       // AI朋友圈点赞
-      await likeMomentPost(aiMoment.authorId, momentId, 'user');
+      await runAiMutationWithRefresh(
+        () => likeAiMomentAsUser(authorId, momentId),
+        '❤️ 用户点赞后刷新朋友圈'
+      );
       
       // 🎯 触发AI智能响应用户的点赞
-      const aiConversation = conversations.find(c => c.id === aiMoment.authorId);
-      if (aiConversation) {
-        setTimeout(() => {
-          handleUserInteractionResponse(
-            aiConversation,
-            aiMoment,
-            'like',
-            undefined,
-            apiConfig
-          );
-        }, 3000 + Math.random() * 5000); // 3-8秒后响应，模拟真人
-      }
-      
-      // 🔄 立即刷新朋友圈显示
-      const updatedPosts2 = await getAllMomentPosts();
-      setAiMoments(updatedPosts2);
-      console.log('❤️ 用户点赞后刷新朋友圈');
+      scheduleAiAuthorInteraction(aiMoment, 'like', {
+        minMs: 3000,
+        maxMs: 8000,
+      }); // 3-8秒后响应，模拟真人
     } else {
       // 用户朋友圈点赞
       onLikeMoment(momentId);
@@ -542,10 +523,10 @@ export default function MomentsScreen({
     
     if (window.confirm('确定要删除这条朋友圈吗？此操作无法撤销。')) {
       try {
-        await deleteMomentPost(authorId, moment.id);
-        // 重新加载朋友圈列表
-        const posts = await getAllMomentPosts();
-        setAiMoments(posts);
+        await runAiMutationWithRefresh(
+          () => deleteAiMomentByAuthor(authorId, moment.id),
+          undefined
+        );
         setShowMenuForMoment(null);
         alert('✅ 朋友圈已删除');
       } catch (error) {

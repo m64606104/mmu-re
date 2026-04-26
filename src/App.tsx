@@ -1,75 +1,77 @@
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import { Screen, Conversation, ApiConfig, UserProfile, MomentPost, Message, ThemeSettings, ShopType } from './types';
-import HomeScreen from './components/HomeScreen';
-import SettingsScreen from './components/SettingsScreen';
-import SocialScreen from './components/SocialScreen';
-import ChatScreen from './components/ChatScreen';
-import ProfileScreen from './components/ProfileScreen';
-import MomentsScreen from './components/MomentsScreen';
-import CharacterSettingsScreen from './components/CharacterSettingsScreen';
-import NewConversationScreen from './components/NewConversationScreen';
-import ContactsScreen from './components/ContactsScreen';
-import AddFriendScreen from './components/AddFriendScreen';
-import CreateGroupScreen from './components/CreateGroupScreen';
-import ThemeScreen from './components/ThemeScreen';
-import UserGuide from './components/UserGuide';
-import AnnouncementScreen from './components/AnnouncementScreen';
-import WalletScreen from './components/WalletScreen';
-import ShoppingScreen from './components/ShoppingScreen';
-import UserSystemScreen from './components/UserSystemScreen';
-import OrderHistoryScreen from './components/OrderHistoryScreen';
-import DatabaseScreen from './components/DatabaseScreen';
-import GroupedLetterBoxScreen from './components/GroupedLetterBoxScreen';
-import LetterWritingScreen from './components/LetterWritingScreen';
-import PenPalListScreen from './components/PenPalListScreen';
-import ArchivedLettersScreen from './components/ArchivedLettersScreen';
-import FavoriteLettersScreen from './components/FavoriteLettersScreen';
-import AchievementScreen from './components/AchievementScreen';
-import StampCollectionScreen from './components/StampCollectionScreen';
-import LetterNotificationCenter from './components/LetterNotificationCenter';
-import RecycleBinScreen from './components/RecycleBinScreen';
-import BottleFishingScreen from './components/BottleFishingScreen';
-import FavoriteRepliesScreen from './components/FavoriteRepliesScreen';
-import AIKindergartenScreen from './components/AIKindergartenScreen';
-import WorldbookScreen from './components/WorldbookScreen';
-import { EasyChatApp } from './components/EasyChatApp';
-import StickerManagementScreen from './components/StickerManagementScreen';
-import BottomNavBar from './components/BottomNavBar';
-import UnrepliedLettersScreen from './components/UnrepliedLettersScreen';
-import ToastContainer from './components/ToastContainer';
-import { MomentsAutoGenerator } from './components/MomentsAutoGenerator';
-import { AIMomentsInteractionManager } from './components/AIMomentsInteractionManager';
-import ProactiveMessagingService from './components/ProactiveMessagingService';
 import MessageNotification from './components/MessageNotification';
-import LetterNotification from './components/LetterNotification';
-import AchievementNotification from './components/AchievementNotification';
-import StorageMigrationPrompt from './components/StorageMigrationPrompt';
-import { load, save, initializeCache, checkMigrationNeeded, migrateData, getStorageStatus } from './utils/storage';
-import { generateAIMoment } from './utils/aiMomentsGenerator';
-import { backgroundGenerationService } from './utils/backgroundGenerationService';
-import { initializeLetters, initializeLetterTimers } from './utils/letterService';
+import { renderScreen } from './navigation/renderScreen';
+import { getDefaultScreenForApp, isAppPageValue } from './navigation/appEntry';
+import type { AppPage } from './navigation/appEntry';
+import { buildRouteHash, normalizeNavigationTarget, supportsConversationContext } from './navigation/navigationPolicy';
+import { RuntimeServices } from './services/RuntimeServices';
+import { load, save, initializeCache, checkMigrationNeeded, migrateData, getStorageStatus } from './domains/storage';
+import { backgroundGenerationService } from './domains/generation';
+import { initializeLetters, initializeLetterTimers } from './domains/letters';
 import { Letter } from './types/letter';
 
+function safeLoadFromLocalStorage<T>(key: string, fallback: T): T {
+  const saved = localStorage.getItem(key);
+  if (!saved) return fallback;
+
+  try {
+    return JSON.parse(saved) as T;
+  } catch (error) {
+    console.warn(`Failed to parse localStorage key "${key}", using fallback value.`, error);
+    return fallback;
+  }
+}
+
+function isScreenValue(value: string): value is Screen {
+  return SCREEN_VALUES.has(value as Screen);
+}
+
+const SCREEN_VALUES = new Set<Screen>([
+  'home', 'settings', 'social', 'chat', 'character-settings', 'new-conversation',
+  'profile', 'moments', 'contacts', 'add-friend', 'create-group', 'theme', 'guide',
+  'relationships', 'announcement', 'wallet', 'shopping', 'user-system', 'order-history',
+  'database', 'letterbox', 'letter-writing', 'pen-pals', 'archived-letters', 'achievements',
+  'favorite-letters', 'stamp-collection', 'letter-notifications', 'letter-home', 'letter-timeline',
+  'letter-cards', 'bottle-fishing', 'recycle-bin', 'favorite-replies', 'unreplied',
+  'kindergarten', 'worldbook', 'easy-chat', 'sticker-management',
+]);
+
+function parseRouteHash(hash: string): { app?: AppPage; screen?: Screen; conversationId?: string } | null {
+  if (!hash.startsWith('#/app')) return null;
+  const query = hash.includes('?') ? hash.slice(hash.indexOf('?') + 1) : '';
+  const params = new URLSearchParams(query);
+  const appRaw = params.get('app');
+  const screenRaw = params.get('screen');
+  const cid = params.get('cid');
+
+  const app = appRaw && isAppPageValue(appRaw) ? appRaw : undefined;
+  const screen = screenRaw && isScreenValue(screenRaw) ? screenRaw : undefined;
+
+  return {
+    app,
+    screen,
+    conversationId: cid || undefined,
+  };
+}
+
 function App() {
+  const routeSyncRef = useRef(false);
+  const navigationStackRef = useRef<Array<{ screen: Screen; conversationId: string | null }>>([]);
   const [currentScreen, setCurrentScreen] = useState<Screen>('home');
-  const [previousScreen, setPreviousScreen] = useState<Screen>('social'); // 记录来源页面
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [currentConversationId, setCurrentConversationId] = useState<string | null>(null);
   const [apiConfig, setApiConfig] = useState<ApiConfig>(() => {
-    const saved = localStorage.getItem('apiConfig');
-    return saved ? JSON.parse(saved) : { baseUrl: '', apiKey: '', modelName: '' };
+    return safeLoadFromLocalStorage('apiConfig', { baseUrl: '', apiKey: '', modelName: '' });
   });
   const [userProfile, setUserProfile] = useState<UserProfile>(() => {
-    const saved = localStorage.getItem('userProfile');
-    return saved ? JSON.parse(saved) : { username: '123', bio: '分享生活，记录美好', status: '在线' };
+    return safeLoadFromLocalStorage('userProfile', { username: '123', bio: '分享生活，记录美好', status: '在线' });
   });
   const [moments, setMoments] = useState<MomentPost[]>(() => {
-    const saved = localStorage.getItem('moments');
-    return saved ? JSON.parse(saved) : [];
+    return safeLoadFromLocalStorage('moments', []);
   });
   const [theme, setTheme] = useState<ThemeSettings>(() => {
-    const saved = localStorage.getItem('theme');
-    return saved ? JSON.parse(saved) : { wallpaper: 'gradient-5' };
+    return safeLoadFromLocalStorage('theme', { wallpaper: 'gradient-5' });
   });
   const [currentShopType, setCurrentShopType] = useState<ShopType>('food');
   const [showMigrationPrompt, setShowMigrationPrompt] = useState(false);
@@ -77,8 +79,7 @@ function App() {
   
   // 全屏模式状态
   const [fullscreenMode, setFullscreenMode] = useState<boolean>(() => {
-    const saved = localStorage.getItem('fullscreenMode');
-    return saved === 'true';
+    return safeLoadFromLocalStorage('fullscreenMode', false);
   });
 
   // 桌面布局重置函数
@@ -401,27 +402,95 @@ function App() {
   }, [moments]);
 
   // 处理页面切换
-  const navigateTo = useCallback((screen: Screen, conversationId?: string) => {
-    setPreviousScreen(currentScreen); // 记录当前页面作为来源
-    
+  const navigateTo = useCallback((screen: Screen, conversationId?: string, options?: { replace?: boolean }) => {
+    const rawNextConversationId = supportsConversationContext(screen)
+      ? (conversationId ?? currentConversationId)
+      : null;
+    const normalized = normalizeNavigationTarget(screen, rawNextConversationId);
+    const targetScreen = normalized.screen;
+    const nextConversationId = normalized.conversationId;
+    const isSameTarget = currentScreen === targetScreen && currentConversationId === nextConversationId;
+    if (!options?.replace && !isSameTarget) {
+      navigationStackRef.current.push({
+        screen: currentScreen,
+        conversationId: currentConversationId,
+      });
+      if (navigationStackRef.current.length > 120) {
+        navigationStackRef.current = navigationStackRef.current.slice(-120);
+      }
+    }
+
     // 切换到聊天页面时，清零未读消息
-    if (screen === 'chat' && conversationId) {
-      setCurrentConversationId(conversationId);
+    if (targetScreen === 'chat' && nextConversationId) {
+      setCurrentConversationId(nextConversationId);
       // 清零该对话的未读数
       setConversations(prev => prev.map(conv => 
-        conv.id === conversationId 
+        conv.id === nextConversationId 
           ? { ...conv, unreadCount: 0 } 
           : conv
       ));
-    } else if (conversationId) {
-      setCurrentConversationId(conversationId);
+    } else if (supportsConversationContext(targetScreen)) {
+      setCurrentConversationId(nextConversationId);
+    } else {
+      setCurrentConversationId(null);
     }
     
-    setCurrentScreen(screen);
-  }, [currentScreen]);
+    setCurrentScreen(targetScreen);
+  }, [currentScreen, currentConversationId]);
+
+  // URL -> screen（支持每个 app 一个网页入口）
+  useEffect(() => {
+    const applyRouteFromHash = () => {
+      const route = parseRouteHash(window.location.hash);
+      if (!route) return;
+
+      const parsedScreen = route.screen || (route.app ? getDefaultScreenForApp(route.app) : undefined);
+      if (!parsedScreen) return;
+      const normalized = normalizeNavigationTarget(parsedScreen, route.conversationId ?? null);
+      const targetScreen = normalized.screen;
+
+      navigationStackRef.current = [];
+      setCurrentScreen(targetScreen);
+      if (supportsConversationContext(targetScreen)) {
+        setCurrentConversationId(normalized.conversationId);
+      } else {
+        setCurrentConversationId(null);
+      }
+    };
+
+    applyRouteFromHash();
+
+    const onHashChange = () => {
+      if (routeSyncRef.current) {
+        routeSyncRef.current = false;
+        return;
+      }
+      applyRouteFromHash();
+    };
+
+    window.addEventListener('hashchange', onHashChange);
+    return () => window.removeEventListener('hashchange', onHashChange);
+  }, []);
+
+  // screen -> URL（保持地址和当前 app 页面一致）
+  useEffect(() => {
+    const nextHash = buildRouteHash(currentScreen, currentConversationId);
+    if (window.location.hash !== nextHash) {
+      routeSyncRef.current = true;
+      window.location.hash = nextHash;
+    }
+  }, [currentScreen, currentConversationId]);
 
   // 返回主屏幕
   const goBack = useCallback(() => {
+    const last = navigationStackRef.current.pop();
+    if (last) {
+      const normalized = normalizeNavigationTarget(last.screen, last.conversationId);
+      setCurrentConversationId(normalized.conversationId);
+      setCurrentScreen(normalized.screen);
+      return;
+    }
+    setCurrentConversationId(null);
     setCurrentScreen('home');
   }, []);
 
@@ -477,8 +546,7 @@ function App() {
       });
       
       // 切换到聊天页面
-      setCurrentConversationId(recipientId);
-      navigateTo('chat');
+      navigateTo('chat', recipientId);
     }
   }, [conversations, updateConversation, navigateTo]);
 
@@ -514,8 +582,7 @@ function App() {
       });
       
       // 切换到聊天页面
-      setCurrentConversationId(aiId);
-      navigateTo('chat');
+      navigateTo('chat', aiId);
     }
   }, [conversations, updateConversation, navigateTo]);
 
@@ -575,6 +642,7 @@ function App() {
         isMuted: data.character?.isMuted || false,
         // 保留AI状态信息
         aiStatus: data.character?.aiStatus,
+        replySplitPreference: data.character?.replySplitPreference || 'smart',
       };
       
       console.log('✅ 创建新对话:', newConversation);
@@ -738,7 +806,8 @@ function App() {
         type: 'private',
         messages: [],
         lastMessageTime: Date.now(),
-        unreadCount: 0
+        unreadCount: 0,
+        replySplitPreference: 'smart',
       };
 
       // 添加到对话列表并导航到新对话
@@ -844,6 +913,7 @@ function App() {
       enabledFeatures: ['memory-system'], // 默认启用记忆系统
       lastMessageTime: Date.now(),
       unreadCount: 0,
+      replySplitPreference: 'smart',
     };
     
     setConversations(prev => [newConversation, ...prev]);
@@ -907,6 +977,7 @@ function App() {
       enabledFeatures: ['memory-system'], // 默认启用记忆系统
       lastMessageTime: Date.now(),
       unreadCount: 0,
+      replySplitPreference: 'smart',
     };
     
     setConversations(prev => [newConversation, ...prev]);
@@ -914,355 +985,48 @@ function App() {
     navigateTo('chat', newConversation.id);
   }, [conversations, navigateTo]);
 
-  // 手动触发AI发朋友圈
-  const handleRequestAIMoment = async () => {
-    const currentConversation = conversations.find(c => c.id === currentConversationId);
-    if (!currentConversation) return;
-    
-    console.log(`🎯 手动触发AI发朋友圈: ${currentConversation.name}`);
-    try {
-      await generateAIMoment(currentConversation, apiConfig);
-      console.log('✅ AI朋友圈发布成功');
-    } catch (error) {
-      console.error('❌ AI朋友圈发布失败:', error);
-    }
-  };
+  const handleAddPenPal = useCallback(
+    (newConversation: Conversation) => {
+      setConversations(prev => [newConversation, ...prev]);
+      setCurrentConversationId(newConversation.id);
+      navigateTo('chat', newConversation.id);
+    },
+    [navigateTo]
+  );
 
-  // 渲染当前页面
-  const renderScreen = () => {
-    const currentConversation = conversations.find(c => c.id === currentConversationId);
-    
-    switch (currentScreen) {
-      case 'home':
-        return <HomeScreen onNavigate={navigateTo} theme={theme} />;
-      case 'chat':
-        return currentConversation ? (
-          <ChatScreen 
-            conversation={currentConversation}
-            apiConfig={apiConfig}
-            currentUserProfile={userProfile}
-            conversations={conversations}
-            onUpdateConversation={updateConversation}
-            onDeleteConversation={deleteConversation}
-            onBack={() => navigateTo(previousScreen === 'contacts' ? 'contacts' : 'social')}
-            onOpenCharacterSettings={() => navigateTo('character-settings')}
-            onRequestAIMoment={handleRequestAIMoment}
-            onNavigateToPrivateChat={handleNavigateToPrivateChat}
-          />
-        ) : (
-          <HomeScreen onNavigate={navigateTo} />
-        );
-      case 'social':
-        return (
-          <SocialScreen 
-            conversations={conversations}
-            onNavigate={navigateTo}
-            onImportCharacter={handleImportCharacter}
-            onUpdateConversation={updateConversation}
-          />
-        );
-      case 'moments':
-        return (
-          <MomentsScreen 
-            moments={moments}
-            conversations={conversations}
-            userProfile={userProfile}
-            apiConfig={apiConfig}
-            onAddMoment={addMoment}
-            onLikeMoment={likeMoment}
-            onCommentMoment={commentMoment}
-            onBack={() => navigateTo(previousScreen === 'profile' ? 'profile' : 'social')}
-          />
-        );
-      case 'profile':
-        return (
-          <ProfileScreen 
-            userProfile={userProfile}
-            onUpdateProfile={updateUserProfile}
-            onNavigate={navigateTo}
-            onBack={() => navigateTo('social')}
-            momentsCount={moments.length}
-            contactsCount={conversations.filter(c => c.type === 'private').length}
-          />
-        );
-      case 'settings':
-        return (
-          <SettingsScreen 
-            apiConfig={apiConfig}
-            onUpdateConfig={setApiConfig}
-            onBack={goBack}
-            fullscreenMode={fullscreenMode}
-            onToggleFullscreen={toggleFullscreenMode}
-          />
-        );
-      case 'character-settings':
-        return currentConversation ? (
-          <CharacterSettingsScreen 
-            conversation={currentConversation}
-            allConversations={conversations}
-            apiConfig={apiConfig}
-            onUpdateConversation={updateConversation}
-            onDeleteConversation={deleteConversation}
-            onBack={() => navigateTo('chat')}
-          />
-        ) : (
-          <HomeScreen onNavigate={navigateTo} />
-        );
-      case 'new-conversation':
-        return (
-          <NewConversationScreen 
-            onNavigateToAddFriend={() => navigateTo('add-friend')}
-            onNavigateToCreateGroup={() => navigateTo('create-group')}
-            onImportCharacter={handleImportCharacter}
-            onBack={() => navigateTo('social')}
-          />
-        );
-      case 'add-friend':
-        return (
-          <AddFriendScreen 
-            onAddFriend={addFriend}
-            onBack={() => navigateTo('new-conversation')}
-            conversations={conversations}
-            onAddPenPal={(newConversation) => {
-              setConversations(prev => [newConversation, ...prev]);
-              setCurrentConversationId(newConversation.id);
-              navigateTo('chat', newConversation.id);
-            }}
-          />
-        );
-      case 'create-group':
-        return (
-          <CreateGroupScreen 
-            conversations={conversations}
-            onCreateGroup={createGroup}
-            onBack={() => navigateTo('new-conversation')}
-          />
-        );
-      case 'contacts':
-        return (
-          <ContactsScreen 
-            conversations={conversations}
-            onNavigate={navigateTo}
-            onBack={() => navigateTo('social')}
-            onUpdateConversation={updateConversation}
-          />
-        );
-      case 'theme':
-        return (
-          <ThemeScreen
-            theme={theme}
-            onThemeChange={updateTheme}
-            onBack={() => navigateTo('home')}
-            onResetLayout={resetDesktopLayout}
-          />
-        );
-      case 'guide':
-        return <UserGuide onBack={() => navigateTo('home')} />;
-      case 'announcement':
-        return <AnnouncementScreen onBack={() => navigateTo('home')} />;
-      case 'wallet':
-        return (
-          <WalletScreen 
-            onBack={() => navigateTo('profile')}
-            onNavigateToShop={(shopType) => {
-              setCurrentShopType(shopType);
-              navigateTo('shopping');
-            }}
-            conversations={conversations}
-          />
-        );
-      case 'shopping':
-        return (
-          <ShoppingScreen 
-            shopType={currentShopType}
-            onBack={() => navigateTo('wallet')}
-            onPurchase={() => {
-              // 购买后刷新，可以触发钱包页面重新加载
-            }}
-            conversations={conversations}
-            onSendGiftToAI={handleSendGiftToAI}
-            onRequestAIPay={handleRequestAIPay}
-          />
-        );
-      case 'user-system':
-        return (
-          <UserSystemScreen 
-            onBack={() => navigateTo('home')}
-          />
-        );
-      case 'order-history':
-        return (
-          <OrderHistoryScreen
-            conversations={conversations}
-            onBack={() => navigateTo('wallet')}
-            onNavigateToChat={(conversationId) => {
-              setCurrentConversationId(conversationId);
-              navigateTo('chat');
-            }}
-          />
-        );
-      case 'database':
-        return (
-          <DatabaseScreen
-            conversations={conversations}
-            onBack={() => navigateTo('home')}
-          />
-        );
-      case 'letterbox':
-        return (
-          <GroupedLetterBoxScreen
-            onBack={() => navigateTo('letter-writing')}
-            onWriteNew={() => {
-              setReplyToLetter(null);
-              navigateTo('letter-writing');
-            }}
-            onContinueReply={(letter) => {
-              setReplyToLetter(letter);
-              navigateTo('letter-writing');
-            }}
-            userName={userProfile.username}
-            initialLetterId={currentConversationId}
-          />
-        );
-      case 'pen-pals':
-        return (
-          <PenPalListScreen
-            onBack={() => navigateTo('letter-writing')}
-            onWriteTo={() => {
-              // 跟转到写信页面
-              navigateTo('letter-writing');
-            }}
-            userName={userProfile.username}
-          />
-        );
-      case 'archived-letters':
-        return (
-          <ArchivedLettersScreen
-            onBack={() => navigateTo('letter-writing')}
-          />
-        );
-      case 'favorite-letters':
-        return (
-          <FavoriteLettersScreen
-            onBack={() => navigateTo('letter-writing')}
-            userName={userProfile.username}
-          />
-        );
-      case 'achievements':
-        return (
-          <AchievementScreen
-            onBack={() => navigateTo('letter-writing')}
-          />
-        );
-      case 'stamp-collection':
-        return (
-          <StampCollectionScreen
-            onBack={() => navigateTo('letter-writing')}
-          />
-        );
-      case 'letter-notifications':
-        return (
-          <LetterNotificationCenter
-            onBack={() => navigateTo('letter-writing')}
-            onNotificationClick={(notification) => {
-              // 点击通知跳转到对应的信件
-              if (notification.letterId) {
-                navigateTo('letterbox', notification.letterId);
-              }
-            }}
-          />
-        );
-      case 'bottle-fishing':
-        return (
-          <BottleFishingScreen
-            onBack={() => navigateTo('letter-writing')}
-            userName={userProfile.username}
-          />
-        );
-      case 'letter-writing':
-        return (
-          <div className="relative">
-            <LetterWritingScreen
-              onBack={() => {
-                setReplyToLetter(null);
-                navigateTo('home');
-              }}
-              onSent={() => {
-                setReplyToLetter(null);
-                navigateTo('letter-writing');
-              }}
-              conversations={conversations}
-              userName={userProfile.username}
-              replyToLetter={replyToLetter}
-              onNavigate={(page) => navigateTo(page as Screen)}
-            />
-            <BottomNavBar
-              currentPage="letter-writing"
-              onNavigate={(page) => {
-                setReplyToLetter(null);
-                navigateTo(page as Screen);
-              }}
-            />
-          </div>
-        );
-      case 'unreplied':
-        return (
-          <UnrepliedLettersScreen
-            onBack={() => navigateTo('letter-writing')}
-            onReply={(letter) => {
-              setReplyToLetter(letter);
-              navigateTo('letter-writing');
-            }}
-          />
-        );
-      case 'recycle-bin':
-        return (
-          <RecycleBinScreen
-            onBack={() => navigateTo('letter-writing')}
-          />
-        );
-      case 'favorite-replies':
-        return (
-          <FavoriteRepliesScreen
-            onBack={() => navigateTo('letter-writing')}
-          />
-        );
-      case 'kindergarten':
-        return (
-          <AIKindergartenScreen
-            onBack={() => navigateTo('home')}
-            onOpenChat={(childId) => {
-              setCurrentConversationId(childId);
-              navigateTo('chat');
-            }}
-            apiConfig={apiConfig}
-          />
-        );
-      case 'worldbook':
-        return (
-          <WorldbookScreen
-            onBack={() => navigateTo('home')}
-            conversations={conversations}
-            onUpdateConversation={updateConversation}
-          />
-        );
-      case 'easy-chat':
-        return (
-          <EasyChatApp
-            onBack={() => navigateTo('home')}
-          />
-        );
-      case 'sticker-management':
-        return (
-          <StickerManagementScreen
-            onBack={() => navigateTo('profile')}
-            conversations={conversations}
-          />
-        );
-      default:
-        return <HomeScreen onNavigate={navigateTo} theme={theme} />;
-    }
-  };
+  const screenElement = renderScreen({
+    currentScreen,
+    currentConversationId,
+    conversations,
+    apiConfig,
+    userProfile,
+    moments,
+    theme,
+    fullscreenMode,
+    currentShopType,
+    replyToLetter,
+    setCurrentShopType,
+    setReplyToLetter,
+    navigateTo,
+    goBack,
+    resetDesktopLayout,
+    updateConversation,
+    deleteConversation,
+    updateUserProfile,
+    updateTheme,
+    toggleFullscreenMode,
+    updateApiConfig: setApiConfig,
+    addMoment,
+    likeMoment,
+    commentMoment,
+    onImportCharacter: handleImportCharacter,
+    onAddPenPal: handleAddPenPal,
+    addFriend,
+    createGroup,
+    onNavigateToPrivateChat: handleNavigateToPrivateChat,
+    onSendGiftToAI: handleSendGiftToAI,
+    onRequestAIPay: handleRequestAIPay,
+  });
 
   return (
     <>
@@ -1280,61 +1044,31 @@ function App() {
             ? 'w-full h-full rounded-none shadow-none mt-0'
             : 'w-[393px] h-[800px] rounded-[40px] shadow-2xl -mt-[10.2px]'
         }`}>
-          {renderScreen()}
+          {screenElement}
           
           {/* 消息通知 - QQ风格顶部弹窗 */}
           <MessageNotification
             conversations={conversations}
             onNavigate={(conversationId) => {
-              setCurrentConversationId(conversationId);
-              setCurrentScreen('chat');
+              navigateTo('chat', conversationId);
             }}
           />
         </div>
       </div>
       
-      {/* 朋友圈自动生成器 - 后台运行 */}
-      <MomentsAutoGenerator 
+      <RuntimeServices
         conversations={conversations}
         apiConfig={apiConfig}
-      />
-      
-      {/* AI朋友圈互动管理器 - 在聊天App中激活 */}
-      <AIMomentsInteractionManager
-        conversations={conversations}
-        apiConfig={apiConfig}
-        isActive={['social', 'chat', 'contacts', 'moments', 'profile'].includes(currentScreen)}
-        isInMomentsScreen={currentScreen === 'moments'}
-      />
-      
-      {/* AI主动发消息服务 - 后台运行 */}
-      <ProactiveMessagingService
-        conversations={conversations}
-        apiConfig={apiConfig}
+        currentScreen={currentScreen}
+        showMigrationPrompt={showMigrationPrompt}
+        onCloseMigrationPrompt={() => setShowMigrationPrompt(false)}
+        onMigrationComplete={() => {
+          setShowMigrationPrompt(false);
+          window.location.reload();
+        }}
         onNewMessage={addMessageToConversation}
-        onUpdateSettings={updateProactiveMessagingTime}
+        onUpdateProactiveSettings={updateProactiveMessagingTime}
       />
-      
-      {/* Toast通知容器 */}
-      <ToastContainer />
-      
-      {/* 信件通知 */}
-      <LetterNotification />
-      
-      {/* 成就通知 */}
-      <AchievementNotification />
-      
-      {/* 存储迁移提示 */}
-      {showMigrationPrompt && (
-        <StorageMigrationPrompt
-          onClose={() => setShowMigrationPrompt(false)}
-          onMigrationComplete={() => {
-            setShowMigrationPrompt(false);
-            // 迁移完成后重新加载数据
-            window.location.reload();
-          }}
-        />
-      )}
     </>
   );
 }

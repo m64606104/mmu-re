@@ -1,6 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { X } from 'lucide-react';
 import { Conversation, Message } from '../types';
+import { normalizeMessagePreviewText } from '../utils/messageFormatter';
 
 interface NotificationData {
   id: string;
@@ -20,6 +21,19 @@ const MessageNotification: React.FC<MessageNotificationProps> = ({
 }) => {
   const [notifications, setNotifications] = useState<NotificationData[]>([]);
   const [visible, setVisible] = useState<string | null>(null);
+  const notificationsRef = useRef<NotificationData[]>([]);
+  const timerIdsRef = useRef<number[]>([]);
+
+  useEffect(() => {
+    notificationsRef.current = notifications;
+  }, [notifications]);
+
+  useEffect(() => {
+    return () => {
+      timerIdsRef.current.forEach((timerId) => clearTimeout(timerId));
+      timerIdsRef.current = [];
+    };
+  }, []);
 
   // 添加通知（升级版：每条消息一个弹窗）
   const addNotification = (conversationId: string, messages: Message[]) => {
@@ -38,23 +52,25 @@ const MessageNotification: React.FC<MessageNotificationProps> = ({
       };
 
       // 延迟添加，避免同时出现（每个间隔200ms）
-      setTimeout(() => {
+      const enqueueTimerId = window.setTimeout(() => {
         setNotifications(prev => [...prev, notification]);
         setVisible(prev => prev ? prev : notification.id);
 
         // 5秒后自动隐藏并移除
-        setTimeout(() => {
+        const dismissTimerId = window.setTimeout(() => {
           setNotifications(prev => prev.filter(n => n.id !== notification.id));
           // 如果这是当前显示的，切换到下一个
           setVisible(prev => {
             if (prev === notification.id) {
-              const remaining = notifications.filter(n => n.id !== notification.id);
+              const remaining = notificationsRef.current.filter(n => n.id !== notification.id);
               return remaining.length > 0 ? remaining[0].id : null;
             }
             return prev;
           });
         }, 5000);
+        timerIdsRef.current.push(dismissTimerId);
       }, index * 200); // 每个弹窗延迟200ms出现
+      timerIdsRef.current.push(enqueueTimerId);
     });
   };
 
@@ -92,12 +108,12 @@ const MessageNotification: React.FC<MessageNotificationProps> = ({
     if (message.mediaType === 'video') return '[视频]';
     if (message.mediaType === 'voice') return '[语音]';
     if (message.mediaType === 'sticker') return '[表情包]';
-    
-    // 截断长消息
-    if (message.content.length > 30) {
-      return message.content.substring(0, 30) + '...';
+
+    const normalized = normalizeMessagePreviewText(message.content || '');
+    if (normalized.length > 30) {
+      return normalized.substring(0, 30) + '...';
     }
-    return message.content;
+    return normalized;
   };
 
   if (notifications.length === 0) return null;

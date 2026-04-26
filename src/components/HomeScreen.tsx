@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { MessageCircle, Settings, Music, Phone, Heart, Bell, Play, Pause, SkipBack, SkipForward, MapPin, Sun, Palette, Upload, BookOpen, Mailbox, X, Database, Users, GraduationCap, Book, MessageSquare } from 'lucide-react';
 import { Screen, ThemeSettings } from '../types';
+import { getDefaultScreenForApp } from '../navigation/appEntry';
 
 interface HomeScreenProps {
   onNavigate: (screen: Screen) => void;
@@ -31,7 +32,7 @@ export default function HomeScreen({ onNavigate, theme }: HomeScreenProps) {
   const [touchCurrentX, setTouchCurrentX] = useState<number | null>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [isEditMode, setIsEditMode] = useState(false);
-  const [longPressTimer, setLongPressTimer] = useState<ReturnType<typeof setTimeout> | null>(null);
+  const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
   const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState<{type: 'app' | 'quick' | 'dock', index: number} | null>(null);
@@ -101,6 +102,15 @@ export default function HomeScreen({ onNavigate, theme }: HomeScreenProps) {
     if (saved) setBannerImage(saved);
   }, []);
 
+  useEffect(() => {
+    return () => {
+      if (longPressTimerRef.current) {
+        clearTimeout(longPressTimerRef.current);
+        longPressTimerRef.current = null;
+      }
+    };
+  }, []);
+
   const formatTime = () => {
     const hours = currentTime.getHours().toString().padStart(2, '0');
     const minutes = currentTime.getMinutes().toString().padStart(2, '0');
@@ -165,17 +175,20 @@ export default function HomeScreen({ onNavigate, theme }: HomeScreenProps) {
     if (isEditMode) return;
     e.preventDefault();
     
+    if (longPressTimerRef.current) {
+      clearTimeout(longPressTimerRef.current);
+    }
     const timer = setTimeout(() => {
       setIsEditMode(true);
     }, 500); // 500ms长按触发
     
-    setLongPressTimer(timer);
+    longPressTimerRef.current = timer;
   };
 
   const handleLongPressEnd = () => {
-    if (longPressTimer) {
-      clearTimeout(longPressTimer);
-      setLongPressTimer(null);
+    if (longPressTimerRef.current) {
+      clearTimeout(longPressTimerRef.current);
+      longPressTimerRef.current = null;
     }
   };
 
@@ -451,19 +464,19 @@ export default function HomeScreen({ onNavigate, theme }: HomeScreenProps) {
 
   // 图标配置映射
   const iconConfig: Record<string, { icon: any; name: string; onClick?: () => void }> = {
-    settings: { icon: Settings, name: '设置', onClick: () => onNavigate('settings') },
-    social: { icon: MessageCircle, name: '聊天', onClick: () => onNavigate('social') },
+    settings: { icon: Settings, name: '设置', onClick: () => onNavigate(getDefaultScreenForApp('settings')) },
+    social: { icon: MessageCircle, name: '聊天', onClick: () => onNavigate(getDefaultScreenForApp('chat')) },
     'user-system': { icon: Users, name: '好友', onClick: () => onNavigate('user-system') },
     theme: { icon: Palette, name: '主题', onClick: () => onNavigate('theme') },
     worldbook: { icon: Book, name: '世界书', onClick: () => onNavigate('worldbook') },
     music: { icon: Music, name: '音乐' },
     phone: { icon: Phone, name: '电话' },
     bell: { icon: BookOpen, name: '使用说明', onClick: () => onNavigate('guide') },
-    mail: { icon: Mailbox, name: '信箱', onClick: () => onNavigate('letter-writing') },
+    mail: { icon: Mailbox, name: '信箱', onClick: () => onNavigate(getDefaultScreenForApp('mail')) },
     announcement: { icon: Bell, name: '公告', onClick: () => onNavigate('announcement') },
     heart: { icon: Heart, name: '收藏' },
-    database: { icon: Database, name: '资料库', onClick: () => onNavigate('database') },
-    kindergarten: { icon: GraduationCap, name: '幼儿园', onClick: () => onNavigate('kindergarten') },
+    database: { icon: Database, name: '资料库', onClick: () => onNavigate(getDefaultScreenForApp('tools')) },
+    kindergarten: { icon: GraduationCap, name: '幼儿园', onClick: () => onNavigate(getDefaultScreenForApp('kindergarten')) },
     'easy-chat': { icon: MessageSquare, name: 'Easy Chat', onClick: () => onNavigate('easy-chat') },
   };
 
