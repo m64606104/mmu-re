@@ -8,15 +8,15 @@ import { AIMomentsInteractionManager } from '../components/AIMomentsInteractionM
 import ProactiveMessagingService from '../components/ProactiveMessagingService';
 import LetterNotification from '../components/LetterNotification';
 import AchievementNotification from '../components/AchievementNotification';
-import StorageMigrationPrompt from '../components/StorageMigrationPrompt';
 
 export type RuntimeServicesProps = {
   conversations: Conversation[];
   apiConfig: ApiConfig;
   currentScreen: Screen;
-  showMigrationPrompt: boolean;
-  onCloseMigrationPrompt: () => void;
-  onMigrationComplete: () => void;
+  // Legacy props (migration prompt removed). Keep optional for compatibility with older editors/branches.
+  showMigrationPrompt?: boolean;
+  onCloseMigrationPrompt?: () => void;
+  onMigrationComplete?: () => void;
   onNewMessage: (conversationId: string, message: Message) => void;
   onUpdateProactiveSettings: (conversationId: string, lastMessageTime: number) => void;
 };
@@ -26,9 +26,6 @@ export function RuntimeServices(props: RuntimeServicesProps) {
     conversations,
     apiConfig,
     currentScreen,
-    showMigrationPrompt,
-    onCloseMigrationPrompt,
-    onMigrationComplete,
     onNewMessage,
     onUpdateProactiveSettings,
   } = props;
@@ -54,10 +51,6 @@ export function RuntimeServices(props: RuntimeServicesProps) {
       <ToastContainer />
       <LetterNotification />
       <AchievementNotification />
-
-      {showMigrationPrompt && (
-        <StorageMigrationPrompt onClose={onCloseMigrationPrompt} onMigrationComplete={onMigrationComplete} />
-      )}
     </>
   );
 }

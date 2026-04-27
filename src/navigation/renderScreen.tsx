@@ -98,8 +98,6 @@ export type RenderScreenParams = {
 
   onNavigateToPrivateChat: (aiName: string) => void;
 
-  onSendGiftToAI: (product: any, recipientId: string, recipientName: string, shopType: ShopType) => void;
-  onRequestAIPay: (product: any, aiId: string, shopType: ShopType) => void;
 };
 
 export function renderScreen(params: RenderScreenParams) {
@@ -133,8 +131,6 @@ export function renderScreen(params: RenderScreenParams) {
     addFriend,
     createGroup,
     onNavigateToPrivateChat,
-    onSendGiftToAI,
-    onRequestAIPay,
   } = params;
 
   const currentConversation = conversations.find(c => c.id === currentConversationId);
@@ -288,9 +284,15 @@ export function renderScreen(params: RenderScreenParams) {
           shopType={currentShopType}
           onBack={goBack}
           onPurchase={() => {}}
-          conversations={conversations}
-          onSendGiftToAI={onSendGiftToAI}
-          onRequestAIPay={onRequestAIPay}
+        />
+      );
+    case 'huaduoduo':
+    case 'huaduoduo-gogo':
+      return (
+        <ShoppingScreen
+          shopType={currentShopType}
+          onBack={goBack}
+          onPurchase={() => {}}
         />
       );
     case 'user-system':

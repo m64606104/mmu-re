@@ -1,10 +1,11 @@
-import React, { useState } from 'react';
-import { X, FileText, Folder } from 'lucide-react';
+import React, { useRef, useState } from 'react';
+import { X, FileText, Folder, Upload } from 'lucide-react';
 import { useToast } from './Toast';
+import { OriginalDocumentFile } from '../types';
 
 interface SendDocumentModalProps {
   onClose: () => void;
-  onSend: (title: string, content: string, greeting: string, type: 'text' | 'markdown' | 'code') => void;
+  onSend: (title: string, content: string, greeting: string, type: 'text' | 'markdown' | 'code', originalFile?: OriginalDocumentFile) => void;
   onOpenLibrary?: () => void;
   initialDocument?: {
     title: string;
@@ -18,6 +19,10 @@ const SendDocumentModal: React.FC<SendDocumentModalProps> = ({ onClose, onSend, 
   const [content, setContent] = useState(initialDocument?.content || '');
   const [greeting, setGreeting] = useState('请查收');
   const [docType, setDocType] = useState<'text' | 'markdown' | 'code'>(initialDocument?.type || 'text');
+  const [isParsingFile, setIsParsingFile] = useState(false);
+  const [lastUploadedFile, setLastUploadedFile] = useState<{ name: string; size: number; parsedChars: number } | null>(null);
+  const [uploadedOriginalFile, setUploadedOriginalFile] = useState<OriginalDocumentFile | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const { showToast } = useToast();
 
   const handleSend = () => {
@@ -26,8 +31,69 @@ const SendDocumentModal: React.FC<SendDocumentModalProps> = ({ onClose, onSend, 
       return;
     }
 
-    onSend(title.trim(), content.trim(), greeting.trim(), docType);
+    onSend(title.trim(), content.trim(), greeting.trim(), docType, uploadedOriginalFile || undefined);
     onClose();
+  };
+
+  const detectDocType = (fileName: string): 'text' | 'markdown' | 'code' => {
+    const lower = fileName.toLowerCase();
+    if (lower.endsWith('.md') || lower.endsWith('.markdown')) return 'markdown';
+    if (/\.(js|jsx|ts|tsx|py|java|go|rs|cpp|c|cs|php|rb|swift|kt|json|yaml|yml|xml|sql|sh)$/.test(lower)) {
+      return 'code';
+    }
+    return 'text';
+  };
+
+  const handlePickLocalFile = () => {
+    fileInputRef.current?.click();
+  };
+
+  const readFileAsBase64 = (file: File): Promise<string> =>
+    new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(typeof reader.result === 'string' ? reader.result : '');
+      reader.onerror = () => reject(reader.error || new Error('读取文件失败'));
+      reader.readAsDataURL(file);
+    });
+
+  const handleLocalFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setIsParsingFile(true);
+    try {
+      const { parseDocument } = await import('../utils/enhancedDocumentParser');
+      const parsedText = await parseDocument(file);
+      let base64Data: string | undefined;
+      if (file.size <= 700 * 1024) {
+        base64Data = await readFileAsBase64(file);
+      } else {
+        showToast('文件较大，已保留文件信息并发送可读内容', 'warning');
+      }
+
+      const fileNameWithoutExt = file.name.replace(/\.[^/.]+$/, '');
+      setTitle(fileNameWithoutExt || file.name);
+      setContent(parsedText);
+      setDocType(detectDocType(file.name));
+      setUploadedOriginalFile({
+        fileName: file.name,
+        mimeType: file.type || 'application/octet-stream',
+        fileSize: file.size,
+        base64Data,
+      });
+      setLastUploadedFile({
+        name: file.name,
+        size: file.size,
+        parsedChars: parsedText.length,
+      });
+      showToast(`已导入本地文件：${file.name}`, 'success');
+    } catch (error) {
+      console.error('本地文档解析失败:', error);
+      showToast('文档解析失败，请上传 PDF / Word / TXT 文件', 'error');
+    } finally {
+      setIsParsingFile(false);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
   };
 
   return (
@@ -49,6 +115,31 @@ const SendDocumentModal: React.FC<SendDocumentModalProps> = ({ onClose, onSend, 
 
         {/* 内容 */}
         <div className="flex-1 overflow-y-auto p-6 space-y-4">
+          <input
+            ref={fileInputRef}
+            type="file"
+            className="hidden"
+            accept=".txt,.pdf,.doc,.docx,.md,.markdown,.json,.js,.jsx,.ts,.tsx,.py,.java,.go,.rs,.cpp,.c,.cs,.php,.rb,.swift,.kt,.sql,.xml,.yaml,.yml,.sh"
+            onChange={handleLocalFileUpload}
+          />
+
+          <button
+            onClick={handlePickLocalFile}
+            disabled={isParsingFile}
+            className="w-full flex items-center justify-center gap-2 py-3 px-4 bg-emerald-50 text-emerald-700 rounded-lg hover:bg-emerald-100 transition-colors disabled:opacity-60"
+          >
+            <Upload className="w-5 h-5" />
+            <span>{isParsingFile ? '正在解析文件...' : '上传本地文件并发送'}</span>
+          </button>
+
+          {lastUploadedFile && (
+            <div className="rounded-lg border border-emerald-200 bg-emerald-50/70 px-3 py-2 text-xs text-emerald-800 space-y-1">
+              <div>文件名：{lastUploadedFile.name}</div>
+              <div>文件大小：{(lastUploadedFile.size / 1024).toFixed(1)} KB</div>
+              <div>解析字数：{lastUploadedFile.parsedChars}</div>
+            </div>
+          )}
+
           {/* 从文档库选择按钮 */}
           {onOpenLibrary && !initialDocument && (
             <button

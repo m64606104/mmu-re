@@ -5,11 +5,14 @@
 
 import React, { useState } from 'react';
 import { X, Save, Forward, FileText, Copy, Download } from 'lucide-react';
+import { OriginalDocumentFile } from '../types';
+import { generateDocxOriginalFile } from '../utils/documentFileGenerator';
 
 interface DocumentContent {
   title: string;
   content: string;
   type: 'text' | 'code' | 'markdown';
+  originalFile?: OriginalDocumentFile;
 }
 
 interface WordStyleDocumentModalProps {
@@ -32,6 +35,7 @@ const WordStyleDocumentModal: React.FC<WordStyleDocumentModalProps> = ({
   onForward
 }) => {
   const [copied, setCopied] = useState(false);
+  const [isExporting, setIsExporting] = useState(false);
 
   // 获取文档类型颜色
   const getTypeColor = () => {
@@ -70,15 +74,44 @@ const WordStyleDocumentModal: React.FC<WordStyleDocumentModalProps> = ({
 
   // 下载文档
   const handleDownload = () => {
-    const blob = new Blob([document.content], { type: 'text/plain;charset=utf-8' });
-    const url = URL.createObjectURL(blob);
+    let url: string | null = null;
+    let fileName = `${document.title}.${document.type === 'code' ? 'txt' : document.type === 'markdown' ? 'md' : 'txt'}`;
+
+    if (document.originalFile?.base64Data) {
+      url = document.originalFile.base64Data;
+      fileName = document.originalFile.fileName || fileName;
+    } else {
+      const blob = new Blob([document.content], { type: 'text/plain;charset=utf-8' });
+      url = URL.createObjectURL(blob);
+    }
+
     const a = window.document.createElement('a');
     a.href = url;
-    a.download = `${document.title}.${document.type === 'code' ? 'txt' : document.type === 'markdown' ? 'md' : 'txt'}`;
+    a.download = fileName;
     window.document.body.appendChild(a);
     a.click();
     window.document.body.removeChild(a);
-    URL.revokeObjectURL(url);
+    if (!document.originalFile?.base64Data) {
+      URL.revokeObjectURL(url);
+    }
+  };
+
+  const handleReExportDocx = async () => {
+    try {
+      setIsExporting(true);
+      const generated = await generateDocxOriginalFile(document.title, document.content);
+      if (!generated.base64Data) return;
+      const a = window.document.createElement('a');
+      a.href = generated.base64Data;
+      a.download = generated.fileName;
+      window.document.body.appendChild(a);
+      a.click();
+      window.document.body.removeChild(a);
+    } catch (error) {
+      console.error('重新导出DOCX失败:', error);
+    } finally {
+      setIsExporting(false);
+    }
   };
 
   return (
@@ -113,6 +146,13 @@ const WordStyleDocumentModal: React.FC<WordStyleDocumentModalProps> = ({
               title="下载文档"
             >
               <Download className="w-4 h-4 text-gray-600" />
+            </button>
+            <button
+              onClick={handleReExportDocx}
+              className="px-2 py-1 bg-emerald-50 text-emerald-700 text-xs rounded-lg hover:bg-emerald-100 transition-colors"
+              title="重新导出DOCX"
+            >
+              {isExporting ? '导出中...' : '重新导出DOCX'}
             </button>
             
             {onSave && (

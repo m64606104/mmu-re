@@ -10,6 +10,7 @@ import RelationshipManagementScreen from './RelationshipManagementScreen';
 import { addMomentPost } from '../utils/aiMomentsGenerator';
 import { parseComplexFrequencyRules, getCurrentFrequencyRule, getRulesSummary } from '../utils/momentsFrequencyParser';
 import { bubbleStylePresets, getAllCategories, type BubbleStylePreset } from '../utils/bubbleStylePresets';
+import { smartLoad } from '../utils/storage';
 import '../styles/relationshipAnimations.css';
 
 interface CharacterSettingsScreenProps {
@@ -527,31 +528,26 @@ export default function CharacterSettingsScreen({
   const handleExportCharacter = async () => {
     try {
       // 1. 获取记忆库数据（使用正确的存储key）
-      const memoryBanksData = localStorage.getItem('chat_memory_banks');
-      const allMemoryBanks = memoryBanksData ? JSON.parse(memoryBanksData) : [];
+      const allMemoryBanks = ((await smartLoad('chat_memory_banks')) as any[]) || [];
       const memoryBank = allMemoryBanks.find((bank: any) => bank.conversationId === conversation.id);
       const memories = memoryBank?.memories || [];
       
       // 2. 获取朋友圈数据
       const momentsKey = `moments_${conversation.id}`;
-      const momentsData = localStorage.getItem(momentsKey);
-      const moments = momentsData ? JSON.parse(momentsData) : null;
+      const moments = ((await smartLoad(momentsKey)) as any) || null;
       
       // 3. 获取AI财务数据
       const financeKey = `ai_finance_${conversation.id}`;
-      const financeData = localStorage.getItem(financeKey);
-      const finance = financeData ? JSON.parse(financeData) : null;
+      const finance = ((await smartLoad(financeKey)) as any) || null;
       
       // 4. 获取关系网络数据（查找与此角色相关的关系）
-      const relationshipsData = localStorage.getItem('relationships');
-      const allRelationships = relationshipsData ? JSON.parse(relationshipsData) : [];
+      const allRelationships = ((await smartLoad('relationships')) as any[]) || [];
       const characterRelationships = allRelationships.filter(
         (rel: any) => rel.personId === conversation.id || rel.targetId === conversation.id
       );
       
       // 5. 获取文档库数据（知识库）
-      const documentLibraryData = localStorage.getItem('document_library');
-      const allDocuments = documentLibraryData ? JSON.parse(documentLibraryData) : [];
+      const allDocuments = ((await smartLoad('document_library')) as any[]) || [];
       const characterDocuments = allDocuments.filter(
         (doc: any) => doc.conversationId === conversation.id
       );

@@ -928,19 +928,7 @@ export const generateAIMoment = async (
       console.log(`📝 朋友圈类型: ${expectedFormat.format.type}`);
     }
     
-    // 💰 智能分析朋友圈内容，自动产生支出
-    try {
-      const { processPostExpense } = await import('./smartFinanceSystem');
-      await processPostExpense(
-        conversation.id,
-        cleanedContent,
-        conversation.characterSettings?.nickname || conversation.name,
-        apiConfig
-      );
-    } catch (financeError) {
-      console.error('⚠️ 处理朋友圈支出失败:', financeError);
-      // 不影响朋友圈发布，继续执行
-    }
+    // 已移除：AI财务系统（朋友圈内容自动支出分析）
     
     // 更新生成时间和计数
     const updatedMomentsData = await getMomentsData(conversation.id);

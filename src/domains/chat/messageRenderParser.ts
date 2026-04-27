@@ -3,6 +3,21 @@ import { formatChatRecord } from '../../utils/chatRecordFormatter';
 import { splitMessages } from '../../utils/messageFormatter';
 import SmartHTMLGenerator from '../../utils/smartHTMLGenerator';
 
+function hasNativeDocumentProtocol(raw: string): boolean {
+  const trimmed = raw.trim();
+  if (!trimmed) return false;
+  const fenced = trimmed.match(/```(?:json)?\s*([\s\S]*?)```/i);
+  const candidate = (fenced ? fenced[1] : trimmed).trim();
+  try {
+    const parsed = JSON.parse(candidate);
+    if (!parsed || typeof parsed !== 'object') return false;
+    const doc = (parsed as any).document && typeof (parsed as any).document === 'object' ? (parsed as any).document : parsed;
+    return typeof doc.title === 'string' && typeof doc.content === 'string';
+  } catch {
+    return false;
+  }
+}
+
 // Format message payload before sending to AI model.
 export function formatMessageForAI(msg: Message): string {
   let content = msg.content;
@@ -36,10 +51,14 @@ export function formatMessageForAI(msg: Message): string {
 
   // Document messages
   if (msg.document) {
+    const originalFileInfo = msg.document.originalFile
+      ? `\n原始文件：${msg.document.originalFile.fileName} (${msg.document.originalFile.mimeType}, ${(msg.document.originalFile.fileSize / 1024).toFixed(1)}KB)`
+      : '';
+    const typeLabel = msg.document.type === 'text' ? '文本' : msg.document.type === 'markdown' ? 'Markdown' : '代码';
     if (msg.role === 'user') {
-      return `[用户发送了${msg.document.type === 'text' ? '文本' : msg.document.type === 'markdown' ? 'Markdown' : '代码'}文档]\n标题：${msg.document.title}\n内容：\n${msg.document.content}`;
+      return `[用户发送了${typeLabel}文档]\n标题：${msg.document.title}${originalFileInfo}\n内容：\n${msg.document.content}`;
     }
-    return `[发文档:${msg.document.title}:${msg.document.type}] ${msg.document.content}`;
+    return `[AI发送了${typeLabel}文档]\n标题：${msg.document.title}${originalFileInfo}\n内容：\n${msg.document.content}`;
   }
 
   // Money transfer/red packet
@@ -120,6 +139,14 @@ export function prepareAssistantSegments(
   options: PrepareAssistantSegmentsOptions
 ): PrepareAssistantSegmentsResult {
   const { assistantMessage, conversation, now = () => Date.now() } = options;
+
+  // 文档优先：如果整段回复能识别为文档，禁止拆条，交给后续文档管线处理为文档卡片
+  if (hasNativeDocumentProtocol(assistantMessage)) {
+    return {
+      earlyReturnMessages: null,
+      splitSegments: [assistantMessage],
+    };
+  }
 
   const htmlType = SmartHTMLGenerator.detectHTMLType(assistantMessage);
   if (htmlType) {

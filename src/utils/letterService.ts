@@ -472,7 +472,7 @@ export function sendLetter(
     } 
     // 2️⃣ 检查是否是聊天软件的联系人（从conversations读取）
     else {
-      const conversations = JSON.parse(localStorage.getItem('conversations') || '[]');
+      const conversations = (getCachedData('conversations') as any[]) || [];
       const conversation = conversations.find((c: any) => c.id === receiverId);
       
       if (conversation?.characterSettings) {

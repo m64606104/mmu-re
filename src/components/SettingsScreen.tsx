@@ -5,6 +5,8 @@ import { smartLoad, smartSave, checkStorageQuota, saveBatch, getStorageStatus, m
 import ImageGenConfigModal from './ImageGenConfigModal';
 import { apiPresetsManager, APIPreset } from '../utils/apiPresetsManager';
 import APIPresetsModal from './APIPresetsModal';
+import { supabase } from '../services/supabaseClient';
+import { ensureSupabaseAnonSession } from '../services/supabaseAuth';
 
 interface SettingsScreenProps {
   apiConfig: ApiConfig;
@@ -31,6 +33,10 @@ export default function SettingsScreen({ apiConfig, onUpdateConfig, onBack, full
   // 存储状态
   const [storageInfo, setStorageInfo] = useState<any>(null);
   const [isLoadingStorage, setIsLoadingStorage] = useState(false);
+
+  // Supabase 云同步状态（只做显示/检测，不在此处配置密钥）
+  const [supabaseStatus, setSupabaseStatus] = useState<'not_configured' | 'checking' | 'connected' | 'error'>('checking');
+  const [supabaseError, setSupabaseError] = useState<string>('');
   
   // 语音转文字配置
   const [sttEnabled] = useState(apiConfig.speechToText?.enabled || false);
@@ -89,6 +95,33 @@ export default function SettingsScreen({ apiConfig, onUpdateConfig, onBack, full
       console.error('加载AI生图配置失败:', e);
     }
   }, []);
+
+  const checkSupabaseStatus = async () => {
+    if (!supabase) {
+      setSupabaseStatus('not_configured');
+      setSupabaseError('');
+      return;
+    }
+
+    setSupabaseStatus('checking');
+    setSupabaseError('');
+    try {
+      await ensureSupabaseAnonSession();
+      setSupabaseStatus('connected');
+    } catch (e: unknown) {
+      const msg =
+        e && typeof e === 'object' && 'message' in e
+          ? String((e as any).message)
+          : '连接失败（未知错误）';
+      setSupabaseStatus('error');
+      setSupabaseError(msg);
+    }
+  };
+
+  useEffect(() => {
+    checkSupabaseStatus();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   
   const loadStorageInfo = async () => {
     try {
@@ -110,7 +143,7 @@ export default function SettingsScreen({ apiConfig, onUpdateConfig, onBack, full
       
       // 计算IndexedDB使用量（估算）
       let indexedDBUsage = 0;
-      const indexedDBKeys = ['conversations', 'moments', 'chat_memory_banks', 'ai_finance_data', 'documents', 'relationships'];
+      const indexedDBKeys = ['conversations', 'moments', 'chat_memory_banks', 'documents', 'relationships'];
       for (const key of indexedDBKeys) {
         try {
           const data = await smartLoad(key);
@@ -270,7 +303,6 @@ export default function SettingsScreen({ apiConfig, onUpdateConfig, onBack, full
         'conversations',
         'moments', 
         'chat_memory_banks',
-        'ai_finance_data',
         'documents',
         'relationships',
         'user_documents'
@@ -514,8 +546,8 @@ export default function SettingsScreen({ apiConfig, onUpdateConfig, onBack, full
           try {
             // 清空所有可能的IndexedDB数据
             const indexedDBKeys = [
-              'conversations', 'moments', 'chat_memory_banks', 
-              'ai_finance_data', 'documents', 'relationships', 'user_documents'
+              'conversations', 'moments', 'chat_memory_banks',
+              'documents', 'relationships', 'user_documents'
             ];
             
             for (const key of indexedDBKeys) {
@@ -580,7 +612,7 @@ export default function SettingsScreen({ apiConfig, onUpdateConfig, onBack, full
                 localStorage.setItem(key, JSON.stringify(value));
               }
             }
-          } else if (['moments', 'chat_memory_banks', 'ai_finance_data', 'documents', 'relationships', 'user_documents'].includes(key) && importedData.storageType === 'smart-storage-compatible') {
+          } else if (['moments', 'chat_memory_banks', 'documents', 'relationships', 'user_documents'].includes(key) && importedData.storageType === 'smart-storage-compatible') {
             try {
               // 其他大数据也使用移动设备优化
               if (quota.isMobile && Array.isArray(value) && value.length > 50) {
@@ -1059,6 +1091,56 @@ export default function SettingsScreen({ apiConfig, onUpdateConfig, onBack, full
               <span className="text-sm text-red-600">存储信息加载失败</span>
             </div>
           )}
+
+          {/* 云同步状态（Supabase） */}
+          <div className="bg-gray-50 border border-gray-200 rounded-xl p-4 mb-4">
+            <div className="flex items-center justify-between gap-2 mb-2">
+              <div className="flex items-center gap-2">
+                <Database className="w-4 h-4 text-gray-500" />
+                <span className="text-sm font-medium text-gray-700">云同步状态（Supabase）</span>
+              </div>
+              <button
+                onClick={checkSupabaseStatus}
+                className="px-3 py-1.5 rounded-lg text-xs font-medium border border-gray-300 hover:bg-white transition-colors"
+              >
+                重新检测
+              </button>
+            </div>
+
+            <div className="flex items-center gap-2 text-sm">
+              {supabaseStatus === 'checking' ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin text-gray-500" />
+                  <span className="text-gray-600">检测中…</span>
+                </>
+              ) : supabaseStatus === 'connected' ? (
+                <>
+                  <span className="inline-block w-2.5 h-2.5 rounded-full bg-green-500" />
+                  <span className="text-gray-800">已连接（云端可用）</span>
+                </>
+              ) : supabaseStatus === 'not_configured' ? (
+                <>
+                  <span className="inline-block w-2.5 h-2.5 rounded-full bg-gray-400" />
+                  <span className="text-gray-700">未配置（仅本地存储）</span>
+                </>
+              ) : (
+                <>
+                  <span className="inline-block w-2.5 h-2.5 rounded-full bg-red-500" />
+                  <span className="text-gray-800">连接失败（已回退本地）</span>
+                </>
+              )}
+            </div>
+
+            {supabaseStatus === 'error' && supabaseError ? (
+              <div className="mt-2 text-xs text-red-700 break-words">
+                {supabaseError}
+              </div>
+            ) : null}
+
+            <div className="mt-2 text-xs text-gray-500 leading-relaxed">
+              说明：云同步用于把聊天记录/记忆等存到云端，避免本地存储满导致白屏。未配置或连接失败时，App 会自动使用本地存储，不影响基本使用。
+            </div>
+          </div>
           
           {/* 存储管理操作 */}
           <div className="space-y-3 mb-4">

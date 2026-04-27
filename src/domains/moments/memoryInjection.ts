@@ -1,21 +1,13 @@
 import type { MomentPost } from '../../types';
-
-function safeJsonParse<T>(raw: string | null): T | null {
-  if (!raw) return null;
-  try {
-    return JSON.parse(raw) as T;
-  } catch {
-    return null;
-  }
-}
+import { smartLoad } from '../../utils/storage';
 
 export interface MomentsBundleLike {
   posts?: MomentPost[];
 }
 
-export function getConversationMomentsFromStorage(conversationId: string): MomentsBundleLike | null {
+export async function getConversationMomentsFromStorage(conversationId: string): Promise<MomentsBundleLike | null> {
   const key = `moments_${conversationId}`;
-  return safeJsonParse<MomentsBundleLike>(localStorage.getItem(key));
+  return ((await smartLoad(key)) as MomentsBundleLike | null) ?? null;
 }
 
 export async function buildMomentsMemorySystemMessage(options: {
@@ -26,7 +18,7 @@ export async function buildMomentsMemorySystemMessage(options: {
   const { conversationId, probability = 0.25, logDebug } = options;
 
   try {
-    const momentsData = getConversationMomentsFromStorage(conversationId);
+    const momentsData = await getConversationMomentsFromStorage(conversationId);
     if (!momentsData || Math.random() >= probability) return null;
 
     const posts = Array.isArray(momentsData.posts) ? momentsData.posts : [];

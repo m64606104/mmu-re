@@ -1,11 +1,4 @@
-function safeJsonParse<T>(raw: string | null): T | null {
-  if (!raw) return null;
-  try {
-    return JSON.parse(raw) as T;
-  } catch {
-    return null;
-  }
-}
+import { smartLoad } from '../../utils/storage';
 
 export async function buildGroupChatMemorySystemMessage(options: {
   conversationId: string;
@@ -15,7 +8,7 @@ export async function buildGroupChatMemorySystemMessage(options: {
   const { conversationId, probability = 0.25, logDebug } = options;
 
   try {
-    const allConvs = safeJsonParse<any[]>(localStorage.getItem('conversations'));
+    const allConvs = (await smartLoad('conversations')) as any[] | null;
     if (!allConvs || Math.random() >= probability) return null;
 
     const groupConvs = allConvs.filter(

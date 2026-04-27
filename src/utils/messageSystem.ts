@@ -10,6 +10,12 @@ export type { UserMessage } from './userSystem';
 
 let messageSyncIntervalId: number | null = null;
 
+const STORAGE_KEYS = {
+  sent: 'user_message_sent_messages',
+  received: 'user_message_received_messages',
+  conversations: 'user_message_conversations',
+} as const;
+
 export interface Conversation {
   id: string;
   participants: string[]; // 参与者用户码
@@ -66,14 +72,14 @@ function saveSentMessage(message: UserMessage): void {
     sentMessages.splice(0, sentMessages.length - 1000);
   }
   
-  localStorage.setItem('sent_messages', JSON.stringify(sentMessages));
+  localStorage.setItem(STORAGE_KEYS.sent, JSON.stringify(sentMessages));
 }
 
 /**
  * 获取已发送的消息
  */
 export function getSentMessages(): UserMessage[] {
-  const data = localStorage.getItem('sent_messages');
+  const data = localStorage.getItem(STORAGE_KEYS.sent);
   return data ? JSON.parse(data) : [];
 }
 
@@ -89,14 +95,14 @@ function saveReceivedMessage(message: UserMessage): void {
     receivedMessages.splice(0, receivedMessages.length - 1000);
   }
   
-  localStorage.setItem('received_messages', JSON.stringify(receivedMessages));
+  localStorage.setItem(STORAGE_KEYS.received, JSON.stringify(receivedMessages));
 }
 
 /**
  * 获取收到的消息
  */
 export function getReceivedMessages(): UserMessage[] {
-  const data = localStorage.getItem('received_messages');
+  const data = localStorage.getItem(STORAGE_KEYS.received);
   return data ? JSON.parse(data) : [];
 }
 
@@ -119,7 +125,7 @@ export function getChatHistory(userCode: string): UserMessage[] {
  * 获取对话列表
  */
 export function getConversations(): Conversation[] {
-  const data = localStorage.getItem('conversations');
+  const data = localStorage.getItem(STORAGE_KEYS.conversations);
   return data ? JSON.parse(data) : [];
 }
 
@@ -154,7 +160,7 @@ function updateConversation(fromUserCode: string, toUserCode: string, message: U
   // 按最后更新时间排序
   conversations.sort((a, b) => b.updatedAt - a.updatedAt);
   
-  localStorage.setItem('conversations', JSON.stringify(conversations));
+  localStorage.setItem(STORAGE_KEYS.conversations, JSON.stringify(conversations));
 }
 
 /**
@@ -170,7 +176,7 @@ export function markConversationAsRead(userCode: string): void {
   const conversation = conversations.find(c => c.id === conversationId);
   if (conversation) {
     conversation.unreadCount = 0;
-    localStorage.setItem('conversations', JSON.stringify(conversations));
+    localStorage.setItem(STORAGE_KEYS.conversations, JSON.stringify(conversations));
   }
 }
 

@@ -1,7 +1,6 @@
 import type { Message } from '../../types';
 import { parseRichContentMarkers } from './richContentParser';
 import { parseSpecialMarkers } from './specialMarkerParser';
-import { parseGiftMarker } from './giftMarkerParser';
 import { stripAvatarCommandMarkers } from './assistantMessageBuilder';
 
 type ProcessAssistantSpecialContentOptions = {
@@ -35,7 +34,7 @@ export async function processAssistantSpecialContent(
   let hasAvatarChange = false;
   let hasRestoreAvatar = false;
 
-  const richResult = parseRichContentMarkers({
+  const richResult = await parseRichContentMarkers({
     content,
     baseId,
     currentExtraCount: currentExtraCount + extraMessages.length,
@@ -57,18 +56,6 @@ export async function processAssistantSpecialContent(
   if (specialResult.blockedByCooldown.includes('redPacket')) blockedByCooldown.push('redPacket');
   if (specialResult.blockedByCooldown.includes('transfer')) blockedByCooldown.push('transfer');
 
-  const giftResult = await parseGiftMarker({
-    content,
-    baseId,
-    conversationId,
-    recentMessages,
-    currentExtraCount: currentExtraCount + extraMessages.length,
-  });
-  content = giftResult.content;
-  extraMessages.push(...giftResult.extraMessages);
-  logs.push(...giftResult.logs);
-  if (giftResult.blockedByCooldown) blockedByCooldown.push('gift');
-
   const avatarResult = stripAvatarCommandMarkers(content);
   content = avatarResult.content;
   hasAvatarChange = avatarResult.hasAvatarChange;
@@ -82,6 +69,6 @@ export async function processAssistantSpecialContent(
     blockedByCooldown,
     hasAvatarChange,
     hasRestoreAvatar,
-    shouldAbort: giftResult.shouldAbort,
+    shouldAbort: false,
   };
 }

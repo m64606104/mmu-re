@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { MessageCircle, Settings, Music, Phone, Heart, Bell, Play, Pause, SkipBack, SkipForward, MapPin, Sun, Palette, Upload, BookOpen, Mailbox, X, Database, Users, GraduationCap, Book, MessageSquare } from 'lucide-react';
+import { MessageCircle, Settings, Music, Phone, Heart, Bell, Play, Pause, SkipBack, SkipForward, MapPin, Sun, Palette, Upload, BookOpen, Mailbox, X, Database, Users, GraduationCap, Book, MessageSquare, ShoppingBag } from 'lucide-react';
 import { Screen, ThemeSettings } from '../types';
 import { getDefaultScreenForApp } from '../navigation/appEntry';
 
@@ -54,7 +54,15 @@ export default function HomeScreen({ onNavigate, theme }: HomeScreenProps) {
   // 应用布局状态
   const [appLayout, setAppLayout] = useState<string[]>(() => {
     const saved = localStorage.getItem('appLayout');
-    return saved ? JSON.parse(saved) : ['settings', 'social', 'easy-chat', 'kindergarten', 'theme', 'worldbook', 'music', 'phone', 'bell', 'mail', 'database'];
+    const defaults = ['settings', 'social', 'huaduoduo', 'easy-chat', 'kindergarten', 'theme', 'worldbook', 'music', 'phone', 'bell', 'mail', 'database'];
+    if (!saved) return defaults;
+    try {
+      const parsed = JSON.parse(saved) as string[];
+      // 保底补齐新App，避免老布局里看不到“花多多”
+      return parsed.includes('huaduoduo') ? parsed : ['huaduoduo', ...parsed];
+    } catch {
+      return defaults;
+    }
   });
   const [quickLayout, setQuickLayout] = useState<string[]>(() => {
     const saved = localStorage.getItem('quickLayout');
@@ -478,6 +486,7 @@ export default function HomeScreen({ onNavigate, theme }: HomeScreenProps) {
     database: { icon: Database, name: '资料库', onClick: () => onNavigate(getDefaultScreenForApp('tools')) },
     kindergarten: { icon: GraduationCap, name: '幼儿园', onClick: () => onNavigate(getDefaultScreenForApp('kindergarten')) },
     'easy-chat': { icon: MessageSquare, name: 'Easy Chat', onClick: () => onNavigate('easy-chat') },
+    huaduoduo: { icon: ShoppingBag, name: '花多多', onClick: () => onNavigate('shopping') },
   };
 
   // 获取当前壁纸样式

@@ -254,49 +254,6 @@ function tryExtractNaturalLanguage(content: string): DocumentMessage | null {
   return null;
 }
 
-/**
- * 优先级5: 解析旧版标记格式 [发文档:标题:类型]
- */
-function tryParseLegacy(content: string): DocumentMessage | null {
-  const pattern = /\[发文档:([^:]+):([^\]]+)\]([\s\S]*)/;
-  const match = content.match(pattern);
-  
-  if (match) {
-    const title = match[1].trim();
-    const typeStr = match[2].toLowerCase().trim();
-    const docContent = match[3].trim();
-    
-    const type: 'text' | 'markdown' | 'code' = 
-      typeStr === 'markdown' ? 'markdown' :
-      typeStr === 'code' ? 'code' : 'text';
-    
-    // 🔥 放宽限制：只要有内容就认为是有效文档（不再要求>10字符）
-    if (docContent.length > 0) {
-      return {
-        title,
-        content: sanitizeHTML(`<p>${escapeHTML(docContent)}</p>`),
-        type
-      };
-    } else {
-      // 如果标记存在但内容为空，返回一个提示文档
-      console.warn(`⚠️ [文档解析] 检测到文档标记"${title}"但内容为空`);
-      return {
-        title,
-        content: sanitizeHTML(`
-          <div style="color: #ff6b6b; background: #fff3f3; padding: 12px; border-radius: 8px; border-left: 4px solid #ff6b6b;">
-            <h4 style="margin: 0 0 8px 0;">⚠️ 文档内容为空</h4>
-            <p style="margin: 0; font-size: 14px;">AI发送了文档标记但未提供内容。</p>
-          </div>
-        `),
-        type,
-        greeting: '内容缺失'
-      };
-    }
-  }
-  
-  return null;
-}
-
 // ============================================
 // 主解析函数
 // ============================================
@@ -335,13 +292,6 @@ export function parseEnhancedDocument(content: string): DocumentMessage | null {
   if (nlpDoc) {
     console.log('✅ [文档解析] 自然语言提取成功');
     return nlpDoc;
-  }
-  
-  // 优先级5: 旧版标记格式
-  const legacyDoc = tryParseLegacy(content);
-  if (legacyDoc) {
-    console.log('✅ [文档解析] 旧版标记格式解析成功');
-    return legacyDoc;
   }
   
   // 未识别为文档

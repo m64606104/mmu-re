@@ -8,12 +8,19 @@ import { Conversation, Message, ApiConfig, UserProfile } from '../types';
 import { buildApiUrl } from './apiHelper';
 import { resolveSystemEmoji, isSingleEmojiText } from './systemEmoji';
 import {
+  validateAssistantOutput,
+  buildProtocolRetryInstruction,
+  isValidDocumentJsonOutput,
+  buildDocumentJsonRetryInstruction,
+} from '../domains/chat/outputProtocol';
+import {
   getConversationMemories, buildMemoryContext,
   shouldTriggerAutoSummary, updateSummaryCounter,
   buildMemorySummaryPrompt, parseMemorySummaryResponse, addMemory,
 } from './memorySystem';
 import { splitMessages, cleanAIMessage } from './messageFormatter';
 import { MEDIA_DECISION_GUIDANCE } from './mediaDecisionPrompt';
+import { generateDocxOriginalFile } from './documentFileGenerator';
 
 /* ── 内部状态 ── */
 interface PendingEntry { timerId: ReturnType<typeof setTimeout>; }
@@ -67,6 +74,60 @@ function extractStickerTokens(raw: string): { text: string; stickers: ParsedStic
 /* ── typing 通知 ── */
 type TypingListener = (convId: string, typing: boolean) => void;
 const typingListeners: TypingListener[] = [];
+
+function isDocumentGenerationIntent(text: string): boolean {
+  const t = (text || '').trim();
+  if (!t) return false;
+  if (/^(文档|写文档|生成文档|做文档|来个文档)$/i.test(t)) return true;
+  const hasDocKeyword = /(文档|报告|方案|合同|计划书|申请书|总结|通知|公文|说明书)/.test(t);
+  const hasGenerationVerb = /(生成|写|起草|整理|做一份|出一份|帮我做|来一份|给我一份|做个|来个)/.test(t);
+  return hasDocKeyword && hasGenerationVerb;
+}
+
+function looksLikeDocumentAttemptOutput(text: string): boolean {
+  const t = (text || '').trim();
+  if (!t) return false;
+  if (/\[DOC[:：]/i.test(t)) return true;
+  if (/发送了文档|生成了文档|文档如下|附件如下|报告如下/.test(t)) return true;
+  if (/^\s*《[^》]{2,}》\s*$/.test(t)) return true;
+  // 常见公文首部字段，出现多个时基本可判定为“在发文档正文”
+  const signals = ['签发日期', '文件编号', '呈报人', '事由', '特此说明', '特此报告'];
+  const hitCount = signals.reduce((count, s) => count + (t.includes(s) ? 1 : 0), 0);
+  return hitCount >= 2;
+}
+
+type ParsedDocumentPayload = {
+  title: string;
+  type: 'text' | 'markdown' | 'code';
+  greeting?: string;
+  content: string;
+};
+
+function parseDocumentJsonPayload(content: string): ParsedDocumentPayload | null {
+  const text = (content || '').trim();
+  if (!text) return null;
+  const fenced = text.match(/```(?:json)?\s*([\s\S]*?)```/i);
+  const candidate = (fenced ? fenced[1] : text).trim();
+  try {
+    const parsed = JSON.parse(candidate);
+    if (!parsed || typeof parsed !== 'object') return null;
+    const doc = (parsed as any).document && typeof (parsed as any).document === 'object'
+      ? (parsed as any).document
+      : parsed;
+    const title = typeof doc.title === 'string' ? doc.title.trim() : '';
+    const body = typeof doc.content === 'string' ? doc.content.trim() : '';
+    if (!title || !body) return null;
+    const type = doc.type === 'markdown' ? 'markdown' : doc.type === 'code' ? 'code' : 'text';
+    return {
+      title,
+      type,
+      greeting: typeof doc.greeting === 'string' ? doc.greeting.trim() : undefined,
+      content: body,
+    };
+  } catch {
+    return null;
+  }
+}
 
 function notifyTyping(convId: string, typing: boolean) {
   if (typing) generatingSet.add(convId); else generatingSet.delete(convId);
@@ -259,6 +320,22 @@ async function triggerReply(conversationId: string) {
       }
     }
 
+    const requireDocumentJson = Boolean(lastUserMsg && isDocumentGenerationIntent(lastUserMsg.content || ''));
+    if (requireDocumentJson) {
+      systemPrompt += `\n\n【强制文档协议】
+用户当前是在请求“生成文档”。
+你必须只输出一个 JSON 对象，格式如下：
+{
+  "document": {
+    "title": "文档标题",
+    "type": "text",
+    "greeting": "请查收",
+    "content": "完整正文"
+  }
+}
+禁止输出任何自然语言前后缀、禁止输出 [DOC:...]、禁止分条。`;
+    }
+
     // 🧠 记忆上下文
     if (conversation.enabledFeatures?.includes('memory-system')) {
       const memories = getConversationMemories(conversationId);
@@ -268,6 +345,7 @@ async function triggerReply(conversationId: string) {
 
     const bufferMs = (conversation.messageBufferSeconds ?? 15) * 1000;
     const contextMessages = packRecentUserMessagesForModel(conversation.messages.slice(-40), bufferMs);
+    const maxTokens = requireDocumentJson ? 8000 : 2000;
     const messages = [
       { role: 'system', content: systemPrompt },
       ...contextMessages.map(m => {
@@ -279,7 +357,7 @@ async function triggerReply(conversationId: string) {
     const res = await fetch(apiUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiConfig.apiKey}` },
-      body: JSON.stringify({ model: apiConfig.modelName, messages, temperature: 0.7, max_tokens: 2000 }),
+      body: JSON.stringify({ model: apiConfig.modelName, messages, temperature: 0.7, max_tokens: maxTokens }),
     });
 
     if (!res.ok) {
@@ -288,9 +366,93 @@ async function triggerReply(conversationId: string) {
     }
 
     const data = await res.json();
-    const aiContent = data.choices?.[0]?.message?.content?.trim();
+    let aiContent = data.choices?.[0]?.message?.content?.trim();
+
+    const outputValidation = validateAssistantOutput(aiContent || '');
+    if (!outputValidation.valid) {
+      console.warn('⚠️ [延迟回复] 检测到不合规输出，触发一次协议重试:', outputValidation.reason);
+      const retryRes = await fetch(apiUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiConfig.apiKey}` },
+        body: JSON.stringify({
+          model: apiConfig.modelName,
+          messages: [...messages, { role: 'system', content: buildProtocolRetryInstruction() }],
+          temperature: 0.7,
+          max_tokens: maxTokens,
+        }),
+      });
+      if (retryRes.ok) {
+        const retryData = await retryRes.json();
+        aiContent = retryData?.choices?.[0]?.message?.content?.trim() || aiContent;
+      }
+    }
+
+    const shouldForceDocumentJson = requireDocumentJson || looksLikeDocumentAttemptOutput(aiContent || '');
+    if (shouldForceDocumentJson && !isValidDocumentJsonOutput(aiContent || '')) {
+      console.warn('⚠️ [延迟回复] 检测到文档发送意图但未按JSON协议输出，触发文档协议重试');
+      const docRetryRes = await fetch(apiUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiConfig.apiKey}` },
+        body: JSON.stringify({
+          model: apiConfig.modelName,
+          messages: [...messages, { role: 'system', content: buildDocumentJsonRetryInstruction() }],
+          temperature: 0.3,
+          max_tokens: 9000,
+        }),
+      });
+      if (docRetryRes.ok) {
+        const docRetryData = await docRetryRes.json();
+        aiContent = docRetryData?.choices?.[0]?.message?.content?.trim() || aiContent;
+      }
+      if (!isValidDocumentJsonOutput(aiContent || '')) {
+        aiContent = JSON.stringify({
+          document: {
+            title: '文档生成失败，请重试',
+            type: 'text',
+            greeting: '请查收',
+            content: '本次文档生成未通过 JSON 协议校验。请重新发送“生成一份正式文档”再试一次。',
+          },
+        });
+      }
+    }
     if (!aiContent || aiContent === '[SKIP]' || aiContent === '[不回复]') {
       if (debugEnabled) console.log('🧪 [延迟回复调试] skipped', { aiContent });
+      notifyTyping(conversationId, false);
+      return;
+    }
+
+    const parsedDocument = parseDocumentJsonPayload(aiContent);
+    if (parsedDocument) {
+      let originalFile;
+      try {
+        originalFile = await generateDocxOriginalFile(parsedDocument.title, parsedDocument.content);
+      } catch (error) {
+        console.warn('⚠️ [延迟回复] 生成DOCX附件失败:', error);
+      }
+
+      const freshDocConv = _getConversation(conversationId);
+      if (!freshDocConv) {
+        notifyTyping(conversationId, false);
+        return;
+      }
+      const docMessage: Message = {
+        id: `ai_doc_${Date.now()}_${Math.random()}`,
+        role: 'assistant',
+        content: `已生成文档附件「${parsedDocument.title}」`,
+        timestamp: Date.now(),
+        document: {
+          title: parsedDocument.title,
+          content: parsedDocument.content,
+          type: parsedDocument.type,
+          greeting: parsedDocument.greeting || '请查收',
+          size: new Blob([parsedDocument.content]).size,
+          ...(originalFile ? { originalFile } : {}),
+        },
+      };
+      _updateConversation(conversationId, {
+        messages: [...freshDocConv.messages, docMessage],
+        lastMessageTime: Date.now(),
+      });
       notifyTyping(conversationId, false);
       return;
     }
@@ -433,7 +595,7 @@ function buildSystemPrompt(conversation: Conversation, userProfile: UserProfile)
 1. **回复长度自然不固定**
    - 有时一个字："哈""嗯""好"
    - 有时一句话："今天累死了"
-   - 有时几句连发（直接自然断句即可，不要输出任何拆分控制标记）
+   - 有时几句连发（用 [NEXT] 分隔，像微信一条条气泡发出去）
    - 只有真正想说的时候才打很多字
 
 2. **回复频率和节奏**
@@ -469,9 +631,9 @@ function buildSystemPrompt(conversation: Conversation, userProfile: UserProfile)
 
 所有特殊内容必须使用方括号标记，格式错误会导致内容丢失：
 
-RULE-1 消息拆条：
-  直接输出自然文本，系统会自动按语义拆成多条气泡。
-  ✅ "哈哈哈 你怎么才来 我等半天了"
+RULE-1 消息拆条：[NEXT]
+  多条消息之间用 [NEXT] 分隔。短回复不拆。
+  ✅ "哈哈哈[NEXT]你怎么才来[NEXT]我等半天了"
 
 RULE-2 图片：[IMG:描述]
   ✅ "看这个[IMG:今天拍的日落]"
@@ -484,19 +646,6 @@ RULE-4 语音：[VOICE:台词内容:秒数]
 
 RULE-5 表情包：[STICKER:描述]
   ✅ "[STICKER:一只快乐摇尾巴的柴犬]"
-  使用约束：
-  - 默认优先文字，只有确实更贴切时才发
-  - 不要在相邻两条回复都发 STICKER
-  - 单条回复最多一个 STICKER
-
-RULE-5.1 系统emoji表情：[EMOJI:关键词或emoji]
-  ✅ "[EMOJI:微笑]"
-  ✅ "[EMOJI:😂]"
-  使用约束：
-  - EMOJI 与 STICKER 二选一，避免同条混用
-  - 如果刚发过 EMOJI/STICKER，下一条优先纯文字
-
-${MEDIA_DECISION_GUIDANCE}
 
 RULE-6 不回复：[SKIP]
   当你选择不回复这条消息时输出 [SKIP]

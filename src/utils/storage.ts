@@ -34,7 +34,6 @@ const INDEXED_DB_KEYS = [
   'daily_teaching_data', // AI儿童每日学习数据（按childId分开）⭐ 新增
   'ai_interactions',    // AI儿童互动记录（教学、对话等）⭐ 新增
   'ai_content_pool',    // AI生成的新闻和公众号内容池⭐ 新增
-  'ai_finance_data',    // AI财务
   'relationships',      // 关系网络  
   'documents_library',  // 文档库
   'music_library',      // 音乐库

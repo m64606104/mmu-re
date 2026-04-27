@@ -509,7 +509,11 @@ const SubChatWindow: React.FC<SubChatWindowProps> = ({
     
     // 处理文档消息
     if (message.document) {
-      return `[发文档:${message.document.title}:${message.document.type}]`;
+      const typeText = message.document.type === 'text' ? '文本文档' : message.document.type === 'markdown' ? 'Markdown文档' : '代码文档';
+      const originalFileInfo = message.document.originalFile
+        ? `\n原始文件：${message.document.originalFile.fileName} (${message.document.originalFile.mimeType}, ${(message.document.originalFile.fileSize / 1024).toFixed(1)}KB)`
+        : '';
+      return `[${message.role === 'user' ? '用户' : 'AI'}发送了${typeText}]\n标题：${message.document.title}${originalFileInfo}\n内容：\n${message.document.content}`;
     }
     
     // 处理转账/红包消息

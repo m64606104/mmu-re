@@ -1,7 +1,6 @@
 import React from 'react';
-import { FileText, Eye, Save, Forward } from 'lucide-react';
+import { FileText, Eye, Save, Forward, Download } from 'lucide-react';
 import { DocumentMessage } from '../types';
-import { generateDocumentPreview } from '../utils/enhancedDocumentParser';
 
 interface WordStyleDocumentCardProps {
   document: DocumentMessage;
@@ -22,7 +21,26 @@ const WordStyleDocumentCard: React.FC<WordStyleDocumentCardProps> = ({
   onForward,
   compact = false
 }) => {
-  const preview = generateDocumentPreview(document, 80);
+  const hasOriginalAttachment = Boolean(document.originalFile?.base64Data);
+  const displayFileName = document.originalFile?.fileName || `${document.title}.docx`;
+  const displayFileSize = document.originalFile?.fileSize || document.size || new Blob([document.content]).size;
+  const previewLines = document.content
+    .replace(/\r\n/g, '\n')
+    .replace(/\r/g, '\n')
+    .split('\n')
+    .slice(0, 6)
+    .join('\n')
+    .trim();
+
+  const handleDownload = () => {
+    if (!document.originalFile?.base64Data) return;
+    const a = window.document.createElement('a');
+    a.href = document.originalFile.base64Data;
+    a.download = document.originalFile.fileName || `${document.title}.docx`;
+    window.document.body.appendChild(a);
+    a.click();
+    window.document.body.removeChild(a);
+  };
   
   // 文档类型图标颜色
   const getTypeColor = () => {
@@ -49,41 +67,47 @@ const WordStyleDocumentCard: React.FC<WordStyleDocumentCardProps> = ({
   };
   
   if (compact) {
-    // 紧凑模式：用于聊天气泡中
+    // 附件模式：用于聊天气泡中（不展示长正文）
     return (
-      <div className="word-doc-card-compact bg-white border-2 border-gray-200 rounded-lg overflow-hidden hover:border-blue-400 hover:shadow-md transition-all cursor-pointer">
+      <div className="word-doc-card-compact bg-white border border-slate-200 rounded-xl overflow-hidden hover:border-blue-300 hover:shadow-sm transition-all cursor-pointer">
         <div onClick={onClick} className="p-3">
-          {/* 顶部：图标和标题 */}
-          <div className="flex items-start gap-3">
-            <div className={`p-2 rounded ${getTypeColor()}`}>
+          <div className="flex items-center gap-3">
+            <div className={`p-2.5 rounded-lg ${getTypeColor()}`}>
               <FileText className="w-5 h-5" />
             </div>
             <div className="flex-1 min-w-0">
-              <h4 className="font-semibold text-sm text-gray-900 truncate">
-                {document.title}
+              <h4 className="font-semibold text-sm text-slate-900 truncate">
+                {displayFileName}
               </h4>
-              <p className="text-xs text-gray-500 mt-0.5">
-                {getTypeText()}文档
+              <p className="text-xs text-slate-500 mt-0.5">
+                附件 · {getTypeText()} · {(displayFileSize / 1024).toFixed(1)} KB
               </p>
+              {hasOriginalAttachment && (
+                <span className="inline-block mt-1 px-1.5 py-0.5 text-[10px] rounded bg-emerald-50 text-emerald-700 border border-emerald-200">
+                  DOCX附件
+                </span>
+              )}
             </div>
+            <button className="text-xs px-2 py-1 rounded-md bg-slate-100 text-slate-600">查看</button>
           </div>
-          
-          {/* 预览文本 */}
-          <p className="text-xs text-gray-600 mt-2 line-clamp-2">
-            {preview}
-          </p>
+          {previewLines && (
+            <div className="mt-2 rounded-lg border border-slate-100 bg-slate-50 px-2.5 py-2">
+              <pre className="text-[11px] leading-5 whitespace-pre-wrap break-words text-slate-600 font-sans">
+                {previewLines}
+              </pre>
+            </div>
+          )}
         </div>
         
-        {/* 底部操作栏 */}
         {(onSave || onForward) && (
-          <div className="border-t bg-gray-50 px-3 py-2 flex gap-2">
+          <div className="border-t bg-slate-50 px-3 py-2 flex gap-2">
             {onSave && (
               <button
                 onClick={(e) => {
                   e.stopPropagation();
                   onSave();
                 }}
-                className="flex-1 flex items-center justify-center gap-1 text-xs text-gray-600 hover:text-blue-600 transition-colors py-1"
+                className="flex-1 flex items-center justify-center gap-1 text-xs text-slate-600 hover:text-blue-600 transition-colors py-1"
               >
                 <Save className="w-3.5 h-3.5" />
                 保存
@@ -95,10 +119,22 @@ const WordStyleDocumentCard: React.FC<WordStyleDocumentCardProps> = ({
                   e.stopPropagation();
                   onForward();
                 }}
-                className="flex-1 flex items-center justify-center gap-1 text-xs text-gray-600 hover:text-blue-600 transition-colors py-1"
+                className="flex-1 flex items-center justify-center gap-1 text-xs text-slate-600 hover:text-blue-600 transition-colors py-1"
               >
                 <Forward className="w-3.5 h-3.5" />
                 转发
+              </button>
+            )}
+            {hasOriginalAttachment && (
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleDownload();
+                }}
+                className="flex-1 flex items-center justify-center gap-1 text-xs text-emerald-700 hover:text-emerald-800 transition-colors py-1"
+              >
+                <Download className="w-3.5 h-3.5" />
+                下载附件
               </button>
             )}
           </div>
@@ -131,9 +167,9 @@ const WordStyleDocumentCard: React.FC<WordStyleDocumentCardProps> = ({
         
         {/* 预览内容 */}
         <div className="mt-4 p-3 bg-gray-50 rounded-lg">
-          <p className="text-sm text-gray-700 line-clamp-3">
-            {preview}
-          </p>
+          <pre className="text-sm text-gray-700 whitespace-pre-wrap break-words line-clamp-6 font-sans">
+            {previewLines}
+          </pre>
         </div>
         
         {/* 查看按钮 */}

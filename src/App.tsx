@@ -7,7 +7,7 @@ import { getDefaultScreenForApp, isAppPageValue } from './navigation/appEntry';
 import type { AppPage } from './navigation/appEntry';
 import { buildRouteHash, normalizeNavigationTarget, supportsConversationContext } from './navigation/navigationPolicy';
 import { RuntimeServices } from './services/RuntimeServices';
-import { load, save, initializeCache, checkMigrationNeeded, migrateData, getStorageStatus } from './domains/storage';
+import { load, save, initializeCache, checkMigrationNeeded, migrateData } from './domains/storage';
 import { backgroundGenerationService } from './domains/generation';
 import { initializeLetters, initializeLetterTimers } from './domains/letters';
 import { supabase } from './services/supabaseClient';
@@ -18,6 +18,7 @@ import {
   supabaseAppendMessages,
   supabaseSyncDerivedMemory,
 } from './services/supabaseData';
+import { smartLoad, smartSave } from './utils/storage';
 import { trimConversationsForCache } from './services/conversationCache';
 import { Letter } from './types/letter';
 
@@ -43,7 +44,7 @@ const SCREEN_VALUES = new Set<Screen>([
   'relationships', 'announcement', 'wallet', 'shopping', 'user-system', 'order-history',
   'database', 'letterbox', 'letter-writing', 'pen-pals', 'archived-letters', 'achievements',
   'favorite-letters', 'stamp-collection', 'letter-notifications', 'letter-home', 'letter-timeline',
-  'letter-cards', 'bottle-fishing', 'recycle-bin', 'favorite-replies', 'unreplied',
+  'letter-cards', 'bottle-fishing', 'recycle-bin', 'favorite-replies', 'unreplied', 'huaduoduo', 'huaduoduo-gogo',
   'kindergarten', 'worldbook', 'easy-chat', 'sticker-management',
 ]);
 
@@ -116,7 +117,6 @@ function App() {
     return safeLoadFromLocalStorage('theme', { wallpaper: 'gradient-5' });
   });
   const [currentShopType, setCurrentShopType] = useState<ShopType>('food');
-  const [showMigrationPrompt, setShowMigrationPrompt] = useState(false);
   const [replyToLetter, setReplyToLetter] = useState<Letter | null>(null);
   
   // 全屏模式状态
@@ -126,7 +126,7 @@ function App() {
 
   // 桌面布局重置函数
   const resetDesktopLayout = useCallback(() => {
-    const defaultAppLayout = ['settings', 'social', 'easy-chat', 'kindergarten', 'theme', 'worldbook', 'music', 'phone', 'bell', 'mail', 'database'];
+    const defaultAppLayout = ['settings', 'social', 'huaduoduo', 'easy-chat', 'kindergarten', 'theme', 'worldbook', 'music', 'phone', 'bell', 'mail', 'database'];
     const defaultQuickLayout = ['announcement', 'social', 'heart', 'settings'];
     const defaultDockLayout = ['phone', 'social', 'music', 'settings'];
     
@@ -138,33 +138,7 @@ function App() {
     window.location.reload();
   }, []);
 
-  // 检查存储迁移状态
-  useEffect(() => {
-    const checkStorage = async () => {
-      const needsMigration = checkMigrationNeeded();
-      
-      if (needsMigration) {
-        // 检查是否已经显示过升级提示（永远只显示一次）
-        const hasShownUpgrade = localStorage.getItem('hasShownStorageUpgrade');
-        
-        if (!hasShownUpgrade) {
-          // 检查localStorage使用状况
-          const status = await getStorageStatus();
-          
-          // 如果有需要迁移的数据，显示迁移提示
-          if (status.localStorage.needsMigration.length > 0) {
-            console.log(`📊 发现 ${status.localStorage.needsMigration.length} 项数据需要迁移`);
-            setShowMigrationPrompt(true);
-            
-            // 标记已显示过升级提示（永久标记）
-            localStorage.setItem('hasShownStorageUpgrade', 'true');
-          }
-        }
-      }
-    };
-    
-    checkStorage();
-  }, []);
+  // 不再弹出迁移提示弹窗：数据会按需自动迁移（无打扰）
 
   // 初始化存储系统和对话数据
   useEffect(() => {
@@ -312,86 +286,8 @@ function App() {
         console.error('❌ 匿名信件合并失败:', error);
       }
 
-      // 💰 智能财务系统：批量激活所有AI
-      if (loadedConversations.length > 0 && apiConfig) {
-        try {
-          const { batchActivateAIFinanceSystems } = await import('./utils/aiFinanceActivator');
-          const { processAllAutoIncome } = await import('./utils/aiFinance');
-          
-          // 批量激活所有AI的财务系统
-          setTimeout(async () => {
-            console.log('🚀 开始批量激活AI智能财务系统...');
-            const result = await batchActivateAIFinanceSystems(loadedConversations, apiConfig);
-            console.log(`✅ 财务系统激活完成: 成功${result.success}个, 失败${result.failed}个`);
-            
-            // 处理一次自动收入
-            await processAllAutoIncome();
-            
-            // 🎯 初始化简化升级系统（修复理解力进度条）
-            const { checkUpgradeSystemNeedsInit, initializeAllAIUpgradeSystem } = await import('./utils/initializeUpgradeSystem');
-            const needsInit = await checkUpgradeSystemNeedsInit();
-            if (needsInit) {
-              console.log('🔧 检测到旧的升级系统，开始初始化...');
-              const result = await initializeAllAIUpgradeSystem();
-              console.log(`✅ 升级系统初始化完成: 更新了${result.updatedAI}个AI，修复了理解力进度条显示`);
-            }
-            
-            // 💬 修复AI儿童聊天机械复读问题
-            const { checkAIChildNeedsPromptUpdate, updateAllAIChildPrompts } = await import('./utils/updateAIChildPrompts');
-            const needsPromptUpdate = await checkAIChildNeedsPromptUpdate();
-            if (needsPromptUpdate) {
-              console.log('🤖 检测到AI儿童需要更新聊天规则，开始修复机械复读问题...');
-              const promptResult = await updateAllAIChildPrompts();
-              console.log(`✅ AI儿童聊天优化完成: 更新了${promptResult.updatedAI}个AI，聊天现在更自然了！`);
-            }
-            
-            // 👨‍👩‍👧‍👦 修复用户称呼硬编码问题
-            const { checkNeedsUserTitleUpdate, updateAllUserTitleReferences } = await import('./utils/updateUserTitleReferences');
-            const needsTitleUpdate = await checkNeedsUserTitleUpdate();
-            if (needsTitleUpdate) {
-              console.log('👨‍👩‍👧‍👦 检测到AI儿童需要更新用户称呼设置，开始修复硬编码"妈妈"问题...');
-              const titleResult = await updateAllUserTitleReferences();
-              console.log(`✅ 用户称呼优化完成: 更新了${titleResult.updatedAI}个AI，现在会使用个性化称呼！`);
-            }
-            
-            // 📚 批量关闭所有现有角色的世界书
-            console.log('📚 开始批量关闭所有现有角色的世界书...');
-            let worldbookDisabledCount = 0;
-            const updatedConversations = loadedConversations.map(conv => {
-              if (conv.characterSettings && conv.characterSettings.disableWorldbook !== true) {
-                worldbookDisabledCount++;
-                return {
-                  ...conv,
-                  characterSettings: {
-                    ...conv.characterSettings,
-                    disableWorldbook: true
-                  }
-                };
-              }
-              return conv;
-            });
-            
-            if (worldbookDisabledCount > 0) {
-              setConversations(updatedConversations);
-              await save('conversations', trimConversationsForCache(updatedConversations));
-              console.log(`✅ 世界书批量关闭完成: 已为${worldbookDisabledCount}个角色关闭世界书`);
-            } else {
-              console.log('✅ 所有角色的世界书已经是关闭状态');
-            }
-            
-            // 📊 修复理解力数据显示问题
-            const { checkNeedsComprehensionFix, fixAllComprehensionData } = await import('./utils/fixComprehensionData');
-            const needsComprehensionFix = await checkNeedsComprehensionFix();
-            if (needsComprehensionFix) {
-              console.log('📊 检测到AI儿童理解力数据格式需要修复，开始优化显示...');
-              const comprehensionResult = await fixAllComprehensionData();
-              console.log(`✅ 理解力显示优化完成: 修复了${comprehensionResult.fixedAI}个AI，进度条现在显示正确！`);
-            }
-          }, 3000); // 延迟3秒执行，避免阻塞初始化
-        } catch (error) {
-          console.error('激活AI智能财务系统失败:', error);
-        }
-      }
+      // 已移除：AI财务系统（批量激活/自动收入/自动支出）
+      // 其他升级/修复任务仍会在应用启动后正常运行（在对应模块内部按需触发）。
     };
     
     loadData();
@@ -485,21 +381,7 @@ function App() {
     localStorage.setItem('userProfile', JSON.stringify(userProfile));
   }, [userProfile]);
 
-  // 💰 定时处理AI自动收入（每小时检查一次）
-  useEffect(() => {
-    const processIncomeInterval = setInterval(async () => {
-      try {
-        const { processAllAutoIncome, processAllAutoExpenses } = await import('./utils/aiFinance');
-        await processAllAutoIncome();
-        await processAllAutoExpenses(); // 内置30%概率自动支出
-        console.log('✅ 定时处理AI财务系统完成');
-      } catch (error) {
-        console.error('⚠️ 定时处理AI财务系统失败:', error);
-      }
-    }, 30 * 60 * 1000); // 每30分钟执行一次
-
-    return () => clearInterval(processIncomeInterval);
-  }, []);
+  // 已移除：AI财务系统（定时自动收入/自动支出）
 
   // 📬 初始化慢邮件系统（数据加载 + 定时器）
   useEffect(() => {
@@ -634,81 +516,6 @@ function App() {
     }
   }, [currentConversationId, navigateTo]);
 
-  // 送礼物给AI
-  const handleSendGiftToAI = useCallback((product: any, recipientId: string, recipientName: string, shopType: 'food' | 'movie' | 'shopping') => {
-    const giftMessage: Message = {
-      id: `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-      role: 'user',
-      content: `给你的礼物`,
-      timestamp: Date.now(),
-      order: {
-        type: 'gift',
-        source: shopType === 'food' ? 'eleme' : shopType === 'movie' ? 'movie' : 'taobao',
-        products: [{
-          id: product.id,
-          name: product.name,
-          price: product.price,
-          quantity: 1,
-          image: product.image
-        }],
-        totalAmount: product.price,
-        recipientId,
-        recipientName,
-        message: '给你买的小礼物～',
-        status: 'pending',
-        orderNumber: `ORDER${Date.now()}`
-      }
-    };
-    
-    // 添加到对话中
-    const conversation = conversations.find(c => c.id === recipientId);
-    if (conversation) {
-      updateConversation(recipientId, {
-        messages: [...conversation.messages, giftMessage],
-        lastMessageTime: Date.now()
-      });
-      
-      // 切换到聊天页面
-      navigateTo('chat', recipientId);
-    }
-  }, [conversations, updateConversation, navigateTo]);
-
-  // 请AI代付
-  const handleRequestAIPay = useCallback((product: any, aiId: string, shopType: 'food' | 'movie' | 'shopping') => {
-    const payRequestMessage: Message = {
-      id: `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-      role: 'user',
-      content: `请你帮我代付`,
-      timestamp: Date.now(),
-      order: {
-        type: 'payRequest',
-        source: shopType === 'food' ? 'eleme' : shopType === 'movie' ? 'movie' : 'taobao',
-        products: [{
-          id: product.id,
-          name: product.name,
-          price: product.price,
-          quantity: 1,
-          image: product.image
-        }],
-        totalAmount: product.price,
-        message: '帮我付一下～',
-        status: 'pending',
-        orderNumber: `PAY${Date.now()}`
-      }
-    };
-    
-    const conversation = conversations.find(c => c.id === aiId);
-    if (conversation) {
-      updateConversation(aiId, {
-        messages: [...conversation.messages, payRequestMessage],
-        lastMessageTime: Date.now()
-      });
-      
-      // 切换到聊天页面
-      navigateTo('chat', aiId);
-    }
-  }, [conversations, updateConversation, navigateTo]);
-
   // 添加消息到指定对话（用于AI主动发消息）
   const addMessageToConversation = useCallback((conversationId: string, message: Message) => {
     setConversations(prev => prev.map(conv => {
@@ -741,7 +548,7 @@ function App() {
   }, [currentScreen, currentConversationId]);
 
   // 导入角色数据
-  const handleImportCharacter = useCallback((data: any) => {
+  const handleImportCharacter = useCallback(async (data: any) => {
     try {
       console.log('🔄 开始导入角色数据...', data);
       
@@ -773,8 +580,7 @@ function App() {
       // 🧠 导入记忆库数据（完整MemoryBank）
       if (data.memoryBank && data.memoryBank.memories) {
         console.log('🧠 导入记忆库数据...');
-        const memoryBanksData = localStorage.getItem('chat_memory_banks');
-        const allMemoryBanks = memoryBanksData ? JSON.parse(memoryBanksData) : [];
+        const allMemoryBanks = ((await smartLoad('chat_memory_banks')) as any[]) || [];
         
         // 创建新的记忆库
         const newMemoryBank = {
@@ -784,7 +590,7 @@ function App() {
         };
         
         allMemoryBanks.push(newMemoryBank);
-        localStorage.setItem('chat_memory_banks', JSON.stringify(allMemoryBanks));
+        await smartSave('chat_memory_banks', allMemoryBanks);
         console.log('✅ 记忆库导入成功，记忆条数:', newMemoryBank.memories?.length || 0);
       }
       
@@ -792,7 +598,7 @@ function App() {
       if (data.moments) {
         console.log('📸 导入朋友圈数据...');
         const momentsKey = `moments_${newConversationId}`;
-        localStorage.setItem(momentsKey, JSON.stringify(data.moments));
+        await smartSave(momentsKey, data.moments);
         console.log('✅ 朋友圈导入成功，朋友圈条数:', data.moments.posts?.length || 0);
       }
       
@@ -800,15 +606,14 @@ function App() {
       if (data.finance) {
         console.log('💰 导入AI财务数据...');
         const financeKey = `ai_finance_${newConversationId}`;
-        localStorage.setItem(financeKey, JSON.stringify(data.finance));
+        await smartSave(financeKey, data.finance);
         console.log('✅ AI财务数据导入成功');
       }
       
       // 🔗 导入关系网络数据
       if (data.relationships && data.relationships.length > 0) {
         console.log('🔗 导入关系网络数据...');
-        const relationshipsData = localStorage.getItem('relationships');
-        const allRelationships = relationshipsData ? JSON.parse(relationshipsData) : [];
+        const allRelationships = ((await smartLoad('relationships')) as any[]) || [];
         
         // 更新关系中的ID引用
         const updatedRelationships = data.relationships.map((rel: any) => ({
@@ -820,15 +625,14 @@ function App() {
         }));
         
         allRelationships.push(...updatedRelationships);
-        localStorage.setItem('relationships', JSON.stringify(allRelationships));
+        await smartSave('relationships', allRelationships);
         console.log('✅ 关系网络导入成功，关系数量:', updatedRelationships.length);
       }
       
       // 📚 导入文档库数据
       if (data.documents && data.documents.length > 0) {
         console.log('📚 导入文档库数据...');
-        const documentLibraryData = localStorage.getItem('document_library');
-        const allDocuments = documentLibraryData ? JSON.parse(documentLibraryData) : [];
+        const allDocuments = ((await smartLoad('document_library')) as any[]) || [];
         
         // 更新文档的关联ID
         const updatedDocuments = data.documents.map((doc: any) => ({
@@ -839,7 +643,7 @@ function App() {
         }));
         
         allDocuments.push(...updatedDocuments);
-        localStorage.setItem('document_library', JSON.stringify(allDocuments));
+        await smartSave('document_library', allDocuments);
         console.log('✅ 文档库导入成功，文档数量:', updatedDocuments.length);
       }
       
@@ -1042,26 +846,6 @@ function App() {
     setConversations(prev => [newConversation, ...prev]);
     setCurrentConversationId(newConversation.id);
     
-    // 💰 为新AI初始化智能财务系统
-    setTimeout(async () => {
-      try {
-        const { autoConfigureIncome } = await import('./utils/smartFinanceSystem');
-        const { getAIFinanceData } = await import('./utils/aiFinance');
-        
-        // 初始化AI财务数据（会根据角色设置智能生成初始资金）
-        await getAIFinanceData(newConversation.id, newConversation.characterSettings);
-        
-        // 配置AI收入（根据角色设置智能配置）
-        if (apiConfig) {
-          await autoConfigureIncome(newConversation, apiConfig);
-        }
-        
-        console.log(`💰 已为新AI ${friendData.nickname} 初始化智能财务系统`);
-      } catch (error) {
-        console.error('初始化AI财务系统失败:', error);
-      }
-    }, 1000); // 延迟1秒，避免阻塞界面
-    
     navigateTo('chat', newConversation.id);
   }, [navigateTo, apiConfig]);
 
@@ -1147,8 +931,6 @@ function App() {
     addFriend,
     createGroup,
     onNavigateToPrivateChat: handleNavigateToPrivateChat,
-    onSendGiftToAI: handleSendGiftToAI,
-    onRequestAIPay: handleRequestAIPay,
   });
 
   return (
@@ -1183,12 +965,9 @@ function App() {
         conversations={conversations}
         apiConfig={apiConfig}
         currentScreen={currentScreen}
-        showMigrationPrompt={showMigrationPrompt}
-        onCloseMigrationPrompt={() => setShowMigrationPrompt(false)}
-        onMigrationComplete={() => {
-          setShowMigrationPrompt(false);
-          window.location.reload();
-        }}
+        showMigrationPrompt={false}
+        onCloseMigrationPrompt={() => {}}
+        onMigrationComplete={() => {}}
         onNewMessage={addMessageToConversation}
         onUpdateProactiveSettings={updateProactiveMessagingTime}
       />
