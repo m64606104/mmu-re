@@ -21,13 +21,30 @@ const LOCAL_STORAGE_KEYS = [
   'landscapeImage',     // 风景壁纸
   'bannerImage',        // 头像壁纸
   'appSettings',        // 应用设置
-  'uiPreferences'       // UI偏好
+  'uiPreferences',      // UI偏好
+  'fullscreenMode',     // 全屏开关
+  'cloudSyncSettings',  // 云同步配置
+  'appLayout',          // 首页布局
+  'quickLayout',        // 快捷区布局
+  'dockLayout',         // 底栏布局
+  'currentTrack',       // 当前音乐
+  'countdownEvent',     // 倒计时事件
+  'easychat_ui_style',  // EasyChat UI风格
+  'easychat_launched',  // EasyChat 首次启动标记
+  'api_url',            // EasyChat 旧接口配置
+  'api_key',
+  'api_model',
+  'userSettings',        // 群聊等功能的UI偏好（小配置）
+  'musixmatch_api_key',  // 歌词服务密钥（小配置）
+  'energy_saving_config', // 节能模式配置（小配置）
 ];
 
 // 🔵 IndexedDB 专用键（所有大数据）
 const INDEXED_DB_KEYS = [
   'conversations',      // 对话列表
   'moments',            // 朋友圈数据
+  'moments_data',       // 朋友圈扩展数据
+  'moments_notifications', // 朋友圈通知
   'chat_memory_banks',  // 记忆库
   'ai_memory_banks',    // AI儿童词汇记忆库（专用）⭐ 新增
   'daily_card_pools',   // AI儿童每日词卡池（按childId分开）⭐ 新增
@@ -35,15 +52,66 @@ const INDEXED_DB_KEYS = [
   'ai_interactions',    // AI儿童互动记录（教学、对话等）⭐ 新增
   'ai_content_pool',    // AI生成的新闻和公众号内容池⭐ 新增
   'relationships',      // 关系网络  
+  'ai_relationships',   // AI关系数据
+  'character_relationships_v2', // 角色关系数据
+  'document_library',   // 文档库（实际使用key）
   'documents_library',  // 文档库
   'music_library',      // 音乐库
   'user_data',          // 用户扩展数据
   'app_cache',          // 应用缓存
   'slow_letters',       // 慢邮件/信件数据
   'custom_pen_pals',    // 自定义笔友数据
+  'proactive_messaging_state', // 主动消息状态
+  'mobile_ai_chat_worldbooks', // 世界书条目
+  'mobile_ai_chat_worldbook_categories', // 世界书分类（旧移动端世界书模块）
+  'worldbook_categories',      // 世界书分类
+  'wallet_data',               // 钱包（含交易记录）
+  'ai_wallet_data',            // AI钱包
+  'current_user',              // 用户系统当前用户
+  'friends_list',              // 用户系统好友列表
+  'user_message_sent_messages',     // 用户间消息
+  'user_message_received_messages', // 用户间消息
+  'user_message_conversations',     // 用户间消息会话
+  'penpal_share_codes',        // 笔友分享码
+  'customMemes',               // 自定义热梗
+  'momentCycles',              // 朋友圈周期状态
+  'ai_social_relationships',   // 朋友圈社交关系
+  'moments_visibility_groups', // 朋友圈可见分组
+  'official_accounts',         // 公众号账号与文章
+  'letter_memories',           // 信件记忆库
+  'group_private_memory_bridges', // 群聊↔私聊 记忆桥接
+  'huaduoduo_super_cart',      // 花多多购物车
+  'huaduoduo_orders',          // 花多多订单（增长型）
+  'huaduoduo_addresses',       // 花多多地址列表
+  'friendRequests',            // 联系人好友申请
+  'ai_nicknames',              // 笔友备注名
+  'letter_achievements',       // 慢邮件成就进度
+  'letter_notifications',      // 慢邮件通知
+  'bottle_fishing_record',     // 漂流瓶每日记录
+  'bottle_stats',              // 漂流瓶统计
+  'bottle_content_diversity',  // 漂流瓶内容多样性历史
+  'api_presets_data',          // API预设方案
+  'api_usage_stats',           // API调用统计
+  'api_usage_limits',          // API调用限制
   'easychat_contacts',      // EasyChat 联系人
   'easychat_conversations', // EasyChat 会话（含图片）
-  'easychat_user'           // EasyChat 用户数据（含头像）
+  'easychat_user',          // EasyChat 用户数据（含头像）
+  'ai_life_sim_states',     // AI生活模拟状态（后台引擎）
+];
+
+const GROWING_DATA_PREFIXES = [
+  'moments_',
+  'last_moment_',
+  'moments_count_',
+  'ai_finance_',
+  'document_library_',
+  'easychat_conversations_',
+  'daily_news_',
+  'subchat_data_',
+  'ai_status_',
+  'content_variation_',
+  'shopping_cart_',
+  'image_gen_moments_daily_',
 ];
 
 /**
@@ -55,7 +123,14 @@ const shouldUseLocalStorage = (key: string): boolean => {
 
 const shouldUseIndexedDB = (key: string): boolean => {
   return INDEXED_DB_KEYS.includes(key) || 
-         INDEXED_DB_KEYS.some(k => key.startsWith(k + '_'));
+         INDEXED_DB_KEYS.some(k => key.startsWith(k + '_')) ||
+         GROWING_DATA_PREFIXES.some(prefix => key.startsWith(prefix));
+};
+
+export type StorageLayer = 'localStorage' | 'indexedDB';
+
+export const resolveStorageLayer = (key: string): StorageLayer => {
+  return shouldUseLocalStorage(key) ? 'localStorage' : 'indexedDB';
 };
 
 // IndexedDB 配置
@@ -91,6 +166,36 @@ const openDB = (): Promise<IDBDatabase> => {
       }
     };
   });
+};
+
+export const dumpIndexedDBData = async (): Promise<Record<string, any>> => {
+  const result: Record<string, any> = {};
+  try {
+    const db = await openDB();
+    const transaction = db.transaction([STORE_NAME], 'readonly');
+    const store = transaction.objectStore(STORE_NAME);
+    const request = store.openCursor();
+
+    await new Promise<void>((resolve, reject) => {
+      request.onsuccess = () => {
+        const cursor = request.result;
+        if (cursor) {
+          result[String(cursor.key)] = cursor.value;
+          cursor.continue();
+        } else {
+          resolve();
+        }
+      };
+      request.onerror = () => reject(request.error);
+      transaction.onerror = () => reject(transaction.error);
+    });
+
+    db.close();
+  } catch (error) {
+    console.error('❌ 读取IndexedDB全量数据失败:', error);
+    throw error;
+  }
+  return result;
 };
 
 /**
@@ -285,35 +390,81 @@ export const migrateData = async (): Promise<{
   const migratedKeys: string[] = [];
   const errors: string[] = [];
   
-  console.log('🔄 开始数据迁移: localStorage → IndexedDB');
-  
-  // 找到需要迁移的数据
-  const keysToMigrate: string[] = [];
+  console.log('🔄 开始数据迁移（按新规则重建）');
+
+  // 1) localStorage -> IndexedDB
+  const localToIndexed: string[] = [];
   for (let i = 0; i < localStorage.length; i++) {
     const key = localStorage.key(i);
     if (key && shouldUseIndexedDB(key)) {
-      keysToMigrate.push(key);
+      localToIndexed.push(key);
     }
   }
-  
-  console.log(`📋 发现 ${keysToMigrate.length} 项需要迁移:`, keysToMigrate);
-  
-  // 迁移每一项
-  for (const key of keysToMigrate) {
+
+  console.log(`📋 发现 ${localToIndexed.length} 项需要从 localStorage 迁移到 IndexedDB`);
+
+  for (const key of localToIndexed) {
     try {
       const data = localStorage.getItem(key);
       if (data) {
-        const parsed = JSON.parse(data);
+        let parsed: any = data;
+        try {
+          parsed = JSON.parse(data);
+        } catch {
+          // 保留原始字符串
+        }
         await saveToIndexedDB(key, parsed);
         localStorage.removeItem(key);
-        migratedKeys.push(key);
-        console.log(`✅ 已迁移: ${key}`);
+        migratedKeys.push(`local->idb:${key}`);
+        console.log(`✅ 已迁移 local->idb: ${key}`);
       }
     } catch (error) {
       const msg = error instanceof Error ? error.message : '未知错误';
-      errors.push(`${key}: ${msg}`);
-      console.error(`❌ 迁移失败 ${key}:`, error);
+      errors.push(`local->idb:${key}: ${msg}`);
+      console.error(`❌ 迁移失败 local->idb ${key}:`, error);
     }
+  }
+
+  // 2) IndexedDB -> localStorage（防止小配置误入大存储）
+  try {
+    const indexedAll = await dumpIndexedDBData();
+    const indexedToLocal = Object.keys(indexedAll).filter((key) => shouldUseLocalStorage(key));
+    console.log(`📋 发现 ${indexedToLocal.length} 项需要从 IndexedDB 回迁到 localStorage`);
+
+    for (const key of indexedToLocal) {
+      try {
+        saveToLocal(key, indexedAll[key]);
+        // 删除 IndexedDB 中误存的同名键，保留 localStorage 中的新值
+        try {
+          const db = await openDB();
+          const transaction = db.transaction([STORE_NAME], 'readwrite');
+          const store = transaction.objectStore(STORE_NAME);
+          store.delete(key);
+          await new Promise<void>((resolve, reject) => {
+            transaction.oncomplete = () => {
+              db.close();
+              resolve();
+            };
+            transaction.onerror = () => {
+              db.close();
+              reject(transaction.error);
+            };
+          });
+        } catch (delErr) {
+          console.warn(`⚠️ 回迁后删除IndexedDB旧键失败 ${key}:`, delErr);
+        }
+        migratedKeys.push(`idb->local:${key}`);
+        console.log(`✅ 已迁移 idb->local: ${key}`);
+      } catch (error) {
+        const msg = error instanceof Error ? error.message : '未知错误';
+        errors.push(`idb->local:${key}: ${msg}`);
+        console.error(`❌ 迁移失败 idb->local ${key}:`, error);
+      }
+    }
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : '未知错误';
+    errors.push(`scan-indexeddb: ${msg}`);
+    console.error('❌ 扫描IndexedDB失败:', error);
   }
   
   const success = errors.length === 0;
@@ -584,6 +735,26 @@ export const clearAllData = async (): Promise<void> => {
   console.log('✅ 所有数据已清空');
 };
 
+export const cleanupLegacyLargeLocalStorage = (): { removedKeys: string[] } => {
+  const removedKeys: string[] = [];
+
+  for (let i = localStorage.length - 1; i >= 0; i--) {
+    const key = localStorage.key(i);
+    if (!key) continue;
+    if (shouldUseLocalStorage(key)) continue;
+    if (!shouldUseIndexedDB(key)) continue;
+
+    localStorage.removeItem(key);
+    removedKeys.push(key);
+  }
+
+  if (removedKeys.length > 0) {
+    console.log('🧹 已清理旧 localStorage 大数据键:', removedKeys);
+  }
+
+  return { removedKeys };
+};
+
 // 🧠 内存缓存访问API（供同步读取使用）
 export const getCachedData = <T>(key: string): T | undefined => {
   return memoryCache.get(key);
@@ -614,6 +785,8 @@ if (typeof window !== 'undefined') {
   window.checkMigrationNeeded = checkMigrationNeeded;
   // @ts-ignore
   window.clearAllData = clearAllData;
+  // @ts-ignore
+  window.cleanupLegacyLargeLocalStorage = cleanupLegacyLargeLocalStorage;
   // @ts-ignore 移动设备优化API
   window.checkStorageQuota = checkStorageQuota;
   // @ts-ignore

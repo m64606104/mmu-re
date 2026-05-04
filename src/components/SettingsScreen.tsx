@@ -1,12 +1,29 @@
 import { useState, useEffect, useRef } from 'react';
-import { ChevronLeft, Check, Loader2, Download, Upload, Database } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Check, Loader2, Download, Upload, Database, User, Palette, Cloud, HardDrive, Shield } from 'lucide-react';
 import { ApiConfig } from '../types';
-import { smartLoad, smartSave, checkStorageQuota, saveBatch, getStorageStatus, migrateData, clearAllData, loadBatch } from '../utils/storage';
-import ImageGenConfigModal from './ImageGenConfigModal';
+import { smartLoad, smartSave, checkStorageQuota, saveBatch, getStorageStatus, migrateData, clearAllData, dumpIndexedDBData } from '../utils/storage';
 import { apiPresetsManager, APIPreset } from '../utils/apiPresetsManager';
 import APIPresetsModal from './APIPresetsModal';
-import { supabase } from '../services/supabaseClient';
-import { ensureSupabaseAnonSession } from '../services/supabaseAuth';
+import {
+  getCloudSyncRuntimeState,
+  getCloudSyncSettings,
+  markCloudSyncSuccess,
+  saveCloudSyncSettings,
+} from '../services/supabaseClient';
+import {
+  ensureSupabaseAnonSession,
+  getSupabaseUserId,
+  onSupabaseAuthStateChange,
+  resetSupabaseAnonSession,
+  supabaseSendMagicLink,
+  supabaseSignOut,
+} from '../services/supabaseAuth';
+import {
+  supabaseAppendMessages,
+  supabaseLoadConversations,
+  supabaseSyncDerivedMemory,
+  supabaseUpsertConversation,
+} from '../services/supabaseData';
 
 interface SettingsScreenProps {
   apiConfig: ApiConfig;
@@ -17,14 +34,38 @@ interface SettingsScreenProps {
 }
 
 const AVATAR_BADGES = ['🎵', '🎮', '🎧', '🎨', '🎬', '📷', '⚡', '🔥', '💫', '✨', '🌟', '💎'];
+const CLOUD_SYNC_BINDING_PREFIX = 'cloudSyncBindingState:';
+const SETTINGS_SECTIONS = [
+  { id: 'api-config', label: 'API 配置', description: '模型、密钥与接口' },
+  { id: 'appearance', label: '外观设置', description: '显示与头像装饰' },
+  { id: 'cloud-sync', label: '云同步', description: 'Supabase 与邮箱登录' },
+  { id: 'storage', label: '本地存储', description: '空间占用与清理' },
+  { id: 'backup', label: '数据备份', description: '导入、导出与迁移' },
+] as const;
+type SettingsSectionId = (typeof SETTINGS_SECTIONS)[number]['id'];
+
+function getCloudBindingKey(url: string, uid: string): string {
+  return `${CLOUD_SYNC_BINDING_PREFIX}${encodeURIComponent(url)}:${uid}`;
+}
 
 export default function SettingsScreen({ apiConfig, onUpdateConfig, onBack, fullscreenMode, onToggleFullscreen }: SettingsScreenProps) {
   const [baseUrl, setBaseUrl] = useState(apiConfig.baseUrl);
   const [apiKey, setApiKey] = useState(apiConfig.apiKey);
   const [modelName, setModelName] = useState(apiConfig.modelName);
+  const [visionModelName, setVisionModelName] = useState(apiConfig.visionModelName || '');
+  const [visionBaseUrl, setVisionBaseUrl] = useState(apiConfig.visionBaseUrl || '');
+  const [visionApiKey, setVisionApiKey] = useState(apiConfig.visionApiKey || '');
+  const [useSeparateVisionApi, setUseSeparateVisionApi] = useState(
+    Boolean((apiConfig.visionBaseUrl || '').trim() || (apiConfig.visionApiKey || '').trim())
+  );
   const [availableModels, setAvailableModels] = useState<string[]>([]);
+  const [availableVisionModels, setAvailableVisionModels] = useState<string[]>([]);
   const [testing, setTesting] = useState(false);
   const [testResult, setTestResult] = useState<'success' | 'error' | null>(null);
+  const [visionTesting, setVisionTesting] = useState(false);
+  const [visionTestResult, setVisionTestResult] = useState<'success' | 'error' | null>(null);
+  const [textTestMessage, setTextTestMessage] = useState('');
+  const [visionTestMessage, setVisionTestMessage] = useState('');
   const [apiPresets, setApiPresets] = useState<APIPreset[]>([]);
   const [showApiPresetsModal, setShowApiPresetsModal] = useState(false);
   const [selectedBadge, setSelectedBadge] = useState('🎵');
@@ -35,25 +76,31 @@ export default function SettingsScreen({ apiConfig, onUpdateConfig, onBack, full
   const [isLoadingStorage, setIsLoadingStorage] = useState(false);
 
   // Supabase 云同步状态（只做显示/检测，不在此处配置密钥）
-  const [supabaseStatus, setSupabaseStatus] = useState<'not_configured' | 'checking' | 'connected' | 'error'>('checking');
+  const [supabaseStatus, setSupabaseStatus] = useState<'not_configured' | 'checking' | 'connected' | 'auth_required' | 'error'>('checking');
   const [supabaseError, setSupabaseError] = useState<string>('');
+  const [cloudSyncEnabled, setCloudSyncEnabled] = useState(false);
+  const [cloudSupabaseUrl, setCloudSupabaseUrl] = useState('');
+  const [cloudSupabaseAnonKey, setCloudSupabaseAnonKey] = useState('');
+  const [cloudAuthUserId, setCloudAuthUserId] = useState<string | null>(null);
+  const [cloudAuthEmail, setCloudAuthEmail] = useState('');
+  const [cloudAuthSending, setCloudAuthSending] = useState(false);
+  const [cloudAuthHint, setCloudAuthHint] = useState('');
+  const [cloudBindingCheckRunning, setCloudBindingCheckRunning] = useState(false);
+  const [cloudManualSyncRunning, setCloudManualSyncRunning] = useState(false);
+  const [localConversationCount, setLocalConversationCount] = useState(0);
+  const [cloudConversationCount, setCloudConversationCount] = useState<number | null>(null);
+  const [cloudBindingState, setCloudBindingState] = useState<string | null>(null);
+  const [cloudLastSyncAt, setCloudLastSyncAt] = useState<number | null>(null);
+  const [activeSection, setActiveSection] = useState<SettingsSectionId>('api-config');
+  const [mobileProfileName, setMobileProfileName] = useState('moyu.on');
+  const [mobileProfileAvatar, setMobileProfileAvatar] = useState('');
+  const [isMobileSectionOpen, setIsMobileSectionOpen] = useState(false);
   
   // 语音转文字配置
   const [sttEnabled] = useState(apiConfig.speechToText?.enabled || false);
   const [sttApiUrl] = useState(apiConfig.speechToText?.apiUrl || '');
   const [sttApiKey] = useState(apiConfig.speechToText?.apiKey || '');
   const [sttModel] = useState(apiConfig.speechToText?.model || 'glm-4-flash');
-
-  // AI生图全局配置（商城/朋友圈共用）
-  const [showImageGenModal, setShowImageGenModal] = useState(false);
-  const [imageGenConfig, setImageGenConfig] = useState<{ apiUrl: string; apiKey: string; model: string }>({
-    apiUrl: '',
-    apiKey: '',
-    model: ''
-  });
-  const [shopGenEnabled, setShopGenEnabled] = useState<boolean>(true);
-  const [momentsGenEnabled, setMomentsGenEnabled] = useState<boolean>(false);
-  const [momentsDailyLimit, setMomentsDailyLimit] = useState<number>(10);
 
   // 初始化API预设列表
   useEffect(() => {
@@ -68,6 +115,23 @@ export default function SettingsScreen({ apiConfig, onUpdateConfig, onBack, full
       if (profile) {
         const parsed = JSON.parse(profile);
         setSelectedBadge(parsed.avatarBadge || '🎵');
+        const displayName =
+          parsed.nickname ||
+          parsed.name ||
+          parsed.username ||
+          parsed.displayName ||
+          '';
+        if (typeof displayName === 'string' && displayName.trim()) {
+          setMobileProfileName(displayName.trim());
+        }
+        const avatar =
+          parsed.avatar ||
+          parsed.avatarUrl ||
+          parsed.profileAvatar ||
+          '';
+        if (typeof avatar === 'string' && avatar.trim()) {
+          setMobileProfileAvatar(avatar.trim());
+        }
       }
     } catch (e) {
       console.error('Failed to load user profile:', e);
@@ -76,30 +140,27 @@ export default function SettingsScreen({ apiConfig, onUpdateConfig, onBack, full
     // 加载存储状态信息
     loadStorageInfo();
 
-    // 加载AI生图配置（全局）
-    try {
-      const apiUrl = localStorage.getItem('image_gen_api_url') || '';
-      const apiKey = localStorage.getItem('image_gen_api_key') || '';
-      const model = localStorage.getItem('image_gen_model') || '';
-      setImageGenConfig({ apiUrl, apiKey, model });
+    const cloudSettings = getCloudSyncSettings();
+    setCloudSyncEnabled(cloudSettings.enabled);
+    setCloudSupabaseUrl(cloudSettings.url);
+    setCloudSupabaseAnonKey(cloudSettings.anonKey);
+    setCloudLastSyncAt(getCloudSyncRuntimeState().lastSuccessfulSyncAt);
 
-      // 加载开关（商城默认开，朋友圈默认关）
-      const shopEnabledStr = localStorage.getItem('image_gen_shop_enabled');
-      const momentsEnabledStr = localStorage.getItem('image_gen_moments_enabled');
-      setShopGenEnabled(shopEnabledStr === null ? true : shopEnabledStr === 'true');
-      setMomentsGenEnabled(momentsEnabledStr === 'true');
-      const limitStr = localStorage.getItem('image_gen_moments_daily_limit');
-      const limitVal = limitStr ? parseInt(limitStr, 10) : 10;
-      setMomentsDailyLimit(Number.isFinite(limitVal) && limitVal >= 0 ? limitVal : 10);
-    } catch (e) {
-      console.error('加载AI生图配置失败:', e);
-    }
   }, []);
 
   const checkSupabaseStatus = async () => {
-    if (!supabase) {
+    const settings = getCloudSyncSettings();
+    if (!settings.enabled) {
       setSupabaseStatus('not_configured');
       setSupabaseError('');
+      setCloudAuthUserId(null);
+      setCloudConversationCount(null);
+      setCloudBindingState(null);
+      return;
+    }
+    if (!settings.url || !settings.anonKey) {
+      setSupabaseStatus('error');
+      setSupabaseError('请先填写 Supabase URL 和 Anon Key');
       return;
     }
 
@@ -107,14 +168,232 @@ export default function SettingsScreen({ apiConfig, onUpdateConfig, onBack, full
     setSupabaseError('');
     try {
       await ensureSupabaseAnonSession();
+      const uid = await getSupabaseUserId();
+      setCloudAuthUserId(uid);
       setSupabaseStatus('connected');
+      await refreshCloudSyncSummary(uid);
     } catch (e: unknown) {
       const msg =
         e && typeof e === 'object' && 'message' in e
           ? String((e as any).message)
           : '连接失败（未知错误）';
+      setCloudAuthUserId(null);
+      if (msg === 'Cloud sync requires email sign-in.') {
+        setSupabaseStatus('auth_required');
+        setSupabaseError('已配置云端，但尚未完成邮箱登录。');
+        setCloudConversationCount(null);
+        setCloudBindingState(null);
+      } else {
       setSupabaseStatus('error');
       setSupabaseError(msg);
+        setCloudConversationCount(null);
+        setCloudBindingState(null);
+      }
+    }
+  };
+
+  const handleSaveCloudSyncSettings = async () => {
+    const previousSettings = getCloudSyncSettings();
+    const nextSettings = {
+      enabled: cloudSyncEnabled,
+      url: cloudSupabaseUrl.trim(),
+      anonKey: cloudSupabaseAnonKey.trim(),
+    };
+    if (nextSettings.enabled && (!nextSettings.url || !nextSettings.anonKey)) {
+      alert('开启云同步前，请填写 Supabase URL 和 Anon Key');
+      return;
+    }
+    if (previousSettings.enabled && !nextSettings.enabled) {
+      const choice = window.prompt(
+        '你正在关闭云同步，请选择操作：\n' +
+          '1 = 仅关闭同步（保留邮箱登录和云配置）\n' +
+          '2 = 关闭同步并解绑邮箱（保留本地IndexedDB数据）\n' +
+          '3 = 关闭同步并清空云配置（URL/Key，同时解绑邮箱）\n\n' +
+          '请输入 1 / 2 / 3',
+        '1'
+      );
+      if (!choice) return;
+      if (!['1', '2', '3'].includes(choice)) {
+        alert('请输入 1 / 2 / 3');
+        return;
+      }
+      if (choice === '2' || choice === '3') {
+        await supabaseSignOut();
+      }
+      if (choice === '3') {
+        nextSettings.url = '';
+        nextSettings.anonKey = '';
+        setCloudSupabaseUrl('');
+        setCloudSupabaseAnonKey('');
+      }
+    }
+
+    saveCloudSyncSettings(nextSettings);
+    resetSupabaseAnonSession();
+    setCloudAuthHint('');
+    await checkSupabaseStatus();
+    alert(nextSettings.enabled
+      ? '云同步配置已保存。接下来请用邮箱登录，登录成功后再开始云端同步。'
+      : '云同步已关闭。当前设备会继续使用本地 IndexedDB，数据不会丢失。');
+  };
+
+  const handleSendCloudMagicLink = async () => {
+    setCloudAuthHint('');
+    setCloudAuthSending(true);
+    try {
+      await supabaseSendMagicLink(cloudAuthEmail);
+      setCloudAuthHint('已发送登录链接到邮箱。点击邮件里的链接完成验证后，当前页面会在回到前台时自动重新检测登录状态。');
+    } catch (e: unknown) {
+      const msg =
+        e && typeof e === 'object' && 'message' in e
+          ? String((e as any).message)
+          : '发送失败（未知错误）';
+      setCloudAuthHint(msg);
+    } finally {
+      setCloudAuthSending(false);
+      await checkSupabaseStatus();
+    }
+  };
+
+  const handleCloudSignOut = async () => {
+    setCloudAuthHint('');
+    try {
+      await supabaseSignOut();
+      await checkSupabaseStatus();
+      alert('已退出云端账号。');
+    } catch (e: unknown) {
+      const msg =
+        e && typeof e === 'object' && 'message' in e
+          ? String((e as any).message)
+          : '退出失败（未知错误）';
+      alert(msg);
+    }
+  };
+
+  const handleUnbindCloudAccount = async () => {
+    const confirmed = window.confirm(
+      '确认解绑当前邮箱吗？\n\n解绑后：\n' +
+        '• 不会删除本地 IndexedDB 数据\n' +
+        '• 不会删除云端账号历史\n' +
+        '• 当前设备仅会退出该邮箱登录状态'
+    );
+    if (!confirmed) return;
+    try {
+      await supabaseSignOut();
+      setCloudAuthHint('已解绑当前邮箱。本地数据保持不变，可继续离线使用。');
+      await checkSupabaseStatus();
+    } catch (e: unknown) {
+      const msg =
+        e && typeof e === 'object' && 'message' in e
+          ? String((e as any).message)
+          : '解绑失败（未知错误）';
+      setCloudAuthHint(msg);
+    }
+  };
+
+  const uploadLocalHistoryToCloud = async (): Promise<number> => {
+    const localConversations = await smartLoad('conversations');
+    const localList = Array.isArray(localConversations) ? localConversations : [];
+    for (const conv of localList) {
+      await supabaseUpsertConversation(conv);
+      await supabaseAppendMessages(conv.id, conv.messages || []);
+      await supabaseSyncDerivedMemory(
+        conv.id,
+        conv.name,
+        conv.characterSettings,
+        conv.messages || [],
+        conv.messages || [],
+        apiConfig
+      );
+    }
+    markCloudSyncSuccess();
+    return localList.length;
+  };
+
+  const maybeOfferInitialCloudSync = async (uid: string) => {
+    const settings = getCloudSyncSettings();
+    const bindingKey = getCloudBindingKey(settings.url, uid);
+    if (!settings.enabled || !settings.url) return;
+    if (cloudBindingCheckRunning) return;
+    if (localStorage.getItem(bindingKey)) return;
+
+    setCloudBindingCheckRunning(true);
+    try {
+      const cloudConversations = await supabaseLoadConversations();
+      if (cloudConversations.length > 0) {
+        localStorage.setItem(bindingKey, 'cloud-existing');
+        setCloudBindingState('cloud-existing');
+        setCloudAuthHint('检测到云端已有历史数据，后续会以云端数据为准继续同步。');
+        await refreshCloudSyncSummary(uid);
+        return;
+      }
+
+      const localConversations = await smartLoad('conversations');
+      const localList = Array.isArray(localConversations) ? localConversations : [];
+      if (localList.length === 0) {
+        localStorage.setItem(bindingKey, 'local-empty');
+        setCloudBindingState('local-empty');
+        setCloudAuthHint('云端已绑定成功；当前设备没有本地历史需要上传。');
+        await refreshCloudSyncSummary(uid);
+        return;
+      }
+
+      const shouldUpload = window.confirm(
+        '检测到当前设备有本地聊天记录，而云端还是空的。\n\n要把当前设备的本地历史上传到云端，作为这个邮箱账号的初始云端数据吗？'
+      );
+
+      if (!shouldUpload) {
+        localStorage.setItem(bindingKey, 'skipped');
+        setCloudBindingState('skipped');
+        setCloudAuthHint('已跳过首次历史上传。当前仍可继续使用本地，后续只会同步新的云端数据。');
+        await refreshCloudSyncSummary(uid);
+        return;
+      }
+
+      await uploadLocalHistoryToCloud();
+
+      localStorage.setItem(bindingKey, 'uploaded');
+      setCloudBindingState('uploaded');
+      setCloudAuthHint('已把当前设备的本地历史上传到云端。之后同邮箱在其他设备登录即可同步。');
+      await refreshCloudSyncSummary(uid);
+    } catch (error) {
+      console.error('首次云端历史迁移失败:', error);
+      setCloudAuthHint('首次历史上传失败，请稍后重试。');
+    } finally {
+      setCloudBindingCheckRunning(false);
+    }
+  };
+
+  const handleManualCloudUpload = async () => {
+    if (!cloudAuthUserId) {
+      alert('请先完成邮箱登录，再上传本地历史。');
+      return;
+    }
+    const settings = getCloudSyncSettings();
+    if (!settings.enabled || !settings.url) {
+      alert('请先启用并保存云同步配置。');
+      return;
+    }
+    const shouldUpload = window.confirm('要把当前设备的本地聊天记录上传到云端吗？这不会清空本地数据。');
+    if (!shouldUpload) return;
+
+    setCloudManualSyncRunning(true);
+    setCloudAuthHint('');
+    try {
+      const uploadedCount = await uploadLocalHistoryToCloud();
+      localStorage.setItem(getCloudBindingKey(settings.url, cloudAuthUserId), 'uploaded');
+      setCloudBindingState('uploaded');
+      setCloudAuthHint(
+        uploadedCount > 0
+          ? `已手动上传 ${uploadedCount} 个本地会话到云端。`
+          : '当前设备没有可上传的本地会话。'
+      );
+      await refreshCloudSyncSummary(cloudAuthUserId);
+    } catch (error) {
+      console.error('手动上传本地历史失败:', error);
+      setCloudAuthHint('手动上传失败，请稍后重试。');
+    } finally {
+      setCloudManualSyncRunning(false);
     }
   };
 
@@ -122,53 +401,984 @@ export default function SettingsScreen({ apiConfig, onUpdateConfig, onBack, full
     checkSupabaseStatus();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  useEffect(() => {
+    const unsubscribe = onSupabaseAuthStateChange(() => {
+      void checkSupabaseStatus();
+    });
+
+    const handleWindowFocus = () => {
+      if (document.visibilityState === 'hidden') return;
+      void checkSupabaseStatus();
+    };
+
+    window.addEventListener('focus', handleWindowFocus);
+    document.addEventListener('visibilitychange', handleWindowFocus);
+
+    return () => {
+      unsubscribe?.();
+      window.removeEventListener('focus', handleWindowFocus);
+      document.removeEventListener('visibilitychange', handleWindowFocus);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    if (supabaseStatus === 'connected' && cloudAuthUserId) {
+      void maybeOfferInitialCloudSync(cloudAuthUserId);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [supabaseStatus, cloudAuthUserId]);
+
+  const renderDesktopSection = () => {
+    switch (activeSection) {
+      case 'api-config':
+        return (
+          <section className="grid gap-4 lg:grid-cols-2">
+            <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+              <h3 className="text-lg font-semibold text-slate-900">接口配置</h3>
+              <p className="mt-1 text-sm text-slate-500">配置聊天接口地址、密钥和模型名称。</p>
+              <div className="mt-5 space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Base URL</label>
+                  <input
+                    type="text"
+                    value={baseUrl}
+                    onChange={(e) => setBaseUrl(e.target.value)}
+                    placeholder="https://api520.pro"
+                    className="w-full px-3 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">API Key</label>
+                  <input
+                    type="password"
+                    value={apiKey}
+                    onChange={(e) => setApiKey(e.target.value)}
+                    placeholder="sk-..."
+                    className="w-full px-3 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">模型名称</label>
+                  {availableModels.length > 0 ? (
+                    <select
+                      value={modelName}
+                      onChange={(e) => setModelName(e.target.value)}
+                      className="w-full px-3 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all bg-white"
+                    >
+                      {availableModels.map(model => (
+                        <option key={model} value={model}>{model}</option>
+                      ))}
+                    </select>
+                  ) : (
+                    <input
+                      type="text"
+                      value={modelName}
+                      onChange={(e) => setModelName(e.target.value)}
+                      placeholder="gpt-3.5-turbo"
+                      className="w-full px-3 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
+                    />
+                  )}
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    视觉模型（可选）
+                  </label>
+                  {availableVisionModels.length > 0 ? (
+                    <select
+                      value={visionModelName}
+                      onChange={(e) => setVisionModelName(e.target.value)}
+                      className="w-full px-3 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all bg-white"
+                    >
+                      <option value="">请选择视觉模型</option>
+                      {availableVisionModels.map((model) => (
+                        <option key={model} value={model}>{model}</option>
+                      ))}
+                    </select>
+                  ) : (
+                    <input
+                      type="text"
+                      value={visionModelName}
+                      onChange={(e) => setVisionModelName(e.target.value)}
+                      placeholder="例如：gpt-4o-mini / qwen-vl-max ..."
+                      className="w-full px-3 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
+                    />
+                  )}
+                  <div className="mt-2 text-xs text-slate-500">
+                    仅在填写后，才会把图片以 <span className="font-mono">image_url</span> 发送给后端；不填则图片会按“文字描述”模式处理，避免接口 500。
+                  </div>
+                </div>
+                <div className="rounded-xl border border-slate-200 p-3 bg-slate-50">
+                  <label className="flex items-center justify-between text-sm font-medium text-slate-700">
+                    <span>视觉接口使用独立 URL / Key</span>
+                    <input
+                      type="checkbox"
+                      checked={useSeparateVisionApi}
+                      onChange={(e) => setUseSeparateVisionApi(e.target.checked)}
+                    />
+                  </label>
+                  {useSeparateVisionApi ? (
+                    <div className="mt-3 space-y-2">
+                      <input
+                        type="text"
+                        value={visionBaseUrl}
+                        onChange={(e) => setVisionBaseUrl(e.target.value)}
+                        placeholder="视觉 Base URL"
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-white"
+                      />
+                      <input
+                        type="password"
+                        value={visionApiKey}
+                        onChange={(e) => setVisionApiKey(e.target.value)}
+                        placeholder="视觉 API Key"
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-white"
+                      />
+                    </div>
+                  ) : null}
+                </div>
+              </div>
+            </div>
+
+            <div className="space-y-4">
+              <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+                <div className="flex items-center justify-between mb-3">
+                  <div>
+                    <h3 className="text-lg font-semibold text-slate-900">API 预设方案</h3>
+                    <p className="mt-1 text-sm text-slate-500">常用接口方案可以保存在这里快速切换。</p>
+                  </div>
+                  <button
+                    onClick={() => setShowApiPresetsModal(true)}
+                    className="px-3 py-2 text-sm rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 transition-colors"
+                  >
+                    管理预设
+                  </button>
+                </div>
+                {apiPresets.length > 0 ? (
+                  <div className="flex flex-wrap gap-2">
+                    {apiPresets.slice(0, 6).map((preset) => (
+                      <button
+                        key={preset.id}
+                        onClick={() => handleApplyApiPreset(preset)}
+                        className="px-3 py-2 text-sm rounded-full bg-blue-50 text-blue-700 hover:bg-blue-100 border border-blue-200"
+                      >
+                        {preset.name}
+                      </button>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="rounded-2xl bg-slate-50 p-4 text-sm text-slate-500">还没有预设，点击右上角添加即可。</div>
+                )}
+              </div>
+
+              <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+                <h3 className="text-lg font-semibold text-slate-900">当前状态</h3>
+                <div className="mt-4 space-y-4">
+                  {modelName ? (
+                    <div className="rounded-2xl bg-blue-50 border border-blue-100 p-4 text-sm text-blue-700">
+                      当前模型：<span className="font-mono ml-1">{modelName}</span>
+                    </div>
+                  ) : null}
+                  <div className="rounded-2xl bg-amber-50 border border-amber-200 p-4 text-sm text-amber-800">
+                    请不要选择带“思考”功能的模型，以免返回额外推理内容影响聊天体验。
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <button
+                      onClick={pullModelsForTextAndVision}
+                      disabled={testing || visionTesting}
+                      className="w-full bg-blue-500 hover:bg-blue-600 text-white py-2.5 rounded-lg font-medium flex items-center justify-center gap-2 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors"
+                    >
+                      {testing || visionTesting ? <><Loader2 className="w-4 h-4 animate-spin" />拉取中</> : '一键拉取模型'}
+                    </button>
+                    <button
+                      onClick={testVisionSupport}
+                      disabled={visionTesting}
+                      className="w-full bg-indigo-500 hover:bg-indigo-600 text-white py-2.5 rounded-lg font-medium transition-colors disabled:bg-gray-400"
+                    >
+                      {visionTesting ? '测试中' : visionTestResult === 'success' ? '视觉已通过' : '测试视觉支持'}
+                    </button>
+                    <button
+                      onClick={testConnection}
+                      disabled={testing}
+                      className="w-full bg-slate-600 hover:bg-slate-700 text-white py-2.5 rounded-lg font-medium transition-colors disabled:bg-gray-400"
+                    >
+                      {testing ? '测试中' : testResult === 'success' ? '文本已通过' : '仅测文本连接'}
+                    </button>
+                    <button
+                      onClick={handleSave}
+                      className="w-full bg-green-500 hover:bg-green-600 text-white py-2.5 rounded-lg font-medium transition-colors"
+                    >
+                      保存配置
+                    </button>
+                  </div>
+                  {(textTestMessage || visionTestMessage) ? (
+                    <div className="space-y-2">
+                      {textTestMessage ? (
+                        <div
+                          className={`rounded-2xl border p-3 text-xs ${
+                            testResult === 'error'
+                              ? 'bg-red-50 border-red-200 text-red-700'
+                              : 'bg-emerald-50 border-emerald-200 text-emerald-700'
+                          }`}
+                        >
+                          文本测试：{textTestMessage}
+                        </div>
+                      ) : null}
+                      {visionTestMessage ? (
+                        <div
+                          className={`rounded-2xl border p-3 text-xs ${
+                            visionTestResult === 'error'
+                              ? 'bg-red-50 border-red-200 text-red-700'
+                              : 'bg-indigo-50 border-indigo-200 text-indigo-700'
+                          }`}
+                        >
+                          视觉测试：{visionTestMessage}
+                        </div>
+                      ) : null}
+                    </div>
+                  ) : null}
+                </div>
+              </div>
+            </div>
+          </section>
+        );
+      case 'appearance':
+        return (
+          <section className="grid gap-4 lg:grid-cols-[0.9fr_1.1fr]">
+            <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+              <h3 className="text-lg font-semibold text-slate-900">显示偏好</h3>
+              <p className="mt-1 text-sm text-slate-500">桌面端显示和容器样式相关设置。</p>
+              <div className="mt-6 flex items-center justify-between rounded-2xl bg-slate-50 px-4 py-4">
+                <div>
+                  <div className="text-sm font-medium text-gray-900">全屏显示</div>
+                  <div className="text-xs text-gray-500 mt-1">自动适应浏览器屏幕，无边框全屏效果</div>
+                </div>
+                <label className="relative inline-flex items-center cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={fullscreenMode}
+                    onChange={(e) => onToggleFullscreen(e.target.checked)}
+                    className="sr-only peer"
+                  />
+                  <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+                </label>
+              </div>
+            </div>
+            <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+              <h3 className="text-lg font-semibold text-slate-900">头像装饰</h3>
+              <p className="mt-1 text-sm text-slate-500">选择一个常用装饰作为当前账号头像角标。</p>
+              <div className="mt-5 grid grid-cols-6 gap-3">
+                {AVATAR_BADGES.map((badge) => (
+                  <button
+                    key={badge}
+                    onClick={() => handleBadgeChange(badge)}
+                    className={`h-12 rounded-2xl flex items-center justify-center text-2xl transition-all ${
+                      selectedBadge === badge
+                        ? 'bg-blue-500 scale-105 shadow-lg'
+                        : 'bg-gray-100 hover:bg-gray-200'
+                    }`}
+                  >
+                    {badge}
+                  </button>
+                ))}
+              </div>
+              <div className="mt-5 rounded-2xl bg-blue-50 border border-blue-100 p-4 text-sm text-blue-700">
+                当前选择：<span className="text-xl ml-2 align-middle">{selectedBadge}</span>
+              </div>
+            </div>
+          </section>
+        );
+      case 'cloud-sync':
+        return (
+          <section className="grid gap-4 lg:grid-cols-[0.95fr_1.05fr]">
+            <div className="space-y-4">
+              <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
+                <h3 className="text-lg font-semibold text-slate-900">同步概览</h3>
+                <div className="mt-3 grid grid-cols-1 gap-2.5 sm:grid-cols-4">
+                  <div className="rounded-2xl border border-gray-200 bg-slate-50 p-3">
+                    <div className="text-xs text-gray-500">本地会话</div>
+                    <div className="mt-1 text-lg font-semibold text-gray-900">{localConversationCount}</div>
+                  </div>
+                  <div className="rounded-2xl border border-gray-200 bg-slate-50 p-3">
+                    <div className="text-xs text-gray-500">云端会话</div>
+                    <div className="mt-1 text-lg font-semibold text-gray-900">{cloudConversationCount === null ? '--' : cloudConversationCount}</div>
+                  </div>
+                  <div className="rounded-2xl border border-gray-200 bg-slate-50 p-3">
+                    <div className="text-xs text-gray-500">首次绑定状态</div>
+                    <div className="mt-1 text-sm font-medium text-gray-900">
+                      {cloudBindingState === 'uploaded'
+                        ? '已上传本地历史'
+                        : cloudBindingState === 'skipped'
+                          ? '已跳过首次上传'
+                          : cloudBindingState === 'cloud-existing'
+                            ? '云端已有历史'
+                            : cloudBindingState === 'local-empty'
+                              ? '本地暂无历史'
+                              : '待确认'}
+                    </div>
+                  </div>
+                  <div className="rounded-2xl border border-gray-200 bg-slate-50 p-3">
+                    <div className="text-xs text-gray-500">最近成功同步</div>
+                    <div className="mt-1 text-sm font-medium text-gray-900">
+                      {cloudLastSyncAt ? new Date(cloudLastSyncAt).toLocaleString('zh-CN') : '--'}
+                    </div>
+                  </div>
+                </div>
+                <div className="mt-3 flex items-center gap-2 text-sm">
+                  {supabaseStatus === 'checking' ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin text-gray-500" />
+                      <span className="text-gray-600">检测中…</span>
+                    </>
+                  ) : supabaseStatus === 'connected' ? (
+                    <>
+                      <span className="inline-block w-2.5 h-2.5 rounded-full bg-green-500" />
+                      <span className="text-gray-800">已连接（云端可用）</span>
+                    </>
+                  ) : supabaseStatus === 'auth_required' ? (
+                    <>
+                      <span className="inline-block w-2.5 h-2.5 rounded-full bg-amber-500" />
+                      <span className="text-gray-800">已配置，等待邮箱登录</span>
+                    </>
+                  ) : supabaseStatus === 'not_configured' ? (
+                    <>
+                      <span className="inline-block w-2.5 h-2.5 rounded-full bg-gray-400" />
+                      <span className="text-gray-700">未配置（仅本地存储）</span>
+                    </>
+                  ) : (
+                    <>
+                      <span className="inline-block w-2.5 h-2.5 rounded-full bg-red-500" />
+                      <span className="text-gray-800">连接失败（已回退本地）</span>
+                    </>
+                  )}
+                </div>
+                {supabaseStatus === 'error' && supabaseError ? (
+                  <div className="mt-3 text-xs text-red-700 break-words">{supabaseError}</div>
+                ) : null}
+              </div>
+
+              <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h3 className="text-lg font-semibold text-slate-900">云端配置</h3>
+                    <p className="mt-1 text-sm text-slate-500">开启后可连接你的 Supabase 项目。</p>
+                  </div>
+                  <label className="relative inline-flex items-center cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={cloudSyncEnabled}
+                      onChange={(e) => setCloudSyncEnabled(e.target.checked)}
+                      className="sr-only peer"
+                    />
+                    <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:bg-blue-600 peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border after:border-gray-300 after:rounded-full after:h-5 after:w-5 after:transition-all" />
+                  </label>
+                </div>
+                <div className={`mt-4 space-y-2.5 ${cloudSyncEnabled ? '' : 'opacity-60'}`}>
+                  <input
+                    type="text"
+                    value={cloudSupabaseUrl}
+                    onChange={(e) => setCloudSupabaseUrl(e.target.value)}
+                    placeholder="Supabase URL（例如 https://xxxx.supabase.co）"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  />
+                  <input
+                    type="password"
+                    value={cloudSupabaseAnonKey}
+                    onChange={(e) => setCloudSupabaseAnonKey(e.target.value)}
+                    placeholder="Supabase Anon Key"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  />
+                  <div className="grid grid-cols-2 gap-2.5">
+                    <button
+                      onClick={handleSaveCloudSyncSettings}
+                      className="w-full px-3 py-2 rounded-lg text-sm font-medium bg-blue-500 hover:bg-blue-600 text-white transition-colors"
+                    >
+                      保存配置
+                    </button>
+                    <button
+                      onClick={checkSupabaseStatus}
+                      className="w-full px-3 py-2 rounded-lg text-sm font-medium border border-gray-300 hover:bg-gray-50 transition-colors"
+                    >
+                      重新检测
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="space-y-4">
+              <div className="rounded-3xl border border-slate-200 bg-white p-[18px] shadow-sm">
+                <h3 className="text-lg font-semibold text-slate-900">邮箱登录</h3>
+                <p className="mt-1 text-sm text-slate-500">多设备同步必须使用同一个邮箱登录。</p>
+                <div className="mt-3.5 space-y-[9px]">
+                  <div className="rounded-2xl bg-slate-50 px-4 py-[9px] text-sm text-slate-700">
+                    当前 UID：<span className="font-mono ml-2">{cloudAuthUserId ?? '未登录'}</span>
+                  </div>
+                  <input
+                    type="email"
+                    value={cloudAuthEmail}
+                    onChange={(e) => setCloudAuthEmail(e.target.value)}
+                    placeholder="邮箱（用于接收登录链接）"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  />
+                  <button
+                    onClick={handleSendCloudMagicLink}
+                    disabled={cloudAuthSending}
+                    className="w-full px-3 py-2 rounded-lg text-sm font-medium bg-emerald-500 hover:bg-emerald-600 text-white transition-colors disabled:bg-gray-400 disabled:cursor-not-allowed"
+                  >
+                    {cloudAuthSending ? '发送中…' : '发送登录链接到邮箱'}
+                  </button>
+                  <div className="grid grid-cols-2 gap-[9px]">
+                    <button
+                      onClick={handleCloudSignOut}
+                      className="w-full px-3 py-2 rounded-lg text-sm font-medium border border-gray-300 hover:bg-gray-50 transition-colors"
+                    >
+                      退出登录
+                    </button>
+                    <button
+                      onClick={handleManualCloudUpload}
+                      disabled={cloudManualSyncRunning || !cloudAuthUserId}
+                      className="w-full px-3 py-2 rounded-lg text-sm font-medium border border-blue-300 text-blue-700 hover:bg-blue-50 transition-colors disabled:bg-gray-100 disabled:text-gray-400 disabled:border-gray-200 disabled:cursor-not-allowed"
+                    >
+                      {cloudManualSyncRunning ? '上传中…' : '上传本地历史'}
+                    </button>
+                  </div>
+                  <button
+                    onClick={handleUnbindCloudAccount}
+                    className="w-full px-3 py-2 rounded-lg text-sm font-medium border border-amber-300 text-amber-700 hover:bg-amber-50 transition-colors"
+                  >
+                    解绑邮箱（保留本地数据）
+                  </button>
+                </div>
+              </div>
+              <div className="rounded-3xl border border-slate-200 bg-white p-[18px] shadow-sm">
+                <h3 className="text-lg font-semibold text-slate-900">同步说明</h3>
+                <div className="mt-3.5 rounded-2xl bg-slate-50 px-4 py-[13px] text-sm text-slate-600 leading-relaxed">
+                  云同步用于把聊天记录、记忆与衍生数据存到云端。保持关闭时，应用只使用本地 IndexedDB。
+                </div>
+                {cloudAuthHint ? (
+                  <div className="mt-3.5 rounded-2xl bg-blue-50 border border-blue-100 px-4 py-[13px] text-sm text-blue-700 break-words">
+                    {cloudAuthHint}
+                  </div>
+                ) : null}
+              </div>
+            </div>
+          </section>
+        );
+      case 'storage':
+        return (
+          <section className="grid gap-4 lg:grid-cols-[1.05fr_0.95fr]">
+            <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+              <h3 className="text-lg font-semibold text-slate-900">本地存储使用情况</h3>
+              <p className="mt-1 text-sm text-slate-500">查看 localStorage 与 IndexedDB 的当前占用。</p>
+              <div className="mt-5">
+                {isLoadingStorage ? (
+                  <div className="bg-gray-50 border border-gray-200 rounded-xl p-4">
+                    <div className="flex items-center gap-2">
+                      <Loader2 className="w-4 h-4 animate-spin text-gray-500" />
+                      <span className="text-sm text-gray-600">加载存储信息中...</span>
+                    </div>
+                  </div>
+                ) : storageInfo ? (
+                  <div className="bg-gray-50 border border-gray-200 rounded-xl p-4">
+                    <div className="space-y-4">
+                      <div className="flex justify-between text-sm">
+                        <span className="text-gray-600">已用空间</span>
+                        <span className="font-mono text-gray-800">
+                          {`${((storageInfo.localStorage.usage + storageInfo.indexedDB.usage) / 1024 / 1024).toFixed(1)} MB`}
+                        </span>
+                      </div>
+                      <div className="space-y-2">
+                        <div className="flex justify-between text-xs">
+                          <span className="text-gray-600">localStorage</span>
+                          <span className="font-mono text-gray-800">
+                            {(storageInfo.localStorage.usage / 1024).toFixed(1)} KB
+                          </span>
+                        </div>
+                        <div className="w-full bg-gray-200 rounded-full h-1.5">
+                          <div
+                            className="bg-green-500 h-1.5 rounded-full transition-all"
+                            style={{ width: `${Math.min(100, (storageInfo.localStorage.usage / (10 * 1024 * 1024)) * 100).toFixed(1)}%` }}
+                          />
+                        </div>
+                      </div>
+                      <div className="space-y-2">
+                        <div className="flex justify-between text-xs">
+                          <span className="text-gray-600">IndexedDB</span>
+                          <span className="font-mono text-gray-800">
+                            {(storageInfo.indexedDB.usage / 1024 / 1024).toFixed(1)} MB
+                          </span>
+                        </div>
+                        <div className="w-full bg-gray-200 rounded-full h-1.5">
+                          <div
+                            className="bg-blue-500 h-1.5 rounded-full transition-all"
+                            style={{ width: `${Math.min(100, (storageInfo.indexedDB.usage / storageInfo.quota.quota) * 100).toFixed(1)}%` }}
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="bg-red-50 border border-red-200 rounded-xl p-4">
+                    <span className="text-sm text-red-600">存储信息加载失败</span>
+                  </div>
+                )}
+              </div>
+            </div>
+            <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+              <h3 className="text-lg font-semibold text-slate-900">存储操作</h3>
+              <p className="mt-1 text-sm text-slate-500">这里保留对迁移和清理的直接操作。</p>
+              <div className="mt-5 space-y-3">
+                <button
+                  onClick={handleManualMigration}
+                  className="w-full py-3 px-4 border-2 border-blue-200 hover:border-blue-400 hover:bg-blue-50 rounded-xl transition-colors flex items-center justify-center gap-2 text-blue-700"
+                >
+                  <Database className="w-4 h-4" />
+                  <span className="font-medium text-sm">手动数据迁移</span>
+                </button>
+                <button
+                  onClick={handleClearAllData}
+                  className="w-full py-3 px-4 border-2 border-red-200 hover:border-red-400 hover:bg-red-50 rounded-xl transition-colors flex items-center justify-center gap-2 text-red-700"
+                >
+                  <Database className="w-4 h-4" />
+                  <span className="font-medium text-sm">清除所有数据</span>
+                </button>
+              </div>
+            </div>
+          </section>
+        );
+      case 'backup':
+        return (
+          <section className="grid gap-4 lg:grid-cols-[0.9fr_1.1fr]">
+            <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+              <h3 className="text-lg font-semibold text-slate-900">备份操作</h3>
+              <p className="mt-1 text-sm text-slate-500">导出当前数据或从备份恢复。</p>
+              <div className="mt-5 grid grid-cols-2 gap-3">
+                <button
+                  onClick={handleExportAllData}
+                  className="py-4 border-2 border-green-200 hover:border-green-400 hover:bg-green-50 rounded-xl transition-colors flex flex-col items-center justify-center gap-2 text-green-700"
+                >
+                  <Download className="w-6 h-6" />
+                  <span className="font-medium text-sm">导出全部数据</span>
+                </button>
+                <button
+                  onClick={() => importInputRef.current?.click()}
+                  className="py-4 border-2 border-blue-200 hover:border-blue-400 hover:bg-blue-50 rounded-xl transition-colors flex flex-col items-center justify-center gap-2 text-blue-700"
+                >
+                  <Upload className="w-6 h-6" />
+                  <span className="font-medium text-sm">导入全部数据</span>
+                </button>
+              </div>
+              <input
+                ref={importInputRef}
+                type="file"
+                accept=".json"
+                onChange={handleImportAllData}
+                className="hidden"
+              />
+            </div>
+            <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+              <h3 className="text-lg font-semibold text-slate-900">迁移说明</h3>
+              <div className="mt-5 rounded-2xl bg-amber-50 border border-amber-200 p-4 text-sm text-amber-800 leading-relaxed">
+                <span className="font-semibold">包含内容：</span><br />
+                • 所有对话记录和消息<br />
+                • 所有AI角色设置（头像、性格、知识库等）<br />
+                • 联系人和关系网络<br />
+                • 朋友圈内容和互动记录<br />
+                • 文档库和已保存的文档<br />
+                • 用户头像和背景图片<br />
+                • API配置和其他设置<br />
+                <span className="font-semibold mt-3 block">注意：</span>
+                • 导入会覆盖当前所有数据<br />
+                • 建议定期备份数据
+              </div>
+            </div>
+          </section>
+        );
+      default:
+        return null;
+    }
+  };
+
+  const renderMobileSection = () => {
+    switch (activeSection) {
+      case 'api-config':
+        return (
+          <section className="rounded-3xl border border-slate-200 bg-white overflow-hidden">
+            <div className="px-4 py-3 border-b border-slate-100">
+              <div className="text-xs text-slate-500 mb-1">Base URL</div>
+              <input
+                value={baseUrl}
+                onChange={(e) => setBaseUrl(e.target.value)}
+                className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm bg-white"
+              />
+            </div>
+            <div className="px-4 py-3 border-b border-slate-100">
+              <div className="text-xs text-slate-500 mb-1">API Key</div>
+              <input
+                type="password"
+                value={apiKey}
+                onChange={(e) => setApiKey(e.target.value)}
+                className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm bg-white"
+              />
+            </div>
+            <div className="px-4 py-3 border-b border-slate-100">
+              <div className="text-xs text-slate-500 mb-1">模型</div>
+              {availableModels.length > 0 ? (
+                <select
+                  value={modelName}
+                  onChange={(e) => setModelName(e.target.value)}
+                  className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm bg-white"
+                >
+                  {availableModels.map((model) => (
+                    <option key={model} value={model}>{model}</option>
+                  ))}
+                </select>
+              ) : (
+                <input
+                  value={modelName}
+                  onChange={(e) => setModelName(e.target.value)}
+                  className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm bg-white"
+                />
+              )}
+            </div>
+
+            <div className="px-4 py-3 border-b border-slate-100">
+              <div className="text-xs text-slate-500 mb-1">视觉模型（可选）</div>
+              {availableVisionModels.length > 0 ? (
+                <select
+                  value={visionModelName}
+                  onChange={(e) => setVisionModelName(e.target.value)}
+                  className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm bg-white"
+                >
+                  <option value="">请选择视觉模型</option>
+                  {availableVisionModels.map((model) => (
+                    <option key={model} value={model}>{model}</option>
+                  ))}
+                </select>
+              ) : (
+                <input
+                  value={visionModelName}
+                  onChange={(e) => setVisionModelName(e.target.value)}
+                  className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm bg-white"
+                  placeholder="不填则不发送图片"
+                />
+              )}
+              <div className="mt-2 text-[11px] text-slate-500">
+                仅填写后才会发送图片（避免不支持 vision 的后端 500）。
+              </div>
+            </div>
+
+            <div className="px-4 py-3 border-b border-slate-100">
+              <div className="flex items-center justify-between">
+                <div className="text-xs text-slate-500">视觉独立接口</div>
+                <input
+                  type="checkbox"
+                  checked={useSeparateVisionApi}
+                  onChange={(e) => setUseSeparateVisionApi(e.target.checked)}
+                />
+              </div>
+              {useSeparateVisionApi ? (
+                <div className="mt-2 space-y-2">
+                  <input
+                    value={visionBaseUrl}
+                    onChange={(e) => setVisionBaseUrl(e.target.value)}
+                    className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm bg-white"
+                    placeholder="视觉 Base URL"
+                  />
+                  <input
+                    type="password"
+                    value={visionApiKey}
+                    onChange={(e) => setVisionApiKey(e.target.value)}
+                    className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm bg-white"
+                    placeholder="视觉 API Key"
+                  />
+                </div>
+              ) : null}
+            </div>
+
+            <div className="px-4 py-3 border-b border-slate-100">
+              <button
+                onClick={() => setShowApiPresetsModal(true)}
+                className="w-full rounded-xl border border-slate-200 bg-slate-50 py-2 text-sm"
+              >
+                管理 API 预设
+              </button>
+            </div>
+
+            <div className="px-4 py-3 border-b border-slate-100">
+              <button
+                onClick={pullModelsForTextAndVision}
+                disabled={testing || visionTesting}
+                className="w-full rounded-xl bg-blue-500 text-white py-2 text-sm disabled:bg-slate-400"
+              >
+                {testing || visionTesting ? '拉取中...' : '一键拉取模型'}
+              </button>
+            </div>
+
+            <div className="px-4 py-3 border-b border-slate-100">
+              <button
+                onClick={testVisionSupport}
+                disabled={visionTesting}
+                className="w-full rounded-xl bg-indigo-500 text-white py-2 text-sm disabled:bg-slate-400"
+              >
+                {visionTesting ? '视觉测试中...' : '测试视觉支持'}
+              </button>
+            </div>
+
+            <div className="px-4 py-3">
+              <button
+                onClick={handleSave}
+                className="w-full rounded-xl bg-emerald-500 text-white py-2 text-sm"
+              >
+                保存配置
+              </button>
+              {(textTestMessage || visionTestMessage) ? (
+                <div className="mt-3 space-y-2">
+                  {textTestMessage ? (
+                    <div
+                      className={`rounded-xl border px-3 py-2 text-xs ${
+                        testResult === 'error'
+                          ? 'bg-red-50 border-red-200 text-red-700'
+                          : 'bg-emerald-50 border-emerald-200 text-emerald-700'
+                      }`}
+                    >
+                      文本测试：{textTestMessage}
+                    </div>
+                  ) : null}
+                  {visionTestMessage ? (
+                    <div
+                      className={`rounded-xl border px-3 py-2 text-xs ${
+                        visionTestResult === 'error'
+                          ? 'bg-red-50 border-red-200 text-red-700'
+                          : 'bg-indigo-50 border-indigo-200 text-indigo-700'
+                      }`}
+                    >
+                      视觉测试：{visionTestMessage}
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
+            </div>
+          </section>
+        );
+      case 'appearance':
+        return (
+          <section className="rounded-3xl border border-slate-200 bg-white overflow-hidden">
+            <div className="px-4 py-3 border-b border-slate-100">
+              <div className="flex items-center justify-between">
+                <div>
+                  <div className="text-sm font-medium text-slate-900">全屏显示</div>
+                  <div className="text-xs text-slate-500 mt-1">自动适应浏览器屏幕</div>
+                </div>
+                <label className="relative inline-flex items-center cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={fullscreenMode}
+                    onChange={(e) => onToggleFullscreen(e.target.checked)}
+                    className="sr-only peer"
+                  />
+                  <div className="w-11 h-6 bg-gray-200 rounded-full peer peer-checked:bg-blue-600 peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border after:border-gray-300 after:rounded-full after:h-5 after:w-5 after:transition-all" />
+                </label>
+              </div>
+            </div>
+
+            <div className="px-4 py-3">
+              <div className="text-sm font-semibold text-slate-900">头像装饰</div>
+              <div className="mt-3 grid grid-cols-6 gap-2">
+                {AVATAR_BADGES.map((badge) => (
+                  <button
+                    key={badge}
+                    onClick={() => handleBadgeChange(badge)}
+                    className={`h-10 rounded-xl text-xl ${selectedBadge === badge ? 'bg-blue-500 text-white' : 'bg-slate-100 text-slate-700'}`}
+                  >
+                    {badge}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </section>
+        );
+      case 'cloud-sync':
+        return (
+          <section className="rounded-3xl border border-slate-200 bg-white overflow-hidden">
+            <div className="px-4 py-3 border-b border-slate-100">
+              <div className="text-sm font-semibold text-slate-900">同步状态</div>
+              <div className="mt-2 text-xs text-slate-500">
+                本地 {localConversationCount} · 云端 {cloudConversationCount ?? '--'}
+              </div>
+              <div className="mt-1 text-xs text-slate-500">
+                最近同步：{cloudLastSyncAt ? new Date(cloudLastSyncAt).toLocaleString('zh-CN') : '--'}
+              </div>
+            </div>
+
+            <div className="px-4 py-3 border-b border-slate-100">
+              <div className="flex items-center justify-between">
+                <span className="text-sm text-slate-800">启用云同步</span>
+                <input type="checkbox" checked={cloudSyncEnabled} onChange={(e) => setCloudSyncEnabled(e.target.checked)} />
+              </div>
+            </div>
+
+            <div className={`px-4 py-3 ${cloudSyncEnabled ? 'border-b border-slate-100' : 'opacity-60'} `}>
+              <input
+                value={cloudSupabaseUrl}
+                onChange={(e) => setCloudSupabaseUrl(e.target.value)}
+                placeholder="Supabase URL"
+                className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm bg-white"
+              />
+              <div className="mt-2">
+                <input
+                  type="password"
+                  value={cloudSupabaseAnonKey}
+                  onChange={(e) => setCloudSupabaseAnonKey(e.target.value)}
+                  placeholder="Supabase Anon Key"
+                  className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm bg-white"
+                />
+              </div>
+              <div className="mt-3 flex gap-2">
+                <button
+                  onClick={handleSaveCloudSyncSettings}
+                  className="flex-1 rounded-xl bg-blue-500 text-white py-2 text-sm disabled:bg-slate-400"
+                >
+                  保存配置
+                </button>
+                <button
+                  onClick={checkSupabaseStatus}
+                  className="flex-1 rounded-xl border border-slate-200 py-2 text-sm"
+                >
+                  重试
+                </button>
+              </div>
+            </div>
+
+            {cloudSyncEnabled && (
+              <div className="px-4 py-3">
+                <div className="text-sm font-medium text-slate-900 mb-2">云端登录</div>
+                <input
+                  type="email"
+                  value={cloudAuthEmail}
+                  onChange={(e) => setCloudAuthEmail(e.target.value)}
+                  placeholder="邮箱地址"
+                  className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm bg-white"
+                />
+                <button
+                  onClick={handleSendCloudMagicLink}
+                  disabled={cloudAuthSending}
+                  className="w-full rounded-xl bg-emerald-500 text-white py-2 text-sm mt-3 disabled:bg-slate-400"
+                >
+                  {cloudAuthSending ? '发送中...' : '发送登录链接'}
+                </button>
+                <button onClick={handleCloudSignOut} className="w-full rounded-xl border border-slate-200 py-2 text-sm mt-2">
+                  退出登录
+                </button>
+                <button onClick={handleUnbindCloudAccount} className="w-full rounded-xl border border-amber-300 text-amber-700 py-2 text-sm mt-2">
+                  解绑邮箱
+                </button>
+              </div>
+            )}
+          </section>
+        );
+      case 'storage':
+        return (
+          <section className="rounded-3xl border border-slate-200 bg-white overflow-hidden">
+            <div className="px-4 py-3 border-b border-slate-100">
+              <div className="text-sm font-semibold text-slate-900">存储占用</div>
+              {isLoadingStorage ? (
+                <div className="mt-2 text-sm text-slate-500">加载中...</div>
+              ) : (
+                <div className="mt-2 text-sm text-slate-600">
+                  {storageInfo?.localStorage && storageInfo?.indexedDB
+                    ? `${((storageInfo.localStorage.usage + storageInfo.indexedDB.usage) / 1024 / 1024).toFixed(1)} MB`
+                    : '暂无数据'}
+                </div>
+              )}
+            </div>
+            <div className="px-4 py-3 border-b border-slate-100">
+              <button onClick={handleManualMigration} className="w-full rounded-xl border border-blue-300 text-blue-700 py-2 text-sm">
+                手动数据迁移
+              </button>
+            </div>
+            <div className="px-4 py-3">
+              <button onClick={handleClearAllData} className="w-full rounded-xl border border-red-300 text-red-700 py-2 text-sm">
+                清除所有数据
+              </button>
+            </div>
+          </section>
+        );
+      case 'backup':
+        return (
+          <section className="rounded-3xl border border-slate-200 bg-white overflow-hidden">
+            <div className="px-4 py-3 border-b border-slate-100">
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  onClick={handleExportAllData}
+                  className="w-full rounded-xl border border-emerald-300 text-emerald-700 py-2 text-sm"
+                >
+                  导出
+                </button>
+                <button
+                  onClick={() => importInputRef.current?.click()}
+                  className="w-full rounded-xl border border-blue-300 text-blue-700 py-2 text-sm"
+                >
+                  导入
+                </button>
+              </div>
+              <input ref={importInputRef} type="file" accept=".json" onChange={handleImportAllData} className="hidden" />
+            </div>
+            <div className="px-4 py-3 bg-amber-50">
+              <div className="text-xs text-amber-800 leading-relaxed">
+                导入会覆盖当前所有数据，建议先导出备份。
+              </div>
+            </div>
+          </section>
+        );
+      default:
+        return null;
+    }
+  };
   
   const loadStorageInfo = async () => {
     try {
       setIsLoadingStorage(true);
+      const localConversations = await smartLoad('conversations');
+      setLocalConversationCount(Array.isArray(localConversations) ? localConversations.length : 0);
       const [storageStatus, quotaInfo] = await Promise.all([
         getStorageStatus(),
         checkStorageQuota()
       ]);
       
-      // 计算localStorage使用量
-      let localStorageUsage = 0;
-      for (let i = 0; i < localStorage.length; i++) {
-        const key = localStorage.key(i);
-        if (key) {
-          const value = localStorage.getItem(key) || '';
-          localStorageUsage += key.length + value.length;
-        }
-      }
-      
-      // 计算IndexedDB使用量（估算）
-      let indexedDBUsage = 0;
-      const indexedDBKeys = ['conversations', 'moments', 'chat_memory_banks', 'documents', 'relationships'];
-      for (const key of indexedDBKeys) {
-        try {
-          const data = await smartLoad(key);
-          if (data) {
-            indexedDBUsage += JSON.stringify(data).length * 2; // UTF-16估算
-          }
-        } catch (error) {
-          console.warn(`无法计算${key}大小:`, error);
-        }
-      }
-      
       setStorageInfo({
         ...storageStatus,
         quota: quotaInfo,
         localStorage: {
-          usage: localStorageUsage
+          usage: Math.round(storageStatus.localStorage.sizeMB * 1024 * 1024)
         },
         indexedDB: {
-          usage: indexedDBUsage
+          usage: Math.round(storageStatus.indexedDB.sizeMB * 1024 * 1024)
         }
       });
     } catch (error) {
       console.error('加载存储信息失败:', error);
     } finally {
       setIsLoadingStorage(false);
+    }
+  };
+
+  const refreshCloudSyncSummary = async (uid: string | null) => {
+    setCloudLastSyncAt(getCloudSyncRuntimeState().lastSuccessfulSyncAt);
+    const settings = getCloudSyncSettings();
+    if (!settings.enabled || !settings.url || !uid) {
+      setCloudConversationCount(null);
+      setCloudBindingState(null);
+      return;
+    }
+    try {
+      const cloudConversations = await supabaseLoadConversations();
+      setCloudConversationCount(cloudConversations.length);
+      setCloudBindingState(localStorage.getItem(getCloudBindingKey(settings.url, uid)));
+    } catch {
+      setCloudConversationCount(null);
+      setCloudBindingState(null);
     }
   };
 
@@ -193,6 +1403,7 @@ export default function SettingsScreen({ apiConfig, onUpdateConfig, onBack, full
 
     setTesting(true);
     setTestResult(null);
+    setTextTestMessage('');
 
     try {
       const response = await fetch(`${baseUrl}/v1/models`, {
@@ -209,6 +1420,7 @@ export default function SettingsScreen({ apiConfig, onUpdateConfig, onBack, full
       const models = data.data?.map((m: any) => m.id) || [];
       setAvailableModels(models);
       setTestResult('success');
+      setTextTestMessage(`文本连接正常，已拉取 ${models.length} 个模型。`);
       
       if (models.length > 0 && !modelName) {
         setModelName(models[0]);
@@ -216,9 +1428,151 @@ export default function SettingsScreen({ apiConfig, onUpdateConfig, onBack, full
     } catch (error) {
       console.error('Test failed:', error);
       setTestResult('error');
+      setTextTestMessage('文本连接失败，请检查 Base URL / API Key。');
       alert('连接测试失败，请检查配置');
     } finally {
       setTesting(false);
+    }
+  };
+
+  const fetchModelsFromEndpoint = async (url: string, key: string): Promise<string[]> => {
+    const response = await fetch(`${url}/v1/models`, {
+      headers: {
+        Authorization: `Bearer ${key}`,
+      },
+    });
+    if (!response.ok) {
+      throw new Error(`models 接口请求失败: ${response.status}`);
+    }
+    const data = await response.json();
+    return data.data?.map((m: any) => m.id) || [];
+  };
+
+  const resolveVisionEndpoint = () => {
+    const usingSeparate = useSeparateVisionApi;
+    const resolvedUrl = (usingSeparate ? visionBaseUrl : baseUrl).trim();
+    const resolvedKey = (usingSeparate ? visionApiKey : apiKey).trim();
+    return {
+      resolvedUrl,
+      resolvedKey,
+      usingSeparate,
+    };
+  };
+
+  const pullModelsForTextAndVision = async () => {
+    if (!baseUrl.trim() || !apiKey.trim()) {
+      alert('请先填写文本接口的 Base URL 和 API Key');
+      return;
+    }
+    if (useSeparateVisionApi && (!visionBaseUrl.trim() || !visionApiKey.trim())) {
+      alert('你已开启视觉独立接口，请填写视觉 Base URL 和视觉 API Key');
+      return;
+    }
+
+    setTesting(true);
+    setVisionTesting(true);
+    setTestResult(null);
+    setVisionTestResult(null);
+    setTextTestMessage('');
+    setVisionTestMessage('');
+    try {
+      const textModels = await fetchModelsFromEndpoint(baseUrl.trim(), apiKey.trim());
+      setAvailableModels(textModels);
+      if (textModels.length > 0 && !modelName) {
+        setModelName(textModels[0]);
+      }
+      setTestResult('success');
+      setTextTestMessage(`文本模型拉取成功：${textModels.length} 个。`);
+
+      const { resolvedUrl, resolvedKey } = resolveVisionEndpoint();
+      const visionModels = await fetchModelsFromEndpoint(resolvedUrl, resolvedKey);
+      setAvailableVisionModels(visionModels);
+      if (visionModels.length > 0 && !visionModelName) {
+        setVisionModelName(visionModels[0]);
+      }
+      setVisionTestResult('success');
+      setVisionTestMessage(`视觉模型拉取成功：${visionModels.length} 个。`);
+      alert(`模型拉取成功：文本 ${textModels.length} 个，视觉 ${visionModels.length} 个`);
+    } catch (error) {
+      console.error('拉取模型失败:', error);
+      setTestResult('error');
+      setVisionTestResult('error');
+      setTextTestMessage('模型拉取失败，请检查文本接口配置。');
+      setVisionTestMessage('模型拉取失败，请检查视觉接口配置。');
+      alert('拉取模型失败，请检查 URL / Key 是否正确');
+    } finally {
+      setTesting(false);
+      setVisionTesting(false);
+    }
+  };
+
+  const testVisionSupport = async () => {
+    const model = visionModelName.trim();
+    if (!model) {
+      alert('请先选择或填写视觉模型');
+      return;
+    }
+    const { resolvedUrl, resolvedKey, usingSeparate } = resolveVisionEndpoint();
+    if (!resolvedUrl || !resolvedKey) {
+      alert(usingSeparate ? '请先填写视觉接口 URL / Key' : '请先填写主接口 URL / Key');
+      return;
+    }
+
+    const tinyPngDataUrl =
+      'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9VE3h1wAAAAASUVORK5CYII=';
+
+    setVisionTesting(true);
+    setVisionTestResult(null);
+    setVisionTestMessage('');
+    try {
+      const response = await fetch(`${resolvedUrl}/v1/chat/completions`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${resolvedKey}`,
+        },
+        body: JSON.stringify({
+          model,
+          messages: [
+            {
+              role: 'user',
+              content: [
+                { type: 'text', text: '请用一句话描述这张图片内容。' },
+                { type: 'image_url', image_url: { url: tinyPngDataUrl } },
+              ],
+            },
+          ],
+          max_tokens: 30,
+          temperature: 0.2,
+        }),
+      });
+
+      if (!response.ok) {
+        const raw = await response.text();
+        const low = raw.toLowerCase();
+        let reason = '视觉能力测试失败（未知原因）';
+        if (low.includes('model') && (low.includes('not found') || low.includes('unsupported'))) {
+          reason = '模型不存在或该模型不支持视觉';
+        } else if (low.includes('image') || low.includes('vision') || low.includes('multimodal')) {
+          reason = '该模型或网关不支持 image_url 多模态';
+        } else if (low.includes('api key') || low.includes('unauthorized') || low.includes('invalid')) {
+          reason = '视觉接口鉴权失败（Key 可能无效）';
+        } else if (response.status >= 500) {
+          reason = '视觉接口服务异常（5xx）';
+        }
+        throw new Error(reason);
+      }
+
+      setVisionTestResult('success');
+      setVisionTestMessage('视觉模型测试通过：该模型可接收 image_url。');
+      alert('视觉模型测试通过：该模型可接收 image_url。');
+    } catch (error: any) {
+      console.error('视觉模型测试失败:', error);
+      setVisionTestResult('error');
+      setVisionTestMessage(`视觉模型测试失败：${error?.message || '请检查配置'}`);
+      alert(`视觉模型测试失败：${error?.message || '请检查配置'}`);
+    } finally {
+      setVisionTesting(false);
     }
   };
 
@@ -234,10 +1588,18 @@ export default function SettingsScreen({ apiConfig, onUpdateConfig, onBack, full
       return;
     }
 
+    if (useSeparateVisionApi && (!visionBaseUrl.trim() || !visionApiKey.trim())) {
+      alert('你已开启视觉独立接口，请填写视觉 Base URL 与视觉 API Key');
+      return;
+    }
+
     onUpdateConfig({ 
       baseUrl, 
       apiKey, 
       modelName,
+      visionModelName: visionModelName.trim(),
+      visionBaseUrl: useSeparateVisionApi ? visionBaseUrl.trim() : '',
+      visionApiKey: useSeparateVisionApi ? visionApiKey.trim() : '',
       speechToText: sttEnabled ? {
         enabled: true,
         apiUrl: sttApiUrl,
@@ -256,146 +1618,78 @@ export default function SettingsScreen({ apiConfig, onUpdateConfig, onBack, full
     setBaseUrl(preset.apiUrl || '');
     setApiKey(preset.apiKey || '');
     setModelName(preset.model || '');
+    setVisionModelName('');
+    setVisionBaseUrl('');
+    setVisionApiKey('');
+    setUseSeparateVisionApi(false);
     // 记录当前预设，便于在预设管理弹窗中高亮
     apiPresetsManager.switchToPreset(preset.id);
-  };
-
-  // 保存AI生图配置（商城/朋友圈共用）
-  const handleSaveImageGenConfig = (config: { apiUrl: string; apiKey: string; model: string }) => {
-    try {
-      localStorage.setItem('image_gen_api_url', config.apiUrl || '');
-      localStorage.setItem('image_gen_api_key', config.apiKey || '');
-      localStorage.setItem('image_gen_model', config.model || '');
-      setImageGenConfig(config);
-      alert('✅ AI生图配置已保存');
-    } catch (error) {
-      console.error('保存AI生图配置失败:', error);
-      alert('❌ 保存AI生图配置失败，请重试');
-    }
   };
 
   // 导出全部数据
   const handleExportAllData = async () => {
     try {
       console.log('🔄 开始导出全部数据...');
-      
-      // 收集所有数据
       const allData: { [key: string]: any } = {};
-      
-      // 🔍 统计各类数据
-      const stats = {
-        conversations: 0,      // 对话数
-        messages: 0,          // 消息数
-        moments: 0,           // 朋友圈数
-        contacts: 0,          // 联系人数
-        documents: 0,         // 文档数
-        memories: 0,          // 记忆数
-        images: 0,            // 图片数
-        profiles: 0,          // 角色数
-        relationships: 0      // 关系数
-      };
-      
-      // 🧠 **从新存储系统获取所有大数据**
-      console.log('🧠 从新存储系统获取数据...');
-      
-      // 定义可能存储在IndexedDB中的大数据key
-      const indexedDBKeys = [
-        'conversations',
-        'moments', 
-        'chat_memory_banks',
-        'documents',
-        'relationships',
-        'user_documents'
-      ];
-      
-      // 逐一获取IndexedDB数据
-      for (const key of indexedDBKeys) {
-        try {
-          console.log(`🔍 检查 ${key}...`);
-          
-          // 先尝试智能加载
-          let data = await smartLoad(key);
-          
-          // 如果智能加载没有数据，尝试分批加载
-          if (!data) {
-            data = await loadBatch(key);
-          }
-          
-          if (data) {
-            allData[key] = data;
-            console.log(`✅ ${key}数据获取成功`);
-            
-            // 📊 统计数据
-            if (key === 'conversations' && Array.isArray(data)) {
-              stats.conversations = data.length;
-              stats.messages = data.reduce((sum: number, conv: any) => 
-                sum + (conv.messages?.length || 0), 0);
-              stats.profiles = data.filter((c: any) => c.characterSettings).length;
-            } else if (key === 'moments' && Array.isArray(data)) {
-              stats.moments = data.length;
-            } else if (key === 'chat_memory_banks' && Array.isArray(data)) {
-              stats.memories = data.reduce((sum: number, bank: any) => 
-                sum + (bank.memories?.length || 0), 0);
-            } else if (key === 'relationships' && Array.isArray(data)) {
-              stats.relationships = data.length;
-            } else if (key === 'documents' && Array.isArray(data)) {
-              stats.documents = data.length;
-            }
-          }
-        } catch (error) {
-          console.warn(`⚠️ 获取 ${key} 数据失败:`, error);
-        }
-      }
-      
-      // 🗂️ **遍历localStorage获取其他数据**
-      console.log('🗂️ 遍历localStorage...');
+
+      const localStorageKeys: string[] = [];
       for (let i = 0; i < localStorage.length; i++) {
         const key = localStorage.key(i);
-        if (key) {
-          // 跳过已经从IndexedDB获取的数据
-          if (indexedDBKeys.includes(key) && allData[key]) {
-            continue;
-          }
-          
-          const value = localStorage.getItem(key);
-          if (value) {
-            try {
-              // 尝试解析JSON
-              const parsed = JSON.parse(value);
-              allData[key] = parsed;
-              
-              // 📊 统计数据量
-              if (key.startsWith('moments_') && parsed.posts) {
-                stats.moments += parsed.posts.length;
-              } else if (key === 'contacts' && Array.isArray(parsed)) {
-                stats.contacts = parsed.length;
-              } else if (key === 'document_library' && Array.isArray(parsed)) {
-                stats.documents = parsed.length;
-              } else if (key === 'chat_memory_banks' && Array.isArray(parsed)) {
-                // 统计记忆库中的记忆数量
-                stats.memories = parsed.reduce((sum: number, bank: any) => 
-                  sum + (bank.memories?.length || 0), 0);
-              } else if (key === 'relationships' && Array.isArray(parsed)) {
-                stats.relationships = parsed.length;
-              } else if (key === 'landscapeImage' || key === 'bannerImage') {
-                stats.images++;
-              }
-            } catch {
-              // 如果不是JSON，直接存储字符串
-              allData[key] = value;
-            }
-          }
+        if (!key) continue;
+        localStorageKeys.push(key);
+        const value = localStorage.getItem(key);
+        if (value == null) continue;
+        try {
+          allData[key] = JSON.parse(value);
+        } catch {
+          allData[key] = value;
         }
       }
 
-      console.log('📊 统计信息:', stats);
+      const indexedDBData = await dumpIndexedDBData();
+      const indexedDBKeys = Object.keys(indexedDBData);
+      Object.assign(allData, indexedDBData);
 
-      // 添加元数据
+      const conversations = Array.isArray(allData.conversations) ? allData.conversations : [];
+      const memoryBanks = Array.isArray(allData.chat_memory_banks) ? allData.chat_memory_banks : [];
+      const relationships = Array.isArray(allData.relationships) ? allData.relationships : [];
+      const docs = Array.isArray(allData.document_library)
+        ? allData.document_library
+        : Array.isArray(allData.documents)
+          ? allData.documents
+          : [];
+
+      let momentsCount = 0;
+      Object.entries(allData).forEach(([key, value]) => {
+        if (key === 'moments' && Array.isArray(value)) {
+          momentsCount += value.length;
+          return;
+        }
+        if (key.startsWith('moments_') && value && typeof value === 'object') {
+          momentsCount += Array.isArray((value as any).posts) ? (value as any).posts.length : 0;
+        }
+      });
+
+      const stats = {
+        conversations: conversations.length,
+        messages: conversations.reduce((sum: number, conv: any) => sum + (conv.messages?.length || 0), 0),
+        moments: momentsCount,
+        contacts: Array.isArray(allData.contacts) ? allData.contacts.length : 0,
+        documents: docs.length,
+        memories: memoryBanks.reduce((sum: number, bank: any) => sum + (bank.memories?.length || 0), 0),
+        images: ['landscapeImage', 'bannerImage'].filter((k) => !!allData[k]).length,
+        profiles: conversations.filter((c: any) => c?.characterSettings).length,
+        relationships: relationships.length,
+      };
+
       const exportData = {
+        format: 'momoyu-backup-v3',
         exportDate: new Date().toISOString(),
-        appVersion: '1.0.0',
+        appVersion: '3.0.0',
         dataType: 'full-backup',
-        storageType: 'smart-storage-compatible', // 标记支持智能存储
+        storageType: 'full-snapshot-v3',
+        localStorageKeys,
+        indexedDBKeys,
         stats: stats,
         data: allData
       };
@@ -425,7 +1719,7 @@ export default function SettingsScreen({ apiConfig, onUpdateConfig, onBack, full
         `• 背景图片: ${stats.images} 张\n` +
         `• 其他设置和数据\n\n` +
         `💾 文件已保存到下载文件夹\n` +
-        `🔧 支持智能存储系统`;
+        `🔧 已包含全部 IndexedDB 键与 localStorage 键`;
       
       alert(message);
       console.log('✅ 数据导出完成');
@@ -481,8 +1775,15 @@ export default function SettingsScreen({ apiConfig, onUpdateConfig, onBack, full
         const importedData = JSON.parse(event.target?.result as string);
         
         // 验证数据格式
-        if (!importedData.data || typeof importedData.data !== 'object') {
-          alert('❌ 导入文件格式不正确');
+        if (
+          importedData?.format !== 'momoyu-backup-v3' ||
+          importedData?.storageType !== 'full-snapshot-v3' ||
+          !importedData?.data ||
+          typeof importedData.data !== 'object' ||
+          !Array.isArray(importedData.localStorageKeys) ||
+          !Array.isArray(importedData.indexedDBKeys)
+        ) {
+          alert('❌ 导入失败：该文件不是新版本全量备份（v3）。请使用当前版本重新导出后再导入。');
           return;
         }
 
@@ -538,31 +1839,8 @@ export default function SettingsScreen({ apiConfig, onUpdateConfig, onBack, full
           return;
         }
 
-        // 🗂️ 清空所有存储
-        localStorage.clear();
-        
-        // 🔧 如果支持智能存储，清空所有IndexedDB数据
-        if (importedData.storageType === 'smart-storage-compatible') {
-          try {
-            // 清空所有可能的IndexedDB数据
-            const indexedDBKeys = [
-              'conversations', 'moments', 'chat_memory_banks',
-              'documents', 'relationships', 'user_documents'
-            ];
-            
-            for (const key of indexedDBKeys) {
-              try {
-                await smartSave(key, null);
-                console.log(`✅ 已清空 ${key}`);
-              } catch (error) {
-                console.warn(`⚠️ 清空 ${key} 失败:`, error);
-              }
-            }
-            console.log('✅ IndexedDB数据清空完成');
-          } catch (error) {
-            console.warn('清空IndexedDB失败:', error);
-          }
-        }
+        // 全量清空，避免残留
+        await clearAllData();
 
         // 📊 检查存储配额
         const quota = await checkStorageQuota();
@@ -572,16 +1850,19 @@ export default function SettingsScreen({ apiConfig, onUpdateConfig, onBack, full
         console.log(`💾 存储配额: ${(quota.quota / 1024 / 1024).toFixed(1)}MB / 可用: ${(quota.available / 1024 / 1024).toFixed(1)}MB`);
         console.log(`📦 数据大小: ${finalDataMB.toFixed(1)}MB`);
         
-        // 🔄 恢复所有数据
+        // 🔄 恢复所有数据（按备份记录恢复到对应存储层）
         const data = importedData.data;
+        const importedLocalKeys: string[] = Array.isArray(importedData.localStorageKeys) ? importedData.localStorageKeys : [];
+        const importedIndexedDBKeys: string[] = Array.isArray(importedData.indexedDBKeys) ? importedData.indexedDBKeys : [];
+        const localKeySet = new Set(importedLocalKeys);
+        const indexedKeySet = new Set(importedIndexedDBKeys);
         let importedCount = 0;
         let conversationsRestored = false;
         
         for (const key in data) {
           const value = data[key];
-          
-          // 🎯 conversations等大数据使用移动设备优化存储
-          if (key === 'conversations' && importedData.storageType === 'smart-storage-compatible') {
+
+          if (key === 'conversations' && indexedKeySet.has(key)) {
             try {
               // 移动设备使用分批保存，避免配额超限
               if (quota.isMobile || (Array.isArray(value) && value.length > 100)) {
@@ -609,10 +1890,10 @@ export default function SettingsScreen({ apiConfig, onUpdateConfig, onBack, full
               } else {
                 // 其他错误，回退到localStorage
                 console.log('⚠️ 回退到localStorage保存');
-                localStorage.setItem(key, JSON.stringify(value));
+                localStorage.setItem(key, typeof value === 'string' ? value : JSON.stringify(value));
               }
             }
-          } else if (['moments', 'chat_memory_banks', 'documents', 'relationships', 'user_documents'].includes(key) && importedData.storageType === 'smart-storage-compatible') {
+          } else if (indexedKeySet.has(key)) {
             try {
               // 其他大数据也使用移动设备优化
               if (quota.isMobile && Array.isArray(value) && value.length > 50) {
@@ -628,14 +1909,13 @@ export default function SettingsScreen({ apiConfig, onUpdateConfig, onBack, full
               console.log(`✅ ${key}数据已恢复到智能存储`);
             } catch (error) {
               console.error(`${key}智能存储恢复失败，回退到localStorage:`, error);
-              localStorage.setItem(key, JSON.stringify(value));
+              localStorage.setItem(key, typeof value === 'string' ? value : JSON.stringify(value));
             }
-          } else {
-            // 🗂️ 其他数据恢复到localStorage
-            if (typeof value === 'object') {
-              localStorage.setItem(key, JSON.stringify(value));
-            } else {
+          } else if (localKeySet.has(key)) {
+            if (typeof value === 'string') {
               localStorage.setItem(key, value);
+            } else {
+              localStorage.setItem(key, JSON.stringify(value));
             }
           }
           importedCount++;
@@ -674,548 +1954,174 @@ export default function SettingsScreen({ apiConfig, onUpdateConfig, onBack, full
   };
 
   return (
-    <div className="h-full bg-gray-50 flex flex-col">
+    <div className="h-[100dvh] md:h-full min-h-0 bg-gray-50 flex flex-col">
       {/* Header */}
       <div className="bg-white border-b border-gray-200 px-4 py-3 flex items-center">
-        <button onClick={onBack} className="p-2 -ml-2">
+              <button
+          onClick={() => {
+            if (isMobileSectionOpen) {
+              setIsMobileSectionOpen(false);
+              return;
+            }
+            onBack();
+          }}
+          className="p-2 -ml-2"
+        >
           <ChevronLeft className="w-6 h-6" />
-        </button>
-        <h1 className="text-lg font-semibold ml-2">设置</h1>
-      </div>
+              </button>
+        <h1 className="text-lg font-semibold ml-2">
+          {isMobileSectionOpen ? SETTINGS_SECTIONS.find((section) => section.id === activeSection)?.label ?? '设置' : '设置'}
+        </h1>
+          </div>
 
       {/* Content */}
-      <div className="flex-1 overflow-y-auto p-4">
-        {/* API 配置卡片 */}
-        <div className="bg-white rounded-xl shadow-sm p-5 space-y-4">
-          <h2 className="text-base font-semibold text-gray-900 mb-3 flex items-center gap-2">
-            <Database className="w-5 h-5 text-blue-500" />
-            API 配置
-          </h2>
-
-          {/* API 预设方案 */}
-          <div className="bg-gray-50 border border-gray-200 rounded-lg p-3">
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-xs font-medium text-gray-700">API 预设方案</span>
-              <button
-                onClick={() => setShowApiPresetsModal(true)}
-                className="px-2 py-1 text-xs rounded-md bg-white hover:bg-gray-100 border border-gray-200 text-gray-700 flex items-center gap-1"
-              >
-                管理预设
-              </button>
-            </div>
-            {apiPresets.length > 0 ? (
-              <div className="flex flex-wrap gap-2">
-                {apiPresets.slice(0, 3).map((preset) => (
-                  <button
-                    key={preset.id}
-                    onClick={() => handleApplyApiPreset(preset)}
-                    className="px-3 py-1 text-xs rounded-full bg-blue-50 text-blue-700 hover:bg-blue-100 border border-blue-200"
-                  >
-                    {preset.name}
-                  </button>
-                ))}
-              </div>
-            ) : (
-              <p className="text-xs text-gray-500">
-                还没有预设，点击「管理预设」可以添加多个API方案
-              </p>
-            )}
-          </div>
-
-          {/* Base URL */}
+      <div className="flex-1 min-h-0 bg-slate-100/70 p-4 lg:p-8 xl:overflow-hidden">
+        <div className="mx-auto h-full min-h-0 w-full max-w-[1600px]">
+          <div className="hidden h-full xl:flex xl:flex-col xl:gap-6">
+            <div className="rounded-3xl border border-slate-200 bg-white px-6 py-5 shadow-sm">
+              <div className="flex items-end justify-between gap-4">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Base URL
-            </label>
-            <input
-              type="text"
-              value={baseUrl}
-              onChange={(e) => setBaseUrl(e.target.value)}
-              placeholder="https://api520.pro"
-              className="w-full px-3 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
-            />
+                  <h2 className="text-2xl font-semibold text-slate-900">桌面设置中心</h2>
           </div>
-
-          {/* API Key */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              API Key
-            </label>
-            <input
-              type="password"
-              value={apiKey}
-              onChange={(e) => setApiKey(e.target.value)}
-              placeholder="sk-..."
-              className="w-full px-3 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
-            />
+                <div className="grid grid-cols-2 gap-3 w-[360px]">
+                  <div className="rounded-2xl bg-slate-50 px-4 py-3">
+                    <div className="text-xs text-slate-500">本地会话</div>
+                    <div className="mt-1 text-xl font-semibold text-slate-900">{localConversationCount}</div>
           </div>
-
-          {/* 模型选择 - 始终显示 */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              模型名称
-            </label>
-            {availableModels.length > 0 ? (
-              // 有可用模型列表时，使用下拉选择
-              <div className="space-y-2">
-                <select
-                  value={modelName}
-                  onChange={(e) => setModelName(e.target.value)}
-                  className="w-full px-3 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all bg-white"
-                >
-                  {availableModels.map(model => (
-                    <option key={model} value={model}>{model}</option>
-                  ))}
-                </select>
-                <p className="text-xs text-green-600 flex items-center gap-1">
-                  <Check className="w-3 h-3" />
-                  已获取 {availableModels.length} 个可用模型
-                </p>
+                  <div className="rounded-2xl bg-slate-50 px-4 py-3">
+                    <div className="text-xs text-slate-500">云端会话</div>
+                    <div className="mt-1 text-xl font-semibold text-slate-900">{cloudConversationCount === null ? '--' : cloudConversationCount}</div>
               </div>
-            ) : (
-              // 没有可用模型列表时，使用文本输入
-              <div className="space-y-2">
-                <input
-                  type="text"
-                  value={modelName}
-                  onChange={(e) => setModelName(e.target.value)}
-                  placeholder="gpt-3.5-turbo"
-                  className="w-full px-3 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
-                />
-                <p className="text-xs text-gray-500">
-                  💡 点击"测试连接"可自动获取可用模型列表
-                </p>
               </div>
-            )}
           </div>
-
-          {/* 当前配置状态 */}
-          {modelName && (
-            <div className="bg-blue-50 border border-blue-100 rounded-lg p-3">
-              <p className="text-xs text-blue-700">
-                <span className="font-semibold">当前模型：</span>
-                <span className="ml-1 font-mono">{modelName}</span>
-              </p>
             </div>
-          )}
 
-          {/* 友情提示 */}
-          <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 mb-4">
-            <div className="flex items-start gap-2">
-              <div className="text-amber-500 mt-0.5">⚠️</div>
-              <div className="text-sm text-amber-800">
-                <p className="font-medium mb-1">友情提示</p>
-                <p className="mb-2">请不要选择带"思考"功能的模型，这些模型会返回思考内容，影响正常聊天体验。</p>
-                <p>建议使用带联网（search）的对话模型对话体验更佳，以及部分小众内容或者网络资料繁杂的内容可以使用资料库功能自定义上传资料，让AI更贴合你的需要。</p>
+            <div className="grid min-h-0 flex-1 gap-6 xl:grid-cols-12">
+              <aside className="xl:col-span-3">
+                <div className="h-full rounded-3xl border border-slate-200 bg-white p-4 shadow-sm">
+                  <div className="px-3 pb-3">
+                    <div className="text-sm font-semibold text-slate-900">设置导航</div>
               </div>
-            </div>
-          </div>
-
-          {/* 测试连接按钮 */}
+                  <nav className="space-y-2">
+                    {SETTINGS_SECTIONS.map((section) => {
+                      const isActive = activeSection === section.id;
+                      return (
           <button
-            onClick={testConnection}
-            disabled={testing}
-            className="w-full bg-blue-500 hover:bg-blue-600 text-white py-2.5 rounded-lg font-medium flex items-center justify-center gap-2 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors"
-          >
-            {testing ? (
-              <>
-                <Loader2 className="w-5 h-5 animate-spin" />
-                测试连接中...
-              </>
-            ) : testResult === 'success' ? (
-              <>
-                <Check className="w-5 h-5" />
-                连接成功 · 点击重新测试
-              </>
-            ) : (
-              '测试 API 连接'
-            )}
-          </button>
-
-          {/* 保存按钮 */}
-          <button
-            onClick={handleSave}
-            className="w-full bg-green-500 hover:bg-green-600 text-white py-2.5 rounded-lg font-medium transition-colors"
-          >
-            保存配置
-          </button>
-        </div>
-
-        {/* 外观设置 */}
-        <div className="bg-white rounded-xl shadow-sm p-5 mt-4">
-          <h2 className="text-base font-semibold text-gray-900 mb-3">
-            🎨 外观设置
-          </h2>
-
-          {/* 全屏显示 */}
-          <div className="flex items-center justify-between py-3">
-            <div>
-              <div className="text-sm font-medium text-gray-900">全屏显示</div>
-              <div className="text-xs text-gray-500 mt-1">自动适应浏览器屏幕，无边框全屏效果</div>
-            </div>
-            <label className="relative inline-flex items-center cursor-pointer">
-              <input
-                type="checkbox"
-                checked={fullscreenMode}
-                onChange={(e) => onToggleFullscreen(e.target.checked)}
-                className="sr-only peer"
-              />
-              <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
-            </label>
-          </div>
-        </div>
-
-        {/* AI生图（商城/朋友圈） */}
-        <div className="bg-white rounded-xl shadow-sm p-5 mt-4">
-          <h2 className="text-base font-semibold text-gray-900 mb-3">
-            🎨 AI生图（商城/朋友圈）
-          </h2>
-
-          <div className="bg-gray-50 border border-gray-200 rounded-lg p-3 mb-3 text-sm text-gray-700">
-            <p>用于商城商品与朋友圈图片生成的专用AI配置，独立于对话模型。</p>
-            <p className="mt-1">当前状态：{imageGenConfig.apiUrl && imageGenConfig.apiKey && imageGenConfig.model ? <span className="text-green-600 font-medium">已配置</span> : <span className="text-red-600 font-medium">未配置</span>}</p>
-            {imageGenConfig.model && (
-              <p className="mt-1">当前模型：<span className="font-mono">{imageGenConfig.model}</span></p>
-            )}
-          </div>
-
-          <div className="flex gap-3">
-            <button
-              onClick={() => setShowImageGenModal(true)}
-              className="flex-1 py-2.5 bg-blue-500 hover:bg-blue-600 text-white rounded-lg font-medium transition-colors"
-            >
-              配置生图AI
-            </button>
-            <button
-              onClick={() => {
-                localStorage.removeItem('image_gen_api_url');
-                localStorage.removeItem('image_gen_api_key');
-                localStorage.removeItem('image_gen_model');
-                setImageGenConfig({ apiUrl: '', apiKey: '', model: '' });
-                alert('已清空AI生图配置');
-              }}
-              className="py-2.5 px-4 border-2 border-gray-200 hover:border-gray-300 hover:bg-gray-50 rounded-lg font-medium text-gray-700 transition-colors"
-            >
-              清空配置
-            </button>
-          </div>
-
-          {/* 开关设置 */}
-          <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-3">
-            {/* 商城开关（默认开） */}
-            <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-              <div>
-                <p className="font-medium text-gray-900">商城生图</p>
-                <p className="text-xs text-gray-500 mt-0.5">搜索商品时调用生图API</p>
-              </div>
-              <button
-                onClick={() => {
-                  const next = !shopGenEnabled;
-                  setShopGenEnabled(next);
-                  localStorage.setItem('image_gen_shop_enabled', String(next));
-                }}
-                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-                  shopGenEnabled ? 'bg-blue-500' : 'bg-gray-300'
-                }`}
-              >
-                <span
-                  className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                    shopGenEnabled ? 'translate-x-6' : 'translate-x-1'
-                  }`}
-                />
+                          key={section.id}
+                          type="button"
+                          onClick={() => setActiveSection(section.id)}
+                          className={`block w-full rounded-2xl px-4 py-3 text-left transition-all ${
+                            isActive
+                              ? 'bg-slate-900 text-white shadow-sm'
+                              : 'text-slate-700 hover:bg-slate-50'
+                          }`}
+                        >
+                          <div className="text-sm font-medium">{section.label}</div>
+                          <div className={`mt-1 text-xs ${isActive ? 'text-slate-300' : 'text-slate-500'}`}>{section.description}</div>
               </button>
+                      );
+                    })}
+                  </nav>
             </div>
+              </aside>
 
-            {/* 朋友圈开关（默认关） */}
-            <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+              <div className="min-h-0 xl:col-span-9 xl:overflow-auto">
+                <div className="mb-4 rounded-3xl border border-slate-200 bg-white px-6 py-5 shadow-sm">
+                  <div className="text-xs font-medium uppercase tracking-[0.18em] text-slate-400">Current Section</div>
+                  <div className="mt-2 flex items-end justify-between gap-4">
               <div>
-                <p className="font-medium text-gray-900">朋友圈生图</p>
-                <p className="text-xs text-gray-500 mt-0.5">仅按需(on-view)生成，受每日限额控制</p>
-              </div>
-              <button
-                onClick={() => {
-                  const next = !momentsGenEnabled;
-                  setMomentsGenEnabled(next);
-                  localStorage.setItem('image_gen_moments_enabled', String(next));
-                }}
-                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-                  momentsGenEnabled ? 'bg-blue-500' : 'bg-gray-300'
-                }`}
-              >
-                <span
-                  className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                    momentsGenEnabled ? 'translate-x-6' : 'translate-x-1'
-                  }`}
-                />
-              </button>
-            </div>
-          </div>
-
-          {/* 朋友圈每日上限 */}
-          <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-              <div>
-                <p className="font-medium text-gray-900">朋友圈每日上限</p>
-                <p className="text-xs text-gray-500 mt-0.5">每天最多触发的生图次数</p>
-              </div>
-              <input
-                type="number"
-                min={0}
-                max={50}
-                value={momentsDailyLimit}
-                onChange={(e) => {
-                  const v = parseInt(e.target.value || '0', 10);
-                  setMomentsDailyLimit(Number.isFinite(v) && v >= 0 ? Math.min(v, 50) : 0);
-                }}
-                onBlur={() => {
-                  const v = Number.isFinite(momentsDailyLimit) && momentsDailyLimit >= 0 ? momentsDailyLimit : 10;
-                  localStorage.setItem('image_gen_moments_daily_limit', String(v));
-                }}
-                className="w-24 px-2 py-1 border border-gray-300 rounded-md text-right"
-              />
-            </div>
-          </div>
-        </div>
-
-        {/* 头像装饰设置 */}
-        <div className="bg-white rounded-xl shadow-sm p-5 mt-4">
-          <h2 className="text-base font-semibold text-gray-900 mb-3 flex items-center gap-2">
-            ✨ 头像装饰
-          </h2>
-          <p className="text-sm text-gray-500 mb-4">选择你喜欢的头像装饰图标</p>
-          <div className="grid grid-cols-6 gap-3">
-            {AVATAR_BADGES.map((badge) => (
-              <button
-                key={badge}
-                onClick={() => handleBadgeChange(badge)}
-                className={`w-12 h-12 rounded-full flex items-center justify-center text-2xl transition-all ${
-                  selectedBadge === badge
-                    ? 'bg-blue-500 scale-110 shadow-lg'
-                    : 'bg-gray-100 hover:bg-gray-200'
-                }`}
-              >
-                {badge}
-              </button>
-            ))}
-          </div>
-          <div className="mt-4 p-3 bg-blue-50 border border-blue-100 rounded-lg">
-            <p className="text-sm text-blue-700">
-              当前选择: <span className="text-xl ml-2">{selectedBadge}</span>
+                      <h3 className="text-2xl font-semibold text-slate-900">
+                        {SETTINGS_SECTIONS.find((section) => section.id === activeSection)?.label}
+                      </h3>
+                      <p className="mt-1 text-sm text-slate-500">
+                        {SETTINGS_SECTIONS.find((section) => section.id === activeSection)?.description}
             </p>
           </div>
         </div>
-
-        {/* 存储管理卡片 */}
-        <div className="bg-white rounded-xl shadow-sm p-5 mt-4">
-          <h2 className="text-base font-semibold text-gray-900 mb-3 flex items-center gap-2">
-            <Database className="w-5 h-5 text-purple-500" />
-            存储管理
-          </h2>
-          
-          {/* 存储状态显示 */}
-          {isLoadingStorage ? (
-            <div className="bg-gray-50 border border-gray-200 rounded-xl p-4 mb-4">
-              <div className="flex items-center gap-2">
-                <Loader2 className="w-4 h-4 animate-spin text-gray-500" />
-                <span className="text-sm text-gray-600">加载存储信息中...</span>
               </div>
+                {renderDesktopSection()}
             </div>
-          ) : storageInfo ? (
-            <div className="bg-gray-50 border border-gray-200 rounded-xl p-4 mb-4">
-              <div className="flex items-center gap-2 mb-3">
-                <Database className="w-4 h-4 text-gray-500" />
-                <span className="text-sm font-medium text-gray-700">存储使用情况</span>
               </div>
-              
-              <div className="space-y-4">
-                {/* 总用量 */}
-                <div className="flex justify-between text-sm">
-                  <span className="text-gray-600">已用空间:</span>
-                  <span className="font-mono text-gray-800">
-                    {storageInfo.localStorage && storageInfo.indexedDB 
-                      ? `${((storageInfo.localStorage.usage + storageInfo.indexedDB.usage) / 1024 / 1024).toFixed(1)} MB`
-                      : '计算中...'
-                    }
-                  </span>
                 </div>
                 
-                {/* localStorage */}
-                <div className="space-y-2">
-                  <div className="flex justify-between text-xs">
-                    <span className="text-gray-600">localStorage</span>
-                    <span className="font-mono text-gray-800">
-                      {storageInfo.localStorage 
-                        ? `${(storageInfo.localStorage.usage / 1024).toFixed(1)} KB (${((storageInfo.localStorage.usage / (10 * 1024 * 1024)) * 100).toFixed(1)}%)`
-                        : '计算中...'
-                      }
-                    </span>
+          <div className="space-y-6 xl:hidden overflow-y-auto overscroll-y-contain touch-pan-y h-full min-h-0 pr-1 pb-24">
+            {!isMobileSectionOpen ? (
+              <>
+                <section className="rounded-[30px] border border-slate-200 bg-gradient-to-b from-[#dfe4ff] to-[#eef1ff] p-4 shadow-sm">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex items-center gap-3 min-w-0">
+                      <div className="w-16 h-16 rounded-full overflow-hidden border-4 border-white/70 bg-white shadow-sm flex items-center justify-center">
+                        {mobileProfileAvatar ? (
+                          <img src={mobileProfileAvatar} alt={mobileProfileName} className="w-full h-full object-cover" />
+                        ) : (
+                          <User className="w-7 h-7 text-slate-500" />
+                        )}
                   </div>
-                  <div className="w-full bg-gray-200 rounded-full h-1.5">
-                    <div 
-                      className="bg-green-500 h-1.5 rounded-full transition-all" 
-                      style={{ 
-                        width: storageInfo.localStorage 
-                          ? `${Math.min(100, (storageInfo.localStorage.usage / (10 * 1024 * 1024)) * 100).toFixed(1)}%`
-                          : '0%'
-                      }}
-                    />
+                      <div className="min-w-0">
+                        <div className="text-[22px] leading-6 font-semibold text-slate-900 truncate">{mobileProfileName}</div>
+                        <div className="mt-1 text-xs text-slate-500">GOGO ID: {cloudAuthUserId ? cloudAuthUserId.slice(0, 8) : 'local-user'}</div>
+                        <div className="mt-1 text-[11px] text-slate-600">Badge {selectedBadge}</div>
                   </div>
                 </div>
-
-                {/* IndexedDB */}
-                <div className="space-y-2">
-                  <div className="flex justify-between text-xs">
-                    <span className="text-gray-600">IndexedDB</span>
-                    <span className="font-mono text-gray-800">
-                      {storageInfo.indexedDB && storageInfo.quota
-                        ? `${(storageInfo.indexedDB.usage / 1024 / 1024).toFixed(1)} MB (${((storageInfo.indexedDB.usage / storageInfo.quota.quota) * 100).toFixed(1)}%)`
-                        : '计算中...'
-                      }
-                    </span>
                   </div>
-                  <div className="w-full bg-gray-200 rounded-full h-1.5">
-                    <div 
-                      className="bg-blue-500 h-1.5 rounded-full transition-all" 
-                      style={{ 
-                        width: storageInfo.indexedDB && storageInfo.quota
-                          ? `${Math.min(100, (storageInfo.indexedDB.usage / storageInfo.quota.quota) * 100).toFixed(1)}%`
-                          : '0%'
-                      }}
-                    />
+                  <div className="mt-4 rounded-2xl bg-white/90 border border-white p-3 grid grid-cols-4 gap-2 text-center">
+                    <div>
+                      <div className="text-lg font-semibold text-slate-900">{localConversationCount}</div>
+                      <div className="text-[11px] text-slate-500">Local</div>
                   </div>
+                    <div>
+                      <div className="text-lg font-semibold text-slate-900">{cloudConversationCount === null ? '--' : cloudConversationCount}</div>
+                      <div className="text-[11px] text-slate-500">Cloud</div>
                 </div>
+                    <div>
+                      <div className="text-lg font-semibold text-slate-900">{apiPresets.length}</div>
+                      <div className="text-[11px] text-slate-500">Presets</div>
               </div>
+                    <div>
+                      <div className="text-lg font-semibold text-slate-900">{modelName ? 'ON' : '--'}</div>
+                      <div className="text-[11px] text-slate-500">Model</div>
             </div>
-          ) : (
-            <div className="bg-red-50 border border-red-200 rounded-xl p-4 mb-4">
-              <span className="text-sm text-red-600">存储信息加载失败</span>
             </div>
-          )}
+                </section>
 
-          {/* 云同步状态（Supabase） */}
-          <div className="bg-gray-50 border border-gray-200 rounded-xl p-4 mb-4">
-            <div className="flex items-center justify-between gap-2 mb-2">
-              <div className="flex items-center gap-2">
-                <Database className="w-4 h-4 text-gray-500" />
-                <span className="text-sm font-medium text-gray-700">云同步状态（Supabase）</span>
-              </div>
-              <button
-                onClick={checkSupabaseStatus}
-                className="px-3 py-1.5 rounded-lg text-xs font-medium border border-gray-300 hover:bg-white transition-colors"
-              >
-                重新检测
+                <section className="rounded-3xl border border-slate-200 bg-white p-3 shadow-sm">
+                  <div className="divide-y divide-slate-100">
+                    <button type="button" onClick={() => { setActiveSection('api-config'); setIsMobileSectionOpen(true); }} className="w-full py-3 px-2 flex items-center justify-between">
+                      <div className="flex items-center gap-3 text-sm font-medium text-slate-800"><Database className="w-4 h-4 text-blue-500" /> API 配置</div>
+                      <ChevronRight className="w-4 h-4 text-slate-400" />
+                    </button>
+                    <button type="button" onClick={() => { setActiveSection('appearance'); setIsMobileSectionOpen(true); }} className="w-full py-3 px-2 flex items-center justify-between">
+                      <div className="flex items-center gap-3 text-sm font-medium text-slate-800"><Palette className="w-4 h-4 text-violet-500" /> 外观与资料</div>
+                      <ChevronRight className="w-4 h-4 text-slate-400" />
+                    </button>
+                    <button type="button" onClick={() => { setActiveSection('cloud-sync'); setIsMobileSectionOpen(true); }} className="w-full py-3 px-2 flex items-center justify-between">
+                      <div className="flex items-center gap-3 text-sm font-medium text-slate-800"><Cloud className="w-4 h-4 text-emerald-500" /> 云同步</div>
+                      <ChevronRight className="w-4 h-4 text-slate-400" />
+                    </button>
+                    <button type="button" onClick={() => { setActiveSection('storage'); setIsMobileSectionOpen(true); }} className="w-full py-3 px-2 flex items-center justify-between">
+                      <div className="flex items-center gap-3 text-sm font-medium text-slate-800"><HardDrive className="w-4 h-4 text-amber-500" /> 存储管理</div>
+                      <ChevronRight className="w-4 h-4 text-slate-400" />
+                    </button>
+                    <button type="button" onClick={() => { setActiveSection('backup'); setIsMobileSectionOpen(true); }} className="w-full py-3 px-2 flex items-center justify-between">
+                      <div className="flex items-center gap-3 text-sm font-medium text-slate-800"><Shield className="w-4 h-4 text-cyan-500" /> 数据备份</div>
+                      <ChevronRight className="w-4 h-4 text-slate-400" />
               </button>
             </div>
-
-            <div className="flex items-center gap-2 text-sm">
-              {supabaseStatus === 'checking' ? (
-                <>
-                  <Loader2 className="w-4 h-4 animate-spin text-gray-500" />
-                  <span className="text-gray-600">检测中…</span>
-                </>
-              ) : supabaseStatus === 'connected' ? (
-                <>
-                  <span className="inline-block w-2.5 h-2.5 rounded-full bg-green-500" />
-                  <span className="text-gray-800">已连接（云端可用）</span>
-                </>
-              ) : supabaseStatus === 'not_configured' ? (
-                <>
-                  <span className="inline-block w-2.5 h-2.5 rounded-full bg-gray-400" />
-                  <span className="text-gray-700">未配置（仅本地存储）</span>
+                </section>
                 </>
               ) : (
-                <>
-                  <span className="inline-block w-2.5 h-2.5 rounded-full bg-red-500" />
-                  <span className="text-gray-800">连接失败（已回退本地）</span>
-                </>
-              )}
+              <div className="space-y-4 pb-10 min-h-max">
+                <div className="px-1">
+                  <div className="text-[15px] font-semibold text-slate-900">
+                    {SETTINGS_SECTIONS.find((section) => section.id === activeSection)?.label}
             </div>
-
-            {supabaseStatus === 'error' && supabaseError ? (
-              <div className="mt-2 text-xs text-red-700 break-words">
-                {supabaseError}
+                  <div className="mt-0.5 text-xs text-slate-500">
+                    {SETTINGS_SECTIONS.find((section) => section.id === activeSection)?.description}
               </div>
-            ) : null}
-
-            <div className="mt-2 text-xs text-gray-500 leading-relaxed">
-              说明：云同步用于把聊天记录/记忆等存到云端，避免本地存储满导致白屏。未配置或连接失败时，App 会自动使用本地存储，不影响基本使用。
             </div>
+                {renderMobileSection()}
           </div>
-          
-          {/* 存储管理操作 */}
-          <div className="space-y-3 mb-4">
-            <button
-              onClick={handleManualMigration}
-              className="w-full py-2.5 px-4 border-2 border-blue-200 hover:border-blue-400 hover:bg-blue-50 rounded-lg transition-colors flex items-center justify-center gap-2 text-blue-700"
-            >
-              <Database className="w-4 h-4" />
-              <span className="font-medium text-sm">手动数据迁移</span>
-            </button>
-            
-            <button
-              onClick={handleClearAllData}
-              className="w-full py-2.5 px-4 border-2 border-red-200 hover:border-red-400 hover:bg-red-50 rounded-lg transition-colors flex items-center justify-center gap-2 text-red-700"
-            >
-              <Database className="w-4 h-4" />
-              <span className="font-medium text-sm">清除所有数据</span>
-            </button>
-          </div>
-        </div>
-
-        {/* 数据管理卡片 */}
-        <div className="bg-white rounded-xl shadow-sm p-5 mt-4">
-          <h2 className="text-base font-semibold text-gray-900 mb-3 flex items-center gap-2">
-            <Database className="w-5 h-5 text-green-500" />
-            数据备份
-          </h2>
-          
-          <p className="text-sm text-gray-500 mb-4">导出或导入所有应用数据</p>
-          
-          <div className="grid grid-cols-2 gap-3">
-            {/* 导出全部数据 */}
-            <button
-              onClick={handleExportAllData}
-              className="py-3 border-2 border-green-200 hover:border-green-400 hover:bg-green-50 rounded-lg transition-colors flex flex-col items-center justify-center gap-2 text-green-700"
-            >
-              <Download className="w-6 h-6" />
-              <span className="font-medium text-sm">导出全部数据</span>
-            </button>
-            
-            {/* 导入全部数据 */}
-            <button
-              onClick={() => importInputRef.current?.click()}
-              className="py-3 border-2 border-blue-200 hover:border-blue-400 hover:bg-blue-50 rounded-lg transition-colors flex flex-col items-center justify-center gap-2 text-blue-700"
-            >
-              <Upload className="w-6 h-6" />
-              <span className="font-medium text-sm">导入全部数据</span>
-            </button>
-          </div>
-
-          {/* 隐藏的文件输入 */}
-          <input
-            ref={importInputRef}
-            type="file"
-            accept=".json"
-            onChange={handleImportAllData}
-            className="hidden"
-          />
-
-          {/* 说明信息 */}
-          <div className="mt-4 p-3 bg-amber-50 border border-amber-200 rounded-lg">
-            <p className="text-xs text-amber-800 leading-relaxed">
-              <span className="font-semibold">📦 数据迁移说明：</span><br />
-              <span className="font-semibold">✅ 包含内容：</span><br />
-              • 所有对话记录和消息<br />
-              • 所有AI角色设置（头像、性格、知识库等）<br />
-              • 联系人和关系网络<br />
-              • 朋友圈内容和互动记录<br />
-              • 文档库和已保存的文档<br />
-              • 用户头像和背景图片<br />
-              • API配置和其他设置<br />
-              <span className="font-semibold mt-2 block">⚠️ 注意：</span>
-              • 导入会覆盖当前所有数据<br />
-              • 建议定期备份数据
-            </p>
+            )}
           </div>
         </div>
       </div>
@@ -1229,13 +2135,6 @@ export default function SettingsScreen({ apiConfig, onUpdateConfig, onBack, full
         onSelectPreset={handleApplyApiPreset}
       />
 
-      {/* AI生图配置弹窗（商城/朋友圈共用） */}
-      <ImageGenConfigModal
-        isOpen={showImageGenModal}
-        onClose={() => setShowImageGenModal(false)}
-        onSave={handleSaveImageGenConfig}
-        initialConfig={imageGenConfig}
-      />
     </div>
   );
 }

@@ -3,7 +3,7 @@
  * 实现自动总结和记忆管理
  */
 
-import { MemoryBank, MemoryDiaryEntry, MemoryEntry, Message } from '../types';
+import { AIEvent, ApiConfig, Conversation, MemoryBank, MemoryDiaryEntry, MemoryEntry, Message } from '../types';
 import { save, load } from './storage';
 
 // 重新导出类型以便其他组件使用
@@ -37,6 +37,7 @@ export const getMemoryBank = (conversationId: string): MemoryBank => {
     if (!existing.diaryEntries) existing.diaryEntries = [];
     if (!existing.aiSelfProfile) existing.aiSelfProfile = undefined;
     if (!existing.userProfile) existing.userProfile = undefined;
+    if (!existing.aiEvents) existing.aiEvents = [];
     return existing;
   }
   
@@ -47,10 +48,11 @@ export const getMemoryBank = (conversationId: string): MemoryBank => {
     diaryEntries: [],
     aiSelfProfile: undefined,
     userProfile: undefined,
+    aiEvents: [],
     lastSummaryMessageCount: 0,
     totalMessagesSinceLastSummary: 0,
     settings: {
-      autoSummaryInterval: 25, // 每25条消息自动总结一次
+      autoSummaryInterval: 50, // 每50条消息自动总结一次
       maxMemories: 100, // 最多保存100条记忆
       enableAutoSummary: true
     }
@@ -85,14 +87,7 @@ export const getAllMemoryBanks = async (): Promise<MemoryBank[]> => {
  */
 const getAllMemoryBanksSync = (): MemoryBank[] => {
   if (memoryBanksCache === null) {
-    // 如果缓存为空，尝试从localStorage读取作为后备
-    try {
-      const stored = localStorage.getItem(MEMORY_STORAGE_KEY);
-      memoryBanksCache = stored ? JSON.parse(stored) : [];
-    } catch (error) {
-      console.error('Failed to load memory banks from fallback:', error);
-      memoryBanksCache = [];
-    }
+    memoryBanksCache = [];
   }
   return memoryBanksCache || [];
 };
@@ -228,6 +223,7 @@ export const clearMemoryBank = (conversationId: string): void => {
   bank.diaryEntries = [];
   bank.aiSelfProfile = undefined;
   bank.userProfile = undefined;
+  bank.aiEvents = [];
   bank.lastSummaryMessageCount = 0;
   bank.totalMessagesSinceLastSummary = 0;
   saveMemoryBank(bank);
@@ -292,11 +288,53 @@ export const buildDynamicProfileContext = (conversationId: string): string => {
   if (bank.userProfile?.text) {
     sections.push(`【动态用户画像（高优先级）】\n${bank.userProfile.text}`);
   }
+  const recentEvents = (bank.aiEvents || [])
+    .slice()
+    .sort((a, b) => b.timestamp - a.timestamp)
+    .slice(0, 6);
+  if (recentEvents.length > 0) {
+    sections.push(
+      `【AI事件（高优先级，覆盖初始人设）】\n` +
+        recentEvents
+          .map((e) => `- (${e.day})[${e.status}] ${e.title}：${e.description}`)
+          .join('\n')
+    );
+  }
   const latestDiary = bank.diaryEntries?.[0];
   if (latestDiary?.content) {
     sections.push(`【最近日记】\n日期：${latestDiary.day}\n${latestDiary.content}`);
   }
   return sections.length ? `\n${sections.join('\n\n')}\n` : '';
+};
+
+export const buildMemoryAndIdentityContext = (conversationId: string): string => {
+  const bank = getMemoryBank(conversationId);
+  const identity = buildDynamicProfileContext(conversationId);
+  const memory = buildMemoryContext(bank.memories || []);
+  return `${identity}${memory}`;
+};
+
+export const addAIEvent = (
+  conversationId: string,
+  input: Omit<AIEvent, 'id' | 'timestamp' | 'day'> & { timestamp?: number; day?: string }
+): AIEvent => {
+  const bank = getMemoryBank(conversationId);
+  if (!bank.aiEvents) bank.aiEvents = [];
+  const ts = input.timestamp ?? Date.now();
+  const day = input.day ?? utc8DayKey(ts);
+  const next: AIEvent = {
+    id: `evt_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+    timestamp: ts,
+    day,
+    title: String(input.title || '').slice(0, 48) || '事件',
+    description: String(input.description || '').slice(0, 240) || '',
+    status: input.status,
+    tags: Array.isArray(input.tags) ? input.tags.map((x) => String(x)).filter(Boolean).slice(0, 8) : undefined,
+  };
+  bank.aiEvents.unshift(next);
+  bank.aiEvents = bank.aiEvents.slice(0, 60);
+  saveMemoryBank(bank);
+  return next;
 };
 
 /**
@@ -322,7 +360,8 @@ export const shouldTriggerAutoSummary = (conversationId: string, currentMessageC
   }
   
   const messagesSinceLastSummary = currentMessageCount - bank.lastSummaryMessageCount;
-  return messagesSinceLastSummary >= bank.settings.autoSummaryInterval;
+  const interval = Math.max(50, bank.settings.autoSummaryInterval || 50);
+  return messagesSinceLastSummary >= interval;
 };
 
 /**
@@ -334,6 +373,276 @@ export const updateSummaryCounter = (conversationId: string, currentMessageCount
   bank.totalMessagesSinceLastSummary = 0;
   saveMemoryBank(bank);
 };
+
+function utc8DayKey(ts: number): string {
+  const d = new Date(ts + 8 * 60 * 60 * 1000);
+  return d.toISOString().slice(0, 10);
+}
+
+function dayPartOf(ts: number): 'morning' | 'noon' | 'evening' {
+  const h = new Date(ts + 8 * 60 * 60 * 1000).getUTCHours();
+  if (h < 11) return 'morning';
+  if (h < 18) return 'noon';
+  return 'evening';
+}
+
+async function askJson(apiConfig: ApiConfig, prompt: string): Promise<any | null> {
+  if (!apiConfig.baseUrl || !apiConfig.apiKey || !apiConfig.modelName) return null;
+  try {
+    const res = await fetch(`${apiConfig.baseUrl}/v1/chat/completions`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${apiConfig.apiKey}`,
+      },
+      body: JSON.stringify({
+        model: apiConfig.modelName,
+        messages: [{ role: 'user', content: prompt }],
+        temperature: 0.3,
+        max_tokens: 900,
+      }),
+    });
+    if (!res.ok) return null;
+    const data = await res.json();
+    const text = String(data?.choices?.[0]?.message?.content || '');
+    const match = text.match(/\{[\s\S]*\}/);
+    if (!match) return null;
+    return JSON.parse(match[0]);
+  } catch {
+    return null;
+  }
+}
+
+function toDialogue(messages: Message[]): string {
+  return messages
+    .map((m) => `${m.role === 'user' ? '用户' : m.role === 'assistant' ? 'AI' : '系统'}: ${m.content || '[媒体消息]'}`)
+    .join('\n');
+}
+
+export async function runMemoryEngineCycle(
+  conversation: Conversation,
+  apiConfig: ApiConfig
+): Promise<void> {
+  if (!conversation?.id || !conversation.enabledFeatures?.includes('memory-system')) return;
+  const bank = getMemoryBank(conversation.id);
+  if (!bank.settings.enableAutoSummary) return;
+  const allMessages = conversation.messages || [];
+  if (allMessages.length < 10) return;
+
+  const interval = Math.max(50, bank.settings.autoSummaryInterval || 50);
+  while (allMessages.length - bank.lastSummaryMessageCount >= interval) {
+    const start = bank.lastSummaryMessageCount;
+    const end = start + interval;
+    const chunk = allMessages.slice(start, end);
+    const prompt =
+      `你要写“聊天记忆日记”和“候选长期记忆”。\n` +
+      `定义：\n` +
+      `- 自我画像：AI当前的身份/状态/承诺/重要经历/价值观（会随事件变化，覆盖初始人设）\n` +
+      `- 用户画像：用户的稳定信息+偏好+目标+与AI关系走向（会随互动更新）\n` +
+      `- AI事件：发生了“状态变化/人生节点/关系变化/角色定位变化”的事实（如辞职、被雇佣、关系升级），需要后续持续一致。\n\n` +
+      `请从“角色第一人称视角”写一段聊天记忆日记（80-180字），基于以下对话，不要编造。\n` +
+      `输出JSON: {"summary":"...","moodTags":["..."],"memoryCandidates":[{"content":"...","importance":"high|medium|low","category":"关系|事件|喜好|对话互动|情感|AI观点|AI经历"}],"aiEventCandidates":[{"title":"...","description":"...","status":"pending|confirmed|failed","tags":["..."]}]}\n` +
+      `对话：\n${toDialogue(chunk)}`;
+    const parsed = await askJson(apiConfig, prompt);
+    const summary = String(parsed?.summary || '').trim();
+    const moodTags = Array.isArray(parsed?.moodTags) ? parsed.moodTags.map((x: any) => String(x)).filter(Boolean).slice(0, 6) : [];
+    if (summary) {
+      addDiaryEntry(conversation.id, utc8DayKey(chunk[chunk.length - 1]?.timestamp || Date.now()), `【${interval}条阶段日记】${summary}`, moodTags, 'auto');
+      addMemory(conversation.id, summary, 'medium', '对话互动', true);
+    }
+    const candidates = Array.isArray(parsed?.memoryCandidates) ? parsed.memoryCandidates : [];
+    candidates.forEach((m: any) => {
+      const content = String(m?.content || '').trim();
+      if (!content) return;
+      const importance = m?.importance === 'high' || m?.importance === 'low' ? m.importance : 'medium';
+      const category = String(m?.category || '其他');
+      addMemory(conversation.id, content, importance, category, true);
+    });
+
+    const eventCandidates = Array.isArray(parsed?.aiEventCandidates) ? parsed.aiEventCandidates : [];
+    eventCandidates.forEach((e: any) => {
+      const title = String(e?.title || '').trim();
+      const description = String(e?.description || '').trim();
+      if (!title || !description) return;
+      const status: AIEvent['status'] =
+        e?.status === 'confirmed' || e?.status === 'failed' ? e.status : 'pending';
+      addAIEvent(conversation.id, { title, description, status, tags: e?.tags });
+    });
+    bank.lastSummaryMessageCount = end;
+    saveMemoryBank(bank);
+  }
+
+  const reviewStart = bank.lastHundredReviewCount || 0;
+  if (allMessages.length - reviewStart >= 100) {
+    const reviewEnd = reviewStart + 100;
+    const windowMsgs = allMessages.slice(Math.max(0, reviewEnd - 100), reviewEnd);
+    const prevMem = bank.memories.slice(0, 30).map(m => `- [${m.category || '其他'}|${m.importance}] ${m.content}`).join('\n');
+    const existingEvents = (bank.aiEvents || [])
+      .slice(0, 12)
+      .map((e) => `- (${e.day})[${e.status}] ${e.title}：${e.description}`)
+      .join('\n');
+    const prompt =
+      `你要做100条对话复盘（关键：AI是“成长和流动的”）。\n` +
+      `定义：\n` +
+      `- 自我画像：AI当前身份/状态/承诺/重要经历/价值观/职业状态（必须能覆盖初始人设的旧设定）\n` +
+      `- 用户画像：用户的稳定画像+变化趋势+与AI关系定位（比如雇佣、朋友、师徒等）\n` +
+      `- AI事件：会改变未来行为的事实节点（辞职成功/失败、被雇佣、关系升级、搬家、重大承诺等）。\n\n` +
+      `任务：先看旧记忆与旧事件，再看新对话，决定哪些要新增/更新。输出尽量“可执行、可保持一致”。\n` +
+      `输出JSON: {"newMemories":[{"content":"...","importance":"high|medium|low","category":"关系|事件|喜好|对话互动|情感|AI观点|AI经历"}],"aiEvents":[{"title":"...","description":"...","status":"pending|confirmed|failed","tags":["..."]}],"aiSelfProfile":"...","userProfile":"..."}\n` +
+      `旧记忆:\n${prevMem}\n` +
+      `旧事件:\n${existingEvents || '（无）'}\n` +
+      `新对话:\n${toDialogue(windowMsgs)}`;
+    const parsed = await askJson(apiConfig, prompt);
+    const newMemories = Array.isArray(parsed?.newMemories) ? parsed.newMemories : [];
+    newMemories.forEach((m: any) => {
+      const content = String(m?.content || '').trim();
+      if (!content) return;
+      const importance = m?.importance === 'high' || m?.importance === 'low' ? m.importance : 'medium';
+      const category = String(m?.category || '其他');
+      addMemory(conversation.id, `【100条复盘】${content}`, importance, category, true);
+    });
+    const aiSelf = String(parsed?.aiSelfProfile || '').trim();
+    const userP = String(parsed?.userProfile || '').trim();
+    if (aiSelf || userP) {
+      updateDynamicProfiles(conversation.id, aiSelf || bank.aiSelfProfile?.text || '', userP || bank.userProfile?.text || '', utc8DayKey(Date.now()));
+    }
+
+    const events = Array.isArray(parsed?.aiEvents) ? parsed.aiEvents : [];
+    events.forEach((e: any) => {
+      const title = String(e?.title || '').trim();
+      const description = String(e?.description || '').trim();
+      if (!title || !description) return;
+      const status: AIEvent['status'] =
+        e?.status === 'confirmed' || e?.status === 'failed' ? e.status : 'pending';
+      addAIEvent(conversation.id, { title, description, status, tags: e?.tags });
+    });
+    bank.lastHundredReviewCount = reviewEnd;
+    saveMemoryBank(bank);
+  }
+
+  if (!bank.dayPartSummaryMarks) bank.dayPartSummaryMarks = {};
+  const day = utc8DayKey(Date.now());
+  for (const part of ['morning', 'noon', 'evening'] as const) {
+    const key = `${day}:${part}`;
+    if (bank.dayPartSummaryMarks?.[key]) continue;
+    const partMsgs = allMessages.filter((m) => utc8DayKey(m.timestamp || Date.now()) === day && dayPartOf(m.timestamp || Date.now()) === part);
+    if (partMsgs.length < 4) continue;
+    const parsed = await askJson(apiConfig, `请基于以下${part === 'morning' ? '早间' : part === 'noon' ? '午间' : '晚间'}对话写50-120字阶段小结，角色第一人称。\n输出JSON: {"summary":"...","moodTags":["..."]}\n${toDialogue(partMsgs)}`);
+    const summary = String(parsed?.summary || '').trim();
+    const moodTags = Array.isArray(parsed?.moodTags) ? parsed.moodTags.map((x: any) => String(x)).filter(Boolean).slice(0, 6) : [];
+    if (summary) {
+      addDiaryEntry(conversation.id, day, `【${part === 'morning' ? '早间' : part === 'noon' ? '午间' : '晚间'}总结】${summary}`, moodTags, 'auto');
+      bank.dayPartSummaryMarks![key] = Date.now();
+      saveMemoryBank(bank);
+    }
+  }
+
+  if (bank.lastDailySummaryDay !== day) {
+    const todayMsgs = allMessages.filter((m) => utc8DayKey(m.timestamp || Date.now()) === day);
+    if (todayMsgs.length >= 8) {
+      const parsed = await askJson(apiConfig, 
+        `你要输出“今日总结 + 画像更新 + 事件”。\n` +
+        `定义：\n` +
+        `- 今日总结：角色第一人称，记录今天与用户的关键互动\n` +
+        `- 自我画像：AI当前身份/状态/承诺/职业状态/关系定位（覆盖初始人设）\n` +
+        `- 用户画像：用户的稳定画像与变化趋势，以及与AI关系定位\n` +
+        `- AI事件：今天如果出现状态变化/关系变化/角色定位变化，必须产出事件。\n\n` +
+        `输出JSON: {"dailySummary":"...","moodTags":["..."],"aiSelfProfile":"...","userProfile":"...","aiEvents":[{"title":"...","description":"...","status":"pending|confirmed|failed","tags":["..."]}]}\n` +
+        `${toDialogue(todayMsgs)}`
+      );
+      const dailySummary = String(parsed?.dailySummary || '').trim();
+      const moodTags = Array.isArray(parsed?.moodTags) ? parsed.moodTags.map((x: any) => String(x)).filter(Boolean).slice(0, 8) : [];
+      if (dailySummary) {
+        addDiaryEntry(conversation.id, day, `【今日总结】${dailySummary}`, moodTags, 'auto');
+        addMemory(conversation.id, dailySummary, 'medium', 'AI经历', true);
+      }
+      const aiSelf = String(parsed?.aiSelfProfile || '').trim();
+      const userP = String(parsed?.userProfile || '').trim();
+      if (aiSelf || userP) {
+        updateDynamicProfiles(conversation.id, aiSelf || bank.aiSelfProfile?.text || '', userP || bank.userProfile?.text || '', day);
+      }
+
+      const events = Array.isArray(parsed?.aiEvents) ? parsed.aiEvents : [];
+      events.forEach((e: any) => {
+        const title = String(e?.title || '').trim();
+        const description = String(e?.description || '').trim();
+        if (!title || !description) return;
+        const status: AIEvent['status'] =
+          e?.status === 'confirmed' || e?.status === 'failed' ? e.status : 'pending';
+        addAIEvent(conversation.id, { title, description, status, tags: e?.tags });
+      });
+      bank.lastDailySummaryDay = day;
+      saveMemoryBank(bank);
+    }
+  }
+}
+
+// =======================
+// ✅ 后台队列：不阻塞用户
+// =======================
+type EngineQueueState = {
+  scheduled: boolean;
+  pending: boolean;
+  running: boolean;
+};
+
+const engineQueue = new Map<string, EngineQueueState>();
+
+function scheduleIdle(fn: () => void) {
+  const w = window as any;
+  if (typeof w.requestIdleCallback === 'function') {
+    w.requestIdleCallback(fn, { timeout: 1500 });
+    return;
+  }
+  setTimeout(fn, 0);
+}
+
+export function enqueueMemoryEngineCycle(
+  conversation: Conversation,
+  apiConfig: ApiConfig
+): void {
+  const convId = conversation?.id;
+  if (!convId) return;
+  if (!conversation.enabledFeatures?.includes('memory-system')) return;
+
+  const state = engineQueue.get(convId) || { scheduled: false, pending: false, running: false };
+  if (state.running) {
+    state.pending = true;
+    engineQueue.set(convId, state);
+    return;
+  }
+  if (state.scheduled) {
+    state.pending = true;
+    engineQueue.set(convId, state);
+    return;
+  }
+
+  state.scheduled = true;
+  engineQueue.set(convId, state);
+
+  scheduleIdle(() => {
+    const st = engineQueue.get(convId) || state;
+    st.scheduled = false;
+    st.running = true;
+    st.pending = false;
+    engineQueue.set(convId, st);
+
+    runMemoryEngineCycle(conversation, apiConfig)
+      .catch((e) => console.error('[memory-engine] 后台执行失败:', e))
+      .finally(() => {
+        const st2 = engineQueue.get(convId);
+        if (!st2) return;
+        st2.running = false;
+        const shouldRerun = st2.pending;
+        st2.pending = false;
+        engineQueue.set(convId, st2);
+        if (shouldRerun) {
+          // 再跑一轮（比如新消息又来了）
+          enqueueMemoryEngineCycle(conversation, apiConfig);
+        }
+      });
+  });
+}
 
 /**
  * 生成记忆总结提示词
@@ -570,8 +879,7 @@ export const generateMemorySummary = async (): Promise<string> => {
  * 应用记忆到对话上下文（旧版兼容，重定向到新函数）
  */
 export const applyMemoriesToContext = (conversation: any, _memories: any[]): string => {
-  const bank = getMemoryBank(conversation.id);
-  return buildMemoryContext(bank.memories);
+  return buildMemoryAndIdentityContext(conversation.id);
 };
 
 /**

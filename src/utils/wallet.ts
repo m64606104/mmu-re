@@ -3,6 +3,8 @@
  * 管理用户余额和交易记录
  */
 
+import { getCachedData, load, save, setCachedData } from './storage';
+
 export interface WalletData {
   balance: number; // 余额
   transactions: Transaction[]; // 交易记录
@@ -25,38 +27,31 @@ export interface Transaction {
   relatedConversationId?: string; // 关联的对话ID
 }
 
+const WALLET_KEY = 'wallet_data';
+const AI_WALLET_KEY = 'ai_wallet_data';
+
+function getDefaultWallet(): WalletData {
+  return { balance: 1000, transactions: [] };
+}
+
 /**
  * 获取钱包数据
  */
 export const getWalletData = (): WalletData => {
-  try {
-    const data = localStorage.getItem('wallet_data');
-    if (data) {
-      return JSON.parse(data);
-    }
-    // 默认初始余额1000元
-    return {
-      balance: 1000,
-      transactions: []
-    };
-  } catch (error) {
-    console.error('获取钱包数据失败:', error);
-    return {
-      balance: 1000,
-      transactions: []
-    };
-  }
+  const cached = getCachedData<WalletData>(WALLET_KEY);
+  if (cached && typeof cached === 'object') return cached;
+  // 允许无阻塞：首次可能返回默认值，初始化由App预载或后续写入覆盖
+  return getDefaultWallet();
 };
 
 /**
  * 保存钱包数据
  */
 export const saveWalletData = (data: WalletData): void => {
-  try {
-    localStorage.setItem('wallet_data', JSON.stringify(data));
-  } catch (error) {
+  setCachedData(WALLET_KEY, data);
+  void save(WALLET_KEY, data).catch((error) => {
     console.error('保存钱包数据失败:', error);
-  }
+  });
 };
 
 /**
@@ -197,28 +192,35 @@ export const purchaseProduct = (
  * 获取AI钱包数据
  */
 export const getAIWalletData = (): AIWalletData => {
-  try {
-    const data = localStorage.getItem('ai_wallet_data');
-    if (data) {
-      return JSON.parse(data);
-    }
-    return {};
-  } catch (error) {
-    console.error('获取AI钱包数据失败:', error);
-    return {};
-  }
+  const cached = getCachedData<AIWalletData>(AI_WALLET_KEY);
+  if (cached && typeof cached === 'object') return cached;
+  return {};
 };
 
 /**
  * 保存AI钱包数据
  */
 export const saveAIWalletData = (data: AIWalletData): void => {
-  try {
-    localStorage.setItem('ai_wallet_data', JSON.stringify(data));
-  } catch (error) {
+  setCachedData(AI_WALLET_KEY, data);
+  void save(AI_WALLET_KEY, data).catch((error) => {
     console.error('保存AI钱包数据失败:', error);
-  }
+  });
 };
+
+export async function initializeWalletStorage(): Promise<void> {
+  try {
+    const [wallet, aiWallet] = await Promise.all([
+      load(WALLET_KEY),
+      load(AI_WALLET_KEY),
+    ]);
+    setCachedData(WALLET_KEY, wallet && typeof wallet === 'object' ? wallet : getDefaultWallet());
+    setCachedData(AI_WALLET_KEY, aiWallet && typeof aiWallet === 'object' ? aiWallet : {});
+  } catch (error) {
+    console.error('初始化钱包存储失败:', error);
+    setCachedData(WALLET_KEY, getDefaultWallet());
+    setCachedData(AI_WALLET_KEY, {});
+  }
+}
 
 /**
  * 获取指定AI的余额

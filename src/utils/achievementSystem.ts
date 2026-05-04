@@ -1,3 +1,6 @@
+import { getAllLetters } from './letterService';
+import { getCachedData, load, save, setCachedData } from './storage';
+
 /**
  * 成就系统
  * 为慢邮件功能添加游戏化元素
@@ -189,10 +192,8 @@ const STORAGE_KEY = 'letter_achievements';
  * 获取所有成就
  */
 export function getAllAchievements(): Achievement[] {
-  const stored = localStorage.getItem(STORAGE_KEY);
-  if (stored) {
-    return JSON.parse(stored);
-  }
+  const stored = getCachedData<Achievement[]>(STORAGE_KEY);
+  if (Array.isArray(stored)) return stored;
   
   // 初始化成就
   const achievements: Achievement[] = ACHIEVEMENTS.map(a => ({
@@ -201,7 +202,8 @@ export function getAllAchievements(): Achievement[] {
     unlocked: false
   }));
   
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(achievements));
+  setCachedData(STORAGE_KEY, achievements);
+  void save(STORAGE_KEY, achievements);
   return achievements;
 }
 
@@ -232,7 +234,8 @@ export function updateAchievementProgress(
     achievement.unlockedAt = Date.now();
     
     // 保存
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(achievements));
+    setCachedData(STORAGE_KEY, achievements);
+    void save(STORAGE_KEY, achievements);
     
     // 触发解锁事件
     triggerAchievementUnlock(achievement);
@@ -241,15 +244,26 @@ export function updateAchievementProgress(
   }
   
   // 保存进度
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(achievements));
+  setCachedData(STORAGE_KEY, achievements);
+  void save(STORAGE_KEY, achievements);
   return { unlocked: false };
+}
+
+export async function initializeAchievementStorage(): Promise<void> {
+  try {
+    const data = await load(STORAGE_KEY);
+    setCachedData(STORAGE_KEY, Array.isArray(data) ? data : null);
+  } catch (error) {
+    console.error('初始化成就存储失败:', error);
+    setCachedData(STORAGE_KEY, null);
+  }
 }
 
 /**
  * 检查信件相关成就
  */
 export function checkLetterAchievements() {
-  const letters = JSON.parse(localStorage.getItem('slow_letters') || '[]');
+  const letters = getAllLetters();
   
   // 寄信数量成就
   updateAchievementProgress('first_letter', letters.length);

@@ -4,6 +4,8 @@
  * 支持虚拟角色、好感度系统、自定义描述
  */
 
+import { load, save } from './storage';
+
 export type RelationshipStatus = 
   | 'stranger'      // 陌生人
   | 'acquaintance'  // 认识
@@ -68,6 +70,29 @@ export interface RelationshipData {
 }
 
 const STORAGE_KEY = 'ai_relationships';
+const CHARACTER_RELATIONSHIPS_KEY = 'character_relationships_v2';
+let relationshipsCache: RelationshipData | null = null;
+let characterRelationshipsCache: Record<string, CharacterRelationship[]> | null = null;
+
+export async function initializeRelationshipStorage(): Promise<void> {
+  try {
+    const [legacyRelationships, legacyCharacterRelationships] = await Promise.all([
+      load(STORAGE_KEY),
+      load(CHARACTER_RELATIONSHIPS_KEY),
+    ]);
+
+    relationshipsCache = legacyRelationships && typeof legacyRelationships === 'object'
+      ? legacyRelationships as RelationshipData
+      : { relationships: [], version: 1 };
+    characterRelationshipsCache = legacyCharacterRelationships && typeof legacyCharacterRelationships === 'object'
+      ? legacyCharacterRelationships as Record<string, CharacterRelationship[]>
+      : {};
+  } catch (error) {
+    console.error('初始化关系存储失败:', error);
+    relationshipsCache = { relationships: [], version: 1 };
+    characterRelationshipsCache = {};
+  }
+}
 
 /**
  * 获取关系等级的描述
@@ -115,30 +140,24 @@ export const getRelationshipEmoji = (level: RelationshipLevel): string => {
  * 加载所有关系数据
  */
 export const loadRelationships = (): RelationshipData => {
-  try {
-    const data = localStorage.getItem(STORAGE_KEY);
-    if (data) {
-      return JSON.parse(data);
-    }
-  } catch (error) {
-    console.error('加载关系数据失败:', error);
+  if (relationshipsCache) {
+    return relationshipsCache;
   }
-  
-  return {
+  relationshipsCache = {
     relationships: [],
     version: 1
   };
+  return relationshipsCache;
 };
 
 /**
  * 保存关系数据
  */
 export const saveRelationships = (data: RelationshipData): void => {
-  try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
-  } catch (error) {
+  relationshipsCache = data;
+  void save(STORAGE_KEY, data).catch(error => {
     console.error('保存关系数据失败:', error);
-  }
+  });
 };
 
 /**
@@ -359,29 +378,23 @@ export const convertLegacyToNew = (level: RelationshipLevel): { status: Relation
 /**
  * 保存角色的关系数据
  */
-const CHARACTER_RELATIONSHIPS_KEY = 'character_relationships_v2';
-
 export const saveCharacterRelationships = (characterId: string, relationships: CharacterRelationship[]): void => {
-  try {
-    const allData = JSON.parse(localStorage.getItem(CHARACTER_RELATIONSHIPS_KEY) || '{}');
-    allData[characterId] = relationships;
-    localStorage.setItem(CHARACTER_RELATIONSHIPS_KEY, JSON.stringify(allData));
-  } catch (error) {
+  const allData = characterRelationshipsCache || {};
+  allData[characterId] = relationships;
+  characterRelationshipsCache = allData;
+  void save(CHARACTER_RELATIONSHIPS_KEY, allData).catch(error => {
     console.error('保存角色关系失败:', error);
-  }
+  });
 };
 
 /**
  * 加载角色的关系数据
  */
 export const loadCharacterRelationships = (characterId: string): CharacterRelationship[] => {
-  try {
-    const allData = JSON.parse(localStorage.getItem(CHARACTER_RELATIONSHIPS_KEY) || '{}');
-    return allData[characterId] || [];
-  } catch (error) {
-    console.error('加载角色关系失败:', error);
-    return [];
+  if (!characterRelationshipsCache) {
+    characterRelationshipsCache = {};
   }
+  return characterRelationshipsCache[characterId] || [];
 };
 
 /**

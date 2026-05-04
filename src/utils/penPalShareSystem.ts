@@ -8,6 +8,7 @@ import { Letter, BottleAI } from '../types/letter';
 import { Conversation, CharacterSettings } from '../types';
 import { getLettersFromStorage } from './letterService';
 import { updateLetterMemoryFromLetter } from './letterMemorySystem';
+import { getCachedData, load, save, setCachedData } from './storage';
 
 /**
  * 笔友分享码数据结构
@@ -21,6 +22,8 @@ export interface PenPalShareCode {
   createdAt: number;               // 创建时间
   expiresAt?: number;              // 过期时间（可选）
 }
+
+const SHARE_CODES_KEY = 'penpal_share_codes';
 
 /**
  * 生成笔友分享码
@@ -86,10 +89,11 @@ export function createPenPalShareCode(
     createdAt: Date.now(),
   };
   
-  // 保存到localStorage
+  // 保存到统一存储
   const allShareCodes = getAllPenPalShareCodes();
   allShareCodes.push(shareCode);
-  localStorage.setItem('penpal_share_codes', JSON.stringify(allShareCodes));
+  setCachedData(SHARE_CODES_KEY, allShareCodes);
+  void save(SHARE_CODES_KEY, allShareCodes);
   
   console.log(`✅ 创建笔友分享码成功: ${code}`);
   return shareCode;
@@ -99,14 +103,8 @@ export function createPenPalShareCode(
  * 获取所有笔友分享码
  */
 export function getAllPenPalShareCodes(): PenPalShareCode[] {
-  try {
-    const data = localStorage.getItem('penpal_share_codes');
-    if (!data) return [];
-    return JSON.parse(data);
-  } catch (error) {
-    console.error('读取笔友分享码失败:', error);
-    return [];
-  }
+  const cached = getCachedData<PenPalShareCode[]>(SHARE_CODES_KEY);
+  return Array.isArray(cached) ? cached : [];
 }
 
 /**
@@ -239,10 +237,21 @@ export function deletePenPalShareCode(code: string): boolean {
   try {
     const allCodes = getAllPenPalShareCodes();
     const filtered = allCodes.filter(sc => sc.code !== code);
-    localStorage.setItem('penpal_share_codes', JSON.stringify(filtered));
+    setCachedData(SHARE_CODES_KEY, filtered);
+    void save(SHARE_CODES_KEY, filtered);
     return true;
   } catch (error) {
     console.error('删除笔友分享码失败:', error);
     return false;
+  }
+}
+
+export async function initializePenPalShareStorage(): Promise<void> {
+  try {
+    const codes = await load(SHARE_CODES_KEY);
+    setCachedData(SHARE_CODES_KEY, Array.isArray(codes) ? codes : []);
+  } catch (error) {
+    console.error('初始化笔友分享码存储失败:', error);
+    setCachedData(SHARE_CODES_KEY, []);
   }
 }

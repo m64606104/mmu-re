@@ -4,6 +4,7 @@
  */
 
 import { Stamp, StampSeries, StampCollection, StampCategory } from '../types/stamp';
+import { getCachedData, load, save, setCachedData } from './storage';
 
 const STORAGE_KEY = 'stamp_collection';
 
@@ -295,10 +296,8 @@ const STAMP_SERIES: StampSeries[] = [
  * 初始化邮票收藏
  */
 export function initStampCollection(): StampCollection {
-  const saved = localStorage.getItem(STORAGE_KEY);
-  if (saved) {
-    return JSON.parse(saved);
-  }
+  const saved = getCachedData<StampCollection>(STORAGE_KEY);
+  if (saved && typeof saved === 'object') return saved;
 
   // 创建初始收藏
   const stamps: Record<string, Stamp> = {};
@@ -327,7 +326,18 @@ export function initStampCollection(): StampCollection {
  * 保存邮票收藏
  */
 export function saveStampCollection(collection: StampCollection): void {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(collection));
+  setCachedData(STORAGE_KEY, collection);
+  void save(STORAGE_KEY, collection);
+}
+
+export async function initializeStampStorage(): Promise<void> {
+  try {
+    const stored = await load(STORAGE_KEY);
+    setCachedData(STORAGE_KEY, stored && typeof stored === 'object' ? stored : null);
+  } catch (error) {
+    console.error('初始化邮票存储失败:', error);
+    setCachedData(STORAGE_KEY, null);
+  }
 }
 
 /**

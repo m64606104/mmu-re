@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { ChevronLeft, FileText, Trash2, Edit, Send, Search, X } from 'lucide-react';
 import { getDocumentLibrary, deleteDocument, SavedDocument } from '../utils/documentLibrary';
 import { useConfirm } from '../hooks/useConfirm';
@@ -14,14 +14,18 @@ const DocumentLibraryModal: React.FC<DocumentLibraryModalProps> = ({ onClose, on
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedType, setSelectedType] = useState<'all' | 'text' | 'markdown' | 'code'>('all');
   const [selectedSource, setSelectedSource] = useState<'all' | 'AI发送' | '用户上传' | '知识库'>('all');
+  const [savedDocs, setSavedDocs] = useState<SavedDocument[]>([]);
   const { confirm, ConfirmComponent } = useConfirm();
+
+  useEffect(() => {
+    void getDocumentLibrary().then(setSavedDocs);
+  }, []);
 
   // 收集所有文档：手动保存 + 知识库
   const allDocuments = useMemo(() => {
     const docs: SavedDocument[] = [];
     
     // 1. 从 localStorage 读取手动保存的文档
-    const savedDocs = getDocumentLibrary();
     // 确保所有手动保存的文档都有source标记
     docs.push(...savedDocs.map(doc => ({
       ...doc,
@@ -50,7 +54,7 @@ const DocumentLibraryModal: React.FC<DocumentLibraryModalProps> = ({ onClose, on
     
     // 按时间倒序排列
     return docs.sort((a, b) => b.savedAt - a.savedAt);
-  }, [conversations]);
+  }, [conversations, savedDocs]);
 
   const documents = allDocuments;
 
@@ -70,7 +74,9 @@ const DocumentLibraryModal: React.FC<DocumentLibraryModalProps> = ({ onClose, on
     });
     
     if (confirmed) {
-      deleteDocument(documentId);
+      await deleteDocument(documentId);
+      const nextDocs = await getDocumentLibrary();
+      setSavedDocs(nextDocs);
     }
   };
 

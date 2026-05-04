@@ -1,6 +1,5 @@
 import type { ApiConfig, CharacterSettings, Conversation, Message } from '../types';
 import { requireSupabaseClient } from './supabaseClient';
-import { ensureSupabaseAnonSession } from './supabaseAuth';
 import { getAIResponse } from '../utils/apiHelper';
 import {
   addMemory,
@@ -32,13 +31,16 @@ async function getCurrentUserId(supabase: ReturnType<typeof requireSupabaseClien
   return session.session?.user?.id ?? null;
 }
 
+function table(supabase: ReturnType<typeof requireSupabaseClient>, name: string): any {
+  return (supabase as any).from(name);
+}
+
 async function getMessageCount(
   supabase: ReturnType<typeof requireSupabaseClient>,
   userId: string,
   conversationId: string
 ): Promise<number> {
-  const { count, error } = await supabase
-    .from('messages')
+  const { count, error } = await table(supabase, 'messages')
     .select('id', { head: true, count: 'exact' })
     .eq('user_id', userId)
     .eq('conversation_id', conversationId);
@@ -213,8 +215,7 @@ async function getWatermark(
   conversationId: string,
   key: string
 ): Promise<Record<string, any> | null> {
-  const { data, error } = await supabase
-    .from('processing_watermarks')
+  const { data, error } = await table(supabase, 'processing_watermarks')
     .select('value')
     .eq('user_id', userId)
     .eq('conversation_id', conversationId)
@@ -232,7 +233,7 @@ async function upsertWatermark(
   key: string,
   value: Record<string, any>
 ): Promise<void> {
-  const { error } = await supabase.from('processing_watermarks').upsert(
+  const { error } = await table(supabase, 'processing_watermarks').upsert(
     {
       user_id: userId,
       conversation_id: conversationId,
@@ -247,13 +248,11 @@ async function upsertWatermark(
 
 export async function supabaseLoadConversations(): Promise<Conversation[]> {
   const supabase = requireSupabaseClient();
-  await ensureSupabaseAnonSession();
 
   const userId = await getCurrentUserId(supabase);
   if (!userId) return [];
 
-  const { data, error } = await supabase
-    .from('conversations')
+  const { data, error } = await table(supabase, 'conversations')
     .select('*')
     .order('last_message_at', { ascending: false });
 
@@ -278,11 +277,12 @@ export async function supabaseLoadConversations(): Promise<Conversation[]> {
 
 export async function supabaseLoadMessages(conversationId: string, limit = 80): Promise<Message[]> {
   const supabase = requireSupabaseClient();
-  await ensureSupabaseAnonSession();
+  const userId = await getCurrentUserId(supabase);
+  if (!userId) return [];
 
-  const { data, error } = await supabase
-    .from('messages')
+  const { data, error } = await table(supabase, 'messages')
     .select('*')
+    .eq('user_id', userId)
     .eq('conversation_id', conversationId)
     .order('created_at', { ascending: false })
     .limit(limit);
@@ -304,7 +304,6 @@ export async function supabaseLoadMessages(conversationId: string, limit = 80): 
 
 export async function supabaseUpsertConversation(conv: Conversation): Promise<void> {
   const supabase = requireSupabaseClient();
-  await ensureSupabaseAnonSession();
 
   const userId = await getCurrentUserId(supabase);
   if (!userId) return;
@@ -324,14 +323,13 @@ export async function supabaseUpsertConversation(conv: Conversation): Promise<vo
     updated_at: new Date().toISOString(),
   };
 
-  const { error } = await supabase.from('conversations').upsert(payload);
+  const { error } = await table(supabase, 'conversations').upsert(payload);
   if (error) throw error;
 }
 
 export async function supabaseAppendMessages(conversationId: string, messages: Message[]): Promise<void> {
   if (messages.length === 0) return;
   const supabase = requireSupabaseClient();
-  await ensureSupabaseAnonSession();
 
   const userId = await getCurrentUserId(supabase);
   if (!userId) return;
@@ -349,8 +347,26 @@ export async function supabaseAppendMessages(conversationId: string, messages: M
     };
   });
 
-  const { error } = await supabase.from('messages').upsert(rows, { onConflict: 'id' });
+  const { error } = await table(supabase, 'messages').upsert(rows, { onConflict: 'id' });
   if (error) throw error;
+}
+
+export async function supabaseDeleteConversation(conversationId: string): Promise<void> {
+  const supabase = requireSupabaseClient();
+  const userId = await getCurrentUserId(supabase);
+  if (!userId) return;
+
+  const { error: messageDeleteError } = await table(supabase, 'messages')
+    .delete()
+    .eq('user_id', userId)
+    .eq('conversation_id', conversationId);
+  if (messageDeleteError) throw messageDeleteError;
+
+  const { error: conversationDeleteError } = await table(supabase, 'conversations')
+    .delete()
+    .eq('user_id', userId)
+    .eq('id', conversationId);
+  if (conversationDeleteError) throw conversationDeleteError;
 }
 
 export async function supabaseSyncDerivedMemory(
@@ -364,7 +380,6 @@ export async function supabaseSyncDerivedMemory(
   if (!allMessages.length || !newMessages.length) return;
   if (!apiConfig.baseUrl || !apiConfig.apiKey || !apiConfig.modelName) return;
   const supabase = requireSupabaseClient();
-  await ensureSupabaseAnonSession();
   const userId = await getCurrentUserId(supabase);
   if (!userId) return;
 
@@ -397,7 +412,7 @@ export async function supabaseSyncDerivedMemory(
       chunk
     );
 
-    const { error: insertError } = await supabase.from('conversation_chunk_summaries').insert({
+    const { error: insertError } = await table(supabase, 'conversation_chunk_summaries').insert({
       user_id: userId,
       conversation_id: conversationId,
       start_message_at: toIso(chunk[0].timestamp ?? Date.now()),
@@ -445,7 +460,7 @@ export async function supabaseSyncDerivedMemory(
     );
     const finalDiaryText = diaryText.trim() || `${day} 暂无有效日记内容`;
 
-    const { error: diaryError } = await supabase.from('conversation_daily_diaries').upsert(
+    const { error: diaryError } = await table(supabase, 'conversation_daily_diaries').upsert(
       {
         user_id: userId,
         conversation_id: conversationId,
@@ -469,8 +484,7 @@ export async function supabaseSyncDerivedMemory(
     );
     const aiSelfText = aiSelf.trim();
     const userText = userImpression.trim();
-    const { data: currentImpressions, error: impressionQueryError } = await supabase
-      .from('impressions')
+    const { data: currentImpressions, error: impressionQueryError } = await table(supabase, 'impressions')
       .select('target,version,last_diary_day')
       .eq('user_id', userId)
       .eq('conversation_id', conversationId)
@@ -499,8 +513,7 @@ export async function supabaseSyncDerivedMemory(
       }));
 
     if (upserts.length > 0) {
-      const { error: upsertImpressionError } = await supabase
-        .from('impressions')
+      const { error: upsertImpressionError } = await table(supabase, 'impressions')
         .upsert(upserts, { onConflict: 'user_id,conversation_id,target' });
       if (upsertImpressionError) throw upsertImpressionError;
 

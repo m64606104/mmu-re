@@ -5,6 +5,7 @@
 
 import { Waves, Star, Trophy, Bell } from 'lucide-react';
 import { useState, useEffect } from 'react';
+import { getUnreadCount, initializeLetterNotificationStorage } from '../utils/letterNotificationSystem';
 
 interface TopNavButtonsProps {
   onNavigate: (page: 'bottle-fishing' | 'favorite-replies' | 'achievements' | 'letter-notifications') => void;
@@ -15,18 +16,20 @@ export default function TopNavButtons({ onNavigate }: TopNavButtonsProps) {
 
   // 加载未读通知数量
   useEffect(() => {
-    loadUnreadCount();
-    
-    // 每10秒刷新一次
-    const interval = setInterval(loadUnreadCount, 10000);
-    return () => clearInterval(interval);
+    let interval: number | null = null;
+    void initializeLetterNotificationStorage().finally(() => {
+      loadUnreadCount();
+      interval = window.setInterval(loadUnreadCount, 10000);
+    });
+    return () => {
+      if (interval !== null) window.clearInterval(interval);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const loadUnreadCount = () => {
     try {
-      const notifications = JSON.parse(localStorage.getItem('letter_notifications') || '[]');
-      const unread = notifications.filter((n: any) => !n.read).length;
-      setUnreadCount(unread);
+      setUnreadCount(getUnreadCount());
     } catch (error) {
       console.error('加载未读通知失败:', error);
     }

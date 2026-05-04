@@ -1,6 +1,7 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { ChevronLeft, Search, UserPlus, MessageCircle, Users } from 'lucide-react';
 import { Conversation, Screen } from '../types';
+import { smartLoad, smartSave } from '../utils/storage';
 
 interface ContactsScreenProps {
   conversations: Conversation[];
@@ -23,15 +24,15 @@ export default function ContactsScreen({ conversations, onNavigate, onBack, onUp
   const [showNewFriends, setShowNewFriends] = useState(false);
   const [showGroups, setShowGroups] = useState(false);
   const [requests, setRequests] = useState<FriendRequest[]>([]);
+  const [desktopSelectedId, setDesktopSelectedId] = useState<string | null>(null);
   
   // 加载好友申请
   useEffect(() => {
     const loadRequests = () => {
       try {
-        const stored = localStorage.getItem('friendRequests');
-        if (stored) {
-          setRequests(JSON.parse(stored));
-        }
+        void smartLoad('friendRequests').then((stored) => {
+          if (Array.isArray(stored)) setRequests(stored as FriendRequest[]);
+        });
       } catch (e) {
         console.error('加载好友申请失败:', e);
       }
@@ -50,7 +51,7 @@ export default function ContactsScreen({ conversations, onNavigate, onBack, onUp
     ) as FriendRequest[];
     
     setRequests(updatedRequests);
-    localStorage.setItem('friendRequests', JSON.stringify(updatedRequests));
+    void smartSave('friendRequests', updatedRequests);
     
     if (accept && onUpdateConversation) {
       // 1. 解除拉黑
@@ -217,6 +218,17 @@ export default function ContactsScreen({ conversations, onNavigate, onBack, onUp
     contact.name.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
+  useEffect(() => {
+    if (!desktopSelectedId && filteredContacts.length > 0) {
+      setDesktopSelectedId(filteredContacts[0].id);
+    }
+  }, [desktopSelectedId, filteredContacts]);
+
+  const desktopSelectedContact = useMemo(
+    () => filteredContacts.find((contact) => contact.id === desktopSelectedId) || null,
+    [filteredContacts, desktopSelectedId]
+  );
+
   const getAvatarGradient = (name: string) => {
     const gradients = [
       'from-blue-400 to-blue-600',
@@ -233,7 +245,108 @@ export default function ContactsScreen({ conversations, onNavigate, onBack, onUp
   };
 
   return (
-    <div className="h-full bg-gray-50 flex flex-col">
+    <div className="h-full">
+      <div className="hidden md:flex h-full relative overflow-hidden bg-gradient-to-br from-slate-50 via-slate-50 to-zinc-100">
+        <div className="absolute inset-0 bg-white/78 backdrop-blur-[1px]" />
+        <div className="relative z-10 h-full flex flex-col w-full">
+          <header className="h-16 border-b border-zinc-200 bg-white/85 backdrop-blur-md px-6 flex items-center justify-between">
+            <div className="flex items-center gap-2 text-xl font-semibold text-zinc-900">
+              <span className="w-2 h-2 rounded-full bg-rose-400" />
+              通讯录
+            </div>
+            <button onClick={onBack} className="px-3 py-1.5 text-sm rounded-full text-zinc-600 hover:bg-zinc-100">
+              返回
+            </button>
+          </header>
+          <div className="flex-1 min-h-0 flex">
+            <aside className="w-[380px] border-r border-zinc-200 bg-white/65">
+              <div className="px-6 py-4 border-b border-zinc-200/70">
+                <div className="relative">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-400" />
+                  <input
+                    type="text"
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    placeholder="搜索联系人"
+                    className="w-full pl-10 pr-3 py-2 bg-zinc-100 rounded-xl text-sm text-zinc-800 placeholder-zinc-400 focus:outline-none focus:ring-2 focus:ring-zinc-300"
+                  />
+                </div>
+                <div className="mt-3 flex gap-2">
+                  <button onClick={() => setShowNewFriends(true)} className="px-3 py-1.5 rounded-full border border-zinc-200 bg-white text-zinc-700 text-xs">
+                    新的朋友 {pendingCount > 0 ? `(${pendingCount})` : ''}
+                  </button>
+                  <button onClick={() => setShowGroups(true)} className="px-3 py-1.5 rounded-full border border-zinc-200 bg-white text-zinc-700 text-xs">
+                    群聊
+                  </button>
+                </div>
+              </div>
+              <div className="overflow-y-auto h-[calc(100%-0px)] p-3 space-y-2">
+                {filteredContacts.length === 0 ? (
+                  <div className="px-3 py-8 text-center text-zinc-500">没有匹配的联系人</div>
+                ) : (
+                  filteredContacts.map((contact) => (
+                    <button
+                      key={contact.id}
+                      onClick={() => setDesktopSelectedId(contact.id)}
+                      onDoubleClick={() => onNavigate('chat', contact.id)}
+                      className={`w-full rounded-2xl border p-3 text-left transition ${
+                        contact.id === desktopSelectedId
+                          ? 'bg-white border-zinc-300 shadow-sm'
+                          : 'bg-white/90 border-zinc-200 hover:bg-white hover:shadow-sm'
+                      }`}
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className={`w-10 h-10 rounded-xl bg-gradient-to-br ${getAvatarGradient(contact.name)} flex items-center justify-center overflow-hidden`}>
+                          {contact.characterSettings?.avatar || contact.avatar ? (
+                            <img src={contact.characterSettings?.avatar || contact.avatar} alt={contact.name} className="w-full h-full object-cover" />
+                          ) : (
+                            <span className="text-white font-semibold text-base">{contact.name.charAt(0)}</span>
+                          )}
+                        </div>
+                        <div className="min-w-0">
+                          <div className="font-semibold text-zinc-900 truncate">{contact.name}</div>
+                          <div className="text-xs text-zinc-500 truncate">{contact.characterSettings?.username || '联系人'}</div>
+                        </div>
+                      </div>
+                    </button>
+                  ))
+                )}
+              </div>
+            </aside>
+            <main className="flex-1 min-h-0 p-10 overflow-y-auto">
+              {desktopSelectedContact ? (
+                <div className="max-w-[860px] mx-auto rounded-3xl border border-zinc-200 bg-white/90 overflow-hidden">
+                  <div className="p-6 border-b border-zinc-100 flex items-center gap-4">
+                    <div className={`w-16 h-16 rounded-2xl bg-gradient-to-br ${getAvatarGradient(desktopSelectedContact.name)} overflow-hidden flex items-center justify-center`}>
+                      {desktopSelectedContact.characterSettings?.avatar || desktopSelectedContact.avatar ? (
+                        <img src={desktopSelectedContact.characterSettings?.avatar || desktopSelectedContact.avatar} alt={desktopSelectedContact.name} className="w-full h-full object-cover" />
+                      ) : (
+                        <span className="text-white font-semibold text-2xl">{desktopSelectedContact.name.charAt(0)}</span>
+                      )}
+                    </div>
+                    <div>
+                      <div className="text-2xl font-semibold text-zinc-900">{desktopSelectedContact.name}</div>
+                      <div className="mt-1 text-sm text-zinc-500">{desktopSelectedContact.characterSettings?.username || '联系人'}</div>
+                    </div>
+                  </div>
+                  <div className="p-6 flex gap-3">
+                    <button onClick={() => onNavigate('chat', desktopSelectedContact.id)} className="px-4 py-2 rounded-full bg-zinc-900 text-white text-sm hover:bg-zinc-800">
+                      发起对话
+                    </button>
+                    <button onClick={() => onNavigate('add-friend')} className="px-4 py-2 rounded-full border border-zinc-200 bg-white text-zinc-700 text-sm hover:bg-zinc-50">
+                      添加朋友
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div className="h-full flex items-center justify-center text-zinc-500">请选择联系人</div>
+              )}
+            </main>
+          </div>
+        </div>
+      </div>
+
+      <div className="md:hidden h-full bg-gray-50 flex flex-col">
       {/* Header */}
       <div className="bg-white border-b border-gray-200 px-4 py-3 flex items-center">
         <button onClick={onBack} className="p-2 -ml-2">
@@ -370,6 +483,7 @@ export default function ContactsScreen({ conversations, onNavigate, onBack, onUp
           <UserPlus className="w-5 h-5" />
           添加新联系人
         </button>
+      </div>
       </div>
     </div>
   );

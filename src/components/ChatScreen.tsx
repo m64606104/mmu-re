@@ -1,6 +1,6 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { groupToPrivateMemoryService } from '../utils/groupToPrivateMemoryService';
-import { ChevronLeft, Send, Mic, Smile, BellOff, Bell, Pause, Play, Image as ImageIcon, Video, Phone, MapPin, FileText, Plus, Search, MessageCircle, MessageSquare, Eye, Music, Gift, MoreHorizontal } from 'lucide-react';
+import { ChevronLeft, Send, Mic, Smile, BellOff, Bell, Pause, Play, Image as ImageIcon, Video, Phone, MapPin, FileText, Plus, Search, MessageCircle, MessageSquare, Eye, Music, Gift, MoreHorizontal, Wallet } from 'lucide-react';
 import { Conversation, Message, ApiConfig, UserProfile, DocumentMessage } from '../types';
 import MoneyTransferModal from './MoneyTransferModal';
 import GroupRedPacketModal from './GroupRedPacketModal';
@@ -29,6 +29,7 @@ import NeteaseMusicCard from './NeteaseMusicCard';
 import { calculateVoiceDuration } from '../utils/voiceDurationCalculator';
 import { isSingleEmojiText } from '../utils/systemEmoji';
 import { smartLoad } from '../utils/storage';
+import { parseDocument } from '../utils/enhancedDocumentParser';
 import WeiboFeed from './WeiboFeed';
 import SearchHistoryView from './SearchHistoryView';
 import ChatSearchModal from './ChatSearchModal';
@@ -87,12 +88,12 @@ import {
   updateGroupSummaryCounter,
   buildGroupMemorySummaryPrompt,
   getGroupMemories,
-  addGroupMemory
+  addGroupMemory,
+  enqueueMemoryEngineCycle
 } from '../utils/memorySystem';
 // import { detectMemes } from '../utils/memeSystem'; // 已删除热梗系统
 import { messagePerceptionService } from '../utils/messagePerceptionService';
 import { UnrepliedMessageInfo } from '../utils/timeAwareness';
-import { getMomentsData } from '../domains/moments';
 import { getAIStatus } from '../utils/aiStatusManager';
 import { MEDIA_DECISION_GUIDANCE } from '../utils/mediaDecisionPrompt';
 import { getNoActionRoleplayPrompt } from '../utils/chatStylePrompt';
@@ -113,6 +114,7 @@ import { showMessageNotification } from './MessageNotification';
 import { MessageActionMenu } from './MessageActionMenu';
 import { useToast } from './Toast';
 import { useMessageNotification } from '../hooks/useMessageNotification';
+import { buildAvatarIdentityPrompt } from '../utils/avatarVision';
 // import { transcribeAudio, isValidSpeechConfig } from '../utils/speechToText';
 
 interface ChatScreenProps {
@@ -125,6 +127,8 @@ interface ChatScreenProps {
   onBack: () => void;
   onOpenCharacterSettings: () => void;
   onNavigateToPrivateChat?: (aiName: string) => void; // 新增：导航到与AI的私聊
+  /** 打开表情包管理并定位「我的专属」 */
+  onOpenStickerManagement?: () => void;
 }
 
 export default function ChatScreen({
@@ -137,6 +141,7 @@ export default function ChatScreen({
   onBack,
   onOpenCharacterSettings,
   onNavigateToPrivateChat,
+  onOpenStickerManagement,
 }: ChatScreenProps) {
   const { showToast } = useToast();
   
@@ -159,8 +164,10 @@ export default function ChatScreen({
   const [pendingUserMessages, setPendingUserMessages] = useState<string[]>([]); // AI回复时用户发送的消息
   const [showToolbar, setShowToolbar] = useState(false);
   const [showAdvancedToolbarActions, setShowAdvancedToolbarActions] = useState(false);
+  const [showPrivateExtraActions, setShowPrivateExtraActions] = useState(false);
   const [showMoneyTransferModal, setShowMoneyTransferModal] = useState(false);
   const [showSendDocumentModal, setShowSendDocumentModal] = useState(false);
+  const [autoPickDocumentFile, setAutoPickDocumentFile] = useState(false);
   const [showDocumentLibrary, setShowDocumentLibrary] = useState(false);
   const [viewingDocument, setViewingDocument] = useState<Message['document'] | null>(null);
   const [viewingXiaohongshuLink, setViewingXiaohongshuLink] = useState<LinkPreviewData | null>(null);
@@ -180,6 +187,7 @@ export default function ChatScreen({
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const imageInputRef = useRef<HTMLInputElement>(null);
   const videoInputRef = useRef<HTMLInputElement>(null);
+  const unifiedPickInputRef = useRef<HTMLInputElement>(null);
   const [showSendingHint, setShowSendingHint] = useState(false);
   const [isGroupProcessing, setIsGroupProcessing] = useState(false); // 🚀 新增：群聊处理中状态
   const [showTyping, setShowTyping] = useState(() => isConvGenerating(conversation.id));
@@ -189,6 +197,12 @@ export default function ChatScreen({
       setShowAdvancedToolbarActions(false);
     }
   }, [showToolbar, showAdvancedToolbarActions]);
+
+  useEffect(() => {
+    if (conversation.type !== 'private' && showPrivateExtraActions) {
+      setShowPrivateExtraActions(false);
+    }
+  }, [conversation.type, showPrivateExtraActions]);
 
   useEffect(() => {
     if (!showAdvancedToolbarActions) return;
@@ -207,6 +221,24 @@ export default function ChatScreen({
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [showAdvancedToolbarActions]);
+
+  useEffect(() => {
+    if (!showPrivateExtraActions) return;
+
+    const handleClickOutside = (event: MouseEvent) => {
+      const target = event.target as Node;
+      if (
+        privateExtraActionsPanelRef.current?.contains(target) ||
+        privateExtraActionsToggleRef.current?.contains(target)
+      ) {
+        return;
+      }
+      setShowPrivateExtraActions(false);
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [showPrivateExtraActions]);
   
   
   // 群聊相关状态
@@ -230,6 +262,8 @@ export default function ChatScreen({
   const inputRef = useRef<HTMLInputElement>(null);
   const advancedToolbarPanelRef = useRef<HTMLDivElement | null>(null);
   const advancedToolbarToggleRef = useRef<HTMLButtonElement | null>(null);
+  const privateExtraActionsPanelRef = useRef<HTMLDivElement | null>(null);
+  const privateExtraActionsToggleRef = useRef<HTMLButtonElement | null>(null);
 
   // 保存通话记录
   const handleSaveCallLog = (log: CallLog) => {
@@ -482,6 +516,7 @@ ${recentMessages}
   const [isUserScrolling, setIsUserScrolling] = useState(false);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const lastMessageCountRef = useRef(0);
+  const lastMemoryEngineCountRef = useRef(0);
   
   // 🚚 配送状态刷新触发器（每30秒更新一次）
   const [deliveryRefreshTrigger, setDeliveryRefreshTrigger] = useState(0);
@@ -659,6 +694,14 @@ ${recentMessages}
     // 更新消息数量记录
     lastMessageCountRef.current = currentMessageCount;
   }, [conversation.messages.length, conversation.id, shouldScrollToBottom, smartScrollToBottom]);
+
+  useEffect(() => {
+    if (conversation.type !== 'private') return;
+    if (!conversation.enabledFeatures?.includes('memory-system')) return;
+    if (conversation.messages.length <= lastMemoryEngineCountRef.current) return;
+    lastMemoryEngineCountRef.current = conversation.messages.length;
+    enqueueMemoryEngineCycle(conversation, apiConfig);
+  }, [conversation, apiConfig]);
   
   // 初始滚动到底部，显示最新消息
   useEffect(() => {
@@ -802,7 +845,10 @@ ${recentMessages}
   };
 
   const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    // 仅滚动聊天消息容器，避免 scrollIntoView 触发整页滚动
+    const container = messagesContainerRef.current;
+    if (!container) return;
+    container.scrollTop = container.scrollHeight;
   };
 
   // 消息点击处理 - 显示胶囊菜单
@@ -1340,6 +1386,7 @@ ${recentMessages}
 ${characterPersonality ? `性格：${characterPersonality}` : ''}
 ${characterInfo?.memoryEvents ? `重要记忆：${characterInfo.memoryEvents}` : ''}
 ${characterInfo?.languageStyle ? `语言风格：${characterInfo.languageStyle}` : ''}
+${buildAvatarIdentityPrompt(characterInfo)}
 
 这是一个子聊天窗口，你可以看到主聊天的完整历史和当前子聊天的内容。
 子聊天名称：${updatedSubChat.name}
@@ -1379,7 +1426,8 @@ ${characterInfo?.languageStyle ? `语言风格：${characterInfo.languageStyle}`
       });
       
       if (!response.ok) {
-        throw new Error('AI回复失败');
+        const errorInfo = await getErrorFromResponse(response);
+        throw new Error(`${errorInfo.title}：${errorInfo.message}`);
       }
       
       const data = await response.json();
@@ -1405,7 +1453,8 @@ ${characterInfo?.languageStyle ? `语言风格：${characterInfo.languageStyle}`
       
     } catch (error) {
       console.error('子聊天AI回复失败:', error);
-      showToast('AI回复失败，请重试', 'error');
+      const message = error instanceof Error ? error.message : 'AI回复失败，请重试';
+      showToast(message, 'error');
     } finally {
       setIsGenerating(false);
     }
@@ -1586,6 +1635,26 @@ ${characterInfo?.languageStyle ? `语言风格：${characterInfo.languageStyle}`
     });
   }, [conversation, isGenerating, onUpdateConversation]);
 
+  // 从首页 oop 条形输入框跳转过来时，自动把消息发送出去
+  useEffect(() => {
+    const key = `momoyu:oopsend:${conversation.id}`;
+    let pendingText: string | null = null;
+    try {
+      pendingText = sessionStorage.getItem(key);
+      if (pendingText) sessionStorage.removeItem(key);
+    } catch {
+      pendingText = null;
+    }
+    if (!pendingText) return;
+
+    const newMessage = buildUserMessageFromInput(pendingText, null);
+    commitOutgoingUserMessage(newMessage);
+    finalizeMessageInput({
+      clearQuotedMessage: true,
+      focusInput: true,
+    });
+  }, [conversation.id, commitOutgoingUserMessage]);
+
   const commitOutgoingUserMessageWithBase = useCallback((baseMessages: Message[], newMessage: Message) => {
     onUpdateConversation(conversation.id, {
       messages: [...baseMessages, newMessage],
@@ -1638,6 +1707,89 @@ ${characterInfo?.languageStyle ? `语言风格：${characterInfo.languageStyle}`
     schedulePendingReply(conversation.id, bufferSeconds);
   }, [conversation, isGenerating, onUpdateConversation]);
 
+  // 从首页 oop 输入框携带“文字+附件草稿”跳转时，组合发送
+  useEffect(() => {
+    const key = `momoyu:oopdraft:${conversation.id}`;
+    let payloadRaw: string | null = null;
+    try {
+      payloadRaw = sessionStorage.getItem(key);
+      if (payloadRaw) sessionStorage.removeItem(key);
+    } catch {
+      payloadRaw = null;
+    }
+    if (!payloadRaw) return;
+    try {
+      const parsed = JSON.parse(payloadRaw) as {
+        text?: string;
+        attachments?: Array<{
+          id: string;
+          kind: 'image' | 'document';
+          name: string;
+          mimeType: string;
+          size: number;
+          dataUrl?: string;
+          content?: string;
+        }>;
+      };
+      const base = Date.now();
+      const queued: Message[] = [];
+      const attachments = Array.isArray(parsed.attachments) ? parsed.attachments : [];
+      attachments.forEach((item, index) => {
+        if (item.kind === 'image' && item.dataUrl) {
+          queued.push({
+            id: `msg_${base + index}_${Math.random().toString(36).slice(2, 9)}`,
+            role: 'user',
+            content: '[图片]',
+            timestamp: base + index,
+            mediaType: 'image',
+            mediaUrl: item.dataUrl,
+          });
+          return;
+        }
+        if (item.kind === 'document') {
+          const title = item.name.replace(/\.[^/.]+$/, '') || item.name;
+          queued.push({
+            id: `msg_${base + index}_${Math.random().toString(36).slice(2, 9)}`,
+            role: 'user',
+            content: `发送了文档「${title}」`,
+            timestamp: base + index,
+            document: {
+              title,
+              content: item.content?.trim() || '（文件已上传，未提取到可读正文）',
+              greeting: '请查收',
+              type: 'text',
+              size: item.size,
+              originalFile: {
+                fileName: item.name,
+                mimeType: item.mimeType || 'application/octet-stream',
+                fileSize: item.size,
+                base64Data: item.dataUrl,
+              },
+            },
+          });
+        }
+      });
+      const text = (parsed.text || '').trim();
+      if (text) {
+        queued.push({
+          ...buildUserMessageFromInput(text, null),
+          timestamp: base + queued.length + 1,
+        });
+      }
+      if (queued.length === 1) {
+        commitOutgoingUserMessage(queued[0]);
+      } else if (queued.length > 1) {
+        commitOutgoingUserMessagesBatch(queued);
+      }
+      finalizeMessageInput({
+        clearQuotedMessage: true,
+        focusInput: true,
+      });
+    } catch {
+      // ignore malformed draft payload
+    }
+  }, [conversation.id, commitOutgoingUserMessage, commitOutgoingUserMessagesBatch]);
+
   const commitOutgoingUserMessageToConversation = useCallback((targetConversation: Conversation, newMessage: Message) => {
     const commitHandlers = createCommitUserMessageHandlers({
       onPerceiveMessage: (conv, msg) => messagePerceptionService.perceiveMessage(conv, msg),
@@ -1656,8 +1808,7 @@ ${characterInfo?.languageStyle ? `语言风格：${characterInfo.languageStyle}`
     });
   }, [onUpdateConversation]);
 
-
-  const handleSendMessage = () => {
+  const handleSendMessage = async () => {
     if (!currentInput.trim()) return;
 
     // 如果是编辑模式,保存编辑
@@ -1906,6 +2057,126 @@ ${characterInfo?.languageStyle ? `语言风格：${characterInfo.languageStyle}`
 
     // 清空input
     if (e.target) e.target.value = '';
+  };
+
+  // ✅ 私聊：点“+”直接触发系统文件选择弹窗（让系统提供 文件/图片/视频 的入口）
+  const handleUnifiedPick = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+
+    try {
+      // 如果用户一次性选了多种类型，逐个处理
+      const images: File[] = [];
+      const videos: File[] = [];
+      const docs: File[] = [];
+
+      for (let i = 0; i < files.length; i++) {
+        const f = files[i];
+        if (f.type.startsWith('image/')) images.push(f);
+        else if (f.type.startsWith('video/')) videos.push(f);
+        else docs.push(f);
+      }
+
+      // 图片：复用原逻辑（多图）
+      if (images.length > 0) {
+        const dt = new DataTransfer();
+        images.forEach((f) => dt.items.add(f));
+        await handleImageUpload({ target: { files: dt.files, value: '' } } as any);
+      }
+
+      // 视频：目前沿用“单视频+描述弹窗”
+      if (videos.length > 0) {
+        if (videos.length > 1) {
+          showToast('一次只能发送一个视频，已选取第一个', 'warning');
+        }
+        const dt = new DataTransfer();
+        dt.items.add(videos[0]);
+        handleVideoUpload({ target: { files: dt.files, value: '' } } as any);
+      }
+
+      // 文件：直接走“发送文档”逻辑（解析并发送），避免用户再点一次“上传”
+      if (docs.length > 0) {
+        const docMessages: Message[] = [];
+        const baseTimestamp = Date.now();
+
+        for (let i = 0; i < docs.length; i++) {
+          const file = docs[i];
+          const title = file.name.replace(/\.[^/.]+$/, '') || file.name;
+
+          let parsedText = '';
+          try {
+            parsedText = await parseDocument(file);
+          } catch (error) {
+            console.error('文档解析失败:', error);
+            parsedText = '';
+          }
+
+          // 如果解析不到文字，明确告诉用户/AI原因（常见：扫描件PDF）
+          const parsedTextTrimmed = (parsedText || '').trim();
+          if (!parsedTextTrimmed) {
+            showToast(`无法提取「${file.name}」文字内容（可能是扫描件/图片PDF）`, 'warning');
+          }
+
+          let base64Data: string | undefined;
+          if (file.size <= 700 * 1024) {
+            base64Data = await new Promise<string>((resolve, reject) => {
+              const reader = new FileReader();
+              reader.onload = () => resolve(typeof reader.result === 'string' ? reader.result : '');
+              reader.onerror = () => reject(reader.error || new Error('读取文件失败'));
+              reader.readAsDataURL(file);
+            });
+          } else {
+            showToast(`「${file.name}」较大，已保留文件信息并发送可读内容`, 'warning');
+          }
+
+          const documentPayload: DocumentMessage = {
+            title,
+            content: parsedTextTrimmed
+              ? parsedTextTrimmed
+              : `（未能从文件中提取到可读文本：这通常发生在扫描版 PDF/图片型文档。你可以尝试上传可复制文字的版本，或先用 OCR 提取文字后再发。）`,
+            greeting: '请查收',
+            type: 'text',
+            size: new Blob([parsedTextTrimmed || '']).size,
+            originalFile: {
+              fileName: file.name,
+              mimeType: file.type || 'application/octet-stream',
+              fileSize: file.size,
+              base64Data,
+            },
+          };
+
+          const newMessage: Message = {
+            id: `msg_${baseTimestamp + i}_${Math.random().toString(36).substr(2, 9)}`,
+            role: 'user',
+            content: `发送了文档「${title}」`,
+            timestamp: baseTimestamp + i,
+            document: documentPayload,
+          };
+
+          docMessages.push(newMessage);
+
+          try {
+            saveToLibrary(documentPayload, '用户上传', title);
+          } catch (error) {
+            console.error('自动保存用户文档到资料库失败:', error);
+          }
+        }
+
+        if (docMessages.length === 1) {
+          commitOutgoingUserMessage(docMessages[0]);
+        } else if (docMessages.length > 1) {
+          commitOutgoingUserMessagesBatch(docMessages);
+        }
+      }
+    } catch (error) {
+      console.error('统一选择发送失败:', error);
+      showToast('发送失败，请重试', 'error');
+    } finally {
+      // 清空 input，确保能重复选择同一文件
+      if (e.target) e.target.value = '';
+      setShowToolbar(false);
+      setShowAdvancedToolbarActions(false);
+    }
   };
 
   // 打开表情包类型选择菜单
@@ -2608,7 +2879,7 @@ ${characterInfo?.languageStyle ? `语言风格：${characterInfo.languageStyle}`
           [
             {
               role: 'system',
-              content: `你是${privateConversation.characterSettings?.nickname || privateConversation.name}。${privateConversation.characterSettings?.systemPrompt || ''}`
+              content: `你是${privateConversation.characterSettings?.nickname || privateConversation.name}。${privateConversation.characterSettings?.systemPrompt || ''}${buildAvatarIdentityPrompt(privateConversation.characterSettings)}`
             },
             {
               role: 'user',
@@ -3087,6 +3358,21 @@ ${characterInfo?.languageStyle ? `语言风格：${characterInfo.languageStyle}`
 
   // 提取自定义CSS
   const customCss = conversation.characterSettings?.customBubbleCss;
+  // 仅允许气泡相关选择器，防止自定义CSS污染父容器导致整页上移
+  const safeCustomCss = useMemo(() => {
+    if (!customCss || typeof customCss !== 'string') return '';
+    const allowedSelectorRe = /(\.message-bubble|\.message-content|\.message-tail|#message-)/;
+    const blocks = customCss
+      .split('}')
+      .map((b) => b.trim())
+      .filter(Boolean)
+      .map((b) => `${b}}`)
+      .filter((block) => {
+        const selector = block.split('{')[0] || '';
+        return allowedSelectorRe.test(selector);
+      });
+    return blocks.join('\n');
+  }, [customCss]);
   // 提取是否隐藏气泡尾巴
   const hideBubbleTail = conversation.characterSettings?.hideBubbleTail;
   // 提取气泡装饰配置
@@ -3095,15 +3381,17 @@ ${characterInfo?.languageStyle ? `语言风格：${characterInfo.languageStyle}`
   return (
     <>
     <div 
-      className="flex flex-col h-full bg-gray-50 relative"
+      data-ui="chat-root"
+      className="flex flex-col h-[100dvh] md:h-full overflow-hidden overflow-x-hidden bg-gray-50 relative md:bg-gradient-to-br md:from-slate-50 md:via-slate-50 md:to-zinc-100"
       style={conversation.characterSettings?.chatBackground ? {
         backgroundImage: `url(${conversation.characterSettings.chatBackground})`,
         backgroundSize: 'cover',
         backgroundPosition: 'center',
       } : undefined}
     >
-      {/* 注入自定义气泡样式 */}
-      {customCss && <style>{customCss}</style>}
+      <div className="hidden md:block absolute inset-0 bg-white/78 backdrop-blur-[1px]" />
+      {/* 注入自定义气泡样式（安全过滤后） */}
+      {safeCustomCss && <style>{safeCustomCss}</style>}
       {/* 全局统一：给用户气泡加玻璃质感（保持原颜色，只增加描边+模糊） */}
       <style>{`
         .message-bubble.user {
@@ -3148,14 +3436,14 @@ ${characterInfo?.languageStyle ? `语言风格：${characterInfo.languageStyle}`
       )}
 
       {/* Header - 固定在顶部 */}
-      <div className="absolute top-0 left-0 right-0 bg-white/95 backdrop-blur-sm border-b border-gray-200 px-4 py-3 flex items-center justify-between shadow-sm z-10">
-        <div className="flex items-center gap-3">
+      <div data-ui="chat-header" className="bg-white/95 md:bg-white/85 backdrop-blur-sm border-b border-gray-200 md:border-zinc-200 px-4 md:px-6 py-3 md:py-3 flex items-center justify-between shadow-sm z-10">
+        <div className="flex items-center gap-2 md:gap-2">
           <button onClick={onBack} className="p-1 -ml-1 hover:bg-gray-100 rounded-full transition-colors">
             <ChevronLeft className="w-6 h-6 text-gray-800" strokeWidth={2.5} />
           </button>
           {/* 群聊头像 */}
           {conversation.type === 'group' && (
-            <div className="w-8 h-8 rounded-full bg-gradient-to-br from-blue-400 to-purple-500 flex items-center justify-center overflow-hidden">
+            <div className="w-8 h-8 md:w-7 md:h-7 rounded-full bg-gradient-to-br from-blue-400 to-purple-500 flex items-center justify-center overflow-hidden">
               {conversation.avatar ? (
                 <img src={conversation.avatar} alt="群头像" className="w-full h-full object-cover" />
               ) : (
@@ -3166,7 +3454,7 @@ ${characterInfo?.languageStyle ? `语言风格：${characterInfo.languageStyle}`
             </div>
           )}
           <div className="flex flex-col">
-            <h1 className="text-base font-semibold text-gray-900">{conversation.name}</h1>
+            <h1 className="text-base md:text-[15px] font-semibold text-gray-900">{conversation.name}</h1>
             {conversation.type === 'private' && conversation.characterSettings ? (
               <div className="flex items-center gap-1 px-2 py-0.5 -ml-2">
                 <div className={`w-2 h-2 rounded-full flex-shrink-0 ${
@@ -3188,11 +3476,11 @@ ${characterInfo?.languageStyle ? `语言风格：${characterInfo.languageStyle}`
             )}
           </div>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1 md:gap-1.5">
           {/* 搜索按钮 */}
           <button
             onClick={() => setShowSearchModal(true)}
-            className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+            className="p-2 md:p-1.5 hover:bg-gray-100 rounded-lg transition-colors"
             title="搜索聊天记录"
           >
             <Search className="w-5 h-5 text-gray-700" />
@@ -3205,7 +3493,7 @@ ${characterInfo?.languageStyle ? `语言风格：${characterInfo.languageStyle}`
                 isMuted: !conversation.isMuted
               });
             }}
-            className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+            className="p-2 md:p-1.5 hover:bg-gray-100 rounded-lg transition-colors"
             title={conversation.isMuted ? '关闭免打扰' : '开启免打扰'}
           >
             {conversation.isMuted ? (
@@ -3219,7 +3507,7 @@ ${characterInfo?.languageStyle ? `语言风格：${characterInfo.languageStyle}`
           {conversation.type === 'private' && (
             <button
               onClick={onOpenCharacterSettings}
-              className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+              className="p-2 md:p-1.5 hover:bg-gray-100 rounded-lg transition-colors"
               title="角色设置"
             >
               <svg className="w-5 h-5 text-gray-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -3234,7 +3522,7 @@ ${characterInfo?.languageStyle ? `语言风格：${characterInfo.languageStyle}`
           {conversation.type === 'group' && (
             <button
               onClick={() => setShowGroupSettings(true)}
-              className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+              className="p-2 md:p-1.5 hover:bg-gray-100 rounded-lg transition-colors"
               title="群聊设置"
             >
               <svg className="w-5 h-5 text-gray-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -3250,7 +3538,9 @@ ${characterInfo?.languageStyle ? `语言风格：${characterInfo.languageStyle}`
       {/* Messages - 固定布局，添加顶部和底部padding */}
       <div 
         ref={messagesContainerRef}
-        className="absolute top-[60px] bottom-[60px] left-0 right-0 overflow-y-auto p-4 space-y-3"
+        data-ui="chat-messages"
+        className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden touch-pan-y p-4 md:px-6 md:py-4 space-y-3"
+        style={{ paddingBottom: '24px' }}
       >
         {/* 🚀 滚动加载：顶部加载指示器 */}
         {isLoadingMore && (
@@ -3298,10 +3588,10 @@ ${characterInfo?.languageStyle ? `语言风格：${characterInfo.languageStyle}`
           const isHTMLContent = hasHTMLTags && (htmlTagCount >= 3 || hasStructuralTags);
           
           return (
-            <div key={message.id}>
+            <div key={message.id} className="md:max-w-[820px] md:mx-auto">
               {showTime && (
                 <div className="flex justify-center my-4">
-                  <span className="text-xs text-gray-400 bg-white/80 px-3 py-1 rounded-full">
+                  <span className="text-xs text-gray-500 md:text-zinc-600 bg-gray-100 md:bg-white px-3 py-1 rounded-full border border-gray-200 md:border-zinc-200 shadow-[0_1px_2px_rgba(0,0,0,0.04)]">
                     {new Date(message.timestamp).toLocaleDateString('zh-CN', { month: '2-digit', day: '2-digit' })} {new Date(message.timestamp).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })}
                   </span>
                 </div>
@@ -3339,14 +3629,14 @@ ${characterInfo?.languageStyle ? `语言风格：${characterInfo.languageStyle}`
                     {conversation.type === 'group' ? (
                       (message as any).senderAvatar ? (
                         <div 
-                          className="w-11 h-11 rounded-full overflow-hidden border-2 border-white shadow-md cursor-pointer hover:ring-2 hover:ring-blue-400 transition-all"
+                          className="w-11 h-11 md:w-9 md:h-9 rounded-full overflow-hidden border-2 border-white shadow-md md:shadow-none cursor-pointer hover:ring-2 hover:ring-blue-400 transition-all"
                           onClick={() => handleAvatarClick(message.id, (message as any).senderId || '', (message as any).senderName || 'AI', (message as any).senderAvatar)}
                         >
                           <img src={(message as any).senderAvatar} alt={(message as any).senderName || 'AI'} className="w-full h-full object-cover" />
                         </div>
                       ) : (
                         <div 
-                          className="w-11 h-11 rounded-full bg-gradient-to-br from-blue-400 to-purple-500 flex items-center justify-center border-2 border-white shadow-md cursor-pointer hover:ring-2 hover:ring-blue-400 transition-all"
+                          className="w-11 h-11 md:w-9 md:h-9 rounded-full bg-gradient-to-br from-blue-400 to-purple-500 flex items-center justify-center border-2 border-white shadow-md md:shadow-none cursor-pointer hover:ring-2 hover:ring-blue-400 transition-all"
                           onClick={() => handleAvatarClick(message.id, (message as any).senderId || '', (message as any).senderName || 'AI', undefined)}
                         >
                           <span className="text-white font-semibold text-sm">{((message as any).senderName || 'AI').charAt(0)}</span>
@@ -3355,11 +3645,11 @@ ${characterInfo?.languageStyle ? `语言风格：${characterInfo.languageStyle}`
                     ) : (
                       /* 私聊：显示对话角色的头像 */
                       conversation.characterSettings?.avatar ? (
-                        <div className="w-11 h-11 rounded-full overflow-hidden border-2 border-white shadow-md">
+                        <div className="w-11 h-11 md:w-9 md:h-9 rounded-full overflow-hidden border-2 border-white shadow-md md:shadow-none">
                           <img src={conversation.characterSettings.avatar} alt="AI头像" className="w-full h-full object-cover" />
                         </div>
                       ) : (
-                        <div className="w-11 h-11 rounded-full bg-gradient-to-br from-gray-700 to-gray-900 flex items-center justify-center border-2 border-white shadow-md">
+                        <div className="w-11 h-11 md:w-9 md:h-9 rounded-full bg-gradient-to-br from-gray-700 to-gray-900 flex items-center justify-center border-2 border-white shadow-md md:shadow-none">
                           <span className="text-white font-semibold text-sm">{conversation.name.charAt(0)}</span>
                         </div>
                       )
@@ -4375,8 +4665,12 @@ ${characterInfo?.languageStyle ? `语言风格：${characterInfo.languageStyle}`
         )}
       </div>
 
-      {/* Input area - 固定在底部 */}
-      <div className="absolute bottom-0 left-0 right-0 bg-white/95 backdrop-blur-sm border-t border-gray-200 z-10">
+      {/* Input area - in normal page flow */}
+      <div
+        data-ui="chat-input-area"
+        className="shrink-0 bg-white/95 backdrop-blur-sm border-t border-gray-200 z-10"
+        style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
+      >
         {/* 多选模式工具栏 */}
         {isMultiSelectMode && (
           <div className="px-4 py-3 bg-purple-50 border-b border-purple-100 flex items-center justify-between">
@@ -4401,129 +4695,73 @@ ${characterInfo?.languageStyle ? `语言风格：${characterInfo.languageStyle}`
           </div>
         )}
         
-        {/* Toolbar */}
-        {showToolbar && (
-          <div className="px-3 py-2 bg-white border-b border-gray-200">
+        {/* Toolbar（群聊/非私聊：保留原有；私聊“+”直接弹系统选择器，不再显示面板） */}
+        {showToolbar && conversation.type !== 'private' && (
+          <div className="px-3 py-3 bg-white border-b border-gray-200">
             <div className="flex gap-2 items-center overflow-x-auto">
-              <button onClick={() => imageInputRef.current?.click()} className="flex-shrink-0">
-                <div className="w-9 h-9 rounded-full bg-white border border-gray-300 flex items-center justify-center hover:border-gray-400 transition-colors">
-                  <ImageIcon className="w-4 h-4 text-gray-600" />
-                </div>
-              </button>
-              <input
-                ref={imageInputRef}
-                type="file"
-                accept="image/*"
-                multiple
-                className="hidden"
-                onChange={handleImageUpload}
-              />
-              <button onClick={() => videoInputRef.current?.click()} className="flex-shrink-0">
-                <div className="w-9 h-9 rounded-full bg-white border border-gray-300 flex items-center justify-center hover:border-gray-400 transition-colors">
-                  <Video className="w-4 h-4 text-gray-600" />
-                </div>
-              </button>
-              <input
-                ref={videoInputRef}
-                type="file"
-                accept="video/*"
-                className="hidden"
-                onChange={handleVideoUpload}
-              />
-              <button 
-                className="flex-shrink-0"
-                onClick={handleVoiceClick}
-              >
-                <div className="w-9 h-9 rounded-full bg-white border border-gray-300 flex items-center justify-center hover:border-gray-400 transition-colors">
-                  <Mic className="w-4 h-4 text-gray-600" />
-                </div>
-              </button>
-              <button 
-                className="flex-shrink-0"
-                onClick={handleStickerClick}
-              >
-                <div className="w-9 h-9 rounded-full bg-white border border-gray-300 flex items-center justify-center hover:border-gray-400 transition-colors">
-                  <Smile className="w-4 h-4 text-gray-600" />
-                </div>
-              </button>
-              {/* 红包按钮 - 私聊打开普通红包，群聊打开群红包 */}
-              <button 
-                className="flex-shrink-0"
-                onClick={() => {
-                  if (conversation.type === 'group') {
-                    setShowGroupRedPacketModal(true);
-                  } else {
-                    setShowMoneyTransferModal(true);
-                  }
-                }}
-              >
-                <div className="w-9 h-9 rounded-full bg-white border border-gray-300 flex items-center justify-center hover:border-gray-400 transition-colors">
-                  <Gift className="w-4 h-4 text-gray-600" />
-                </div>
-              </button>
-              <button
-                ref={advancedToolbarToggleRef}
-                className="flex-shrink-0"
-                onClick={() => setShowAdvancedToolbarActions(prev => !prev)}
-                title="更多功能"
-              >
-                <div className={`w-9 h-9 rounded-full border flex items-center justify-center transition-colors ${
-                  showAdvancedToolbarActions
-                    ? 'bg-gray-900 border-gray-900'
-                    : 'bg-white border-gray-300 hover:border-gray-400'
-                }`}>
-                  <MoreHorizontal className={`w-4 h-4 ${showAdvancedToolbarActions ? 'text-white' : 'text-gray-600'}`} />
-                </div>
-              </button>
-            </div>
-            {showAdvancedToolbarActions && (
-              <div
-                ref={advancedToolbarPanelRef}
-                className="mt-2 rounded-2xl border border-gray-200 bg-white p-3 shadow-sm"
-              >
-                <div className="text-[11px] text-gray-400 mb-2">沟通</div>
-                <div className="flex gap-3 mb-3">
-                  <button onClick={() => setShowCallTypeSelector(true)} className="flex flex-col items-center gap-1 min-w-[52px]" title="语音/视频通话">
-                    <div className="w-9 h-9 rounded-full bg-white border border-gray-300 flex items-center justify-center hover:border-gray-400 transition-colors">
-                      <Phone className="w-4 h-4 text-gray-600" />
-                    </div>
-                    <span className="text-[11px] text-gray-500">通话</span>
-                  </button>
-                  <button onClick={() => setShowSubChatManager(true)} className="flex flex-col items-center gap-1 min-w-[52px]" title="子聊天">
-                    <div className="w-9 h-9 rounded-full bg-white border border-purple-300 flex items-center justify-center hover:border-purple-400 transition-colors hover:bg-purple-50">
-                      <MessageCircle className="w-4 h-4 text-purple-600" />
-                    </div>
-                    <span className="text-[11px] text-gray-500">子聊天</span>
-                  </button>
-                </div>
-
-                <div className="text-[11px] text-gray-400 mb-2">内容</div>
-                <div className="flex gap-3 mb-3">
-                  <button onClick={() => setShowSendDocumentModal(true)} className="flex flex-col items-center gap-1 min-w-[52px]" title="发送文档">
-                    <div className="w-9 h-9 rounded-full bg-white border border-gray-300 flex items-center justify-center hover:border-gray-400 transition-colors">
-                      <FileText className="w-4 h-4 text-gray-600" />
-                    </div>
-                    <span className="text-[11px] text-gray-500">文档</span>
-                  </button>
-                  <button onClick={() => setShowRealMusicModal(true)} className="flex flex-col items-center gap-1 min-w-[52px]" title="搜索真实音乐">
-                    <div className="w-9 h-9 rounded-full bg-white border border-gray-300 flex items-center justify-center hover:border-gray-400 transition-colors">
-                      <Music className="w-4 h-4 text-gray-600" />
-                    </div>
-                    <span className="text-[11px] text-gray-500">音乐</span>
-                  </button>
-                </div>
-
-                <div className="text-[11px] text-gray-400 mb-2">工具</div>
-                <div className="flex gap-3">
-                  <button className="flex flex-col items-center gap-1 min-w-[52px]" title="位置（开发中）">
-                    <div className="w-9 h-9 rounded-full bg-white border border-gray-300 flex items-center justify-center hover:border-gray-400 transition-colors">
-                      <MapPin className="w-4 h-4 text-gray-600" />
-                    </div>
-                    <span className="text-[11px] text-gray-500">位置</span>
-                  </button>
-                </div>
+                <button onClick={() => imageInputRef.current?.click()} className="flex-shrink-0">
+                  <div className="w-9 h-9 rounded-full bg-white border border-gray-300 flex items-center justify-center hover:border-gray-400 transition-colors">
+                    <ImageIcon className="w-4 h-4 text-gray-600" />
+                  </div>
+                </button>
+                <input
+                  ref={imageInputRef}
+                  type="file"
+                  accept="image/*"
+                  multiple
+                  className="hidden"
+                  onChange={handleImageUpload}
+                />
+                <button onClick={() => videoInputRef.current?.click()} className="flex-shrink-0">
+                  <div className="w-9 h-9 rounded-full bg-white border border-gray-300 flex items-center justify-center hover:border-gray-400 transition-colors">
+                    <Video className="w-4 h-4 text-gray-600" />
+                  </div>
+                </button>
+                <input
+                  ref={videoInputRef}
+                  type="file"
+                  accept="video/*"
+                  className="hidden"
+                  onChange={handleVideoUpload}
+                />
+                <button
+                  className="flex-shrink-0"
+                  onClick={handleStickerClick}
+                >
+                  <div className="w-9 h-9 rounded-full bg-white border border-gray-300 flex items-center justify-center hover:border-gray-400 transition-colors">
+                    <Smile className="w-4 h-4 text-gray-600" />
+                  </div>
+                </button>
+                {/* 红包按钮 - 私聊打开普通红包，群聊打开群红包 */}
+                <button
+                  className="flex-shrink-0"
+                  onClick={() => {
+                    if (conversation.type === 'group') {
+                      setShowGroupRedPacketModal(true);
+                    } else {
+                      setShowMoneyTransferModal(true);
+                    }
+                  }}
+                >
+                  <div className="w-9 h-9 rounded-full bg-white border border-gray-300 flex items-center justify-center hover:border-gray-400 transition-colors">
+                    <Gift className="w-4 h-4 text-gray-600" />
+                  </div>
+                </button>
+                <button
+                  ref={advancedToolbarToggleRef}
+                  className="flex-shrink-0"
+                  onClick={() => setShowAdvancedToolbarActions(prev => !prev)}
+                  title="更多功能"
+                >
+                  <div className={`w-9 h-9 rounded-full border flex items-center justify-center transition-colors ${
+                    showAdvancedToolbarActions
+                      ? 'bg-gray-900 border-gray-900'
+                      : 'bg-white border-gray-300 hover:border-gray-400'
+                  }`}>
+                    <MoreHorizontal className={`w-4 h-4 ${showAdvancedToolbarActions ? 'text-white' : 'text-gray-600'}`} />
+                  </div>
+                </button>
               </div>
-            )}
           </div>
         )}
 
@@ -4633,10 +4871,57 @@ ${characterInfo?.languageStyle ? `语言风格：${characterInfo.languageStyle}`
         )}
         
         {/* Input bar */}
-        <div className="px-3 py-3 bg-white">
-          <div className="flex items-center gap-2">
+        <div className="px-3 md:px-6 py-3 md:py-3 bg-white/95 md:bg-white/85 md:backdrop-blur-sm md:border-t md:border-zinc-200">
+          {conversation.type === 'private' && showPrivateExtraActions && (
+            <div
+              ref={privateExtraActionsPanelRef}
+              className="mb-2 w-full px-2 py-2 rounded-2xl border border-gray-200 bg-white flex items-center justify-between text-gray-600 md:max-w-[820px] md:mx-auto"
+            >
+              <button
+                onClick={() => setShowMoneyTransferModal(true)}
+                className="flex-1 h-9 flex items-center justify-center hover:text-gray-900 transition-colors"
+                type="button"
+                title="转账"
+              >
+                <Wallet className="w-5 h-5" />
+              </button>
+              <button
+                onClick={() => {
+                  setAutoPickDocumentFile(false);
+                  setShowSendDocumentModal(true);
+                }}
+                className="flex-1 h-9 flex items-center justify-center hover:text-gray-900 transition-colors"
+                type="button"
+                title="文档"
+              >
+                <FileText className="w-5 h-5" />
+              </button>
+              <button
+                onClick={() => showToast('位置信息功能即将上线', 'info')}
+                className="flex-1 h-9 flex items-center justify-center hover:text-gray-900 transition-colors"
+                type="button"
+                title="定位"
+              >
+                <MapPin className="w-5 h-5" />
+              </button>
+              <button
+                onClick={() => setShowMusicShareModal(true)}
+                className="flex-1 h-9 flex items-center justify-center hover:text-gray-900 transition-colors"
+                type="button"
+                title="音乐"
+              >
+                <Music className="w-5 h-5" />
+              </button>
+            </div>
+          )}
+          <div className="flex items-center gap-1.5 md:max-w-[820px] md:mx-auto">
             <button 
               onClick={() => {
+                if (conversation.type === 'private') {
+                  setShowPrivateExtraActions(false);
+                  unifiedPickInputRef.current?.click();
+                  return;
+                }
                 const nextShowToolbar = !showToolbar;
                 setShowToolbar(nextShowToolbar);
                 if (!nextShowToolbar) {
@@ -4647,7 +4932,15 @@ ${characterInfo?.languageStyle ? `语言风格：${characterInfo.languageStyle}`
             >
               <Plus className="w-5 h-5 text-gray-600" />
             </button>
-            <div className="flex-1 flex items-center gap-2 bg-gray-50 border border-gray-200 rounded-2xl px-4 py-2">
+            {/* 私聊：隐藏的系统选择器入口（让系统自己提供 文件/图片/视频 的选择） */}
+            <input
+              ref={unifiedPickInputRef}
+              type="file"
+              className="hidden"
+              multiple
+              onChange={handleUnifiedPick}
+            />
+            <div className="flex-1 flex items-center gap-1.5 bg-gray-50 border border-gray-200 rounded-2xl px-3 py-2">
               <textarea
                 ref={inputRef as any}
                 value={currentInput}
@@ -4687,14 +4980,46 @@ ${characterInfo?.languageStyle ? `语言风格：${characterInfo.languageStyle}`
                 rows={1}
                 style={{ height: '24px' }}
               />
+              <button
+                onClick={handleVoiceClick}
+                className="w-8 h-8 hover:bg-gray-100 rounded-full transition-colors flex-shrink-0 flex items-center justify-center"
+                title="语音转文字"
+                type="button"
+              >
+                <Mic className="w-4 h-4 text-gray-600" />
+              </button>
             </div>
-            <button
-              onClick={handleSendMessage}
-              disabled={!currentInput.trim()}
-              className="w-10 h-10 bg-blue-500 text-white rounded-full hover:bg-blue-600 active:scale-95 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex-shrink-0 flex items-center justify-center shadow-md"
-            >
-              <Send className="w-5 h-5" />
-            </button>
+            {conversation.type === 'private' ? (
+              <div className="flex items-center gap-1">
+                <button
+                  onClick={handleStickerClick}
+                  className="w-9 h-9 flex items-center justify-center hover:bg-gray-100 rounded-full transition-colors"
+                  type="button"
+                  title="表情包"
+                >
+                  <Smile className="w-5 h-5 text-gray-600" />
+                </button>
+                <button
+                  ref={privateExtraActionsToggleRef}
+                  onClick={() => setShowPrivateExtraActions((prev) => !prev)}
+                  className={`w-9 h-9 flex items-center justify-center rounded-full transition-colors ${
+                    showPrivateExtraActions ? 'bg-gray-900' : 'hover:bg-gray-100'
+                  }`}
+                  type="button"
+                  title="全部功能"
+                >
+                  <MoreHorizontal className={`w-5 h-5 ${showPrivateExtraActions ? 'text-white' : 'text-gray-600'}`} />
+                </button>
+              </div>
+            ) : (
+              <button
+                onClick={handleSendMessage}
+                disabled={!currentInput.trim()}
+                className="w-10 h-10 bg-blue-500 text-white rounded-full hover:bg-blue-600 active:scale-95 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex-shrink-0 flex items-center justify-center shadow-md"
+              >
+                <Send className="w-5 h-5" />
+              </button>
+            )}
           </div>
         </div>
       </div>
@@ -5138,10 +5463,12 @@ ${characterInfo?.languageStyle ? `语言风格：${characterInfo.languageStyle}`
           setShowSendDocumentModal(false);
           setSelectedLibraryDoc(null);
           setShouldEditDoc(false);
+          setAutoPickDocumentFile(false);
         }}
         onOpenLibrary={() => {
           setShowDocumentLibrary(true);
         }}
+        autoPickLocalFile={autoPickDocumentFile}
         initialDocument={selectedLibraryDoc && shouldEditDoc ? {
           title: selectedLibraryDoc.title,
           content: selectedLibraryDoc.content,
@@ -5179,6 +5506,7 @@ ${characterInfo?.languageStyle ? `语言风格：${characterInfo.languageStyle}`
           setShowSendDocumentModal(false);
           setSelectedLibraryDoc(null);
           setShouldEditDoc(false);
+          setAutoPickDocumentFile(false);
         }}
       />
     )}
@@ -5689,6 +6017,7 @@ ${characterInfo?.languageStyle ? `语言风格：${characterInfo.languageStyle}`
       <UserStickerPicker
         onClose={() => setShowUserStickerPicker(false)}
         onSelectSticker={handleSelectSticker}
+        onOpenStickerManagement={onOpenStickerManagement}
       />
     )}
     </>

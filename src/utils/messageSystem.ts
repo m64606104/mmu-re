@@ -4,6 +4,7 @@
  */
 
 import { getCurrentUser, type UserMessage } from './userSystem';
+import { getCachedData, save, setCachedData } from './storage';
 
 // 重新导出UserMessage类型供其他组件使用
 export type { UserMessage } from './userSystem';
@@ -72,15 +73,16 @@ function saveSentMessage(message: UserMessage): void {
     sentMessages.splice(0, sentMessages.length - 1000);
   }
   
-  localStorage.setItem(STORAGE_KEYS.sent, JSON.stringify(sentMessages));
+  setCachedData(STORAGE_KEYS.sent, sentMessages);
+  void save(STORAGE_KEYS.sent, sentMessages);
 }
 
 /**
  * 获取已发送的消息
  */
 export function getSentMessages(): UserMessage[] {
-  const data = localStorage.getItem(STORAGE_KEYS.sent);
-  return data ? JSON.parse(data) : [];
+  const cached = getCachedData<UserMessage[]>(STORAGE_KEYS.sent);
+  return Array.isArray(cached) ? cached : [];
 }
 
 /**
@@ -95,15 +97,16 @@ function saveReceivedMessage(message: UserMessage): void {
     receivedMessages.splice(0, receivedMessages.length - 1000);
   }
   
-  localStorage.setItem(STORAGE_KEYS.received, JSON.stringify(receivedMessages));
+  setCachedData(STORAGE_KEYS.received, receivedMessages);
+  void save(STORAGE_KEYS.received, receivedMessages);
 }
 
 /**
  * 获取收到的消息
  */
 export function getReceivedMessages(): UserMessage[] {
-  const data = localStorage.getItem(STORAGE_KEYS.received);
-  return data ? JSON.parse(data) : [];
+  const cached = getCachedData<UserMessage[]>(STORAGE_KEYS.received);
+  return Array.isArray(cached) ? cached : [];
 }
 
 /**
@@ -125,8 +128,8 @@ export function getChatHistory(userCode: string): UserMessage[] {
  * 获取对话列表
  */
 export function getConversations(): Conversation[] {
-  const data = localStorage.getItem(STORAGE_KEYS.conversations);
-  return data ? JSON.parse(data) : [];
+  const cached = getCachedData<Conversation[]>(STORAGE_KEYS.conversations);
+  return Array.isArray(cached) ? cached : [];
 }
 
 /**
@@ -160,7 +163,8 @@ function updateConversation(fromUserCode: string, toUserCode: string, message: U
   // 按最后更新时间排序
   conversations.sort((a, b) => b.updatedAt - a.updatedAt);
   
-  localStorage.setItem(STORAGE_KEYS.conversations, JSON.stringify(conversations));
+  setCachedData(STORAGE_KEYS.conversations, conversations);
+  void save(STORAGE_KEYS.conversations, conversations);
 }
 
 /**
@@ -176,7 +180,8 @@ export function markConversationAsRead(userCode: string): void {
   const conversation = conversations.find(c => c.id === conversationId);
   if (conversation) {
     conversation.unreadCount = 0;
-    localStorage.setItem(STORAGE_KEYS.conversations, JSON.stringify(conversations));
+    setCachedData(STORAGE_KEYS.conversations, conversations);
+    void save(STORAGE_KEYS.conversations, conversations);
   }
 }
 

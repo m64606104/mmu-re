@@ -4,6 +4,7 @@
  */
 
 import { BottleLetter } from '../types/bottle';
+import { getCachedData, save, setCachedData, smartRemove } from './storage';
 
 const DIVERSITY_STORAGE_KEY = 'bottle_content_diversity';
 const MAX_HISTORY_DAYS = 7; // 保留7天的历史记录
@@ -26,11 +27,8 @@ interface DiversityScore {
  * 获取内容历史记录
  */
 function getContentHistory(): ContentHistory {
-  const saved = localStorage.getItem(DIVERSITY_STORAGE_KEY);
-  if (saved) {
-    const history: ContentHistory = JSON.parse(saved);
-    
-    // 清理过期数据
+  const history = getCachedData<ContentHistory>(DIVERSITY_STORAGE_KEY);
+  if (history) {
     const now = Date.now();
     const maxAge = MAX_HISTORY_DAYS * 24 * 60 * 60 * 1000;
     
@@ -57,7 +55,8 @@ function getContentHistory(): ContentHistory {
  * 保存内容历史记录
  */
 function saveContentHistory(history: ContentHistory): void {
-  localStorage.setItem(DIVERSITY_STORAGE_KEY, JSON.stringify(history));
+  setCachedData(DIVERSITY_STORAGE_KEY, history);
+  void save(DIVERSITY_STORAGE_KEY, history);
 }
 
 /**
@@ -263,7 +262,8 @@ export function getRecommendedContentTypes(): {
  * 清理历史数据
  */
 export function clearContentHistory(): void {
-  localStorage.removeItem(DIVERSITY_STORAGE_KEY);
+  setCachedData(DIVERSITY_STORAGE_KEY, null);
+  void smartRemove(DIVERSITY_STORAGE_KEY);
 }
 
 /**

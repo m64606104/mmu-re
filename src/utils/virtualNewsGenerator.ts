@@ -3,6 +3,8 @@
  * 创建虚拟但真实的时事内容，让AI有更多话题可聊
  */
 
+import { getCachedData, save, setCachedData } from './storage';
+
 export interface VirtualNews {
   id: string;
   type: 'tech' | 'entertainment' | 'lifestyle' | 'social' | 'trending';
@@ -301,14 +303,15 @@ export class VirtualNewsGenerator {
     const today = new Date().toDateString();
     const cacheKey = `daily_news_${today}`;
     
-    let dailyNews: VirtualNews[];
+    let dailyNews: VirtualNews[] = [];
     try {
-      const cached = localStorage.getItem(cacheKey);
-      if (cached) {
-        dailyNews = JSON.parse(cached);
+      const cached = getCachedData<VirtualNews[]>(cacheKey);
+      if (Array.isArray(cached) && cached.length > 0) {
+        dailyNews = cached;
       } else {
         dailyNews = this.generateDailyNews();
-        localStorage.setItem(cacheKey, JSON.stringify(dailyNews));
+        setCachedData(cacheKey, dailyNews);
+        void save(cacheKey, dailyNews);
       }
     } catch {
       dailyNews = this.generateDailyNews();

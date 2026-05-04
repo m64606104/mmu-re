@@ -56,6 +56,7 @@ export function buildMediaChatRequest(
   let requestBody: BuildMediaChatRequestResult['requestBody'] | undefined;
 
   if (hasImage) {
+    const visionModel = String(apiConfig.visionModelName || '').trim();
     const recentMessages = contextMessages;
     const historyMessages: ModelMessage[] = recentMessages
       .filter(m => !unhandledUserMessages.includes(m))
@@ -65,12 +66,15 @@ export function buildMediaChatRequest(
       })) as ModelMessage[];
 
     const contentParts: any[] = [];
-    imageMessages.forEach(imgMsg => {
-      contentParts.push({
-        type: 'image_url',
-        image_url: { url: imgMsg.mediaUrl },
+    // 仅在配置了视觉模型时才允许发送 image_url（否则部分后端会 500）
+    if (visionModel) {
+      imageMessages.forEach(imgMsg => {
+        contentParts.push({
+          type: 'image_url',
+          image_url: { url: imgMsg.mediaUrl },
+        });
       });
-    });
+    }
 
     const imageDescriptionsWithTime = imageMessages
       .map((m, idx) => {
@@ -95,11 +99,21 @@ export function buildMediaChatRequest(
       .join('\n');
 
     if (combinedTextWithTime) {
-      contentParts.push({ type: 'text', text: combinedTextWithTime });
+      contentParts.push({
+        type: 'text',
+        text: visionModel
+          ? combinedTextWithTime
+          : `【系统提示】当前未配置视觉模型，无法发送图片给模型识别。请仅基于用户提供的文字描述回复，并提醒用户去“设置 > API 配置”填写视觉模型名称。\n\n${combinedTextWithTime}`,
+      });
     } else {
       const imageCount = imageMessages.length;
       const defaultText = imageCount > 1 ? `看这${imageCount}张图` : '看这张图';
-      contentParts.push({ type: 'text', text: defaultText });
+      contentParts.push({
+        type: 'text',
+        text: visionModel
+          ? defaultText
+          : `【系统提示】当前未配置视觉模型，无法发送图片给模型识别。请提醒用户去“设置 > API 配置”填写视觉模型名称。`,
+      });
     }
 
     messages = [
@@ -114,7 +128,7 @@ export function buildMediaChatRequest(
     ];
 
     requestBody = {
-      model: apiConfig.modelName,
+      model: visionModel || apiConfig.modelName,
       messages,
       temperature: 0.7,
       max_tokens: 2000,

@@ -4,7 +4,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { Conversation } from '../types';
-import { sendLetter, getAllPresetAIs, getCustomFriends, saveCustomFriend, continueReply } from '../utils/letterService';
+import { sendLetter, getAllPresetAIs, getCustomFriends, saveCustomFriend, continueReply, updateLetterInStorage } from '../utils/letterService';
 import { BottleAI, Letter } from '../types/letter';
 import { getSafeAvatar } from '../utils/avatarHelper';
 import { ArrowLeft, Send, Sparkles, Users, UserPlus, Key } from 'lucide-react';
@@ -105,14 +105,10 @@ const LetterWritingScreen: React.FC<LetterWritingScreenProps> = ({
       
       // 如果是自定义笔友，需要手动设置bottleAIProfile
       if (selectedReceiver.bottleAIProfile) {
-        const letters = JSON.parse(localStorage.getItem('slow_letters') || '[]');
-        const letterIndex = letters.findIndex((l: any) => l.id === letter.id);
-        if (letterIndex !== -1) {
-          letters[letterIndex].bottleAIProfile = selectedReceiver.bottleAIProfile;
-          letters[letterIndex].isFriendAdded = true; // 自定义笔友直接标记为笔友
-          letters[letterIndex].maxRounds = 999; // 无限制
-          localStorage.setItem('slow_letters', JSON.stringify(letters));
-        }
+        letter.bottleAIProfile = selectedReceiver.bottleAIProfile;
+        letter.isFriendAdded = true; // 自定义笔友直接标记为笔友
+        letter.maxRounds = 999; // 无限制
+        updateLetterInStorage(letter);
       }
     }
   };

@@ -10,13 +10,13 @@ import type {
 } from '../types';
 import type { Letter } from '../types/letter';
 
-import HomeScreen from '../components/HomeScreen';
+import HomeScreen from '../components/HomeScreenV2';
 import SettingsScreen from '../components/SettingsScreen';
 import SocialScreen from '../components/SocialScreen';
 import ChatScreen from '../components/ChatScreen';
 import ProfileScreen from '../components/ProfileScreen';
-import MomentsScreen from '../components/MomentsScreen';
-import CharacterSettingsScreen from '../components/CharacterSettingsScreen';
+import MomentsPlaceholderScreen from '../components/MomentsPlaceholderScreen';
+import CharacterSettingsScreenV2 from '../components/CharacterSettingsScreenV2';
 import NewConversationScreen from '../components/NewConversationScreen';
 import ContactsScreen from '../components/ContactsScreen';
 import AddFriendScreen from '../components/AddFriendScreen';
@@ -47,6 +47,7 @@ import StickerManagementScreen from '../components/StickerManagementScreen';
 import BottomNavBar from '../components/BottomNavBar';
 import UnrepliedLettersScreen from '../components/UnrepliedLettersScreen';
 import { createBackHandler } from './backNavigation';
+import FocusHabitScreen from '../apps/focusHabit/FocusHabitScreen';
 
 export type RenderScreenParams = {
   currentScreen: Screen;
@@ -74,10 +75,6 @@ export type RenderScreenParams = {
   toggleFullscreenMode: (enabled: boolean) => void;
   updateApiConfig: (cfg: ApiConfig) => void;
 
-  addMoment: (content: string, images: string[]) => void;
-  likeMoment: (momentId: string) => void;
-  commentMoment: (momentId: string, content: string) => void;
-
   onImportCharacter: (data: any) => void;
   onAddPenPal: (newConversation: Conversation) => void;
   addFriend: (friendData: {
@@ -97,6 +94,20 @@ export type RenderScreenParams = {
   }) => void;
 
   onNavigateToPrivateChat: (aiName: string) => void;
+  onOpenOopChat: () => void;
+  onSendOopMessage: (text: string) => void;
+  onSendOopDraft: (payload: {
+    text: string;
+    attachments: Array<{
+      id: string;
+      kind: 'image' | 'document';
+      name: string;
+      mimeType: string;
+      size: number;
+      dataUrl?: string;
+      content?: string;
+    }>;
+  }) => void;
 
 };
 
@@ -123,14 +134,14 @@ export function renderScreen(params: RenderScreenParams) {
     updateTheme,
     toggleFullscreenMode,
     updateApiConfig,
-    addMoment,
-    likeMoment,
-    commentMoment,
     onImportCharacter,
     onAddPenPal,
     addFriend,
     createGroup,
     onNavigateToPrivateChat,
+    onOpenOopChat,
+    onSendOopMessage,
+    onSendOopDraft,
   } = params;
 
   const currentConversation = conversations.find(c => c.id === currentConversationId);
@@ -141,12 +152,16 @@ export function renderScreen(params: RenderScreenParams) {
       onNavigate={navigateTo}
       onImportCharacter={onImportCharacter}
       onUpdateConversation={updateConversation}
+      apiConfig={apiConfig}
+      userProfile={userProfile}
+      onDeleteConversation={deleteConversation}
+      onNavigateToPrivateChat={onNavigateToPrivateChat}
     />
   );
 
   switch (currentScreen) {
     case 'home':
-      return <HomeScreen onNavigate={navigateTo} theme={theme} />;
+      return <HomeScreen onNavigate={navigateTo} onOpenOopChat={onOpenOopChat} onSendOopMessage={onSendOopMessage} onSendOopDraft={onSendOopDraft} theme={theme} userProfile={userProfile} />;
     case 'chat':
       return currentConversation ? (
         <ChatScreen
@@ -159,6 +174,14 @@ export function renderScreen(params: RenderScreenParams) {
           onBack={goBack}
           onOpenCharacterSettings={() => navigateTo('character-settings')}
           onNavigateToPrivateChat={onNavigateToPrivateChat}
+          onOpenStickerManagement={() => {
+            try {
+              sessionStorage.setItem('momoyu:stickerManagementTab', 'mine');
+            } catch {
+              /* ignore */
+            }
+            navigateTo('sticker-management');
+          }}
         />
       ) : (
         renderSocialFallback()
@@ -170,21 +193,14 @@ export function renderScreen(params: RenderScreenParams) {
           onNavigate={navigateTo}
           onImportCharacter={onImportCharacter}
           onUpdateConversation={updateConversation}
+          apiConfig={apiConfig}
+          userProfile={userProfile}
+          onDeleteConversation={deleteConversation}
+          onNavigateToPrivateChat={onNavigateToPrivateChat}
         />
       );
     case 'moments':
-      return (
-        <MomentsScreen
-          moments={moments}
-          conversations={conversations}
-          userProfile={userProfile}
-          apiConfig={apiConfig}
-          onAddMoment={addMoment}
-          onLikeMoment={likeMoment}
-          onCommentMoment={commentMoment}
-          onBack={goBack}
-        />
-      );
+      return <MomentsPlaceholderScreen onBack={goBack} />;
     case 'profile':
       return (
         <ProfileScreen
@@ -208,12 +224,13 @@ export function renderScreen(params: RenderScreenParams) {
       );
     case 'character-settings':
       return currentConversation ? (
-        <CharacterSettingsScreen
+        <CharacterSettingsScreenV2
           conversation={currentConversation}
           allConversations={conversations}
           apiConfig={apiConfig}
           onUpdateConversation={updateConversation}
           onDeleteConversation={deleteConversation}
+          onImportCharacter={onImportCharacter}
           onBack={goBack}
         />
       ) : (
@@ -411,8 +428,10 @@ export function renderScreen(params: RenderScreenParams) {
       return <EasyChatApp onBack={goBack} />;
     case 'sticker-management':
       return <StickerManagementScreen onBack={goBack} conversations={conversations} />;
+    case 'focus-habit':
+      return <FocusHabitScreen onBack={goBack} conversations={conversations} />;
     default:
-      return <HomeScreen onNavigate={navigateTo} theme={theme} />;
+      return <HomeScreen onNavigate={navigateTo} onOpenOopChat={onOpenOopChat} onSendOopMessage={onSendOopMessage} onSendOopDraft={onSendOopDraft} theme={theme} userProfile={userProfile} />;
   }
 }
 

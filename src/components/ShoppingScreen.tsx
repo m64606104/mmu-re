@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { ChevronLeft, MessageCircle, Search, ShoppingCart, User } from 'lucide-react';
+import { smartLoad, smartSave } from '../utils/storage';
 
 interface ShoppingScreenProps {
   shopType: 'food' | 'movie' | 'shopping';
@@ -172,49 +173,31 @@ const ORDER_KEY = 'huaduoduo_orders';
 const ADDRESS_KEY = 'huaduoduo_addresses';
 const PROFILE_KEY = 'userProfile';
 
-function loadCart(): Product[] {
-  try {
-    const raw = localStorage.getItem(CART_KEY);
-    if (!raw) return [];
-    const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed : [];
-  } catch {
-    return [];
-  }
+async function loadCart(): Promise<Product[]> {
+  const parsed = await smartLoad(CART_KEY);
+  return Array.isArray(parsed) ? parsed : [];
 }
 
 function saveCart(cart: Product[]) {
-  localStorage.setItem(CART_KEY, JSON.stringify(cart));
+  void smartSave(CART_KEY, cart);
 }
 
-function loadOrders(): OrderRecord[] {
-  try {
-    const raw = localStorage.getItem(ORDER_KEY);
-    if (!raw) return [];
-    const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed : [];
-  } catch {
-    return [];
-  }
+async function loadOrders(): Promise<OrderRecord[]> {
+  const parsed = await smartLoad(ORDER_KEY);
+  return Array.isArray(parsed) ? parsed : [];
 }
 
 function saveOrders(orders: OrderRecord[]) {
-  localStorage.setItem(ORDER_KEY, JSON.stringify(orders));
+  void smartSave(ORDER_KEY, orders);
 }
 
-function loadAddresses(): AddressRecord[] {
-  try {
-    const raw = localStorage.getItem(ADDRESS_KEY);
-    if (!raw) return [];
-    const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed : [];
-  } catch {
-    return [];
-  }
+async function loadAddresses(): Promise<AddressRecord[]> {
+  const parsed = await smartLoad(ADDRESS_KEY);
+  return Array.isArray(parsed) ? parsed : [];
 }
 
 function saveAddresses(addresses: AddressRecord[]) {
-  localStorage.setItem(ADDRESS_KEY, JSON.stringify(addresses));
+  void smartSave(ADDRESS_KEY, addresses);
 }
 
 function loadUserName(): string {
@@ -230,12 +213,12 @@ function loadUserName(): string {
 
 const ShoppingScreen: React.FC<ShoppingScreenProps> = ({ shopType, onBack, onPurchase }) => {
   const [searchQuery, setSearchQuery] = useState('');
-  const [cart, setCart] = useState<Product[]>(() => loadCart());
+  const [cart, setCart] = useState<Product[]>([]);
   const [activeService, setActiveService] = useState('all');
   const [activeBottomTab, setActiveBottomTab] = useState<'home' | 'cart' | 'me'>('home');
   const [displayedProducts, setDisplayedProducts] = useState<Product[]>([]);
-  const [orders, setOrders] = useState<OrderRecord[]>(() => loadOrders());
-  const [addresses, setAddresses] = useState<AddressRecord[]>(() => loadAddresses());
+  const [orders, setOrders] = useState<OrderRecord[]>([]);
+  const [addresses, setAddresses] = useState<AddressRecord[]>([]);
   const [selectedAddressId, setSelectedAddressId] = useState<string | null>(null);
   const [userName] = useState<string>(() => loadUserName());
   const [showAddressModal, setShowAddressModal] = useState(false);
@@ -269,6 +252,20 @@ const ShoppingScreen: React.FC<ShoppingScreenProps> = ({ shopType, onBack, onPur
     const pool = PRODUCTS_BY_SERVICE[serviceId] || MIXED_PRODUCTS;
     setDisplayedProducts(pickRandomProducts(pool, 6));
   };
+
+  useEffect(() => {
+    const bootstrap = async () => {
+      const [savedCart, savedOrders, savedAddresses] = await Promise.all([
+        loadCart(),
+        loadOrders(),
+        loadAddresses(),
+      ]);
+      setCart(savedCart);
+      setOrders(savedOrders);
+      setAddresses(savedAddresses);
+    };
+    void bootstrap();
+  }, []);
 
   useEffect(() => {
     refreshProductsByService(activeService);

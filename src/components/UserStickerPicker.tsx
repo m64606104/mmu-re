@@ -3,14 +3,20 @@
 import { useState, useEffect, useRef } from 'react';
 import { X, Plus, Search, Smile } from 'lucide-react';
 import { StickerItem } from '../types/sticker';
-import { getCommonStickers, getUserStickers, addSticker, imageToBase64 } from '../utils/stickerStorage';
+import { getUserLibraryStickers, addSticker, imageToBase64 } from '../utils/stickerStorage';
 
 interface UserStickerPickerProps {
   onClose: () => void;
   onSelectSticker: (sticker: StickerItem) => void;
+  /** 跳转到「表情包管理」并打开「我的表情包」页签 */
+  onOpenStickerManagement?: () => void;
 }
 
-export default function UserStickerPicker({ onClose, onSelectSticker }: UserStickerPickerProps) {
+export default function UserStickerPicker({
+  onClose,
+  onSelectSticker,
+  onOpenStickerManagement,
+}: UserStickerPickerProps) {
   const [stickers, setStickers] = useState<StickerItem[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [showAddModal, setShowAddModal] = useState(false);
@@ -23,12 +29,7 @@ export default function UserStickerPicker({ onClose, onSelectSticker }: UserStic
   const loadStickers = async () => {
     setLoading(true);
     try {
-      // 加载通用表情包 + 用户专属表情包
-      const [commonStickers, userStickers] = await Promise.all([
-        getCommonStickers(),
-        getUserStickers()
-      ]);
-      setStickers([...commonStickers, ...userStickers]);
+      setStickers(await getUserLibraryStickers());
     } catch (error) {
       console.error('Failed to load stickers:', error);
     } finally {
@@ -59,21 +60,35 @@ export default function UserStickerPicker({ onClose, onSelectSticker }: UserStic
         onClick={onClose}
       />
 
-      {/* 表情包选择器 */}
-      <div className="fixed bottom-0 left-0 right-0 bg-white rounded-t-3xl z-50 max-h-[70vh] flex flex-col animate-slide-up">
+      {/* 表情包选择器：min-h-0 + flex-1 才能在 max-h 下正常纵向滚动 */}
+      <div className="fixed bottom-0 left-0 right-0 bg-white rounded-t-3xl z-50 max-h-[70vh] flex flex-col min-h-0 overflow-hidden animate-slide-up">
         {/* Header */}
-        <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200">
-          <h3 className="text-lg font-bold text-gray-900">选择表情包</h3>
-          <button
-            onClick={onClose}
-            className="p-2 hover:bg-gray-100 rounded-full transition-colors"
-          >
-            <X className="w-5 h-5 text-gray-600" />
-          </button>
+        <div className="flex-shrink-0 flex items-center justify-between gap-2 px-4 py-3 border-b border-gray-200">
+          <h3 className="text-lg font-bold text-gray-900 truncate">选择表情包</h3>
+          <div className="flex items-center gap-1 shrink-0">
+            {onOpenStickerManagement && (
+              <button
+                type="button"
+                onClick={() => {
+                  onClose();
+                  onOpenStickerManagement();
+                }}
+                className="px-3 py-1.5 text-sm font-medium text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+              >
+                管理
+              </button>
+            )}
+            <button
+              onClick={onClose}
+              className="p-2 hover:bg-gray-100 rounded-full transition-colors"
+            >
+              <X className="w-5 h-5 text-gray-600" />
+            </button>
+          </div>
         </div>
 
         {/* 搜索框 */}
-        <div className="p-3 border-b border-gray-100">
+        <div className="flex-shrink-0 p-3 border-b border-gray-100">
           <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
             <input
@@ -87,7 +102,10 @@ export default function UserStickerPicker({ onClose, onSelectSticker }: UserStic
         </div>
 
         {/* 表情包网格 */}
-        <div className="flex-1 overflow-y-auto p-3">
+        <div
+          className="flex-1 min-h-0 overflow-y-auto overscroll-contain touch-pan-y p-3 pb-2"
+          style={{ WebkitOverflowScrolling: 'touch' }}
+        >
           {loading ? (
             <div className="text-center py-12 text-gray-500">加载中...</div>
           ) : filteredStickers.length === 0 ? (
@@ -96,14 +114,40 @@ export default function UserStickerPicker({ onClose, onSelectSticker }: UserStic
               <p className="text-gray-500 mb-4">
                 {searchQuery ? '没有找到匹配的表情包' : '还没有表情包'}
               </p>
-              {!searchQuery && (
+              {searchQuery && onOpenStickerManagement && (
                 <button
-                  onClick={() => setShowAddModal(true)}
-                  className="px-6 py-2 bg-blue-600 text-white rounded-full hover:bg-blue-700 transition-colors inline-flex items-center gap-2"
+                  type="button"
+                  onClick={() => {
+                    onClose();
+                    onOpenStickerManagement();
+                  }}
+                  className="text-sm text-blue-600 hover:text-blue-700 mb-3"
                 >
-                  <Plus className="w-4 h-4" />
-                  添加表情包
+                  去表情包管理
                 </button>
+              )}
+              {!searchQuery && (
+                <div className="flex flex-col items-center gap-2">
+                  <button
+                    onClick={() => setShowAddModal(true)}
+                    className="px-6 py-2 bg-blue-600 text-white rounded-full hover:bg-blue-700 transition-colors inline-flex items-center gap-2"
+                  >
+                    <Plus className="w-4 h-4" />
+                    添加表情包
+                  </button>
+                  {onOpenStickerManagement && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        onClose();
+                        onOpenStickerManagement();
+                      }}
+                      className="text-sm text-blue-600 hover:text-blue-700"
+                    >
+                      表情包管理
+                    </button>
+                  )}
+                </div>
               )}
             </div>
           ) : (
@@ -111,7 +155,7 @@ export default function UserStickerPicker({ onClose, onSelectSticker }: UserStic
               <div className="grid grid-cols-4 gap-2 mb-4">
                 {filteredStickers.map(sticker => (
                   <button
-                    key={sticker.id}
+                    key={`${sticker.scope}-${sticker.id}`}
                     onClick={() => handleSelectSticker(sticker)}
                     className="aspect-square rounded-lg overflow-hidden bg-gray-100 hover:ring-2 hover:ring-blue-500 transition-all active:scale-95"
                   >
@@ -132,6 +176,19 @@ export default function UserStickerPicker({ onClose, onSelectSticker }: UserStic
                 <Plus className="w-5 h-5" />
                 <span className="text-sm font-medium">添加新表情包</span>
               </button>
+
+              {onOpenStickerManagement && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    onClose();
+                    onOpenStickerManagement();
+                  }}
+                  className="w-full mt-2 py-2.5 text-sm text-blue-600 hover:text-blue-700 hover:bg-blue-50/80 rounded-lg transition-colors"
+                >
+                  表情包管理（编辑、删除）
+                </button>
+              )}
             </>
           )}
         </div>

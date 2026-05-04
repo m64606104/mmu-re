@@ -4,6 +4,7 @@
  */
 
 import { OfficialAccountSettings, OfficialArticle, ApiConfig } from '../types';
+import { getCachedData, load, save, setCachedData } from './storage';
 
 const OFFICIAL_ACCOUNTS_KEY = 'official_accounts';
 
@@ -82,8 +83,8 @@ export const PRESET_ACCOUNTS: Omit<OfficialAccountSettings, 'articles' | 'follow
  * 如果本地没有公众号数据，创建预设账号
  */
 export const initOfficialAccounts = (): void => {
-  const existing = localStorage.getItem(OFFICIAL_ACCOUNTS_KEY);
-  if (!existing) {
+  const existing = getCachedData<OfficialAccountSettings[]>(OFFICIAL_ACCOUNTS_KEY);
+  if (!Array.isArray(existing) || existing.length === 0) {
     const accounts: OfficialAccountSettings[] = PRESET_ACCOUNTS.map(preset => ({
       ...preset,
       articles: [],
@@ -91,7 +92,8 @@ export const initOfficialAccounts = (): void => {
       lastPublishTime: undefined,
       nextPublishTime: Date.now() + getPublishInterval(preset.publishFrequency)
     }));
-    localStorage.setItem(OFFICIAL_ACCOUNTS_KEY, JSON.stringify(accounts));
+    setCachedData(OFFICIAL_ACCOUNTS_KEY, accounts);
+    void save(OFFICIAL_ACCOUNTS_KEY, accounts);
     console.log('✅ 公众号系统初始化完成，创建了', accounts.length, '个预设账号');
   }
 };
@@ -100,12 +102,12 @@ export const initOfficialAccounts = (): void => {
  * 获取所有公众号
  */
 export const getAllOfficialAccounts = (): OfficialAccountSettings[] => {
-  const data = localStorage.getItem(OFFICIAL_ACCOUNTS_KEY);
-  if (!data) {
+  const data = getCachedData<OfficialAccountSettings[]>(OFFICIAL_ACCOUNTS_KEY);
+  if (!Array.isArray(data) || data.length === 0) {
     initOfficialAccounts();
     return getAllOfficialAccounts();
   }
-  return JSON.parse(data);
+  return data;
 };
 
 /**
@@ -127,8 +129,19 @@ export const saveOfficialAccount = (account: OfficialAccountSettings): void => {
   } else {
     accounts.push(account);
   }
-  localStorage.setItem(OFFICIAL_ACCOUNTS_KEY, JSON.stringify(accounts));
+  setCachedData(OFFICIAL_ACCOUNTS_KEY, accounts);
+  void save(OFFICIAL_ACCOUNTS_KEY, accounts);
 };
+
+export async function initializeOfficialAccountsStorage(): Promise<void> {
+  try {
+    const data = await load(OFFICIAL_ACCOUNTS_KEY);
+    setCachedData(OFFICIAL_ACCOUNTS_KEY, Array.isArray(data) ? data : []);
+  } catch (error) {
+    console.error('初始化公众号存储失败:', error);
+    setCachedData(OFFICIAL_ACCOUNTS_KEY, []);
+  }
+}
 
 /**
  * 根据发布频率获取发布间隔（毫秒）

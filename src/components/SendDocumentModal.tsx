@@ -1,12 +1,14 @@
-import React, { useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { X, FileText, Folder, Upload } from 'lucide-react';
 import { useToast } from './Toast';
 import { OriginalDocumentFile } from '../types';
+import { parseDocument } from '../utils/enhancedDocumentParser';
 
 interface SendDocumentModalProps {
   onClose: () => void;
   onSend: (title: string, content: string, greeting: string, type: 'text' | 'markdown' | 'code', originalFile?: OriginalDocumentFile) => void;
   onOpenLibrary?: () => void;
+  autoPickLocalFile?: boolean;
   initialDocument?: {
     title: string;
     content: string;
@@ -14,7 +16,7 @@ interface SendDocumentModalProps {
   };
 }
 
-const SendDocumentModal: React.FC<SendDocumentModalProps> = ({ onClose, onSend, onOpenLibrary, initialDocument }) => {
+const SendDocumentModal: React.FC<SendDocumentModalProps> = ({ onClose, onSend, onOpenLibrary, autoPickLocalFile, initialDocument }) => {
   const [title, setTitle] = useState(initialDocument?.title || '');
   const [content, setContent] = useState(initialDocument?.content || '');
   const [greeting, setGreeting] = useState('请查收');
@@ -23,7 +25,17 @@ const SendDocumentModal: React.FC<SendDocumentModalProps> = ({ onClose, onSend, 
   const [lastUploadedFile, setLastUploadedFile] = useState<{ name: string; size: number; parsedChars: number } | null>(null);
   const [uploadedOriginalFile, setUploadedOriginalFile] = useState<OriginalDocumentFile | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const didAutoPickRef = useRef(false);
   const { showToast } = useToast();
+
+  useEffect(() => {
+    if (!autoPickLocalFile) return;
+    if (didAutoPickRef.current) return;
+    didAutoPickRef.current = true;
+    // 让弹窗先渲染完成，再触发文件选择器
+    const t = window.setTimeout(() => fileInputRef.current?.click(), 0);
+    return () => window.clearTimeout(t);
+  }, [autoPickLocalFile]);
 
   const handleSend = () => {
     if (!title.trim() || !content.trim()) {
@@ -62,7 +74,6 @@ const SendDocumentModal: React.FC<SendDocumentModalProps> = ({ onClose, onSend, 
 
     setIsParsingFile(true);
     try {
-      const { parseDocument } = await import('../utils/enhancedDocumentParser');
       const parsedText = await parseDocument(file);
       let base64Data: string | undefined;
       if (file.size <= 700 * 1024) {
@@ -89,7 +100,7 @@ const SendDocumentModal: React.FC<SendDocumentModalProps> = ({ onClose, onSend, 
       showToast(`已导入本地文件：${file.name}`, 'success');
     } catch (error) {
       console.error('本地文档解析失败:', error);
-      showToast('文档解析失败，请上传 PDF / Word / TXT 文件', 'error');
+      showToast(error instanceof Error ? error.message : '文档解析失败，请上传 PDF / Word / Excel / PPTX / TXT 文件', 'error');
     } finally {
       setIsParsingFile(false);
       if (fileInputRef.current) fileInputRef.current.value = '';
@@ -119,7 +130,7 @@ const SendDocumentModal: React.FC<SendDocumentModalProps> = ({ onClose, onSend, 
             ref={fileInputRef}
             type="file"
             className="hidden"
-            accept=".txt,.pdf,.doc,.docx,.md,.markdown,.json,.js,.jsx,.ts,.tsx,.py,.java,.go,.rs,.cpp,.c,.cs,.php,.rb,.swift,.kt,.sql,.xml,.yaml,.yml,.sh"
+            accept=".txt,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.md,.markdown,.json,.js,.jsx,.ts,.tsx,.py,.java,.go,.rs,.cpp,.c,.cs,.php,.rb,.swift,.kt,.sql,.xml,.yaml,.yml,.sh"
             onChange={handleLocalFileUpload}
           />
 

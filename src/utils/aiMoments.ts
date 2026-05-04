@@ -1,4 +1,5 @@
 import { ApiConfig, Conversation, MomentPost } from '../types';
+import { getCachedData, load, save, setCachedData } from './storage';
 
 // AI自动发朋友圈配置
 export interface AIMomentsConfig {
@@ -283,8 +284,7 @@ interface MomentCycleData {
 
 // 获取周期数据
 export const getMomentCycleData = (conversationId: string): MomentCycleData => {
-  const saved = localStorage.getItem('momentCycles');
-  const cycles: Record<string, MomentCycleData> = saved ? JSON.parse(saved) : {};
+  const cycles = (getCachedData<Record<string, MomentCycleData>>('momentCycles') || {}) as Record<string, MomentCycleData>;
   
   if (!cycles[conversationId]) {
     // 初始化新周期
@@ -297,7 +297,8 @@ export const getMomentCycleData = (conversationId: string): MomentCycleData => {
       postsInCycle: 0,
       targetPosts,
     };
-    localStorage.setItem('momentCycles', JSON.stringify(cycles));
+    setCachedData('momentCycles', cycles);
+    void save('momentCycles', cycles);
   }
   
   return cycles[conversationId];
@@ -305,8 +306,7 @@ export const getMomentCycleData = (conversationId: string): MomentCycleData => {
 
 // 重置周期
 export const resetMomentCycle = (conversationId: string) => {
-  const saved = localStorage.getItem('momentCycles');
-  const cycles: Record<string, MomentCycleData> = saved ? JSON.parse(saved) : {};
+  const cycles = (getCachedData<Record<string, MomentCycleData>>('momentCycles') || {}) as Record<string, MomentCycleData>;
   
   const targetPosts = Math.floor(
     Math.random() * (DEFAULT_AI_MOMENTS_CONFIG.maxPostsPerCycle - DEFAULT_AI_MOMENTS_CONFIG.minPostsPerCycle + 1)
@@ -318,19 +318,30 @@ export const resetMomentCycle = (conversationId: string) => {
     targetPosts,
   };
   
-  localStorage.setItem('momentCycles', JSON.stringify(cycles));
+  setCachedData('momentCycles', cycles);
+  void save('momentCycles', cycles);
 };
 
 // 增加发布计数
 export const incrementPostCount = (conversationId: string) => {
-  const saved = localStorage.getItem('momentCycles');
-  const cycles: Record<string, MomentCycleData> = saved ? JSON.parse(saved) : {};
+  const cycles = (getCachedData<Record<string, MomentCycleData>>('momentCycles') || {}) as Record<string, MomentCycleData>;
   
   if (cycles[conversationId]) {
     cycles[conversationId].postsInCycle += 1;
-    localStorage.setItem('momentCycles', JSON.stringify(cycles));
+    setCachedData('momentCycles', cycles);
+    void save('momentCycles', cycles);
   }
 };
+
+export async function initializeAIMomentsState(): Promise<void> {
+  try {
+    const cycles = await load('momentCycles');
+    setCachedData('momentCycles', cycles && typeof cycles === 'object' ? cycles : {});
+  } catch (error) {
+    console.error('初始化朋友圈周期存储失败:', error);
+    setCachedData('momentCycles', {});
+  }
+}
 
 // 获取最近聊天内容
 export const getRecentChatContext = (conversation: Conversation, limit: number = 10): string => {

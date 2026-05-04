@@ -5,8 +5,8 @@
 
 import { Letter } from '../types/letter';
 import { BottleAI } from '../types/letter';
-import { getLettersFromStorage, updateLetterInStorage } from './letterService';
-import { getCachedData, setCachedData, save } from './storage';
+import { getLettersFromStorage, loadCustomFriends } from './letterService';
+import { smartRemove, setCachedData, save, smartLoad } from './storage';
 
 // 数据迁移格式
 export interface LetterMigrationData {
@@ -25,7 +25,7 @@ export interface LetterMigrationData {
 /**
  * 导出所有信件数据
  */
-export function exportAllLetterData(): LetterMigrationData {
+export async function exportAllLetterData(): Promise<LetterMigrationData> {
   // 从 IndexedDB/内存缓存获取所有信件
   const letters: Letter[] = getLettersFromStorage();
   console.log(`📤 [导出] 从 IndexedDB 读取到 ${letters.length} 封信件`);
@@ -40,8 +40,7 @@ export function exportAllLetterData(): LetterMigrationData {
   }
   
   // 获取自定义笔友
-  const customFriendsJson = localStorage.getItem('custom_pen_pals');
-  const customFriends: BottleAI[] = customFriendsJson ? JSON.parse(customFriendsJson) : [];
+  const customFriends = await loadCustomFriends();
   console.log(`📤 [导出] 读取到 ${customFriends.length} 个自定义笔友`);
   
   // 统计数据
@@ -74,11 +73,8 @@ export function exportAllLetterData(): LetterMigrationData {
 /**
  * 导出单个信件
  */
-export function exportSingleLetter(letterId: string): Letter | null {
-  const lettersJson = localStorage.getItem('slow_letters');
-  if (!lettersJson) return null;
-  
-  const letters: Letter[] = JSON.parse(lettersJson);
+export async function exportSingleLetter(letterId: string): Promise<Letter | null> {
+  const letters = getLettersFromStorage();
   const letter = letters.find(l => l.id === letterId);
   
   return letter || null;
@@ -87,15 +83,13 @@ export function exportSingleLetter(letterId: string): Letter | null {
 /**
  * 导出多个信件
  */
-export function exportMultipleLetters(letterIds: string[], sourceLetters?: Letter[]): Letter[] {
+export async function exportMultipleLetters(letterIds: string[], sourceLetters?: Letter[]): Promise<Letter[]> {
   let letters: Letter[] = [];
   
   if (sourceLetters) {
     letters = sourceLetters;
   } else {
-    const lettersJson = localStorage.getItem('slow_letters');
-    if (!lettersJson) return [];
-    letters = JSON.parse(lettersJson);
+    letters = getLettersFromStorage();
   }
   
   return letters.filter(l => letterIds.includes(l.id));
@@ -106,10 +100,10 @@ export function exportMultipleLetters(letterIds: string[], sourceLetters?: Lette
  * @param data - 迁移数据
  * @param mode - 导入模式：'merge'(合并) 或 'replace'(替换)
  */
-export function importAllLetterData(
+export async function importAllLetterData(
   data: LetterMigrationData,
   mode: 'merge' | 'replace' = 'merge'
-): { success: boolean; message: string } {
+): Promise<{ success: boolean; message: string }> {
   try {
     console.log(`📥 [导入] 开始导入，模式: ${mode}`);
     console.log(`📥 [导入] 导入文件包含: ${data.letters?.length || 0} 封信件, ${data.customFriends?.length || 0} 个笔友`);
@@ -160,8 +154,7 @@ export function importAllLetterData(
       });
       
       // 同样的逻辑处理自定义笔友
-      const existingFriendsJson = localStorage.getItem('custom_pen_pals');
-      const existingFriends: BottleAI[] = existingFriendsJson ? JSON.parse(existingFriendsJson) : [];
+      const existingFriends = await loadCustomFriends();
       
       const friendMap = new Map<string, BottleAI>();
       
@@ -182,7 +175,7 @@ export function importAllLetterData(
       
       const finalFriends = Array.from(friendMap.values());
       console.log(`✅ [导入] 合并后共有 ${finalFriends.length} 个笔友`);
-      localStorage.setItem('custom_pen_pals', JSON.stringify(finalFriends));
+      await save('custom_pen_pals', finalFriends);
     } else {
       // 替换模式：直接覆盖
       console.log(`⚠️ [导入] 替换模式，将覆盖所有现有数据`);
@@ -194,14 +187,13 @@ export function importAllLetterData(
         console.error('❌ [导入] 保存到 IndexedDB 失败:', err);
       });
       
-      localStorage.setItem('custom_pen_pals', JSON.stringify(data.customFriends || []));
+      await save('custom_pen_pals', data.customFriends || []);
       console.log(`✅ [导入] 替换完成：${sortedLetters.length} 封信件, ${data.customFriends?.length || 0} 个笔友`);
     }
     
     // 获取最终的数据统计
     const finalLetters: Letter[] = getLettersFromStorage();
-    const finalFriendsJson = localStorage.getItem('custom_pen_pals');
-    const finalFriends: BottleAI[] = finalFriendsJson ? JSON.parse(finalFriendsJson) : [];
+    const finalFriends = await loadCustomFriends();
     
     return {
       success: true,
@@ -239,9 +231,9 @@ export function downloadAsJson(data: any, filename: string) {
 /**
  * 导出所有数据并下载
  */
-export function exportAndDownloadAll() {
+export async function exportAndDownloadAll() {
   console.log(`🚀 [导出] 开始导出所有数据...`);
-  const data = exportAllLetterData();
+  const data = await exportAllLetterData();
   const filename = `慢邮件数据_${new Date().toISOString().split('T')[0]}.json`;
   
   console.log(`💾 [导出] 准备下载文件: ${filename}`);
@@ -261,8 +253,8 @@ export function exportAndDownloadAll() {
 /**
  * 导出单个信件并下载
  */
-export function exportAndDownloadSingle(letterId: string) {
-  const letter = exportSingleLetter(letterId);
+export async function exportAndDownloadSingle(letterId: string) {
+  const letter = await exportSingleLetter(letterId);
   if (!letter) {
     return {
       success: false,
@@ -283,8 +275,8 @@ export function exportAndDownloadSingle(letterId: string) {
 /**
  * 导出多个信件并下载
  */
-export function exportAndDownloadMultiple(letterIds: string[], sourceLetters?: Letter[]) {
-  const letters = exportMultipleLetters(letterIds, sourceLetters);
+export async function exportAndDownloadMultiple(letterIds: string[], sourceLetters?: Letter[]) {
+  const letters = await exportMultipleLetters(letterIds, sourceLetters);
   if (letters.length === 0) {
     return {
       success: false,
@@ -329,14 +321,15 @@ export function readJsonFile(file: File): Promise<any> {
 /**
  * 清空所有信件数据（谨慎使用）
  */
-export function clearAllLetterData(): { success: boolean; message: string } {
+export async function clearAllLetterData(): Promise<{ success: boolean; message: string }> {
   try {
-    const lettersJson = localStorage.getItem('slow_letters');
-    const letters: Letter[] = lettersJson ? JSON.parse(lettersJson) : [];
+    const letters = getLettersFromStorage();
     const count = letters.length;
     
-    localStorage.removeItem('slow_letters');
-    localStorage.removeItem('custom_pen_pals');
+    setCachedData('slow_letters', []);
+    setCachedData('custom_pen_pals', []);
+    await smartRemove('slow_letters');
+    await smartRemove('custom_pen_pals');
     
     return {
       success: true,

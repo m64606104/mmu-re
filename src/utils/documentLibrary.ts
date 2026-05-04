@@ -4,6 +4,7 @@
  */
 
 import { DocumentMessage } from '../types';
+import { smartLoad, smartSave } from './storage';
 
 const DOCUMENT_LIBRARY_KEY = 'document_library';
 
@@ -22,11 +23,19 @@ export interface SavedDocument {
 /**
  * 获取文档库中的所有文档
  */
-export const getDocumentLibrary = (): SavedDocument[] => {
+export const getDocumentLibrary = async (): Promise<SavedDocument[]> => {
   try {
-    const stored = localStorage.getItem(DOCUMENT_LIBRARY_KEY);
-    if (!stored) return [];
-    return JSON.parse(stored);
+    const parsed = await smartLoad(DOCUMENT_LIBRARY_KEY);
+    if (!parsed) return [];
+    // 兼容旧格式/异常写入：必须返回数组，否则资料库页面会崩溃
+    if (Array.isArray(parsed)) return parsed as SavedDocument[];
+    // 某些旧版本可能写成对象包裹
+    if (parsed && typeof parsed === 'object') {
+      const maybeDocs = (parsed as any).docs || (parsed as any).documents || (parsed as any).items;
+      if (Array.isArray(maybeDocs)) return maybeDocs as SavedDocument[];
+    }
+    console.warn('文档库格式异常，已回退为空数组:', parsed);
+    return [];
   } catch (error) {
     console.error('读取文档库失败:', error);
     return [];
@@ -39,7 +48,7 @@ export const getDocumentLibrary = (): SavedDocument[] => {
  * @param source 文档来源
  * @param customTitle 自定义标题（可选，如果不提供则使用document.title）
  */
-export const saveDocument = (document: DocumentMessage, source?: string, customTitle?: string): SavedDocument => {
+export const saveDocument = async (document: DocumentMessage, source?: string, customTitle?: string): Promise<SavedDocument> => {
   const savedDoc: SavedDocument = {
     id: Date.now().toString() + '_' + Math.random().toString(36).substr(2, 9),
     title: customTitle || document.title, // 优先使用自定义标题
@@ -50,14 +59,14 @@ export const saveDocument = (document: DocumentMessage, source?: string, customT
     source: source || 'AI发送'
   };
 
-  const library = getDocumentLibrary();
+  const library = await getDocumentLibrary();
   library.unshift(savedDoc); // 添加到开头
   
   // 限制文档库大小（最多100个文档）
   const limitedLibrary = library.slice(0, 100);
   
   try {
-    localStorage.setItem(DOCUMENT_LIBRARY_KEY, JSON.stringify(limitedLibrary));
+    await smartSave(DOCUMENT_LIBRARY_KEY, limitedLibrary);
   } catch (error) {
     console.error('保存文档失败:', error);
     throw new Error('保存文档失败，存储空间可能不足');
@@ -69,12 +78,12 @@ export const saveDocument = (document: DocumentMessage, source?: string, customT
 /**
  * 从文档库删除文档
  */
-export const deleteDocument = (documentId: string): void => {
-  const library = getDocumentLibrary();
+export const deleteDocument = async (documentId: string): Promise<void> => {
+  const library = await getDocumentLibrary();
   const filtered = library.filter(doc => doc.id !== documentId);
   
   try {
-    localStorage.setItem(DOCUMENT_LIBRARY_KEY, JSON.stringify(filtered));
+    await smartSave(DOCUMENT_LIBRARY_KEY, filtered);
   } catch (error) {
     console.error('删除文档失败:', error);
   }
@@ -83,15 +92,15 @@ export const deleteDocument = (documentId: string): void => {
 /**
  * 更新文档库中的文档
  */
-export const updateDocument = (documentId: string, updates: Partial<SavedDocument>): void => {
-  const library = getDocumentLibrary();
+export const updateDocument = async (documentId: string, updates: Partial<SavedDocument>): Promise<void> => {
+  const library = await getDocumentLibrary();
   const index = library.findIndex(doc => doc.id === documentId);
   
   if (index !== -1) {
     library[index] = { ...library[index], ...updates };
     
     try {
-      localStorage.setItem(DOCUMENT_LIBRARY_KEY, JSON.stringify(library));
+      await smartSave(DOCUMENT_LIBRARY_KEY, library);
     } catch (error) {
       console.error('更新文档失败:', error);
     }
@@ -101,8 +110,8 @@ export const updateDocument = (documentId: string, updates: Partial<SavedDocumen
 /**
  * 搜索文档库
  */
-export const searchDocuments = (query: string): SavedDocument[] => {
-  const library = getDocumentLibrary();
+export const searchDocuments = async (query: string): Promise<SavedDocument[]> => {
+  const library = await getDocumentLibrary();
   const lowerQuery = query.toLowerCase();
   
   return library.filter(doc => 
@@ -114,16 +123,16 @@ export const searchDocuments = (query: string): SavedDocument[] => {
 /**
  * 按类型筛选文档
  */
-export const filterDocumentsByType = (type: 'text' | 'markdown' | 'code'): SavedDocument[] => {
-  const library = getDocumentLibrary();
+export const filterDocumentsByType = async (type: 'text' | 'markdown' | 'code'): Promise<SavedDocument[]> => {
+  const library = await getDocumentLibrary();
   return library.filter(doc => doc.type === type);
 };
 
 /**
  * 获取文档库统计信息
  */
-export const getDocumentStats = () => {
-  const library = getDocumentLibrary();
+export const getDocumentStats = async () => {
+  const library = await getDocumentLibrary();
   
   return {
     total: library.length,

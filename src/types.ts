@@ -2,6 +2,11 @@ export interface ApiConfig {
   baseUrl: string;
   apiKey: string;
   modelName: string;
+  // 可选：视觉（图片）模型；仅在配置后才允许发送 image_url 多模态请求
+  visionModelName?: string;
+  // 可选：视觉接口单独配置（未填写时默认复用 baseUrl/apiKey）
+  visionBaseUrl?: string;
+  visionApiKey?: string;
   // 语音转文字配置
   speechToText?: {
     enabled: boolean; // 是否启用语音转文字
@@ -195,6 +200,15 @@ export interface CharacterSettings {
   chatBackground?: string; // 聊天背景图
   nickname: string;
   username?: string; // 角色网名
+  avatarVisionProfile?: {
+    summary: string; // 视觉模型总结
+    appearanceTags: string[]; // 外观标签
+    styleTags: string[]; // 风格标签
+    detectedNameText?: string; // 头像里识别到的可能文字
+    avatarSource?: string; // 解析时使用的头像URL
+    analyzedAt: number; // 解析时间
+    sourceModel?: string; // 使用的模型
+  };
   systemPrompt: string;
   personality: string;
   languageStyle: string;
@@ -208,6 +222,9 @@ export interface CharacterSettings {
     activeHourStart: number; // 活跃时段开始（小时，0-23）
     activeHourEnd: number; // 活跃时段结束（小时，0-23）
     lastMessageTime?: number; // 上次主动发消息的时间戳
+    autoIntervalByAI?: boolean; // 是否由AI自动控制频率
+    relationAware?: boolean; // 是否启用关系阶段感知频控
+    wakeSensitivityMode?: 'auto' | 'light' | 'normal' | 'deep'; // 睡眠叫醒阈值策略
   };
   // 🧠 记忆系统配置
   memoryConfig?: {
@@ -236,11 +253,6 @@ export interface CharacterSettings {
   hideBubbleTail?: boolean;
   // 🎨 气泡装饰配置
   bubbleDecoration?: BubbleDecoration;
-  // 📋 论坛AI生成配置
-  forumAIConfig?: {
-    enabled: boolean; // 是否允许使用该角色的历史聊天内容生成论坛动态
-    lastGeneratedAt?: number; // 上次生成时间
-  };
   // 📞 通话配置
   callSettings?: {
     // 视频通话配置
@@ -268,6 +280,14 @@ export interface CharacterSettings {
   disableWorldbook?: boolean; // 是否禁用世界书（默认false）
   // 📮 笔友来源标记
   penPalSourceLetterId?: string; // 如果是从信箱笔友添加的，记录来源信件ID
+}
+
+export interface AIIdentityUpdateDraft {
+  nickname?: string;
+  avatar?: string;
+  reason: string;
+  confidence: number; // 0~1
+  proposedAt: number;
 }
 
 // 气泡装饰配置接口
@@ -496,6 +516,17 @@ export interface DynamicIdentityProfile {
   priority: 'override' | 'supplement';
 }
 
+// AI 事件（用于记录“状态变化/人生节点/关系变化”等，覆盖初始人设）
+export interface AIEvent {
+  id: string;
+  timestamp: number;
+  day: string; // YYYY-MM-DD (UTC+8)
+  title: string;
+  description: string;
+  status: 'pending' | 'confirmed' | 'failed';
+  tags?: string[];
+}
+
 // AI记忆库
 export interface MemoryBank {
   conversationId: string; // 对话ID
@@ -503,8 +534,12 @@ export interface MemoryBank {
   diaryEntries?: MemoryDiaryEntry[]; // 日记区块
   aiSelfProfile?: DynamicIdentityProfile; // 自我画像（高优先级）
   userProfile?: DynamicIdentityProfile; // 用户画像（高优先级）
+  aiEvents?: AIEvent[]; // AI 事件区（高优先级，覆盖初始人设）
   lastSummaryMessageCount: number; // 上次总结时的消息数量（私聊）
   totalMessagesSinceLastSummary: number; // 距离上次总结的消息数量
+  lastHundredReviewCount?: number; // 上次100条复盘计数
+  dayPartSummaryMarks?: Record<string, number>; // 早/中/晚总结标记（key: YYYY-MM-DD:morning/noon/evening）
+  lastDailySummaryDay?: string; // 上次日总结日期（UTC+8）
   lastGroupSummaryCount?: number; // 上次群聊总结时的消息数量
   totalGroupMessagesSinceLastSummary?: number; // 距离上次群聊总结的消息数量
   settings: {
@@ -515,7 +550,7 @@ export interface MemoryBank {
   };
 }
 
-export type Screen = 'home' | 'settings' | 'social' | 'chat' | 'character-settings' | 'new-conversation' | 'profile' | 'moments' | 'contacts' | 'add-friend' | 'create-group' | 'theme' | 'guide' | 'relationships' | 'announcement' | 'wallet' | 'shopping' | 'user-system' | 'order-history' | 'database' | 'letterbox' | 'letter-writing' | 'pen-pals' | 'archived-letters' | 'achievements' | 'favorite-letters' | 'stamp-collection' | 'letter-notifications' | 'letter-home' | 'letter-timeline' | 'letter-cards' | 'bottle-fishing' | 'recycle-bin' | 'favorite-replies' | 'unreplied' | 'kindergarten' | 'worldbook' | 'easy-chat' | 'sticker-management' | 'huaduoduo' | 'huaduoduo-gogo';
+export type Screen = 'home' | 'settings' | 'social' | 'chat' | 'character-settings' | 'new-conversation' | 'profile' | 'moments' | 'contacts' | 'add-friend' | 'create-group' | 'theme' | 'guide' | 'relationships' | 'announcement' | 'wallet' | 'shopping' | 'user-system' | 'order-history' | 'database' | 'letterbox' | 'letter-writing' | 'pen-pals' | 'archived-letters' | 'achievements' | 'favorite-letters' | 'stamp-collection' | 'letter-notifications' | 'letter-home' | 'letter-timeline' | 'letter-cards' | 'bottle-fishing' | 'recycle-bin' | 'favorite-replies' | 'unreplied' | 'kindergarten' | 'worldbook' | 'easy-chat' | 'sticker-management' | 'huaduoduo' | 'huaduoduo-gogo' | 'focus-habit';
 
 // 购物类型
 export type ShopType = 'food' | 'movie' | 'shopping';

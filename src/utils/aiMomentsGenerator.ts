@@ -12,6 +12,11 @@ import { DiverseMomentsGenerator } from './diverseMomentsGenerator';
 import { recordApiCall } from './apiUsageManager';
 import { parseComplexFrequencyRules, getCurrentFrequencyRule } from './momentsFrequencyParser';
 import { addMomentsNotification } from './momentsNotificationManager';
+import {
+  buildMomentsVisibilityGroupMap,
+  canAIsViewEachOtherMoments,
+  loadMomentsVisibilityGroups,
+} from './momentsVisibility';
 
 const MOMENTS_STORAGE_KEY = 'moments_data';
 
@@ -106,8 +111,7 @@ export const getMomentsData = async (contactId: string): Promise<MomentsData> =>
   // 🎯 特殊处理：如果是用户的朋友圈
   if (contactId === 'user') {
     try {
-      const userMomentsStr = localStorage.getItem('moments');
-      const userMoments: MomentPost[] = userMomentsStr ? JSON.parse(userMomentsStr) : [];
+      const userMoments = ((await smartLoad('moments')) as MomentPost[] | null) || [];
       
       return {
         contactId: 'user',
@@ -183,7 +187,7 @@ export const saveMomentsData = async (data: MomentsData): Promise<void> => {
     // 🎯 特殊处理：如果是用户的朋友圈
     if (data.contactId === 'user') {
       try {
-        localStorage.setItem('moments', JSON.stringify(data.posts));
+        await smartSave('moments', data.posts);
         console.log('✅ 用户朋友圈数据已更新');
       } catch (error) {
         console.error('保存用户朋友圈失败:', error);
@@ -914,13 +918,13 @@ export const generateAIMoment = async (
     
     // 记录朋友圈发布时间到本地存储
     const lastPostKey = `last_moment_${conversation.id}`;
-    localStorage.setItem(lastPostKey, Date.now().toString());
+    await smartSave(lastPostKey, Date.now().toString());
     
     // 更新今日发布计数
     const todayStr = new Date().toDateString();
     const storageKey = `moments_count_${conversation.id}_${todayStr}`;
-    const todayCount = parseInt(localStorage.getItem(storageKey) || '0');
-    localStorage.setItem(storageKey, (todayCount + 1).toString());
+    const todayCount = parseInt(((await smartLoad(storageKey)) as string) || '0');
+    await smartSave(storageKey, (todayCount + 1).toString());
     
     // 📊 精简版生成器不需要复杂的内容变化记录
     // 已简化为6种核心类型，避免重复由API智能处理
@@ -1075,6 +1079,7 @@ export const generateAIMomentsInteraction = async (
     const onlineAICount = Math.floor(Math.random() * Math.min(3, aiConversations.length)) + 1;
     const shuffledAIs = [...aiConversations].sort(() => Math.random() - 0.5);
     const onlineAIs = shuffledAIs.slice(0, onlineAICount);
+    const visibilityGroupMap = buildMomentsVisibilityGroupMap(await loadMomentsVisibilityGroups());
     
     console.log(`👥 当前有 ${onlineAICount} 个AI在线查看朋友圈`);
 
@@ -1083,9 +1088,8 @@ export const generateAIMomentsInteraction = async (
     
     // 1️⃣ 添加用户的朋友圈
     try {
-      const userMomentsStr = localStorage.getItem('moments');
-      if (userMomentsStr) {
-        const userMoments: MomentPost[] = JSON.parse(userMomentsStr);
+      const userMoments = ((await smartLoad('moments')) as MomentPost[] | null) || [];
+      if (userMoments.length > 0) {
         const recentUserPosts = userMoments.filter(post => {
           const hoursSincePost = (Date.now() - post.timestamp) / 3600000;
           return hoursSincePost < 168; // 7天内
@@ -1140,6 +1144,9 @@ export const generateAIMomentsInteraction = async (
         .filter(({ post, author }) => {
           // 排除自己的朋友圈
           if (author !== 'user' && (author as Conversation).id === ai.id) return false;
+          if (author !== 'user' && !canAIsViewEachOtherMoments(ai.id, (author as Conversation).id, visibilityGroupMap)) {
+            return false;
+          }
           
           // 检查是否已经完全互动过
           const hasLiked = post.likes.includes(ai.id);
@@ -1419,6 +1426,7 @@ export const generateCommentSectionInteraction = async (
     const onlineAICount = Math.floor(Math.random() * Math.min(3, aiConversations.length)) + 1;
     const shuffledAIs = [...aiConversations].sort(() => Math.random() - 0.5);
     const onlineAIs = shuffledAIs.slice(0, onlineAICount);
+    const visibilityGroupMap = buildMomentsVisibilityGroupMap(await loadMomentsVisibilityGroups());
     
     console.log(`💬 ${onlineAICount} 个AI正在查看评论区...`);
 
@@ -1427,9 +1435,8 @@ export const generateCommentSectionInteraction = async (
     
     // 1️⃣ 添加用户朋友圈的评论区
     try {
-      const userMomentsStr = localStorage.getItem('moments');
-      if (userMomentsStr) {
-        const userMoments: MomentPost[] = JSON.parse(userMomentsStr);
+      const userMoments = ((await smartLoad('moments')) as MomentPost[] | null) || [];
+      if (userMoments.length > 0) {
         const recentUserPostsWithComments = userMoments.filter(post => {
           const hoursSincePost = (Date.now() - post.timestamp) / 3600000;
           return post.comments.length > 0 && hoursSincePost < 168;
@@ -1490,6 +1497,10 @@ export const generateCommentSectionInteraction = async (
       // 为每个在线AI计算参与优先级
       const aiWithPriority = onlineAIs
         .filter(ai => ai.id !== authorId) // 排除朋友圈作者
+        .filter(ai => {
+          if (author === 'user') return true;
+          return canAIsViewEachOtherMoments(ai.id, author.id, visibilityGroupMap);
+        })
         .map(ai => {
           const hasCommented = commentAuthors.includes(ai.id);
           

@@ -1,4 +1,5 @@
 import { ApiConfig } from '../types';
+import { getCachedData, load, save, setCachedData } from './storage';
 
 // 热梗数据库
 export interface Meme {
@@ -114,14 +115,15 @@ export const saveCustomMeme = (meme: Omit<Meme, 'id'>) => {
     id: Date.now().toString(),
   };
   custom.push(newMeme);
-  localStorage.setItem('customMemes', JSON.stringify(custom));
+  setCachedData('customMemes', custom);
+  void save('customMemes', custom);
   return newMeme;
 };
 
 // 加载自定义热梗
 export const loadCustomMemes = (): Meme[] => {
-  const saved = localStorage.getItem('customMemes');
-  return saved ? JSON.parse(saved) : [];
+  const cached = getCachedData<Meme[]>('customMemes');
+  return Array.isArray(cached) ? cached : [];
 };
 
 // 获取所有热梗
@@ -133,7 +135,8 @@ export const getAllMemes = (): Meme[] => {
 export const deleteCustomMeme = (id: string) => {
   const custom = loadCustomMemes();
   const updated = custom.filter(m => m.id !== id);
-  localStorage.setItem('customMemes', JSON.stringify(updated));
+  setCachedData('customMemes', updated);
+  void save('customMemes', updated);
 };
 
 // 更新热梗流行度
@@ -142,5 +145,16 @@ export const updateMemePopularity = (id: string, delta: number) => {
   const updated = custom.map(m => 
     m.id === id ? { ...m, popularity: Math.max(0, Math.min(10, m.popularity + delta)) } : m
   );
-  localStorage.setItem('customMemes', JSON.stringify(updated));
+  setCachedData('customMemes', updated);
+  void save('customMemes', updated);
 };
+
+export async function initializeMemeStorage(): Promise<void> {
+  try {
+    const memes = await load('customMemes');
+    setCachedData('customMemes', Array.isArray(memes) ? memes : []);
+  } catch (error) {
+    console.error('初始化热梗存储失败:', error);
+    setCachedData('customMemes', []);
+  }
+}

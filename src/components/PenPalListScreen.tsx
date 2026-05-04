@@ -68,7 +68,7 @@ const FriendListScreen: React.FC<FriendListScreenProps> = ({
     
     try {
       // 获取API配置
-      const apiConfigStr = localStorage.getItem('api_config');
+      const apiConfigStr = localStorage.getItem('apiConfig');
       if (!apiConfigStr) {
         return;
       }

@@ -4,6 +4,7 @@
  */
 
 import { LetterNotification, NotificationBadge } from '../types/letterNotification';
+import { getCachedData, load, save, setCachedData } from './storage';
 
 const STORAGE_KEY = 'letter_notifications';
 const MAX_NOTIFICATIONS = 50; // 最多保留50条通知
@@ -12,14 +13,8 @@ const MAX_NOTIFICATIONS = 50; // 最多保留50条通知
  * 获取所有通知
  */
 export function getNotifications(): LetterNotification[] {
-  const saved = localStorage.getItem(STORAGE_KEY);
-  if (!saved) return [];
-  
-  try {
-    return JSON.parse(saved);
-  } catch {
-    return [];
-  }
+  const cached = getCachedData<LetterNotification[]>(STORAGE_KEY);
+  return Array.isArray(cached) ? cached : [];
 }
 
 /**
@@ -28,7 +23,8 @@ export function getNotifications(): LetterNotification[] {
 function saveNotifications(notifications: LetterNotification[]): void {
   // 只保留最新的MAX_NOTIFICATIONS条
   const toSave = notifications.slice(-MAX_NOTIFICATIONS);
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(toSave));
+  setCachedData(STORAGE_KEY, toSave);
+  void save(STORAGE_KEY, toSave);
 }
 
 /**
@@ -93,7 +89,17 @@ export function deleteNotification(notificationId: string): boolean {
  * 清空所有通知
  */
 export function clearAllNotifications(): void {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify([]));
+  saveNotifications([]);
+}
+
+export async function initializeLetterNotificationStorage(): Promise<void> {
+  try {
+    const data = await load(STORAGE_KEY);
+    setCachedData(STORAGE_KEY, Array.isArray(data) ? data : []);
+  } catch (error) {
+    console.error('初始化慢邮件通知存储失败:', error);
+    setCachedData(STORAGE_KEY, []);
+  }
 }
 
 /**

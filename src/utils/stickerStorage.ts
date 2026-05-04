@@ -208,6 +208,15 @@ export const getUserStickers = async (): Promise<StickerItem[]> => {
 };
 
 /**
+ * 「我的表情包」库：仅合并 **公共(common)** + **用户专属(user)**。
+ * 不包含角色专属(character) —— 角色表情在独立库，仅对绑定角色与 AI 匹配可见，避免混入用户发送列表。
+ */
+export const getUserLibraryStickers = async (): Promise<StickerItem[]> => {
+  const [common, user] = await Promise.all([getCommonStickers(), getUserStickers()]);
+  return [...common, ...user].sort((a, b) => b.createdAt - a.createdAt);
+};
+
+/**
  * 获取所有表情包（通用 + 指定角色）
  * ⚠️ 注意：这个函数用于AI，不包含用户专属表情包
  */
@@ -245,6 +254,7 @@ export const addSticker = async (
     }
     await addData(COMMON_STICKERS_STORE, newSticker);
   } else if (sticker.scope === 'character') {
+    // 角色专属：只写入角色库，与 common / user 物理隔离
     // 🔥 严格验证：角色专属必须有characterId
     if (!sticker.characterId) {
       throw new Error('角色专属表情包必须指定角色ID');

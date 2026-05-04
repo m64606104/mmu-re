@@ -3,6 +3,8 @@
  * 监控和限制API调用量，防止过度消耗
  */
 
+import { getCachedData, save, setCachedData } from './storage';
+
 export interface ApiUsageStats {
   hourly: number;        // 当前小时调用量
   daily: number;         // 今日调用量
@@ -42,10 +44,8 @@ class ApiUsageManager {
    */
   private loadStats(): ApiUsageStats {
     try {
-      const stored = localStorage.getItem(this.STORAGE_KEY);
-      if (stored) {
-        return JSON.parse(stored);
-      }
+      const stored = getCachedData<ApiUsageStats>(this.STORAGE_KEY);
+      if (stored && typeof stored === 'object') return stored;
     } catch (error) {
       console.error('Failed to load API usage stats:', error);
     }
@@ -63,10 +63,8 @@ class ApiUsageManager {
    */
   private loadLimits(): ApiUsageLimits {
     try {
-      const stored = localStorage.getItem(this.LIMITS_KEY);
-      if (stored) {
-        return JSON.parse(stored);
-      }
+      const stored = getCachedData<ApiUsageLimits>(this.LIMITS_KEY);
+      if (stored && typeof stored === 'object') return stored;
     } catch (error) {
       console.error('Failed to load API usage limits:', error);
     }
@@ -83,7 +81,8 @@ class ApiUsageManager {
    */
   private saveStats(): void {
     try {
-      localStorage.setItem(this.STORAGE_KEY, JSON.stringify(this.stats));
+      setCachedData(this.STORAGE_KEY, this.stats);
+      void save(this.STORAGE_KEY, this.stats);
     } catch (error) {
       console.error('Failed to save API usage stats:', error);
     }
@@ -94,7 +93,8 @@ class ApiUsageManager {
    */
   private saveLimits(): void {
     try {
-      localStorage.setItem(this.LIMITS_KEY, JSON.stringify(this.limits));
+      setCachedData(this.LIMITS_KEY, this.limits);
+      void save(this.LIMITS_KEY, this.limits);
     } catch (error) {
       console.error('Failed to save API usage limits:', error);
     }

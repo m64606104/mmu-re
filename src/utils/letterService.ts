@@ -2814,7 +2814,7 @@ export function getCustomFriends(): BottleAI[] {
  */
 export async function loadCustomFriends(): Promise<BottleAI[]> {
   try {
-    const { load, save } = await import('./storage');
+    const { load } = await import('./storage');
     
     // 尝试从IndexedDB加载
     console.log('🔍 开始加载自定义笔友...');
@@ -2822,38 +2822,6 @@ export async function loadCustomFriends(): Promise<BottleAI[]> {
     console.log('📊 IndexedDB返回数据:', data === undefined ? 'undefined' : data === null ? 'null' : `${(data as any[])?.length || 0}项`);
     
     let penpals = (data as BottleAI[]) || [];
-    
-    // 总是检查localStorage，确保不漏掉任何数据
-    const oldData = localStorage.getItem(CUSTOM_PENPALS_KEY);
-    console.log('🔍 localStorage检查:', oldData ? `有数据(${oldData.length}字符)` : '无数据');
-    
-    // 如果IndexedDB中没有数据但localStorage有数据，进行迁移
-    if (penpals.length === 0 && oldData) {
-      try {
-        const oldPenpals = JSON.parse(oldData) as BottleAI[];
-        if (Array.isArray(oldPenpals) && oldPenpals.length > 0) {
-          console.log(`🔄 发现${oldPenpals.length}个旧的自定义笔友，正在迁移到IndexedDB...`);
-          console.log('📝 笔友列表:', oldPenpals.map(p => p.name).join(', '));
-          
-          // 迁移到IndexedDB
-          await save(CUSTOM_PENPALS_KEY, oldPenpals);
-          penpals = oldPenpals;
-          console.log('✅ 自定义笔友数据迁移完成！');
-          
-          // 可选：清理localStorage中的旧数据
-          // localStorage.removeItem(CUSTOM_PENPALS_KEY);
-        } else {
-          console.warn('⚠️ localStorage中的数据格式不正确或为空数组');
-        }
-      } catch (error) {
-        console.error('❌ 迁移旧数据失败:', error);
-        console.error('原始数据:', oldData?.substring(0, 200));
-      }
-    } else if (penpals.length > 0 && oldData) {
-      console.log('✅ IndexedDB中已有数据，跳过迁移');
-    } else if (!oldData) {
-      console.log('ℹ️ localStorage中没有旧数据');
-    }
     
     customFriendsCache = penpals;
     console.log(`📚 最终加载了${penpals.length}个自定义笔友`);

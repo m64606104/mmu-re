@@ -3,6 +3,8 @@
  * 支持用户保存和管理多个API配置方案
  */
 
+import { getCachedData, save, setCachedData } from './storage';
+
 export interface APIPreset {
   id: string;
   name: string;
@@ -46,11 +48,10 @@ export class APIPresetsManager {
    */
   private loadFromStorage(): void {
     try {
-      const stored = localStorage.getItem(STORAGE_KEY);
-      if (stored) {
-        const data: APIPresetsData = JSON.parse(stored);
-        this.presets = data.presets || [];
-        this.currentPresetId = data.currentPresetId || null;
+      const data = getCachedData<APIPresetsData>(STORAGE_KEY);
+      if (data && typeof data === 'object') {
+        this.presets = (data as any).presets || [];
+        this.currentPresetId = (data as any).currentPresetId || null;
       }
     } catch (error) {
       console.error('加载API预设失败:', error);
@@ -68,7 +69,8 @@ export class APIPresetsManager {
         presets: this.presets,
         currentPresetId: this.currentPresetId || undefined
       };
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+      setCachedData(STORAGE_KEY, data);
+      void save(STORAGE_KEY, data);
     } catch (error) {
       console.error('保存API预设失败:', error);
     }

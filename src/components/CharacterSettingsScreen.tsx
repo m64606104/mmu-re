@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
-import { ChevronLeft, Upload, Brain, Trash2, Download, FileUp, Zap, X, Camera, RefreshCw, BookOpen, Plus, Edit, FileText, Users, Video, Image as ImageIcon, Book, MessagesSquare, Palette } from 'lucide-react';
+import { ChevronLeft, Upload, Brain, Trash2, Download, FileUp, Zap, X, Camera, RefreshCw, BookOpen, Plus, Edit, FileText, Users, Video, Image as ImageIcon, Book, Palette } from 'lucide-react';
 import { Conversation, ApiConfig, KnowledgeBaseItem, BubbleDecoration } from '../types';
 import { WorldbookMountConfig } from '../types/worldbook';
 import MemoryManager from './MemoryManager';
@@ -11,6 +11,7 @@ import { addMomentPost } from '../utils/aiMomentsGenerator';
 import { parseComplexFrequencyRules, getCurrentFrequencyRule, getRulesSummary } from '../utils/momentsFrequencyParser';
 import { bubbleStylePresets, getAllCategories, type BubbleStylePreset } from '../utils/bubbleStylePresets';
 import { smartLoad } from '../utils/storage';
+import { parseDocument } from '../utils/enhancedDocumentParser';
 import '../styles/relationshipAnimations.css';
 
 interface CharacterSettingsScreenProps {
@@ -503,7 +504,6 @@ export default function CharacterSettingsScreen({
     setIsParsingFile(true);
     
     try {
-      const { parseDocument } = await import('../utils/enhancedDocumentParser');
       const text = await parseDocument(file);
       
       // 自动填充标题和内容
@@ -1792,44 +1792,7 @@ export default function CharacterSettingsScreen({
                 )}
               </div>
 
-              {/* Forum AI Generation */}
-              <div className="bg-white rounded-lg border border-gray-100 p-3">
-                <div className="flex items-center justify-between mb-3">
-                  <div className="flex items-center gap-2">
-                    <MessagesSquare className="w-5 h-5 text-green-500" />
-                    <h3 className="text-sm font-medium text-gray-900">论坛AI生成</h3>
-                  </div>
-                  <label className="relative inline-flex items-center cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={conversation.characterSettings?.forumAIConfig?.enabled || false}
-                      onChange={(e) => {
-                        onUpdateConversation(conversation.id, {
-                          characterSettings: {
-                            ...conversation.characterSettings!,
-                            forumAIConfig: {
-                              enabled: e.target.checked,
-                              lastGeneratedAt: conversation.characterSettings?.forumAIConfig?.lastGeneratedAt
-                            }
-                          }
-                        });
-                      }}
-                      className="sr-only peer"
-                    />
-                    <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-green-300 rounded-full peer peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-green-600"></div>
-                  </label>
-                </div>
-
-                <div className="bg-green-50 border border-green-100 rounded-lg p-3">
-                  <p className="text-xs text-green-700 leading-relaxed">
-                    💡 开启后，AI可以根据该角色在聊天中的发言，学习其语言风格并生成论坛帖子。所有AI生成的帖子都可以编辑或删除。
-                  </p>
-                  <p className="text-xs text-green-600 mt-2">
-                    ⚠️ 此功能需要配置API才能使用，目前仅保存开关状态。
-                  </p>
-                </div>
-              </div>
-
+              {/* Forum AI Generation (removed) */}
             </div>
           </details>
         )}

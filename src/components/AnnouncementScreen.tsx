@@ -437,7 +437,7 @@ export default function AnnouncementScreen({ onBack }: AnnouncementScreenProps) 
               <div>
                 <h4 className="text-sm font-semibold text-blue-300 mb-1">📚 资料库增强</h4>
                 <p className="text-gray-200 text-sm leading-relaxed">
-                  在角色设置里更新了资料库，新增文档上传和解析功能。现在支持上传PDF、Word(.docx)、TXT文档，AI会自动提取文本内容并在对话中参考。
+                  在角色设置里更新了资料库，新增文档上传和解析功能。现在支持上传PDF、Word、Excel、PPTX、TXT文档，AI会自动提取文本内容并在对话中参考。
                 </p>
               </div>
               

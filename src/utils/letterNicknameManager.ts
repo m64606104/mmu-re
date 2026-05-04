@@ -3,8 +3,9 @@
  * 管理用户给AI设置的备注名功能
  */
 
-import { getAllLetters } from './letterService';
+import { getAllLetters, updateLetterInStorage } from './letterService';
 import type { Letter } from '../types/letter';
+import { getCachedData, load, save, setCachedData } from './storage';
 
 interface NicknameRecord {
   receiverId: string;
@@ -20,15 +21,26 @@ const NICKNAME_STORAGE_KEY = 'ai_nicknames';
  * 获取所有备注名记录
  */
 function getNicknameRecords(): NicknameRecord[] {
-  const saved = localStorage.getItem(NICKNAME_STORAGE_KEY);
-  return saved ? JSON.parse(saved) : [];
+  const cached = getCachedData<NicknameRecord[]>(NICKNAME_STORAGE_KEY);
+  return Array.isArray(cached) ? cached : [];
 }
 
 /**
  * 保存备注名记录
  */
 function saveNicknameRecords(records: NicknameRecord[]): void {
-  localStorage.setItem(NICKNAME_STORAGE_KEY, JSON.stringify(records));
+  setCachedData(NICKNAME_STORAGE_KEY, records);
+  void save(NICKNAME_STORAGE_KEY, records);
+}
+
+export async function initializeLetterNicknameStorage(): Promise<void> {
+  try {
+    const data = await load(NICKNAME_STORAGE_KEY);
+    setCachedData(NICKNAME_STORAGE_KEY, Array.isArray(data) ? data : []);
+  } catch (error) {
+    console.error('初始化备注名存储失败:', error);
+    setCachedData(NICKNAME_STORAGE_KEY, []);
+  }
 }
 
 /**
@@ -121,10 +133,7 @@ function updateLettersWithNickname(receiverId: string, nickname: string | null):
         letter.bottleAIProfile.nickname = nickname || undefined;
       }
       
-      // 保存更新后的信件到localStorage
-      const allLetters = getAllLetters();
-      const updatedLetters = allLetters.map(l => l.id === letter.id ? letter : l);
-      localStorage.setItem('slow_letters', JSON.stringify(updatedLetters));
+      updateLetterInStorage(letter);
     }
   });
 }

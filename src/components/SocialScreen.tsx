@@ -1,26 +1,64 @@
-import { useState } from 'react';
-import { ChevronLeft, Users, Search, MessageCircle, Camera, User, BellOff, Plus, UserPlus, Scan, Book } from 'lucide-react';
-import { Conversation, Screen } from '../types';
+import { useEffect, useMemo, useState } from 'react';
+import { ChevronLeft, ChevronRight, Users, Search, MessageCircle, Camera, User, BellOff, Plus, UserPlus, Scan, X } from 'lucide-react';
+import { ApiConfig, Conversation, Screen, UserProfile } from '../types';
 import { normalizeMessagePreviewText } from '../utils/messageFormatter';
 import StatusSelector from './StatusSelector';
-import WorldbookScreen from './WorldbookScreen';
+import ChatScreen from './ChatScreen';
+import { useMobileBottomDock } from '../hooks/useMobileBottomDock';
 
 interface SocialScreenProps {
   conversations: Conversation[];
   onNavigate: (screen: Screen, conversationId?: string) => void;
   onImportCharacter?: (data: any) => void;
   onUpdateConversation: (id: string, updates: Partial<Conversation>) => void;
+  apiConfig: ApiConfig;
+  userProfile: UserProfile;
+  onDeleteConversation?: (id: string) => void;
+  onNavigateToPrivateChat?: (aiName: string) => void;
 }
 
-export default function SocialScreen({ conversations, onNavigate, onImportCharacter, onUpdateConversation }: SocialScreenProps) {
+export default function SocialScreen({
+  conversations,
+  onNavigate,
+  onImportCharacter,
+  onUpdateConversation,
+  apiConfig,
+  userProfile,
+  onDeleteConversation,
+  onNavigateToPrivateChat,
+}: SocialScreenProps) {
   // 过滤掉隐藏的会话（保留被拉黑的会话）
   const visibleConversations = conversations.filter(c => !c.isHidden);
   const sortedConversations = [...visibleConversations].sort((a, b) => b.lastMessageTime - a.lastMessageTime);
   
-  const [isDarkMode, setIsDarkMode] = useState(true);
   const [showMenu, setShowMenu] = useState(false);
   const [showStatusSelector, setShowStatusSelector] = useState(false);
-  const [showWorldbook, setShowWorldbook] = useState(false);
+  const [desktopQuery, setDesktopQuery] = useState('');
+  const [desktopSelectedId, setDesktopSelectedId] = useState<string | null>(null);
+  const [desktopOpenChatId, setDesktopOpenChatId] = useState<string | null>(null);
+  const [mobileQuery, setMobileQuery] = useState('');
+  const [showMobileSearch, setShowMobileSearch] = useState(false);
+  const [showFullChatList, setShowFullChatList] = useState(false);
+  const [roleCarouselStart, setRoleCarouselStart] = useState(0);
+  const [groupCarouselStart, setGroupCarouselStart] = useState(0);
+  const mobileBottomDock = useMobileBottomDock();
+  const isStandaloneMode = useMemo(
+    () =>
+      window.matchMedia('(display-mode: standalone)').matches ||
+      ('standalone' in navigator && Boolean((navigator as Navigator & { standalone?: boolean }).standalone)),
+    []
+  );
+
+  // 强制将全局页面滚动归零，避免嵌入聊天打开时整页被浏览器上推
+  useEffect(() => {
+    const resetPageScroll = () => {
+      window.scrollTo(0, 0);
+      document.documentElement.scrollTop = 0;
+      document.body.scrollTop = 0;
+    };
+    resetPageScroll();
+    requestAnimationFrame(resetPageScroll);
+  }, [desktopOpenChatId]);
   
   // 左滑菜单状态
   const [swipedId, setSwipedId] = useState<string | null>(null);
@@ -105,7 +143,7 @@ export default function SocialScreen({ conversations, onNavigate, onImportCharac
   };
 
   // 使用state管理用户资料
-  const [userProfile, setUserProfile] = useState(() => {
+  const [localUserProfile, setLocalUserProfile] = useState(() => {
     try {
       const profile = localStorage.getItem('userProfile');
       if (profile) {
@@ -185,10 +223,71 @@ export default function SocialScreen({ conversations, onNavigate, onImportCharac
     return '暂无消息';
   };
 
+  const desktopList = useMemo(() => {
+    const q = desktopQuery.trim().toLowerCase();
+    if (!q) return sortedConversations;
+    return sortedConversations.filter((c) => {
+      const preview = getLastMessagePreview(c);
+      const nickname = c.characterSettings?.nickname || '';
+      const username = c.characterSettings?.username || '';
+      return (
+        (c.name || '').toLowerCase().includes(q) ||
+        nickname.toLowerCase().includes(q) ||
+        username.toLowerCase().includes(q) ||
+        (preview || '').toLowerCase().includes(q)
+      );
+    });
+  }, [desktopQuery, sortedConversations]);
+
+  const desktopSelectedConv = useMemo(() => {
+    if (!desktopSelectedId) return null;
+    return sortedConversations.find((c) => c.id === desktopSelectedId) || null;
+  }, [desktopSelectedId, sortedConversations]);
+
+  const desktopOpenConv = useMemo(() => {
+    if (!desktopOpenChatId) return null;
+    return sortedConversations.find((c) => c.id === desktopOpenChatId) || null;
+  }, [desktopOpenChatId, sortedConversations]);
+
+  const mobileFilteredConversations = useMemo(() => {
+    const q = mobileQuery.trim().toLowerCase();
+    if (!q) return sortedConversations;
+    return sortedConversations.filter((c) => {
+      const preview = getLastMessagePreview(c);
+      return (
+        (c.name || '').toLowerCase().includes(q) ||
+        (preview || '').toLowerCase().includes(q)
+      );
+    });
+  }, [mobileQuery, sortedConversations]);
+
+  const directConversations = useMemo(
+    () => mobileFilteredConversations.filter((c) => c.type !== 'group'),
+    [mobileFilteredConversations]
+  );
+  const groupConversations = useMemo(
+    () => mobileFilteredConversations.filter((c) => c.type === 'group'),
+    [mobileFilteredConversations]
+  );
+
+  useEffect(() => {
+    const maxStart = Math.max(0, directConversations.length - 5);
+    if (roleCarouselStart > maxStart) setRoleCarouselStart(maxStart);
+  }, [directConversations.length, roleCarouselStart]);
+
+  useEffect(() => {
+    const maxStart = Math.max(0, groupConversations.length - 1);
+    if (groupCarouselStart > maxStart) setGroupCarouselStart(maxStart);
+  }, [groupConversations.length, groupCarouselStart]);
+
+  const openDesktopChat = (id: string) => {
+    setDesktopOpenChatId(id);
+  };
+
   // 更新用户状态（流畅更新，不刷新页面）
   const handleStatusChange = (newStatus: string) => {
-    const updatedProfile = { ...userProfile, status: newStatus };
-    setUserProfile(updatedProfile);
+    const updatedProfile = { ...localUserProfile, status: newStatus };
+    setLocalUserProfile(updatedProfile);
     localStorage.setItem('userProfile', JSON.stringify(updatedProfile));
   };
 
@@ -222,326 +321,576 @@ export default function SocialScreen({ conversations, onNavigate, onImportCharac
     return gradients[index];
   };
 
-  // 如果显示世界书界面，直接渲染WorldbookScreen
-  if (showWorldbook) {
-    return (
-      <WorldbookScreen 
-        onBack={() => setShowWorldbook(false)} 
-        conversations={conversations}
-        onUpdateConversation={onUpdateConversation}
-      />
-    );
-  }
+  const getConversationAvatar = (conversation: Conversation): string | undefined => {
+    if (conversation.type === 'group') return conversation.avatar;
+    return conversation.characterSettings?.avatar || conversation.avatar;
+  };
 
   return (
-    <div className={`h-full flex flex-col ${isDarkMode ? 'bg-[#1a1a1a]' : 'bg-[#EDEDED]'}`}>
-      {/* Header - 微信风格 */}
-      <div className={`${isDarkMode ? 'bg-[#1a1a1a]' : 'bg-[#F7F7F7]'} ${isDarkMode ? 'border-b border-gray-800' : 'border-b border-gray-200'}`}>
-        <div className="px-4 pt-2 pb-3 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            {/* 左上角返回按钮 */}
-            <button 
-              onClick={() => onNavigate('home')}
-              className={`p-2 -ml-2 rounded-lg transition-colors active:scale-95 ${isDarkMode ? 'hover:bg-gray-800' : 'hover:bg-gray-200'}`}
-            >
-              <ChevronLeft className={`w-6 h-6 ${isDarkMode ? 'text-white' : 'text-gray-700'}`} />
-            </button>
-            <div className="relative">
-              {/* 小人偶背景 */}
-              <div className="w-10 h-10 rounded-lg overflow-hidden">
-                <img 
-                  src="https://api.dicebear.com/7.x/avataaars/svg?seed=user" 
-                  alt="用户头像"
-                  className="w-full h-full object-cover"
-                />
-              </div>
-              {/* 小圆形用户头像 */}
-              {userProfile.avatar && (
-                <div className="absolute -bottom-0.5 -right-0.5 w-4 h-4 rounded-full overflow-hidden border-2 border-white shadow-sm">
-                  <img 
-                    src={userProfile.avatar} 
-                    alt="用户头像"
-                    className="w-full h-full object-cover"
+    <div className="h-[100dvh] md:h-full">
+      {/* 桌面端：统一 Gemini 风格两栏布局 */}
+      <div data-ui="screen-social" className="hidden md:flex h-full relative overflow-hidden bg-gradient-to-br from-slate-50 via-slate-50 to-zinc-100">
+        <div className="absolute inset-0 bg-white/78 backdrop-blur-[1px]" />
+        <div className="relative z-10 h-full flex flex-col w-full">
+          <header className="h-16 border-b border-zinc-200 bg-white/85 backdrop-blur-md px-6 flex items-center justify-between">
+            <div className="flex items-center gap-2 text-xl font-semibold text-zinc-900">
+              <span className="w-2 h-2 rounded-full bg-rose-400" />
+              聊天中心
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => onNavigate('home')}
+                className="px-3 py-1.5 text-sm rounded-full text-zinc-600 hover:bg-zinc-100"
+              >
+                返回
+              </button>
+              <button
+                onClick={() => onNavigate('contacts')}
+                className="px-3 py-1.5 text-sm rounded-full text-zinc-600 hover:bg-zinc-100"
+                title="通讯录"
+              >
+                <Users className="w-4 h-4" />
+              </button>
+              <button
+                onClick={() => setShowMenu(true)}
+                className="w-9 h-9 rounded-full hover:bg-zinc-100 flex items-center justify-center text-zinc-700"
+                title="更多"
+              >
+                <Plus className="w-5 h-5" />
+              </button>
+            </div>
+          </header>
+
+          <div className="flex-1 min-h-0 flex">
+            <aside className="w-[380px] border-r border-zinc-200 bg-white/65">
+              <div className="px-6 py-4 border-b border-zinc-200/70">
+                <div className="relative">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-400" />
+                  <input
+                    value={desktopQuery}
+                    onChange={(e) => setDesktopQuery(e.target.value)}
+                    placeholder="搜索会话或消息…"
+                    className="w-full pl-10 pr-3 py-2 bg-zinc-100 rounded-xl text-sm text-zinc-800 placeholder-zinc-400 focus:outline-none focus:ring-2 focus:ring-zinc-300"
                   />
                 </div>
-              )}
+              </div>
+
+              <div className="overflow-y-auto h-[calc(100%-0px)]">
+                {desktopList.length === 0 ? (
+                  <div className="px-6 py-10 text-center text-zinc-500">
+                    没有匹配的会话
+                    {desktopQuery.trim() && (
+                      <div className="mt-4">
+                        <button
+                          onClick={() => onNavigateToPrivateChat?.(desktopQuery.trim())}
+                          className="px-4 py-2 rounded-full bg-zinc-900 text-white text-sm hover:bg-zinc-800 transition"
+                        >
+                          与「{desktopQuery.trim()}」发起对话
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <div className="p-3 space-y-2">
+                    {desktopList.map((conversation) => {
+                      const isActive = conversation.id === desktopSelectedId;
+                      const avatarUrl =
+                        conversation.type === 'group'
+                          ? conversation.avatar
+                          : (conversation.characterSettings?.avatar || conversation.avatar);
+                      const preview = getLastMessagePreview(conversation);
+
+                      return (
+                        <button
+                          key={conversation.id}
+                          onClick={() => setDesktopSelectedId(conversation.id)}
+                          onDoubleClick={() => openDesktopChat(conversation.id)}
+                          className={`w-full rounded-2xl border p-4 text-left transition ${
+                            isActive
+                              ? 'bg-white border-zinc-300 shadow-sm'
+                              : 'bg-white/90 border-zinc-200 hover:bg-white hover:shadow-sm'
+                          } ${conversation.isBlocked ? 'opacity-60 grayscale' : ''}`}
+                        >
+                          <div className="flex items-center gap-3">
+                            <div className="relative flex-shrink-0">
+                              <div className="w-12 h-12 rounded-2xl bg-zinc-900 text-white flex items-center justify-center overflow-hidden">
+                                {avatarUrl ? (
+                                  <img src={avatarUrl} alt={conversation.name} className="w-full h-full object-cover" />
+                                ) : conversation.type === 'group' ? (
+                                  <Users className="w-6 h-6 text-white" strokeWidth={2.5} />
+                                ) : (
+                                  <span className="text-white font-semibold text-lg">
+                                    {conversation.name.charAt(0)}
+                                  </span>
+                                )}
+                              </div>
+                              {conversation.unreadCount > 0 && (
+                                <div className="absolute -top-1 -right-1 min-w-[18px] h-[18px] bg-red-500 rounded-full flex items-center justify-center px-1 border-2 border-white">
+                                  <span className="text-white text-[10px] font-semibold">
+                                    {conversation.unreadCount > 99 ? '99+' : conversation.unreadCount}
+                                  </span>
+                                </div>
+                              )}
+                            </div>
+
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-start justify-between gap-3">
+                                <div className="font-semibold text-zinc-900 truncate">{conversation.name}</div>
+                                <div className="text-[11px] text-zinc-400 flex-shrink-0">
+                                  {formatTime(conversation.lastMessageTime)}
+                                </div>
+                              </div>
+                              <div className="mt-1 text-xs text-zinc-500 line-clamp-2">{preview}</div>
+                            </div>
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            </aside>
+
+            <main data-ui="social-right-pane" className="flex-1 min-h-0 overflow-hidden">
+              <div data-ui="social-right-pane-inner" className="h-full w-full min-h-0">
+                {!desktopOpenChatId ? (
+                  !desktopSelectedConv ? (
+                  <div className="h-full overflow-y-auto p-10">
+                    <div className="max-w-[980px] mx-auto rounded-3xl border border-zinc-200 bg-white/80 p-10 text-center">
+                      <div className="text-lg font-semibold text-zinc-900">选择一个会话</div>
+                      <div className="mt-2 text-sm text-zinc-600">单击只选中；双击或点击“打开对话”会在右侧打开聊天。</div>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="h-full overflow-y-auto p-10">
+                    <div className="max-w-[980px] mx-auto rounded-3xl border border-zinc-200 bg-white/90 overflow-hidden">
+                      <div className="p-6 border-b border-zinc-100">
+                        <div className="flex items-start justify-between gap-4">
+                          <div>
+                            <div className="text-xl font-semibold text-zinc-900">{desktopSelectedConv.name}</div>
+                            <div className="mt-2 text-sm text-zinc-500">
+                              最近活跃：{formatTime(desktopSelectedConv.lastMessageTime)}
+                            </div>
+                          </div>
+                          <div className="flex gap-2">
+                            <button
+                              onClick={() => openDesktopChat(desktopSelectedConv.id)}
+                              className="px-4 py-2 rounded-full bg-zinc-900 text-white text-sm hover:bg-zinc-800 transition"
+                            >
+                              打开对话
+                            </button>
+                            <button
+                              onClick={() => onUpdateConversation(desktopSelectedConv.id, { isHidden: true })}
+                              className="px-4 py-2 rounded-full bg-white border border-zinc-200 text-zinc-700 text-sm hover:bg-zinc-50 transition"
+                            >
+                              不显示
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="p-6">
+                        <div className="text-sm font-semibold text-zinc-900">消息预览</div>
+                        <div className="mt-2 rounded-2xl bg-zinc-50 border border-zinc-200 p-4 text-sm text-zinc-700 whitespace-pre-wrap">
+                          {getLastMessagePreview(desktopSelectedConv)}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )
+                ) : desktopOpenConv ? (
+                  <div data-ui="social-chat-embed-wrap" className="h-full min-h-0 rounded-none border-0 bg-white overflow-hidden">
+                    <ChatScreen
+                      conversation={desktopOpenConv}
+                      apiConfig={apiConfig}
+                      currentUserProfile={userProfile}
+                      conversations={conversations}
+                      onUpdateConversation={onUpdateConversation}
+                      onDeleteConversation={onDeleteConversation}
+                      onBack={() => setDesktopOpenChatId(null)}
+                      onOpenCharacterSettings={() => onNavigate('character-settings')}
+                      onNavigateToPrivateChat={onNavigateToPrivateChat}
+                      onOpenStickerManagement={() => {
+                        try {
+                          sessionStorage.setItem('momoyu:stickerManagementTab', 'mine');
+                        } catch {
+                          /* ignore */
+                        }
+                        onNavigate('sticker-management');
+                      }}
+                    />
+                  </div>
+                ) : (
+                  <div className="h-full flex items-center justify-center text-zinc-500">会话不存在或已被隐藏</div>
+                )}
+              </div>
+            </main>
+          </div>
+
+          {/* 桌面端菜单：简单版 */}
+          {showMenu && (
+            <>
+              <div className="fixed inset-0 z-40" onClick={() => setShowMenu(false)} />
+              <div className="fixed right-6 top-20 z-50 w-56 rounded-2xl shadow-2xl overflow-hidden bg-white border border-zinc-200">
+                <button
+                  onClick={() => {
+                    setShowMenu(false);
+                    onNavigate('create-group');
+                  }}
+                  className="w-full px-4 py-3 flex items-center gap-3 hover:bg-zinc-50"
+                >
+                  <MessageCircle className="w-5 h-5 text-zinc-700" />
+                  <span className="text-sm text-zinc-900">发起群聊</span>
+                </button>
+                <button
+                  onClick={() => {
+                    setShowMenu(false);
+                    onNavigate('add-friend');
+                  }}
+                  className="w-full px-4 py-3 flex items-center gap-3 hover:bg-zinc-50"
+                >
+                  <UserPlus className="w-5 h-5 text-zinc-700" />
+                  <span className="text-sm text-zinc-900">添加朋友</span>
+                </button>
+                <button
+                  onClick={() => {
+                    setShowMenu(false);
+                    handleScanImport();
+                  }}
+                  className="w-full px-4 py-3 flex items-center gap-3 hover:bg-zinc-50"
+                >
+                  <Scan className="w-5 h-5 text-zinc-700" />
+                  <span className="text-sm text-zinc-900">扫一扫</span>
+                </button>
+              </div>
+            </>
+          )}
+        </div>
+      </div>
+
+      {/* 移动端：卡片化聊天列表（参考示意图） */}
+      <div className="md:hidden h-full flex flex-col bg-[#ECEFF0]">
+        <div className="mx-3 my-3 rounded-[30px] border border-white/70 bg-[#cfe3e1] shadow-[0_10px_24px_rgba(0,0,0,0.08)] flex-1 overflow-y-auto flex flex-col">
+          <div className="px-5 pt-5 pb-10">
+            <div className="flex items-start justify-between">
+              <div>
+                <div className="text-[24px] leading-6 text-[#142f2a]">聊天列表</div>
+                <div className="text-[43px] leading-[0.95] font-semibold text-[#142f2a]">for a CHAT</div>
+              </div>
+              <div className="relative pr-8">
+                <button
+                  onClick={() => setShowMenu(!showMenu)}
+                  className="w-12 h-12 rounded-[14px] bg-[#084336] text-white shadow-[0_2px_6px_rgba(0,0,0,0.15)] flex items-center justify-center relative z-10"
+                >
+                  <Plus className="w-6 h-6" />
+                </button>
+                <button
+                  onClick={() => setShowMobileSearch((s) => !s)}
+                  className="w-12 h-12 rounded-[14px] bg-white text-[#222] shadow-[0_2px_6px_rgba(0,0,0,0.12)] flex items-center justify-center absolute top-0 left-9 z-20"
+                >
+                  <Search className="w-6 h-6" />
+                </button>
+                {showMenu && (
+                  <>
+                    <div className="fixed inset-0 z-40" onClick={() => setShowMenu(false)} />
+                    <div className="absolute top-14 right-0 z-50 w-44 rounded-xl bg-white border border-zinc-200 shadow-xl overflow-hidden">
+                      <button
+                        onClick={() => {
+                          setShowMenu(false);
+                          onNavigate('create-group');
+                        }}
+                        className="w-full px-4 py-3 text-left text-sm hover:bg-zinc-50"
+                      >
+                        发起群聊
+                      </button>
+                      <button
+                        onClick={() => {
+                          setShowMenu(false);
+                          onNavigate('add-friend');
+                        }}
+                        className="w-full px-4 py-3 text-left text-sm hover:bg-zinc-50"
+                      >
+                        添加朋友
+                      </button>
+                      <button
+                        onClick={handleScanImport}
+                        className="w-full px-4 py-3 text-left text-sm hover:bg-zinc-50"
+                      >
+                        扫一扫
+                      </button>
+                    </div>
+                  </>
+                )}
+                {showMobileSearch && (
+                  <div className="absolute top-14 right-0 z-40 w-52 rounded-xl border border-white/80 bg-white/95 p-2 shadow-lg">
+                    <div className="px-2 py-1 text-[11px] text-zinc-500">搜索好友名字</div>
+                    <input
+                      type="text"
+                      value={mobileQuery}
+                      onChange={(e) => setMobileQuery(e.target.value)}
+                      placeholder="输入名字"
+                      className="w-full rounded-lg border border-zinc-200 px-2 py-1.5 text-sm outline-none"
+                    />
+                  </div>
+                )}
+              </div>
             </div>
-            <div>
-              <h1 className={`text-lg font-semibold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>{userProfile.username || '123'}</h1>
-              <button 
-                onClick={() => setShowStatusSelector(true)}
-                className="flex items-center gap-1 text-xs text-gray-500 hover:text-gray-700 transition-colors"
+
+            <div className="mt-8 relative">
+              <button
+                onClick={() => setRoleCarouselStart((s) => Math.max(0, s - 1))}
+                className="absolute left-0 top-1/2 -translate-y-1/2 -translate-x-1/3 z-20 w-10 h-8 rounded-[10px] bg-white text-zinc-600 shadow-[0_1px_3px_rgba(0,0,0,0.12)] flex items-center justify-center"
               >
-                <span>{userProfile.status || '在线'}</span>
-                <ChevronLeft className="w-3 h-3 rotate-180" />
+                <ChevronLeft className="w-4 h-4" />
+              </button>
+              <div className="w-full rounded-[16px] bg-[#c7dfdd] border border-white/70 shadow-[inset_0_1px_0_rgba(255,255,255,0.6)] px-3 py-2.5 grid grid-cols-5 gap-1 min-h-[94px]">
+                {directConversations.slice(roleCarouselStart, roleCarouselStart + 5).map((conv) => {
+                  const avatarUrl = getConversationAvatar(conv);
+                  return (
+                    <button
+                      key={conv.id}
+                      onClick={() => onNavigate('chat', conv.id)}
+                      className="rounded-[12px] bg-[#dff0ef] py-1 px-0.5 shadow-[0_1px_2px_rgba(0,0,0,0.08)] flex flex-col items-center justify-center"
+                      title={conv.name}
+                    >
+                      <div className="w-8 h-8 rounded-full overflow-hidden bg-zinc-200">
+                        {avatarUrl ? (
+                          <img src={avatarUrl} alt={conv.name} className="w-full h-full object-cover" />
+                        ) : (
+                          <div className="w-full h-full flex items-center justify-center text-xs font-semibold text-zinc-700">
+                            {conv.name.charAt(0)}
+                          </div>
+                        )}
+                      </div>
+                      <div className="mt-1 text-[10px] leading-3 text-zinc-700 truncate w-full px-0.5">{conv.name}</div>
+                    </button>
+                  );
+                })}
+              </div>
+              <button
+                onClick={() =>
+                  setRoleCarouselStart((s) => Math.min(Math.max(0, directConversations.length - 5), s + 1))
+                }
+                className="absolute right-0 top-1/2 -translate-y-1/2 translate-x-1/3 z-20 w-10 h-8 rounded-[10px] bg-white text-zinc-600 shadow-[0_1px_3px_rgba(0,0,0,0.12)] flex items-center justify-center"
+              >
+                <ChevronRight className="w-4 h-4" />
               </button>
             </div>
           </div>
-          <div className="flex items-center gap-2 relative">
-            <button 
-              onClick={() => setIsDarkMode(!isDarkMode)}
-              className={`p-2 rounded-lg transition-colors active:scale-95 ${isDarkMode ? 'hover:bg-gray-800' : 'hover:bg-gray-200'}`}
-              title={isDarkMode ? '切换到浅色模式' : '切换到深色模式'}
-            >
-              {isDarkMode ? (
-                <span className="text-lg">☀️</span>
-              ) : (
-                <span className="text-lg">🌙</span>
-              )}
-            </button>
-            <button 
-              onClick={() => setShowMenu(!showMenu)}
-              className={`p-2 -mr-2 rounded-lg transition-colors active:scale-95 ${isDarkMode ? 'hover:bg-gray-800' : 'hover:bg-gray-200'}`}
-            >
-              <Plus className={`w-6 h-6 ${isDarkMode ? 'text-white' : 'text-gray-700'}`} />
-            </button>
-            
-            {/* 弹出菜单 */}
-            {showMenu && (
-              <>
-                {/* 遮罩层 */}
-                <div 
-                  className="fixed inset-0 z-40"
-                  onClick={() => setShowMenu(false)}
-                ></div>
-                {/* 菜单内容 */}
-                <div className={`absolute top-12 right-0 z-50 w-48 rounded-lg shadow-2xl overflow-hidden ${isDarkMode ? 'bg-[#2a2a2a]' : 'bg-white'} border ${isDarkMode ? 'border-gray-700' : 'border-gray-200'}`}>
-                  <button
-                    onClick={() => {
-                      setShowMenu(false);
-                      onNavigate('create-group');
-                    }}
-                    className={`w-full px-4 py-3 flex items-center gap-3 transition-colors ${isDarkMode ? 'hover:bg-gray-700' : 'hover:bg-gray-50'}`}
-                  >
-                    <MessageCircle className={`w-5 h-5 ${isDarkMode ? 'text-white' : 'text-gray-700'}`} />
-                    <span className={`text-sm ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>发起群聊</span>
-                  </button>
-                  <button
-                    onClick={() => {
-                      setShowMenu(false);
-                      onNavigate('add-friend');
-                    }}
-                    className={`w-full px-4 py-3 flex items-center gap-3 transition-colors ${isDarkMode ? 'hover:bg-gray-700' : 'hover:bg-gray-50'}`}
-                  >
-                    <UserPlus className={`w-5 h-5 ${isDarkMode ? 'text-white' : 'text-gray-700'}`} />
-                    <span className={`text-sm ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>添加朋友</span>
-                  </button>
-                  <button
-                    onClick={handleScanImport}
-                    className={`w-full px-4 py-3 flex items-center gap-3 transition-colors ${isDarkMode ? 'hover:bg-gray-700' : 'hover:bg-gray-50'}`}
-                  >
-                    <Scan className={`w-5 h-5 ${isDarkMode ? 'text-white' : 'text-gray-700'}`} />
-                    <span className={`text-sm ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>扫一扫</span>
-                  </button>
+
+          <div className="-mt-2 flex-1 rounded-t-[24px] bg-[#f3f5f5] px-4 pt-4 pb-6 flex flex-col">
+            <div className="max-h-[152px] overflow-y-auto pr-1 space-y-2">
+              {directConversations.map((conversation) => {
+                const avatarUrl = getConversationAvatar(conversation);
+                return (
+                    <div key={conversation.id} className="grid grid-cols-[1fr_72px] gap-2 min-w-0">
+                    <button
+                      onClick={() => onNavigate('chat', conversation.id)}
+                        className="rounded-2xl bg-[#e8edee] border border-white/90 px-3 py-3 min-h-[68px] text-left flex items-center gap-3 min-w-0 overflow-hidden"
+                    >
+                      <div className="w-11 h-11 rounded-full overflow-hidden bg-zinc-200 flex-shrink-0">
+                        {avatarUrl ? (
+                          <img src={avatarUrl} alt={conversation.name} className="w-full h-full object-cover" />
+                        ) : (
+                          <div className="w-full h-full flex items-center justify-center text-sm font-semibold text-zinc-700">
+                            {conversation.name.charAt(0)}
+                          </div>
+                        )}
+                      </div>
+                      <div className="min-w-0 overflow-hidden flex-1">
+                        <div className="text-[11px] text-zinc-500 truncate">{conversation.name}</div>
+                        <div className="mt-0.5 text-sm font-semibold text-zinc-800 truncate">
+                          {getLastMessagePreview(conversation)}
+                        </div>
+                      </div>
+                    </button>
+                    <button
+                      onClick={() => onNavigate('chat', conversation.id)}
+                        className="rounded-2xl bg-[#f6d387] border border-[#f0c766] px-2 py-2 min-h-[68px] flex flex-col items-center justify-center"
+                      title="打开聊天"
+                    >
+                      <MessageCircle className="w-4 h-4 text-zinc-700" />
+                      <div className="mt-1 text-[11px] font-semibold text-zinc-800">{formatTime(conversation.lastMessageTime)}</div>
+                    </button>
+                  </div>
+                );
+              })}
+              {directConversations.length === 0 && (
+                <div className="rounded-2xl bg-white/75 border border-white px-3 py-5 text-sm text-zinc-500 text-center">
+                  没有匹配到好友会话
                 </div>
-              </>
-            )}
+              )}
+            </div>
+
+            <div className="mt-3 flex items-center justify-between">
+              <div className="text-[34px] leading-8 font-semibold text-[#173f2e]">groups</div>
+              <div className="rounded-xl bg-white/85 px-1 py-1 flex items-center gap-1">
+                <button
+                  onClick={() => setGroupCarouselStart((s) => Math.max(0, s - 1))}
+                  className="w-8 h-8 rounded-lg text-zinc-500 hover:bg-zinc-100 flex items-center justify-center"
+                >
+                  <ChevronLeft className="w-4 h-4" />
+                </button>
+                <button
+                  onClick={() => setGroupCarouselStart((s) => Math.min(Math.max(0, groupConversations.length - 1), s + 1))}
+                  className="w-8 h-8 rounded-lg text-zinc-500 hover:bg-zinc-100 flex items-center justify-center"
+                >
+                  <ChevronRight className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+
+            <div className="mt-2">
+              {groupConversations.length > 0 ? (
+                <button
+                  onClick={() => onNavigate('chat', groupConversations[groupCarouselStart]?.id)}
+                  className="w-full rounded-2xl border border-[#9dcfd7] bg-[#d4eaf0] p-3 text-left"
+                >
+                  <div className="flex items-stretch gap-3">
+                    <div className="w-[122px] h-[96px] rounded-xl bg-white/70 overflow-hidden flex-shrink-0">
+                      {getConversationAvatar(groupConversations[groupCarouselStart]) ? (
+                        <img
+                          src={getConversationAvatar(groupConversations[groupCarouselStart])}
+                          alt={groupConversations[groupCarouselStart].name}
+                          className="w-full h-full object-cover"
+                        />
+                      ) : (
+                        <div className="w-full h-full flex items-center justify-center text-zinc-500">
+                          <Users className="w-8 h-8" />
+                        </div>
+                      )}
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <div className="text-[33px] leading-[1] font-semibold text-zinc-800 truncate">
+                        {groupConversations[groupCarouselStart]?.name}
+                      </div>
+                      <div className="mt-2 flex -space-x-1.5">
+                        {directConversations.slice(0, 4).map((member) => {
+                          const avatar = getConversationAvatar(member);
+                          return (
+                            <div key={`${groupConversations[groupCarouselStart]?.id}-${member.id}`} className="w-6 h-6 rounded-full border border-white overflow-hidden bg-zinc-200">
+                              {avatar ? (
+                                <img src={avatar} alt={member.name} className="w-full h-full object-cover" />
+                              ) : (
+                                <div className="w-full h-full flex items-center justify-center text-[9px] font-semibold text-zinc-700">
+                                  {member.name.charAt(0)}
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                      <div className="mt-2 text-xs text-zinc-600 truncate">
+                        {formatTime(groupConversations[groupCarouselStart]?.lastMessageTime || Date.now())}
+                      </div>
+                    </div>
+                  </div>
+                </button>
+              ) : (
+                <div className="w-full rounded-2xl border border-[#9ad2da] bg-[#d7eef2] p-4 text-sm text-zinc-600">
+                  还没有群聊会话，点击右上角 + 创建群聊
+                </div>
+              )}
+            </div>
+
+            {/* Keep bottom content visible above dock while panel stays white */}
+            <div className="flex-shrink-0" style={{ height: 88 + mobileBottomDock }} />
           </div>
         </div>
-        
-        {/* 搜索框 */}
-        <div className="px-4 pb-3">
-          <div className={`rounded-lg px-3 py-2 flex items-center gap-2 ${isDarkMode ? 'bg-[#2a2a2a]' : 'bg-white border border-gray-200'}`}>
-            <Search className={`w-4 h-4 ${isDarkMode ? 'text-gray-500' : 'text-gray-400'}`} />
-            <input 
-              type="text" 
-              placeholder="搜索" 
-              className={`flex-1 text-sm outline-none bg-transparent ${isDarkMode ? 'text-white placeholder-gray-500' : 'text-gray-700 placeholder-gray-400'}`}
-              readOnly
-            />
-          </div>
+
+      {/* 底部导航栏 */}
+      <div
+        className="fixed left-0 right-0 z-[60] md:hidden px-4"
+        style={{ bottom: `calc(${(isStandaloneMode ? 10 : 12) + mobileBottomDock}px + env(safe-area-inset-bottom))` }}
+      >
+        <div className="rounded-[22px] border border-white/85 bg-[#eef2f2] px-3 py-2 shadow-[0_3px_10px_rgba(0,0,0,0.08)] flex items-center justify-between">
+          <button onClick={() => onNavigate('home')} className="w-11 h-11 rounded-xl text-zinc-500 flex items-center justify-center">
+            <ChevronLeft className="w-5 h-5" />
+          </button>
+          <button
+            onClick={() => setShowFullChatList(true)}
+            className="w-12 h-11 rounded-xl bg-white text-zinc-700 shadow-sm flex items-center justify-center"
+            title="全屏对话列表"
+          >
+            <MessageCircle className="w-5 h-5" />
+          </button>
+          <button onClick={() => onNavigate('moments')} className="w-11 h-11 rounded-xl text-zinc-500 flex items-center justify-center" title="发现页">
+            <Search className="w-5 h-5" />
+          </button>
+          <button onClick={() => onNavigate('profile')} className="w-11 h-11 rounded-xl text-zinc-500 flex items-center justify-center" title="个人资料">
+            <User className="w-5 h-5" />
+          </button>
         </div>
       </div>
 
-
-      {/* Conversation list */}
-      <div className="flex-1 overflow-y-auto">
-        {sortedConversations.length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-full text-gray-400 px-8">
-            <div className="w-24 h-24 rounded-full bg-gradient-to-br from-green-400 to-green-600 flex items-center justify-center mb-6 shadow-lg">
-              <MessageCircle className="w-12 h-12 text-white" strokeWidth={2} />
-            </div>
-            <p className={`text-lg font-medium mb-2 ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>暂无对话</p>
-            <p className={`text-sm text-center ${isDarkMode ? 'text-gray-600' : 'text-gray-400'}`}>点击右上角 + 号开始新的对话</p>
+      {showFullChatList && (
+        <div className="fixed inset-0 z-[70] md:hidden bg-[#ecf0f0] flex flex-col">
+          <div className="px-4 pt-4 pb-3 border-b border-zinc-200 bg-white/90 backdrop-blur-sm flex items-center justify-between">
+            <div className="text-lg font-semibold text-zinc-900">对话列表</div>
+            <button
+              onClick={() => setShowFullChatList(false)}
+              className="w-9 h-9 rounded-lg border border-zinc-200 bg-white flex items-center justify-center text-zinc-600"
+            >
+              <X className="w-4 h-4" />
+            </button>
           </div>
-        ) : (
-          <div className={isDarkMode ? 'bg-[#1a1a1a]' : 'bg-white'}>
-            {sortedConversations.map((conversation, index) => {
-              const isSwiped = swipedId === conversation.id;
-              // 如果是当前滑动的项，使用实时 offset，否则为 0
-              const offset = isSwiped ? touchOffset : 0;
-              
+          <div className="px-4 pt-3">
+            <div className="rounded-xl border border-zinc-200 bg-white px-3 py-2 flex items-center gap-2">
+              <Search className="w-4 h-4 text-zinc-400" />
+              <input
+                value={mobileQuery}
+                onChange={(e) => setMobileQuery(e.target.value)}
+                placeholder="搜索好友或会话"
+                className="flex-1 bg-transparent outline-none text-sm"
+              />
+            </div>
+          </div>
+          <div className="flex-1 overflow-y-auto p-4 space-y-2">
+            {mobileFilteredConversations.map((conversation) => {
+              const avatarUrl = getConversationAvatar(conversation);
               return (
-                <div key={conversation.id} className="relative overflow-hidden">
-                  {/* 背景操作按钮 */}
-                  <div className="absolute top-0 bottom-0 right-0 flex h-full w-[200px] z-0">
-                    <button 
-                      onClick={(e) => { e.stopPropagation(); handleAction('hide', conversation); }}
-                      className="flex-1 bg-blue-500 text-white flex items-center justify-center text-sm font-medium active:bg-blue-600"
-                    >
-                      不显示
-                    </button>
-                    {conversation.isBlocked ? (
-                      <button 
-                        onClick={(e) => { e.stopPropagation(); handleAction('unblock', conversation); }}
-                        className="flex-1 bg-gray-500 text-white flex items-center justify-center text-sm font-medium active:bg-gray-600"
-                      >
-                        解除
-                      </button>
+                <button
+                  key={conversation.id}
+                  onClick={() => {
+                    setShowFullChatList(false);
+                    onNavigate('chat', conversation.id);
+                  }}
+                  className="w-full rounded-2xl bg-white border border-zinc-200 px-3 py-3 text-left flex items-center gap-3"
+                >
+                  <div className="w-11 h-11 rounded-full overflow-hidden bg-zinc-200 flex-shrink-0">
+                    {avatarUrl ? (
+                      <img src={avatarUrl} alt={conversation.name} className="w-full h-full object-cover" />
                     ) : (
-                      <button 
-                        onClick={(e) => { e.stopPropagation(); handleAction('block', conversation); }}
-                        className="flex-1 bg-orange-500 text-white flex items-center justify-center text-sm font-medium active:bg-orange-600"
-                      >
-                        拉黑
-                      </button>
-                    )}
-                    <button 
-                      onClick={(e) => { e.stopPropagation(); handleAction('delete', conversation); }}
-                      className="flex-1 bg-red-500 text-white flex items-center justify-center text-sm font-medium active:bg-red-600"
-                    >
-                      删除
-                    </button>
-                  </div>
-
-                  {/* 前景内容 */}
-                  <div
-                    onClick={() => {
-                      // 如果已滑开且有偏移，点击则关闭
-                      if (isSwiped && Math.abs(offset) > 10) {
-                        setSwipedId(null);
-                        setTouchOffset(0);
-                        return;
-                      }
-                      onNavigate('chat', conversation.id);
-                    }}
-                    onTouchStart={(e) => handleTouchStart(e, conversation.id)}
-                    onTouchMove={(e) => handleTouchMove(e, conversation.id)}
-                    onTouchEnd={(e) => handleTouchEnd(e, conversation.id)}
-                    style={{ 
-                      transform: `translateX(${offset}px)`,
-                      transition: touchStart ? 'none' : 'transform 0.2s ease-out'
-                    }}
-                    className={`relative z-10 w-full px-4 py-3 flex items-center gap-3 transition-colors cursor-pointer ${isDarkMode ? 'bg-[#1a1a1a] hover:bg-[#2a2a2a] active:bg-[#333]' : 'bg-white hover:bg-gray-50 active:bg-gray-100'} ${conversation.isBlocked ? 'opacity-60 grayscale' : ''}`}
-                  >
-                    {/* Avatar - 更精致的头像 */}
-                    <div className="relative flex-shrink-0">
-                      <div className={`w-12 h-12 rounded-lg bg-gradient-to-br ${getAvatarGradient(conversation.name)} flex items-center justify-center shadow-md overflow-hidden`}>
-                        {(() => {
-                          const avatarUrl = conversation.type === 'group' 
-                            ? conversation.avatar 
-                            : (conversation.characterSettings?.avatar || conversation.avatar);
-                            
-                          if (avatarUrl) {
-                            return (
-                              <img 
-                                src={avatarUrl} 
-                                alt={conversation.name}
-                                className="w-full h-full object-cover"
-                              />
-                            );
-                          } else if (conversation.type === 'group') {
-                            return <Users className="w-6 h-6 text-white" strokeWidth={2.5} />;
-                          } else {
-                            return (
-                              <span className="text-white font-semibold text-lg">
-                                {conversation.name.charAt(0)}
-                              </span>
-                            );
-                          }
-                        })()}
+                      <div className="w-full h-full flex items-center justify-center text-sm font-semibold text-zinc-700">
+                        {conversation.name.charAt(0)}
                       </div>
-                      {/* 拉黑状态覆盖层 */}
-                      {conversation.isBlocked && (
-                        <div className="absolute inset-0 bg-black/20 rounded-lg flex items-center justify-center">
-                          <span className="text-lg">🚫</span>
-                        </div>
-                      )}
-                      {/* 未读标记 */}
-                      {conversation.unreadCount > 0 && (
-                        <div className={`absolute -top-1 -right-1 min-w-[18px] h-[18px] bg-red-500 rounded-full flex items-center justify-center px-1 ${isDarkMode ? 'border-2 border-[#1a1a1a]' : 'border-2 border-white'}`}>
-                          <span className="text-white text-[10px] font-semibold">
-                            {conversation.unreadCount > 99 ? '99+' : conversation.unreadCount}
-                          </span>
-                        </div>
-                      )}
-                    </div>
-
-                    {/* Content */}
-                    <div className="flex-1 min-w-0 text-left">
-                      <div className="flex items-center justify-between mb-1">
-                        <span className={`font-medium truncate text-[15px] ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
-                          {conversation.name}
-                        </span>
-                        <span className={`text-[11px] ml-2 flex-shrink-0 ${isDarkMode ? 'text-gray-500' : 'text-gray-400'}`}>
-                          {formatTime(conversation.lastMessageTime)}
-                        </span>
-                      </div>
-                      <div className="flex items-center justify-between">
-                        <p className={`text-[13px] truncate leading-tight ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>
-                          {getLastMessagePreview(conversation)}
-                        </p>
-                        {conversation.isMuted && (
-                          <BellOff className={`w-4 h-4 ml-2 flex-shrink-0 ${isDarkMode ? 'text-gray-600' : 'text-gray-300'}`} />
-                        )}
-                      </div>
-                    </div>
-
-                    {/* 分割线 */}
-                    {index < sortedConversations.length - 1 && (
-                      <div className={`absolute bottom-0 left-16 right-0 h-px ${isDarkMode ? 'bg-gray-800' : 'bg-gray-100'}`}></div>
                     )}
                   </div>
-                </div>
+                  <div className="min-w-0 flex-1 overflow-hidden">
+                    <div className="flex items-center justify-between">
+                      <div className="text-sm font-semibold text-zinc-800 truncate">{conversation.name}</div>
+                      <div className="text-[11px] text-zinc-500">{formatTime(conversation.lastMessageTime)}</div>
+                    </div>
+                    <div className="text-[12px] text-zinc-500 mt-0.5 truncate max-w-full">
+                      {getLastMessagePreview(conversation)}
+                    </div>
+                  </div>
+                </button>
               );
             })}
           </div>
-        )}
-      </div>
-
-      {/* 底部导航栏 */}
-      <div className={`border-t flex-shrink-0 ${isDarkMode ? 'bg-[#1a1a1a] border-gray-800' : 'bg-white border-gray-200'}`}>
-        <div className="flex items-center justify-around px-4 py-2">
-          {/* 消息 - 当前页面，高亮显示 */}
-          <button className="flex flex-col items-center gap-1 py-1 px-3">
-            <MessageCircle className={`w-6 h-6 ${isDarkMode ? 'text-[#07c160]' : 'text-[#07c160]'}`} strokeWidth={2} />
-            <span className={`text-[10px] ${isDarkMode ? 'text-[#07c160]' : 'text-[#07c160]'}`}>消息</span>
-          </button>
-          {/* 通讯录 - 联系人列表 */}
-          <button 
-            onClick={() => onNavigate('contacts')}
-            className="flex flex-col items-center gap-1 py-1 px-3"
-          >
-            <Users className={`w-6 h-6 ${isDarkMode ? 'text-gray-500' : 'text-gray-500'}`} strokeWidth={2} />
-            <span className={`text-[10px] ${isDarkMode ? 'text-gray-500' : 'text-gray-500'}`}>通讯录</span>
-          </button>
-          {/* 发现 - 朋友圈 */}
-          <button 
-            onClick={() => onNavigate('moments')}
-            className="flex flex-col items-center gap-1 py-1 px-3"
-          >
-            <Camera className={`w-6 h-6 ${isDarkMode ? 'text-gray-500' : 'text-gray-500'}`} strokeWidth={2} />
-            <span className={`text-[10px] ${isDarkMode ? 'text-gray-500' : 'text-gray-500'}`}>发现</span>
-          </button>
-          {/* 我 - 个人资料 */}
-          <button 
-            onClick={() => onNavigate('profile')}
-            className="flex flex-col items-center gap-1 py-1 px-3"
-          >
-            <User className={`w-6 h-6 ${isDarkMode ? 'text-gray-500' : 'text-gray-500'}`} strokeWidth={2} />
-            <span className={`text-[10px] ${isDarkMode ? 'text-gray-500' : 'text-gray-500'}`}>我</span>
-          </button>
         </div>
-      </div>
+      )}
 
       {/* 状态选择器 */}
       {showStatusSelector && (
         <StatusSelector
-          currentStatus={userProfile.status || '在线'}
+          currentStatus={localUserProfile.status || '在线'}
           onSelectStatus={handleStatusChange}
           onClose={() => setShowStatusSelector(false)}
         />
       )}
+      </div>
     </div>
   );
 }

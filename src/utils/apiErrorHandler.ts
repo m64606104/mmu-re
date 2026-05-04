@@ -10,6 +10,80 @@ export interface ApiErrorInfo {
   icon: string;
 }
 
+function classifyServer500Error(errorMessageRaw?: string): ApiErrorInfo | null {
+  const text = (errorMessageRaw || '').toLowerCase();
+  if (!text) return null;
+
+  // key/token/auth issues occasionally come back as 500 via proxy layers
+  if (
+    text.includes('invalid_api_key') ||
+    text.includes('invalid api key') ||
+    text.includes('api key invalid') ||
+    text.includes('authentication') ||
+    text.includes('unauthorized') ||
+    text.includes('token')
+  ) {
+    return {
+      title: '密钥可能失效',
+      message: '上游返回了认证相关错误（被网关包装为500）',
+      suggestion: '请检查设置中的API Key是否正确、是否过期，必要时重新生成后替换。',
+      icon: '🔑',
+    };
+  }
+
+  if (
+    text.includes('model_not_found') ||
+    text.includes('model not found') ||
+    text.includes('unsupported model') ||
+    text.includes('invalid model') ||
+    text.includes('model is not available') ||
+    text.includes('does not exist') ||
+    text.includes('rejected') ||
+    text.includes('safety')
+  ) {
+    return {
+      title: '模型拒绝或不可用',
+      message: '当前模型不可用、被拒绝，或名称不被服务端接受',
+      suggestion: '请切换到可用模型，或检查模型名与渠道是否匹配。',
+      icon: '🤖',
+    };
+  }
+
+  if (
+    text.includes('timeout') ||
+    text.includes('timed out') ||
+    text.includes('request time-out') ||
+    text.includes('upstream request timeout') ||
+    text.includes('gateway timeout')
+  ) {
+    return {
+      title: '请求超时',
+      message: '后端处理超时（被网关包装为500）',
+      suggestion: '请稍后重试，或缩短上下文/减少单次请求内容。',
+      icon: '⏳',
+    };
+  }
+
+  if (
+    text.includes('bad gateway') ||
+    text.includes('service unavailable') ||
+    text.includes('upstream') ||
+    text.includes('econnrefused') ||
+    text.includes('connection refused') ||
+    text.includes('temporarily unavailable') ||
+    text.includes('server overloaded')
+  ) {
+    return {
+      title: '后端暂不可用',
+      message: '网关无法稳定连接上游服务',
+      suggestion: '这是服务端链路问题，建议稍后重试或切换可用渠道。',
+      icon: '🛠️',
+    };
+  }
+
+  return null;
+}
+
 /**
  * 解析HTTP错误状态码，返回详细的错误信息
  */
@@ -56,6 +130,10 @@ export const getApiErrorInfo = (statusCode: number, errorMessage?: string): ApiE
       };
     
     case 500:
+      {
+        const classified = classifyServer500Error(errorMessage);
+        if (classified) return classified;
+      }
       return {
         title: 'API服务器错误',
         message: 'API服务器遇到了内部错误',
@@ -180,15 +258,25 @@ export const formatErrorMessage = (errorInfo: ApiErrorInfo): string => {
  * 从Response对象获取详细错误信息
  */
 export const getErrorFromResponse = async (response: Response): Promise<ApiErrorInfo> => {
+  let errorMessage = '';
   try {
     // 尝试解析JSON错误信息
     const data = await response.json();
-    const errorMessage = data.error?.message || data.message || '';
+    errorMessage = data.error?.message || data.message || '';
     return getApiErrorInfo(response.status, errorMessage);
   } catch {
-    // 如果无法解析JSON，使用状态码
-    return getApiErrorInfo(response.status);
+    // ignore and fallback to text parse below
   }
+
+  try {
+    const text = await response.text();
+    const compactText = text.replace(/\s+/g, ' ').trim();
+    errorMessage = compactText.slice(0, 300);
+  } catch {
+    // ignore
+  }
+
+  return getApiErrorInfo(response.status, errorMessage);
 };
 
 /**

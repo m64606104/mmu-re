@@ -3,8 +3,6 @@ import type { ApiConfig, Conversation, Screen } from '../types';
 import type { Message } from '../types';
 
 import ToastContainer from '../components/ToastContainer';
-import { MomentsAutoGenerator } from '../components/MomentsAutoGenerator';
-import { AIMomentsInteractionManager } from '../components/AIMomentsInteractionManager';
 import ProactiveMessagingService from '../components/ProactiveMessagingService';
 import LetterNotification from '../components/LetterNotification';
 import AchievementNotification from '../components/AchievementNotification';
@@ -32,14 +30,7 @@ export function RuntimeServices(props: RuntimeServicesProps) {
 
   return (
     <>
-      <MomentsAutoGenerator conversations={conversations} apiConfig={apiConfig} />
-
-      <AIMomentsInteractionManager
-        conversations={conversations}
-        apiConfig={apiConfig}
-        isActive={['social', 'chat', 'contacts', 'moments', 'profile'].includes(currentScreen)}
-        isInMomentsScreen={currentScreen === 'moments'}
-      />
+      {/* 朋友圈模块重构中：暂时关闭旧版自动生成/互动后台服务，避免额外API调用与噪音日志 */}
 
       <ProactiveMessagingService
         conversations={conversations}

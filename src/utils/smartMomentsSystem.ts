@@ -10,6 +10,7 @@
 import { Conversation, MomentPost, ApiConfig } from '../types';
 import TrendingContentGenerator from './trendingContentGenerator';
 import { SimplifiedMomentsGenerator } from './simplifiedMomentsGenerator';
+import { getCachedData, load, save, setCachedData, smartLoad } from './storage';
 
 /**
  * 智能朋友圈生成器
@@ -278,10 +279,10 @@ ${trendingSuggestion.content}
     const now = Date.now();
     const today = new Date().toDateString();
     const storageKey = `moments_count_${conversation.id}_${today}`;
-    const todayCount = parseInt(localStorage.getItem(storageKey) || '0');
+    const todayCount = parseInt(((await smartLoad(storageKey)) as string) || '0');
     
     const lastPostKey = `last_moment_${conversation.id}`;
-    const lastPostTime = parseInt(localStorage.getItem(lastPostKey) || '0');
+    const lastPostTime = parseInt(((await smartLoad(lastPostKey)) as string) || '0');
     const hoursSinceLastPost = (now - lastPostTime) / (1000 * 60 * 60);
 
     // 简单规则：今天发了3条以上，或距离上次不到2小时，就不发了
@@ -308,8 +309,7 @@ export class SocialRelationshipManager {
    */
   static getRelationshipLevel(aiId1: string, aiId2: string): 'stranger' | 'acquaintance' | 'friend' | 'close_friend' {
     try {
-      const data = localStorage.getItem(this.STORAGE_KEY);
-      const relationships = data ? JSON.parse(data) : {};
+      const relationships = (getCachedData<Record<string, any>>(this.STORAGE_KEY) || {}) as Record<string, any>;
       const key = [aiId1, aiId2].sort().join('_');
       return relationships[key] || 'stranger';
     } catch {
@@ -326,11 +326,11 @@ export class SocialRelationshipManager {
     level: 'stranger' | 'acquaintance' | 'friend' | 'close_friend'
   ): void {
     try {
-      const data = localStorage.getItem(this.STORAGE_KEY);
-      const relationships = data ? JSON.parse(data) : {};
+      const relationships = (getCachedData<Record<string, any>>(this.STORAGE_KEY) || {}) as Record<string, any>;
       const key = [aiId1, aiId2].sort().join('_');
       relationships[key] = level;
-      localStorage.setItem(this.STORAGE_KEY, JSON.stringify(relationships));
+      setCachedData(this.STORAGE_KEY, relationships);
+      void save(this.STORAGE_KEY, relationships);
     } catch (err) {
       console.error('设置社交关系失败:', err);
     }
@@ -372,6 +372,16 @@ export class SocialRelationshipManager {
       : baseProbability;
 
     return Math.random() < finalProbability;
+  }
+}
+
+export async function initializeSmartMomentsStorage(): Promise<void> {
+  try {
+    const relationships = await load('ai_social_relationships');
+    setCachedData('ai_social_relationships', relationships && typeof relationships === 'object' ? relationships : {});
+  } catch (error) {
+    console.error('初始化朋友圈社交关系存储失败:', error);
+    setCachedData('ai_social_relationships', {});
   }
 }
 

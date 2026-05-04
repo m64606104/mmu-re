@@ -1,16 +1,15 @@
-import { ArrowLeft, MessageCircle, MessagesSquare } from 'lucide-react';
+import { ArrowLeft, MessageCircle } from 'lucide-react';
 
 interface EasyChatHomeProps {
   onBack: () => void;
   onOpenChatList: () => void;
-  onOpenForum: () => void;
   onOpenUserSettings: () => void;
   userName: string;
   userAvatar: string;
   userBubbleColor?: string;
 }
 
-export function EasyChatHome({ onBack, onOpenChatList, onOpenForum, onOpenUserSettings, userName, userAvatar }: EasyChatHomeProps) {
+export function EasyChatHome({ onBack, onOpenChatList, onOpenUserSettings, userName, userAvatar }: EasyChatHomeProps) {
   return (
     <div className="w-full h-full bg-gray-50 flex flex-col relative overflow-hidden">
 
@@ -42,7 +41,7 @@ export function EasyChatHome({ onBack, onOpenChatList, onOpenForum, onOpenUserSe
           欢迎回来，{userName}
         </h2>
         <p className="text-gray-500 text-center text-sm mb-6">
-          选择聊天或论坛开始体验
+          选择聊天开始体验
         </p>
 
         {/* 功能按钮 */}
@@ -59,22 +58,6 @@ export function EasyChatHome({ onBack, onOpenChatList, onOpenForum, onOpenUserSe
               <div className="flex-1 text-left">
                 <h3 className="text-base font-semibold text-gray-800 mb-0.5">聊天</h3>
                 <p className="text-xs text-gray-500">查看和创建聊天会话</p>
-              </div>
-            </div>
-          </button>
-
-          {/* 论坛按钮 */}
-          <button
-            onClick={onOpenForum}
-            className="group w-full p-5 bg-white hover:bg-gray-50 border border-gray-200 active:scale-[0.98] rounded-xl transition-all shadow-sm"
-          >
-            <div className="flex items-center gap-4">
-              <div className="w-14 h-14 bg-green-50 rounded-xl flex items-center justify-center flex-shrink-0">
-                <MessagesSquare className="w-7 h-7 text-green-600" strokeWidth={2} />
-              </div>
-              <div className="flex-1 text-left">
-                <h3 className="text-base font-semibold text-gray-800 mb-0.5">论坛</h3>
-                <p className="text-xs text-gray-500">发布和讨论话题</p>
               </div>
             </div>
           </button>

@@ -9,10 +9,25 @@ import { generateAgeAppropriateBottle } from './ageAppropriateBottleGenerator';
 import { recordBottleContent, evaluateContentDiversity } from './bottleContentDiversityManager';
 import { generateIntelligentBottle, checkAPIAvailability } from './intelligentBottleGenerator';
 import { generateBottleTrash, type BottleTrash } from './bottleTrash';
+import { getCachedData, load, save, setCachedData } from './storage';
 
 const FISHING_STORAGE_KEY = 'bottle_fishing_record';
 const STATS_STORAGE_KEY = 'bottle_stats';
 const MAX_DAILY_FISHING = 2;
+
+export async function initializeBottleStorage(): Promise<void> {
+  try {
+    const [record, stats] = await Promise.all([load(FISHING_STORAGE_KEY), load(STATS_STORAGE_KEY)]);
+    setCachedData(FISHING_STORAGE_KEY, record && typeof record === 'object' ? record : null);
+    setCachedData(STATS_STORAGE_KEY, stats && typeof stats === 'object' ? stats : null);
+    const diversity = await load('bottle_content_diversity');
+    if (diversity && typeof diversity === 'object') {
+      setCachedData('bottle_content_diversity', diversity);
+    }
+  } catch (error) {
+    console.error('初始化漂流瓶存储失败:', error);
+  }
+}
 
 // 漂流瓶发送者配置（头像、年龄、性别、地点）
 const SENDER_CONFIGS = [
@@ -397,10 +412,10 @@ function getTodayString(): string {
  */
 export function getTodayFishingRecord(): BottleFishingRecord {
   const today = getTodayString();
-  const saved = localStorage.getItem(FISHING_STORAGE_KEY);
+  const saved = getCachedData<BottleFishingRecord>(FISHING_STORAGE_KEY);
   
   if (saved) {
-    const record: any = JSON.parse(saved);
+    const record: any = saved;
     
     // 如果是新的一天，重置记录
     if (record.date !== today) {
@@ -411,7 +426,8 @@ export function getTodayFishingRecord(): BottleFishingRecord {
         thrownBackBottles: [],
         fishedBottles: []
       };
-      localStorage.setItem(FISHING_STORAGE_KEY, JSON.stringify(newRecord));
+      setCachedData(FISHING_STORAGE_KEY, newRecord);
+      void save(FISHING_STORAGE_KEY, newRecord);
       return newRecord;
     }
     
@@ -424,7 +440,8 @@ export function getTodayFishingRecord(): BottleFishingRecord {
     }
     
     // 保存更新后的记录
-    localStorage.setItem(FISHING_STORAGE_KEY, JSON.stringify(record));
+    setCachedData(FISHING_STORAGE_KEY, record);
+    void save(FISHING_STORAGE_KEY, record);
     return record as BottleFishingRecord;
   }
   
@@ -436,7 +453,8 @@ export function getTodayFishingRecord(): BottleFishingRecord {
     thrownBackBottles: [],
     fishedBottles: []
   };
-  localStorage.setItem(FISHING_STORAGE_KEY, JSON.stringify(newRecord));
+  setCachedData(FISHING_STORAGE_KEY, newRecord);
+  void save(FISHING_STORAGE_KEY, newRecord);
   return newRecord;
 }
 
@@ -444,17 +462,16 @@ export function getTodayFishingRecord(): BottleFishingRecord {
  * 保存打捞记录
  */
 function saveFishingRecord(record: BottleFishingRecord): void {
-  localStorage.setItem(FISHING_STORAGE_KEY, JSON.stringify(record));
+  setCachedData(FISHING_STORAGE_KEY, record);
+  void save(FISHING_STORAGE_KEY, record);
 }
 
 /**
  * 获取用户统计数据
  */
 export function getBottleStats(): UserBottleStats {
-  const saved = localStorage.getItem(STATS_STORAGE_KEY);
-  if (saved) {
-    return JSON.parse(saved);
-  }
+  const saved = getCachedData<UserBottleStats>(STATS_STORAGE_KEY);
+  if (saved) return saved;
   
   const stats: UserBottleStats = {
     totalFished: 0,
@@ -462,7 +479,8 @@ export function getBottleStats(): UserBottleStats {
     totalThrownBack: 0,
     receivedReplies: 0
   };
-  localStorage.setItem(STATS_STORAGE_KEY, JSON.stringify(stats));
+  setCachedData(STATS_STORAGE_KEY, stats);
+  void save(STATS_STORAGE_KEY, stats);
   return stats;
 }
 
@@ -470,7 +488,8 @@ export function getBottleStats(): UserBottleStats {
  * 保存统计数据
  */
 function saveBottleStats(stats: UserBottleStats): void {
-  localStorage.setItem(STATS_STORAGE_KEY, JSON.stringify(stats));
+  setCachedData(STATS_STORAGE_KEY, stats);
+  void save(STATS_STORAGE_KEY, stats);
 }
 
 /**

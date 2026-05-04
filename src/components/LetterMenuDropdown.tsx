@@ -6,6 +6,7 @@
 
 import { Waves, Star, Trophy, Bell } from 'lucide-react';
 import { useState, useEffect, useRef } from 'react';
+import { getUnreadCount, initializeLetterNotificationStorage } from '../utils/letterNotificationSystem';
 
 interface LetterMenuDropdownProps {
   onNavigate: (page: 'bottle-fishing' | 'favorite-replies' | 'achievements' | 'letter-notifications') => void;
@@ -34,9 +35,14 @@ export default function LetterMenuDropdown({ onNavigate }: LetterMenuDropdownPro
 
   // 加载未读通知数量
   useEffect(() => {
-    loadUnreadCount();
-    const interval = setInterval(loadUnreadCount, 10000);
-    return () => clearInterval(interval);
+    let interval: number | null = null;
+    void initializeLetterNotificationStorage().finally(() => {
+      loadUnreadCount();
+      interval = window.setInterval(loadUnreadCount, 10000);
+    });
+    return () => {
+      if (interval !== null) window.clearInterval(interval);
+    };
   }, []);
 
   // 点击外部关闭下拉菜单
@@ -58,9 +64,7 @@ export default function LetterMenuDropdown({ onNavigate }: LetterMenuDropdownPro
 
   const loadUnreadCount = () => {
     try {
-      const notifications = JSON.parse(localStorage.getItem('letter_notifications') || '[]');
-      const unread = notifications.filter((n: any) => !n.read).length;
-      setUnreadCount(unread);
+      setUnreadCount(getUnreadCount());
     } catch (error) {
       console.error('加载未读通知失败:', error);
     }

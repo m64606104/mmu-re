@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { X, Plus, Minus, Trash2, ShoppingBag } from 'lucide-react';
+import { getCachedData, smartLoad, smartSave } from '../utils/storage';
 
 export interface CartItem {
   id: string;
@@ -35,15 +36,11 @@ export default function ShoppingCartModal({
     }
   }, [isOpen, shopType]);
 
-  const loadCartItems = () => {
+  const loadCartItems = async () => {
     try {
       const cartKey = `shopping_cart_${shopType}`;
-      const savedCart = localStorage.getItem(cartKey);
-      if (savedCart) {
-        setCartItems(JSON.parse(savedCart));
-      } else {
-        setCartItems([]);
-      }
+      const savedCart = await smartLoad(cartKey);
+      setCartItems(Array.isArray(savedCart) ? savedCart : []);
     } catch (error) {
       console.error('加载购物车失败:', error);
       setCartItems([]);
@@ -53,7 +50,7 @@ export default function ShoppingCartModal({
   const saveCartItems = (items: CartItem[]) => {
     try {
       const cartKey = `shopping_cart_${shopType}`;
-      localStorage.setItem(cartKey, JSON.stringify(items));
+      void smartSave(cartKey, items);
       setCartItems(items);
     } catch (error) {
       console.error('保存购物车失败:', error);
@@ -274,30 +271,29 @@ export default function ShoppingCartModal({
 export const addToCart = (product: any, shopType: 'food' | 'movie' | 'shopping', quantity = 1) => {
   try {
     const cartKey = `shopping_cart_${shopType}`;
-    const savedCart = localStorage.getItem(cartKey);
-    const cartItems: CartItem[] = savedCart ? JSON.parse(savedCart) : [];
+    void (async () => {
+      const savedCart = await smartLoad(cartKey);
+      const loadedItems: CartItem[] = Array.isArray(savedCart) ? savedCart : [];
 
-    // 检查商品是否已存在
-    const existingItemIndex = cartItems.findIndex(item => item.id === product.id);
-    
-    if (existingItemIndex >= 0) {
-      // 商品已存在，增加数量
-      cartItems[existingItemIndex].quantity += quantity;
-    } else {
-      // 新商品，添加到购物车
-      const cartItem: CartItem = {
-        id: product.id,
-        name: product.name,
-        price: product.price,
-        quantity: quantity,
-        image: product.image,
-        shopType: shopType,
-        isAIGenerated: product.isAIGenerated
-      };
-      cartItems.push(cartItem);
-    }
+      // 检查商品是否已存在
+      const existingItemIndex = loadedItems.findIndex(item => item.id === product.id);
+      if (existingItemIndex >= 0) {
+        loadedItems[existingItemIndex].quantity += quantity;
+      } else {
+        const cartItem: CartItem = {
+          id: product.id,
+          name: product.name,
+          price: product.price,
+          quantity: quantity,
+          image: product.image,
+          shopType: shopType,
+          isAIGenerated: product.isAIGenerated
+        };
+        loadedItems.push(cartItem);
+      }
 
-    localStorage.setItem(cartKey, JSON.stringify(cartItems));
+      await smartSave(cartKey, loadedItems);
+    })();
     return true;
   } catch (error) {
     console.error('添加到购物车失败:', error);
@@ -309,11 +305,9 @@ export const addToCart = (product: any, shopType: 'food' | 'movie' | 'shopping',
 export const getCartItemCount = (shopType: 'food' | 'movie' | 'shopping'): number => {
   try {
     const cartKey = `shopping_cart_${shopType}`;
-    const savedCart = localStorage.getItem(cartKey);
-    if (!savedCart) return 0;
-
-    const cartItems: CartItem[] = JSON.parse(savedCart);
-    return cartItems.reduce((total, item) => total + item.quantity, 0);
+    const cached = getCachedData<CartItem[]>(cartKey);
+    if (!Array.isArray(cached)) return 0;
+    return cached.reduce((total, item) => total + item.quantity, 0);
   } catch (error) {
     console.error('获取购物车数量失败:', error);
     return 0;

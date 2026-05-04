@@ -8,6 +8,7 @@ import VirtualNewsGenerator from './virtualNewsGenerator';
 import WeiboStyleGenerator from './weiboStyleGenerator';
 import * as QQSpaceStyle from './qqSpaceStyleGenerator';
 import { generateRealLifePhotos, generatePhotosMatchingContent, generateVideoDescription } from './realLifePhotoGenerator';
+import { getCachedData, save, setCachedData } from './storage';
 
 export interface MomentsFormat {
   type: 'text_only' | 'single_image' | 'multi_image' | 'video' | 'news_sharing' | 'mood_check' | 'weibo_sharing' | 'music_sharing' | 'article_sharing' | 'coupon_sharing' | 'life_complaint' | 'big_event' | 'qq_forward_text' | 'qq_forward_image' | 'qq_novel_text' | 'qq_tutorial' | 'qq_game_screenshot';
@@ -31,10 +32,9 @@ export class DiverseMomentsGenerator {
    */
   static getContentVariation(aiId: string): ContentVariation {
     try {
-      const stored = localStorage.getItem(`content_variation_${aiId}`);
-      if (stored) {
-        return JSON.parse(stored);
-      }
+      const key = `content_variation_${aiId}`;
+      const cached = getCachedData<ContentVariation>(key);
+      if (cached && typeof cached === 'object') return cached;
     } catch (error) {
       console.error('获取内容变化记录失败:', error);
     }
@@ -69,7 +69,9 @@ export class DiverseMomentsGenerator {
     variation.diversityScore = this.calculateDiversityScore(variation);
     
     try {
-      localStorage.setItem(`content_variation_${aiId}`, JSON.stringify(variation));
+      const key = `content_variation_${aiId}`;
+      setCachedData(key, variation);
+      void save(key, variation);
     } catch (error) {
       console.error('保存内容变化记录失败:', error);
     }

@@ -231,7 +231,7 @@ function buildIntelligentPrompt(
 async function generateContentWithAI(prompt: string): Promise<string> {
   try {
     // 获取API配置
-    const apiConfig = JSON.parse(localStorage.getItem('api_config') || '{}');
+    const apiConfig = JSON.parse(localStorage.getItem('apiConfig') || '{}');
     
     if (!apiConfig.apiUrl || !apiConfig.apiKey) {
       throw new Error('API配置不完整');
@@ -346,7 +346,7 @@ export async function generateIntelligentBottle(): Promise<BottleLetter> {
  * 检查API配置是否可用
  */
 export function checkAPIAvailability(): boolean {
-  const apiConfig = JSON.parse(localStorage.getItem('api_config') || '{}');
+  const apiConfig = JSON.parse(localStorage.getItem('apiConfig') || '{}');
   return !!(apiConfig.apiUrl && apiConfig.apiKey);
 }
 

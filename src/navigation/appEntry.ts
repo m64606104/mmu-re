@@ -45,7 +45,7 @@ const CHAT_SCREENS = new Set<Screen>([
 const PROFILE_SCREENS = new Set<Screen>(['profile', 'wallet', 'order-history', 'theme', 'user-system']);
 const MALL_SCREENS = new Set<Screen>(['huaduoduo', 'huaduoduo-gogo', 'shopping']);
 const SETTINGS_SCREENS = new Set<Screen>(['settings', 'guide', 'announcement']);
-const TOOLS_SCREENS = new Set<Screen>(['database']);
+const TOOLS_SCREENS = new Set<Screen>(['database', 'focus-habit']);
 
 export function getAppForScreen(screen: Screen): AppPage {
   if (MAIL_SCREENS.has(screen)) return 'mail';

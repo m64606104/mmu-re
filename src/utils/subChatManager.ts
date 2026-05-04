@@ -4,6 +4,7 @@
  */
 
 import { SubChat, Message, Conversation } from '../types';
+import { getCachedData, save, setCachedData } from './storage';
 
 const SUBCHAT_STORAGE_KEY = 'subchat_data';
 
@@ -82,28 +83,20 @@ export const incrementUnreadCount = (subChat: SubChat): SubChat => {
  * 获取对话的所有子聊天
  */
 export const getSubChats = (conversationId: string): SubChat[] => {
-  try {
-    const stored = localStorage.getItem(`${SUBCHAT_STORAGE_KEY}_${conversationId}`);
-    if (!stored) return [];
-    return JSON.parse(stored);
-  } catch (error) {
-    console.error('读取子聊天失败:', error);
-    return [];
-  }
+  const key = `${SUBCHAT_STORAGE_KEY}_${conversationId}`;
+  const cached = getCachedData<SubChat[]>(key);
+  return Array.isArray(cached) ? cached : [];
 };
 
 /**
  * 保存子聊天到localStorage
  */
 export const saveSubChats = (conversationId: string, subChats: SubChat[]): void => {
-  try {
-    localStorage.setItem(
-      `${SUBCHAT_STORAGE_KEY}_${conversationId}`,
-      JSON.stringify(subChats)
-    );
-  } catch (error) {
+  const key = `${SUBCHAT_STORAGE_KEY}_${conversationId}`;
+  setCachedData(key, subChats);
+  void save(key, subChats).catch((error) => {
     console.error('保存子聊天失败:', error);
-  }
+  });
 };
 
 /**

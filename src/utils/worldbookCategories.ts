@@ -1,6 +1,7 @@
 // 世界书分类管理
 
 import { WorldbookCategory } from '../types/worldbook';
+import { getCachedData, load, save, setCachedData } from './storage';
 
 const STORAGE_KEY = 'worldbook_categories';
 
@@ -29,27 +30,28 @@ const DEFAULT_CATEGORIES: WorldbookCategory[] = [
 
 // 获取所有分类
 export function getAllCategories(): WorldbookCategory[] {
-  try {
-    const stored = localStorage.getItem(STORAGE_KEY);
-    if (!stored) {
-      // 首次使用，初始化默认分类
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(DEFAULT_CATEGORIES));
-      return DEFAULT_CATEGORIES;
-    }
-    return JSON.parse(stored);
-  } catch (error) {
-    console.error('Failed to load categories:', error);
-    return DEFAULT_CATEGORIES;
-  }
+  const cached = getCachedData<WorldbookCategory[]>(STORAGE_KEY);
+  if (Array.isArray(cached) && cached.length > 0) return cached;
+  return DEFAULT_CATEGORIES;
 }
 
 // 保存所有分类
 function saveCategories(categories: WorldbookCategory[]): void {
+  setCachedData(STORAGE_KEY, categories);
+  void save(STORAGE_KEY, categories);
+}
+
+export async function initializeWorldbookCategories(): Promise<void> {
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(categories));
+    const stored = await load(STORAGE_KEY);
+    const categories = Array.isArray(stored) && stored.length > 0 ? stored : DEFAULT_CATEGORIES;
+    setCachedData(STORAGE_KEY, categories);
+    if (!Array.isArray(stored) || stored.length === 0) {
+      void save(STORAGE_KEY, categories);
+    }
   } catch (error) {
-    console.error('Failed to save categories:', error);
-    throw error;
+    console.error('初始化世界书分类失败:', error);
+    setCachedData(STORAGE_KEY, DEFAULT_CATEGORIES);
   }
 }
 

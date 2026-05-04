@@ -5,7 +5,7 @@
  */
 
 import { Letter } from '../types/letter';
-import { getCachedData, setCachedData, save } from './storage';
+import { getCachedData, load, setCachedData, save } from './storage';
 
 const STORAGE_KEY = 'letter_memories';
 
@@ -40,19 +40,8 @@ export interface LetterMemoryEntry {
  */
 export function getAllLetterMemories(): LetterMemory[] {
   const cached = getCachedData<LetterMemory[]>(STORAGE_KEY);
-  if (cached) return cached;
-  
-  const stored = localStorage.getItem(STORAGE_KEY);
-  if (!stored) return [];
-  
-  try {
-    const memories = JSON.parse(stored);
-    setCachedData(STORAGE_KEY, memories);
-    return memories;
-  } catch (error) {
-    console.error('读取信件记忆失败:', error);
-    return [];
-  }
+  if (Array.isArray(cached)) return cached;
+  return [];
 }
 
 /**
@@ -63,6 +52,16 @@ function saveLetterMemories(memories: LetterMemory[]): void {
   save(STORAGE_KEY, memories).catch(err => 
     console.error('保存信件记忆失败:', err)
   );
+}
+
+export async function initializeLetterMemoryStorage(): Promise<void> {
+  try {
+    const data = await load(STORAGE_KEY);
+    setCachedData(STORAGE_KEY, Array.isArray(data) ? data : []);
+  } catch (error) {
+    console.error('初始化信件记忆存储失败:', error);
+    setCachedData(STORAGE_KEY, []);
+  }
 }
 
 /**

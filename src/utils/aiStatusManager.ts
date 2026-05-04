@@ -1,4 +1,5 @@
 import { AIStatus, AIStatusInfo } from '../types';
+import { getCachedData, save, setCachedData, smartLoad } from './storage';
 
 /**
  * 状态映射
@@ -18,10 +19,12 @@ const STATUS_MAP: Record<AIStatus, string> = {
 export const getAIStatus = async (conversationId: string): Promise<AIStatusInfo | null> => {
   try {
     const key = `ai_status_${conversationId}`;
-    const data = localStorage.getItem(key);
-    if (data) {
-      const status = JSON.parse(data) as AIStatusInfo;
-      return status;
+    const cached = getCachedData<AIStatusInfo>(key);
+    if (cached && typeof cached === 'object') return cached;
+    const stored = await smartLoad(key);
+    if (stored && typeof stored === 'object') {
+      setCachedData(key, stored);
+      return stored as AIStatusInfo;
     }
     
     return {
@@ -50,7 +53,8 @@ export const updateAIStatus = (conversationId: string, status: AIStatus, activit
     statusInfo.currentActivity = activity;
   }
   
-  localStorage.setItem(key, JSON.stringify(statusInfo));
+  setCachedData(key, statusInfo);
+  void save(key, statusInfo);
 };
 
 /**

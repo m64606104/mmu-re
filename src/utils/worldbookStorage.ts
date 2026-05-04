@@ -1,5 +1,6 @@
 // 世界书存储服务
 import { WorldbookItem, WorldbookCategory } from '../types/worldbook';
+import { getCachedData, load, save, setCachedData, smartLoad, smartSave } from './storage';
 
 const WORLDBOOK_KEY = 'mobile_ai_chat_worldbooks';
 const WORLDBOOK_CATEGORIES_KEY = 'mobile_ai_chat_worldbook_categories';
@@ -37,10 +38,9 @@ const initDB = (): Promise<IDBDatabase> => {
 // 获取所有世界书（元数据从localStorage，大内容从IndexedDB按需加载）
 export const getAllWorldbooks = async (): Promise<WorldbookItem[]> => {
   try {
-    const stored = localStorage.getItem(WORLDBOOK_KEY);
-    if (!stored) return [];
-    
-    const items: WorldbookItem[] = JSON.parse(stored);
+    const stored = await smartLoad(WORLDBOOK_KEY);
+    const items: WorldbookItem[] = Array.isArray(stored) ? (stored as WorldbookItem[]) : [];
+    if (items.length === 0) return [];
     
     // 对于HTML类型且内容为空的，从IndexedDB加载
     const database = await initDB();
@@ -101,7 +101,7 @@ export const saveWorldbook = async (item: WorldbookItem): Promise<void> => {
       }
     }
     
-    localStorage.setItem(WORLDBOOK_KEY, JSON.stringify(items));
+    await smartSave(WORLDBOOK_KEY, items);
   } catch (error) {
     console.error('Failed to save worldbook:', error);
     throw error;
@@ -125,9 +125,12 @@ export const deleteWorldbook = async (id: string): Promise<void> => {
   try {
     const items = await getAllWorldbooks();
     const filtered = items.filter(i => i.id !== id);
-    localStorage.setItem(WORLDBOOK_KEY, JSON.stringify(filtered.map(item => 
-      item.type === 'html' || item.content.length > 10240 ? { ...item, content: '' } : item
-    )));
+    await smartSave(
+      WORLDBOOK_KEY,
+      filtered.map(item =>
+        item.type === 'html' || item.content.length > 10240 ? { ...item, content: '' } : item
+      )
+    );
     
     // 同时从IndexedDB删除
     const database = await initDB();
@@ -164,8 +167,8 @@ export const getWorldbookById = async (id: string): Promise<WorldbookItem | null
 // 分类管理
 export const getAllCategories = (): WorldbookCategory[] => {
   try {
-    const stored = localStorage.getItem(WORLDBOOK_CATEGORIES_KEY);
-    return stored ? JSON.parse(stored) : [];
+    const cached = getCachedData<WorldbookCategory[]>(WORLDBOOK_CATEGORIES_KEY);
+    return Array.isArray(cached) ? cached : [];
   } catch (error) {
     console.error('Failed to get categories:', error);
     return [];
@@ -176,14 +179,13 @@ export const saveCategory = (category: WorldbookCategory): void => {
   try {
     const categories = getAllCategories();
     const index = categories.findIndex(c => c.id === category.id);
-    
     if (index >= 0) {
       categories[index] = category;
     } else {
       categories.push(category);
     }
-    
-    localStorage.setItem(WORLDBOOK_CATEGORIES_KEY, JSON.stringify(categories));
+    setCachedData(WORLDBOOK_CATEGORIES_KEY, categories);
+    void save(WORLDBOOK_CATEGORIES_KEY, categories);
   } catch (error) {
     console.error('Failed to save category:', error);
     throw error;
@@ -194,9 +196,25 @@ export const deleteCategory = (id: string): void => {
   try {
     const categories = getAllCategories();
     const filtered = categories.filter(c => c.id !== id);
-    localStorage.setItem(WORLDBOOK_CATEGORIES_KEY, JSON.stringify(filtered));
+    setCachedData(WORLDBOOK_CATEGORIES_KEY, filtered);
+    void save(WORLDBOOK_CATEGORIES_KEY, filtered);
   } catch (error) {
     console.error('Failed to delete category:', error);
     throw error;
   }
 };
+
+export async function initializeWorldbookStorage(): Promise<void> {
+  try {
+    const [items, categories] = await Promise.all([
+      load(WORLDBOOK_KEY),
+      load(WORLDBOOK_CATEGORIES_KEY),
+    ]);
+    setCachedData(WORLDBOOK_KEY, Array.isArray(items) ? items : []);
+    setCachedData(WORLDBOOK_CATEGORIES_KEY, Array.isArray(categories) ? categories : []);
+  } catch (error) {
+    console.error('初始化世界书存储失败:', error);
+    setCachedData(WORLDBOOK_KEY, []);
+    setCachedData(WORLDBOOK_CATEGORIES_KEY, []);
+  }
+}

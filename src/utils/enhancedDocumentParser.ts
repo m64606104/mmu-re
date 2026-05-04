@@ -1,4 +1,5 @@
 import { DocumentMessage } from '../types';
+import * as mammothBrowser from 'mammoth/mammoth.browser';
 
 /**
  * 增强的文档解析器
@@ -320,10 +321,57 @@ export function generateDocumentPreview(doc: DocumentMessage, maxLength: number 
  */
 export async function parseDocument(file: File): Promise<string> {
   const fileType = file.name.split('.').pop()?.toLowerCase() || '';
+  const baseName = file.name.replace(/\.[^/.]+$/, '') || file.name;
+
+  const wrapMarkdown = (body: string, metaLines: string[]) => {
+    const meta = metaLines.length ? `## 元信息\n${metaLines.map((l) => `- ${l}`).join('\n')}\n\n` : '';
+    return `# ${baseName}\n\n${meta}${body}`.trim();
+  };
+
+  const normalizeWhitespace = (s: string) =>
+    String(s || '')
+      .replace(/\u0000/g, '')
+      .replace(/[ \t]+\n/g, '\n')
+      .replace(/\n{3,}/g, '\n\n')
+      .trim();
+
+  const shouldAutoOcrPdf = (text: string) => normalizeWhitespace(text).length < 40;
+
+  const ocrPdfPages = async (pdf: any, maxPages: number) => {
+    const { recognize } = await import('tesseract.js');
+    const pages = Math.min(maxPages, pdf.numPages || 0);
+    const parts: string[] = [];
+
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d');
+    if (!ctx) throw new Error('OCR失败：无法创建Canvas渲染上下文');
+
+    for (let i = 1; i <= pages; i++) {
+      const page = await pdf.getPage(i);
+      // 适度放大以提升OCR质量，同时限制像素避免卡顿
+      const viewport1 = page.getViewport({ scale: 1 });
+      const targetWidth = Math.min(1400, Math.max(900, viewport1.width));
+      const scale = targetWidth / viewport1.width;
+      const viewport = page.getViewport({ scale });
+
+      canvas.width = Math.floor(viewport.width);
+      canvas.height = Math.floor(viewport.height);
+
+      await page.render({ canvasContext: ctx, viewport }).promise;
+      const dataUrl = canvas.toDataURL('image/png');
+
+      const result = await recognize(dataUrl, 'chi_sim+eng');
+      const text = normalizeWhitespace(result?.data?.text || '');
+      if (text) parts.push(`### 第 ${i} 页（OCR）\n${text}`);
+    }
+
+    return parts.join('\n\n').trim();
+  };
   
   // TXT文件直接读取
   if (fileType === 'txt') {
-    return await file.text();
+    const text = await file.text();
+    return wrapMarkdown(normalizeWhitespace(text), ['类型: txt', `文件名: ${file.name}`]);
   }
   
   // PDF文件
@@ -335,32 +383,128 @@ export async function parseDocument(file: File): Promise<string> {
       
       const arrayBuffer = await file.arrayBuffer();
       const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
-      let fullText = '';
+      const pageParts: string[] = [];
       
       for (let i = 1; i <= pdf.numPages; i++) {
         const page = await pdf.getPage(i);
         const textContent = await page.getTextContent();
         const pageText = textContent.items.map((item: any) => item.str).join(' ');
-        fullText += pageText + '\n';
+        const cleaned = normalizeWhitespace(pageText);
+        if (cleaned) pageParts.push(`### 第 ${i} 页\n${cleaned}`);
       }
       
-      return fullText.trim();
+      const extracted = pageParts.join('\n\n').trim();
+
+      // 扫描件/图片PDF：自动OCR（仅在文本极少时触发，且只跑前几页）
+      if (shouldAutoOcrPdf(extracted)) {
+        try {
+          const ocrText = await ocrPdfPages(pdf, 3);
+          if (ocrText) {
+            return wrapMarkdown(
+              `## 正文\n\n${ocrText}`,
+              ['类型: pdf', `页数: ${pdf.numPages}`, '模式: OCR(自动)']
+            );
+          }
+        } catch (e) {
+          // OCR失败则回退到原提取结果
+        }
+      }
+
+      const body = extracted ? `## 正文\n\n${extracted}` : `## 正文\n\n（未能从PDF中提取到可读文本，可能是扫描件/图片型PDF）`;
+      return wrapMarkdown(body, ['类型: pdf', `页数: ${pdf.numPages}`, extracted ? '模式: 文本提取' : '模式: 文本提取(为空)']);
     } catch (error) {
       throw new Error('PDF解析失败：' + (error instanceof Error ? error.message : '未知错误'));
     }
   }
   
   // Word文件（.docx）
-  if (fileType === 'docx' || fileType === 'doc') {
+  if (fileType === 'docx') {
     try {
-      const mammoth = await import('mammoth');
       const arrayBuffer = await file.arrayBuffer();
-      const result = await mammoth.extractRawText({ arrayBuffer });
-      return result.value.trim();
+      const result = await mammothBrowser.extractRawText({ arrayBuffer });
+      const text = normalizeWhitespace(String(result?.value || ''));
+      const body = text ? `## 正文\n\n${text}` : `## 正文\n\n（未能从DOCX中提取到可读文本，可能主要为图片/扫描内容）`;
+      return wrapMarkdown(body, ['类型: docx', '模式: 文本提取']);
     } catch (error) {
       throw new Error('Word文档解析失败：' + (error instanceof Error ? error.message : '未知错误'));
     }
   }
+
+  if (fileType === 'doc') {
+    throw new Error('暂不支持旧版 .doc 二进制格式，请先转换为 .docx 后上传');
+  }
+
+  // Excel 文件（.xlsx / .xls）
+  if (fileType === 'xlsx' || fileType === 'xls') {
+    try {
+      const xlsx = await import('xlsx');
+      const arrayBuffer = await file.arrayBuffer();
+      const workbook = xlsx.read(arrayBuffer, { type: 'array' });
+
+      const parts: string[] = [];
+      workbook.SheetNames.forEach((sheetName, idx) => {
+        const worksheet = workbook.Sheets[sheetName];
+        if (!worksheet) return;
+        const csv = xlsx.utils.sheet_to_csv(worksheet, { blankrows: false }).trim();
+        if (csv.length > 0) {
+          parts.push(`## 工作表 ${idx + 1}: ${sheetName}\n\n\`\`\`csv\n${csv}\n\`\`\``);
+        }
+      });
+
+      const text = parts.join('\n\n').trim();
+      if (!text) {
+        throw new Error('Excel中未提取到可读文本（可能仅包含图片或图表）');
+      }
+      return wrapMarkdown(text, ['类型: excel', `工作表: ${workbook.SheetNames.length}`]);
+    } catch (error) {
+      throw new Error('Excel解析失败：' + (error instanceof Error ? error.message : '未知错误'));
+    }
+  }
+
+  // PowerPoint 文件（.pptx）
+  if (fileType === 'pptx') {
+    try {
+      const JSZip = (await import('jszip')).default;
+      const parser = new DOMParser();
+      const arrayBuffer = await file.arrayBuffer();
+      const zip = await JSZip.loadAsync(arrayBuffer);
+
+      const slideFileNames = Object.keys(zip.files)
+        .filter(name => /^ppt\/slides\/slide\d+\.xml$/i.test(name))
+        .sort((a, b) => {
+          const ai = Number(a.match(/slide(\d+)\.xml/i)?.[1] || 0);
+          const bi = Number(b.match(/slide(\d+)\.xml/i)?.[1] || 0);
+          return ai - bi;
+        });
+
+      const slides: string[] = [];
+      for (const fileName of slideFileNames) {
+        const xmlText = await zip.files[fileName].async('text');
+        const xmlDoc = parser.parseFromString(xmlText, 'application/xml');
+        const textNodes = Array.from(xmlDoc.getElementsByTagName('a:t'));
+        const slideText = textNodes
+          .map(node => node.textContent?.trim() || '')
+          .filter(Boolean)
+          .join(' ');
+        if (slideText) {
+          const slideNo = Number(fileName.match(/slide(\d+)\.xml/i)?.[1] || slides.length + 1);
+          slides.push(`## 幻灯片 ${slideNo}\n\n${normalizeWhitespace(slideText)}`);
+        }
+      }
+
+      const fullText = slides.join('\n\n').trim();
+      if (!fullText) {
+        throw new Error('PPTX中未提取到可读文本（可能主要是图片）');
+      }
+      return wrapMarkdown(fullText, ['类型: pptx', `幻灯片: ${slideFileNames.length}`]);
+    } catch (error) {
+      throw new Error('PPTX解析失败：' + (error instanceof Error ? error.message : '未知错误'));
+    }
+  }
+
+  if (fileType === 'ppt') {
+    throw new Error('暂不支持旧版 .ppt 二进制格式，请先转换为 .pptx 后上传');
+  }
   
-  throw new Error(`不支持的文件类型：${fileType}。请上传PDF、Word或TXT文件。`);
+  throw new Error(`不支持的文件类型：${fileType}。请上传 TXT / PDF / Word / Excel / PPTX 文件。`);
 }

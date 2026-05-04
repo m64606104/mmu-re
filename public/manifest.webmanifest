@@ -1,0 +1,24 @@
+{
+  "name": "moyu.on",
+  "short_name": "moyu.on",
+  "description": "moyu.on chat app",
+  "start_url": "/mmu-re/",
+  "scope": "/mmu-re/",
+  "display": "standalone",
+  "background_color": "#ecf0f0",
+  "theme_color": "#ecf0f0",
+  "icons": [
+    {
+      "src": "/mmu-re/pwa-192x192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/mmu-re/pwa-512x512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}

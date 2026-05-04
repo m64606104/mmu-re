@@ -47,8 +47,11 @@ export default function ProactiveMessagingService({
       }
     });
 
-    // 定期检查（每5分钟检查一次）
+    // 定期检查（后台节流：默认每30-40分钟一次，避免频繁打API）
     const startChecking = () => {
+      const baseMs = 30 * 60 * 1000;
+      const jitterMs = Math.floor(Math.random() * 10 * 60 * 1000); // 0~10min
+      const intervalMs = baseMs + jitterMs;
       checkIntervalRef.current = setInterval(async () => {
         // 防止并发检查
         if (isCheckingRef.current) {
@@ -84,7 +87,7 @@ export default function ProactiveMessagingService({
         } finally {
           isCheckingRef.current = false;
         }
-      }, 5 * 60 * 1000); // 每5分钟检查一次
+      }, intervalMs);
     };
 
     startChecking();

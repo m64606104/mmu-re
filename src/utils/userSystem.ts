@@ -3,6 +3,8 @@
  * 支持用户注册、登录、用户码生成等功能
  */
 
+import { getCachedData, load, save, setCachedData } from './storage';
+
 export interface User {
   id: string;
   userCode: string;     // 6位用户码
@@ -32,6 +34,9 @@ export interface UserMessage {
   metadata?: any; // 额外数据（红包金额等）
 }
 
+const CURRENT_USER_KEY = 'current_user';
+const FRIENDS_LIST_KEY = 'friends_list';
+
 /**
  * 生成6位用户码
  */
@@ -48,8 +53,10 @@ function generateUserCode(): string {
  * 获取当前用户信息
  */
 export function getCurrentUser(): User | null {
-  const userData = localStorage.getItem('current_user');
-  return userData ? JSON.parse(userData) : null;
+  const cached = getCachedData<User | null>(CURRENT_USER_KEY);
+  if (cached === null) return null;
+  if (cached && typeof cached === 'object') return cached;
+  return null;
 }
 
 /**
@@ -65,8 +72,8 @@ export function createUser(nickname: string, avatar: string): User {
     createdAt: Date.now()
   };
   
-  // 保存到本地存储
-  localStorage.setItem('current_user', JSON.stringify(user));
+  setCachedData(CURRENT_USER_KEY, user);
+  void save(CURRENT_USER_KEY, user);
   
   console.log(`✅ 用户创建成功: ${nickname} (${user.userCode})`);
   return user;
@@ -79,7 +86,8 @@ export function updateLastOnline(): void {
   const user = getCurrentUser();
   if (user) {
     user.lastOnline = Date.now();
-    localStorage.setItem('current_user', JSON.stringify(user));
+    setCachedData(CURRENT_USER_KEY, user);
+    void save(CURRENT_USER_KEY, user);
   }
 }
 
@@ -87,8 +95,8 @@ export function updateLastOnline(): void {
  * 获取用户好友列表
  */
 export function getFriendsList(): Friend[] {
-  const friendsData = localStorage.getItem('friends_list');
-  return friendsData ? JSON.parse(friendsData) : [];
+  const cached = getCachedData<Friend[]>(FRIENDS_LIST_KEY);
+  return Array.isArray(cached) ? cached : [];
 }
 
 /**
@@ -117,7 +125,8 @@ export function addFriend(userCode: string, nickname: string, avatar: string): b
   };
   
   friends.push(newFriend);
-  localStorage.setItem('friends_list', JSON.stringify(friends));
+  setCachedData(FRIENDS_LIST_KEY, friends);
+  void save(FRIENDS_LIST_KEY, friends);
   
   console.log(`✅ 添加好友成功: ${nickname} (${userCode})`);
   return true;
@@ -131,7 +140,8 @@ export function removeFriend(userCode: string): boolean {
   const updatedFriends = friends.filter(f => f.userCode !== userCode);
   
   if (updatedFriends.length < friends.length) {
-    localStorage.setItem('friends_list', JSON.stringify(updatedFriends));
+    setCachedData(FRIENDS_LIST_KEY, updatedFriends);
+    void save(FRIENDS_LIST_KEY, updatedFriends);
     console.log(`✅ 删除好友成功: ${userCode}`);
     return true;
   }
@@ -152,4 +162,19 @@ export function findFriendByCode(userCode: string): Friend | null {
  */
 export function isFirstTimeUser(): boolean {
   return getCurrentUser() === null;
+}
+
+export async function initializeUserSystemStorage(): Promise<void> {
+  try {
+    const [user, friends] = await Promise.all([
+      load(CURRENT_USER_KEY),
+      load(FRIENDS_LIST_KEY),
+    ]);
+    setCachedData(CURRENT_USER_KEY, user && typeof user === 'object' ? user : null);
+    setCachedData(FRIENDS_LIST_KEY, Array.isArray(friends) ? friends : []);
+  } catch (error) {
+    console.error('初始化用户系统存储失败:', error);
+    setCachedData(CURRENT_USER_KEY, null);
+    setCachedData(FRIENDS_LIST_KEY, []);
+  }
 }

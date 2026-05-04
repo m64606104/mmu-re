@@ -250,7 +250,7 @@ export default function UserGuide({ onBack }: UserGuideProps) {
                   <p className="font-semibold text-slate-700 mt-2">支持三种方式：</p>
                   <ul className="list-disc list-inside ml-2 space-y-1">
                     <li><strong>手动输入：</strong>直接填写文本内容</li>
-                    <li><strong>上传文档：</strong>支持PDF、Word(.docx)、TXT</li>
+                    <li><strong>上传文档：</strong>支持PDF、Word、Excel、PPTX、TXT</li>
                     <li><strong>DOI获取：</strong>输入论文DOI自动获取摘要（适合学术AI）</li>
                   </ul>
                 </div>

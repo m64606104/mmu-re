@@ -4,7 +4,8 @@ import { Screen, ThemeSettings } from '../types';
 import { getDefaultScreenForApp } from '../navigation/appEntry';
 
 interface HomeScreenProps {
-  onNavigate: (screen: Screen) => void;
+  onNavigate: (screen: Screen, conversationId?: string) => void;
+  onOpenOopChat?: () => void;
   theme?: ThemeSettings;
 }
 
@@ -20,7 +21,7 @@ interface CountdownEvent {
   name: string;
 }
 
-export default function HomeScreen({ onNavigate, theme }: HomeScreenProps) {
+export default function HomeScreen({ onNavigate, onOpenOopChat, theme }: HomeScreenProps) {
   const [currentTime, setCurrentTime] = useState(new Date());
   const [isPlaying, setIsPlaying] = useState(false);
   const [landscapeImage, setLandscapeImage] = useState<string>('');
@@ -66,7 +67,14 @@ export default function HomeScreen({ onNavigate, theme }: HomeScreenProps) {
   });
   const [quickLayout, setQuickLayout] = useState<string[]>(() => {
     const saved = localStorage.getItem('quickLayout');
-    return saved ? JSON.parse(saved) : ['announcement', 'social', 'heart', 'settings'];
+    if (!saved) return ['announcement', 'social', 'oop', 'settings'];
+    try {
+      const parsed = JSON.parse(saved) as string[];
+      // 兼容旧布局：将“收藏 heart”替换为“oop 快捷入口”
+      return parsed.map((id) => (id === 'heart' ? 'oop' : id));
+    } catch {
+      return ['announcement', 'social', 'oop', 'settings'];
+    }
   });
   const [dockLayout, setDockLayout] = useState<string[]>(() => {
     const saved = localStorage.getItem('dockLayout');
@@ -483,6 +491,18 @@ export default function HomeScreen({ onNavigate, theme }: HomeScreenProps) {
     mail: { icon: Mailbox, name: '信箱', onClick: () => onNavigate(getDefaultScreenForApp('mail')) },
     announcement: { icon: Bell, name: '公告', onClick: () => onNavigate('announcement') },
     heart: { icon: Heart, name: '收藏' },
+    oop: {
+      icon: ({ className }: { className?: string }) => (
+        <img
+          src="avatars/oo1.png"
+          alt="oop"
+          className={`rounded-full object-cover border border-white/60 shadow-sm ${className || ''}`}
+          draggable={false}
+        />
+      ),
+      name: 'oop',
+      onClick: () => onOpenOopChat?.(),
+    },
     database: { icon: Database, name: '资料库', onClick: () => onNavigate(getDefaultScreenForApp('tools')) },
     kindergarten: { icon: GraduationCap, name: '幼儿园', onClick: () => onNavigate(getDefaultScreenForApp('kindergarten')) },
     'easy-chat': { icon: MessageSquare, name: 'Easy Chat', onClick: () => onNavigate('easy-chat') },

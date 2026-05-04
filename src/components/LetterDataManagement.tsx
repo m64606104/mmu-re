@@ -15,6 +15,7 @@ import {
 } from '../utils/letterDataMigration';
 import { exportLetterToPDF, exportMultipleLettersToPDF } from '../utils/letterPDFExporter';
 import { Letter } from '../types/letter';
+import { setCachedData, smartSave } from '../utils/storage';
 
 interface LetterDataManagementProps {
   onClose: () => void;
@@ -54,12 +55,10 @@ const LetterDataManagement: React.FC<LetterDataManagementProps> = ({
   };
 
   // 检查当前数据
-  const handleCheckData = () => {
-    const lettersJson = localStorage.getItem('slow_letters');
-    const customFriendsJson = localStorage.getItem('custom_pen_pals');
-    
-    const letters = lettersJson ? JSON.parse(lettersJson) : [];
-    const customFriends = customFriendsJson ? JSON.parse(customFriendsJson) : [];
+  const handleCheckData = async () => {
+    const { getLettersFromStorage, loadCustomFriends } = await import('../utils/letterService');
+    const letters = getLettersFromStorage();
+    const customFriends = await loadCustomFriends();
     
     console.log('🔍 [检查] localStorage 中的数据:');
     console.log('  slow_letters:', letters.length, '封信件');
@@ -76,8 +75,8 @@ const LetterDataManagement: React.FC<LetterDataManagementProps> = ({
   };
   
   // 导出全部数据
-  const handleExportAll = () => {
-    const result = exportAndDownloadAll();
+  const handleExportAll = async () => {
+    const result = await exportAndDownloadAll();
     setMessage({
       type: 'success',
       text: result.message
@@ -94,19 +93,20 @@ const LetterDataManagement: React.FC<LetterDataManagementProps> = ({
       return;
     }
 
-    const result = exportAndDownloadMultiple(Array.from(selectedLetterIds), letters);
-    if (result.success) {
-      setMessage({
-        type: 'success',
-        text: result.message
-      });
-      setSelectedLetterIds(new Set());
-    } else {
-      setMessage({
-        type: 'error',
-        text: result.message
-      });
-    }
+    void exportAndDownloadMultiple(Array.from(selectedLetterIds), letters).then((result) => {
+      if (result.success) {
+        setMessage({
+          type: 'success',
+          text: result.message
+        });
+        setSelectedLetterIds(new Set());
+      } else {
+        setMessage({
+          type: 'error',
+          text: result.message
+        });
+      }
+    });
   };
 
   // 导出为PDF
@@ -145,13 +145,13 @@ const LetterDataManagement: React.FC<LetterDataManagementProps> = ({
   };
 
   // 归档选中的信件
-  const handleArchiveSelected = () => {
+  const handleArchiveSelected = async () => {
     if (selectedLetterIds.size === 0) return;
     const updatedLetters = letters.map(l => 
       selectedLetterIds.has(l.id) ? { ...l, isArchived: true } : l
     );
-    // Save to storage or call a service function
-    localStorage.setItem('slow_letters', JSON.stringify(updatedLetters));
+    setCachedData('slow_letters', updatedLetters);
+    await smartSave('slow_letters', updatedLetters);
     setMessage({ type: 'success', text: `已归档 ${selectedLetterIds.size} 封信件` });
     setSelectedLetterIds(new Set());
     onRefresh(); // Assuming onRefresh updates the parent component
@@ -224,7 +224,7 @@ const LetterDataManagement: React.FC<LetterDataManagementProps> = ({
         migrationData = data;
       }
 
-      const result = importAllLetterData(migrationData, importMode);
+      const result = await importAllLetterData(migrationData, importMode);
       
       if (result.success) {
         setMessage({
@@ -252,8 +252,8 @@ const LetterDataManagement: React.FC<LetterDataManagementProps> = ({
   };
 
   // 清空数据
-  const handleClearData = () => {
-    const result = clearAllLetterData();
+  const handleClearData = async () => {
+    const result = await clearAllLetterData();
     if (result.success) {
       setMessage({
         type: 'success',

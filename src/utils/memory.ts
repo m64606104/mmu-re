@@ -24,54 +24,6 @@ export interface MemoryBank {
 
 const MEMORY_STORAGE_KEY = 'chat_memory_banks';
 
-// 迁移相关常量
-const LEGACY_MEMORY_MIGRATION_FLAG = 'memory_banks_indexeddb_migrated_v1';
-let memoryMigrationInProgress = false;
-
-/**
- * 迁移旧版localStorage记忆库到IndexedDB
- */
-const migrateLegacyMemoriesIfNeeded = async (): Promise<void> => {
-  // 非浏览器环境跳过
-  if (typeof window === 'undefined' || !('localStorage' in window)) return;
-  
-  // 避免并发
-  if (memoryMigrationInProgress) return;
-  
-  try {
-    const migratedFlag = localStorage.getItem(LEGACY_MEMORY_MIGRATION_FLAG);
-    if (migratedFlag === '1') return;
-    
-    memoryMigrationInProgress = true;
-    
-    // 读取旧数据
-    const rawData = localStorage.getItem(MEMORY_STORAGE_KEY);
-    if (!rawData) {
-      // 没有旧数据，直接标记完成
-      localStorage.setItem(LEGACY_MEMORY_MIGRATION_FLAG, '1');
-      return;
-    }
-    
-    console.log('🧠 开始迁移记忆库数据到 IndexedDB...');
-    const banks = JSON.parse(rawData);
-    
-    // 写入新存储 (IndexedDB)
-    await smartSave(MEMORY_STORAGE_KEY, banks);
-    
-    // 验证写入成功后再删除
-    const verify = await smartLoad(MEMORY_STORAGE_KEY);
-    if (verify && Array.isArray(verify) && verify.length === banks.length) {
-      localStorage.removeItem(MEMORY_STORAGE_KEY);
-      localStorage.setItem(LEGACY_MEMORY_MIGRATION_FLAG, '1');
-      console.log('✅ 记忆库迁移完成');
-    }
-  } catch (error) {
-    console.warn('⚠️ 记忆库迁移失败:', error);
-  } finally {
-    memoryMigrationInProgress = false;
-  }
-};
-
 /**
  * 获取联系人的记忆库
  */
@@ -105,9 +57,6 @@ export const getMemoryBank = async (contactId: string): Promise<MemoryBank> => {
  */
 const getAllMemoryBanks = async (): Promise<MemoryBank[]> => {
   try {
-    // 确保迁移完成
-    await migrateLegacyMemoriesIfNeeded();
-    
     const stored = await smartLoad(MEMORY_STORAGE_KEY);
     return stored || [];
   } catch (error) {

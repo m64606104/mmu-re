@@ -1,14 +1,42 @@
-import { useState, useRef } from 'react';
-import { ChevronLeft, ChevronRight, Upload } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
+import { ChevronLeft, ChevronRight, Upload, Sparkles, Wallet, Users, Heart } from 'lucide-react';
 import { UserProfile, Screen } from '../types';
+import { getWalletData } from '../utils/wallet';
+import { useMobileBottomDock } from '../hooks/useMobileBottomDock';
 
 interface ProfileScreenProps {
-  userProfile: UserProfile;
+  /** 运行时 localStorage 等可能短暂为空或残缺，组件内需兜底 */
+  userProfile?: UserProfile | null;
   onUpdateProfile: (profile: UserProfile) => void;
   onNavigate: (screen: Screen) => void;
   onBack: () => void;
   momentsCount: number;
   contactsCount: number;
+}
+
+/** localStorage 等来源可能出现残缺对象，绝不调用可能缺失的字符串方法 */
+function asTrimmedString(v: unknown): string {
+  if (v == null) return '';
+  if (typeof v === 'string') return v.trim();
+  return String(v).trim();
+}
+
+function resolveProfileDisplayName(usernameState: unknown, profile: UserProfile | null | undefined): string {
+  const fromState = asTrimmedString(usernameState);
+  if (fromState.length > 0) return fromState;
+  const fromProfile = asTrimmedString(profile?.username);
+  if (fromProfile.length > 0) return fromProfile;
+  return '未命名';
+}
+
+/** 取首个 Unicode 字素，避免对 undefined 使用 .charAt */
+function firstGrapheme(label: string): string {
+  const s = asTrimmedString(label);
+  if (s.length === 0) return '?';
+  for (const ch of s) {
+    return ch;
+  }
+  return '?';
 }
 
 export default function ProfileScreen({
@@ -19,18 +47,42 @@ export default function ProfileScreen({
   momentsCount,
   contactsCount,
 }: ProfileScreenProps) {
+  const profile = userProfile ?? null;
+
   const [isEditing, setIsEditing] = useState(false);
-  const [username, setUsername] = useState(userProfile.username);
-  const [bio, setBio] = useState(userProfile.bio);
-  const [avatar, setAvatar] = useState(userProfile.avatar || '');
-  const [coverImage, setCoverImage] = useState(userProfile.coverImage || '');
+  const [username, setUsername] = useState(() => asTrimmedString(profile?.username));
+  const [bio, setBio] = useState(() => (profile?.bio != null ? String(profile.bio) : ''));
+  const [avatar, setAvatar] = useState(profile?.avatar || '');
+  const [coverImage, setCoverImage] = useState(profile?.coverImage || '');
+  const [walletBalance, setWalletBalance] = useState<number>(() => getWalletData().balance);
   // 个人资料状态
-  const [name, setName] = useState(userProfile.personalInfo?.name || '');
-  const [gender, setGender] = useState(userProfile.personalInfo?.gender || '');
-  const [age, setAge] = useState(userProfile.personalInfo?.age || '');
-  const [background, setBackground] = useState(userProfile.personalInfo?.background || '');
+  const [name, setName] = useState(profile?.personalInfo?.name || '');
+  const [gender, setGender] = useState(profile?.personalInfo?.gender || '');
+  const [age, setAge] = useState(profile?.personalInfo?.age || '');
+  const [background, setBackground] = useState(profile?.personalInfo?.background || '');
   const avatarInputRef = useRef<HTMLInputElement>(null);
   const coverInputRef = useRef<HTMLInputElement>(null);
+  const mobileBottomDock = useMobileBottomDock();
+
+  const displayUsername = resolveProfileDisplayName(username, profile);
+  const usernameInitial = firstGrapheme(displayUsername);
+
+  useEffect(() => {
+    setWalletBalance(getWalletData().balance);
+  }, []);
+
+  useEffect(() => {
+    const p = userProfile ?? null;
+    if (!p || isEditing) return;
+    setUsername(asTrimmedString(p.username));
+    setBio(p.bio != null ? String(p.bio) : '');
+    setAvatar(p.avatar || '');
+    setCoverImage(p.coverImage || '');
+    setName(p.personalInfo?.name || '');
+    setGender(p.personalInfo?.gender || '');
+    setAge(p.personalInfo?.age || '');
+    setBackground(p.personalInfo?.background || '');
+  }, [isEditing, userProfile]);
 
   const compressImage = (file: File, maxWidth: number, maxHeight: number): Promise<string> => {
     return new Promise((resolve, reject) => {
@@ -93,9 +145,10 @@ export default function ProfileScreen({
   };
 
   const handleSave = () => {
+    if (!profile) return;
     onUpdateProfile({
-      username,
-      bio,
+      username: asTrimmedString(username) || '未命名',
+      bio: bio ?? '',
       avatar,
       coverImage,
       personalInfo: {
@@ -109,268 +162,307 @@ export default function ProfileScreen({
   };
 
   const handleCancel = () => {
-    setUsername(userProfile.username);
-    setBio(userProfile.bio);
-    setAvatar(userProfile.avatar || '');
-    setCoverImage(userProfile.coverImage || '');
-    setName(userProfile.personalInfo?.name || '');
-    setGender(userProfile.personalInfo?.gender || '');
-    setAge(userProfile.personalInfo?.age || '');
-    setBackground(userProfile.personalInfo?.background || '');
+    if (!profile) {
+      setIsEditing(false);
+      return;
+    }
+    setUsername(asTrimmedString(profile.username));
+    setBio(profile.bio != null ? String(profile.bio) : '');
+    setAvatar(profile.avatar || '');
+    setCoverImage(profile.coverImage || '');
+    setName(profile.personalInfo?.name || '');
+    setGender(profile.personalInfo?.gender || '');
+    setAge(profile.personalInfo?.age || '');
+    setBackground(profile.personalInfo?.background || '');
     setIsEditing(false);
   };
 
+  if (!profile) {
+    return (
+      <div className="h-[100dvh] md:h-full min-h-0 bg-gray-50 flex flex-col items-center justify-center px-6 text-center">
+        <p className="text-slate-700 font-medium">用户资料未加载</p>
+        <button
+          type="button"
+          onClick={onBack}
+          className="mt-4 px-5 py-2 rounded-xl bg-slate-900 text-white text-sm font-medium"
+        >
+          返回
+        </button>
+      </div>
+    );
+  }
+
   return (
-    <div className="h-full bg-[#EDEDED] flex flex-col">
+    <div className="h-[100dvh] md:h-full min-h-0 bg-gray-50 flex flex-col">
       {/* Header */}
       <div className="bg-white px-4 py-3 flex items-center justify-between border-b border-gray-200">
-        <button onClick={onBack} className="p-2 -ml-2">
+        <button
+          onClick={() => {
+            if (isEditing) {
+              handleCancel();
+              return;
+            }
+            onBack();
+          }}
+          className="p-2 -ml-2"
+        >
           <ChevronLeft className="w-6 h-6 text-gray-700" />
         </button>
         <h1 className="text-lg font-semibold text-gray-900">我的资料</h1>
         <div className="w-10"></div>
       </div>
 
-      <div className="flex-1 overflow-y-auto">
-        {/* Cover Image */}
-        <div className="relative h-48 bg-gradient-to-br from-purple-400 via-pink-400 to-blue-400">
-          {coverImage && (
-            <img src={coverImage} alt="Cover" className="w-full h-full object-cover" />
-          )}
-          {isEditing && (
-            <button
-              onClick={() => coverInputRef.current?.click()}
-              className="absolute top-4 right-4 bg-black/50 text-white px-3 py-1.5 rounded-lg text-sm flex items-center gap-1"
-            >
-              <Upload className="w-4 h-4" />
-              更换封面
-            </button>
-          )}
-          <input
-            ref={coverInputRef}
-            type="file"
-            accept="image/*"
-            onChange={handleCoverUpload}
-            className="hidden"
-          />
-        </div>
-
-        {/* Avatar and Info */}
-        <div className="bg-white px-6 pb-6">
-          <div className="relative -mt-16 mb-4">
-            <div className="w-28 h-28 rounded-full bg-white p-1 shadow-lg">
-              <div className="w-full h-full rounded-full bg-gradient-to-br from-blue-400 to-purple-500 flex items-center justify-center overflow-hidden">
-                {avatar ? (
-                  <img src={avatar} alt="Avatar" className="w-full h-full object-cover" />
-                ) : (
-                  <span className="text-white font-semibold text-3xl">
-                    {username.charAt(0)}
-                  </span>
-                )}
+      <div
+        className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden touch-pan-y"
+        style={{ paddingBottom: `calc(${92 + mobileBottomDock}px + env(safe-area-inset-bottom))` }}
+      >
+        {isEditing ? (
+          <div className="mx-4 mt-4 mb-6 space-y-4">
+            <section className="rounded-[30px] border border-slate-200 bg-gradient-to-b from-[#dfe4ff] to-[#eef1ff] p-4 shadow-sm">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="text-[22px] leading-6 font-semibold text-slate-900">编辑资料</div>
+                  <p className="mt-1 text-xs text-slate-600">调整昵称、签名和 AI 参考信息</p>
+                </div>
+                <div className="w-14 h-14 rounded-full overflow-hidden border-4 border-white/70 bg-white flex items-center justify-center flex-shrink-0">
+                  {avatar ? (
+                    <img src={avatar} alt="Avatar" className="w-full h-full object-cover" />
+                  ) : (
+                    <span className="text-slate-900 font-semibold text-2xl">{usernameInitial}</span>
+                  )}
+                </div>
               </div>
-            </div>
-            {isEditing && (
-              <button
-                onClick={() => avatarInputRef.current?.click()}
-                className="absolute bottom-0 right-0 bg-blue-500 text-white p-2 rounded-full shadow-lg"
-              >
-                <Upload className="w-4 h-4" />
-              </button>
-            )}
-            <input
-              ref={avatarInputRef}
-              type="file"
-              accept="image/*"
-              onChange={handleAvatarUpload}
-              className="hidden"
-            />
-          </div>
+              <div className="mt-3 flex items-center justify-end">
+                <button
+                  type="button"
+                  onClick={() => avatarInputRef.current?.click()}
+                  className="px-3 py-1.5 rounded-full bg-white/85 border border-slate-200 text-xs text-slate-700"
+                >
+                  更换头像
+                </button>
+                <input
+                  ref={avatarInputRef}
+                  type="file"
+                  accept="image/*"
+                  onChange={handleAvatarUpload}
+                  className="hidden"
+                />
+              </div>
+            </section>
 
-          {isEditing ? (
-            <div className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  用户名
-                </label>
+            <section className="rounded-[26px] border border-slate-200 bg-white overflow-hidden shadow-sm">
+              <div className="px-4 py-3 border-b border-slate-100">
+                <div className="text-[11px] tracking-wide text-slate-500 uppercase">账号信息</div>
+              </div>
+              <div className="px-4 py-3 border-b border-slate-100">
+                <div className="text-xs text-slate-500 mb-2">用户名</div>
                 <input
                   type="text"
-                  value={username}
+                  value={username ?? ''}
                   onChange={(e) => setUsername(e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-slate-200"
                   placeholder="输入用户名"
                 />
               </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  个性签名
-                </label>
+              <div className="px-4 py-3">
+                <div className="text-xs text-slate-500 mb-2">个性签名</div>
                 <textarea
-                  value={bio}
+                  value={bio ?? ''}
                   onChange={(e) => setBio(e.target.value)}
-                  rows={2}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+                  rows={3}
+                  className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm bg-white resize-none focus:outline-none focus:ring-2 focus:ring-slate-200"
                   placeholder="分享生活，记录美好"
                 />
               </div>
+            </section>
 
-              {/* 个人资料模块（仅编辑模式显示，供AI参考） */}
-              <div className="mt-6 pt-6 border-t border-gray-200">
-                <div className="flex items-center justify-between mb-3">
-                  <h3 className="text-sm font-semibold text-gray-900">个人资料</h3>
-                  <span className="text-xs text-gray-500">仅供AI参考</span>
+            <section className="rounded-[26px] border border-slate-200 bg-white overflow-hidden shadow-sm">
+              <div className="px-4 py-3 border-b border-slate-100 flex items-center justify-between">
+                <div className="text-[11px] tracking-wide text-slate-500 uppercase">个人资料</div>
+                <div className="text-[11px] text-slate-500">仅供 AI 参考</div>
+              </div>
+              <div className="p-4 space-y-3">
+                <div>
+                  <div className="text-xs text-slate-500 mb-1.5">姓名/昵称</div>
+                  <input
+                    type="text"
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                    className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-slate-200"
+                    placeholder="选填，如：张三"
+                  />
                 </div>
-                <div className="space-y-3">
+                <div className="grid grid-cols-2 gap-2.5">
                   <div>
-                    <label className="block text-xs font-medium text-gray-600 mb-1">
-                      姓名/昵称
-                    </label>
+                    <div className="text-xs text-slate-500 mb-1.5">性别</div>
                     <input
                       type="text"
-                      value={name}
-                      onChange={(e) => setName(e.target.value)}
-                      className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      placeholder="选填，如：张三"
+                      value={gender}
+                      onChange={(e) => setGender(e.target.value)}
+                      className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-slate-200"
+                      placeholder="如：男/女"
                     />
-                  </div>
-                  <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <label className="block text-xs font-medium text-gray-600 mb-1">
-                        性别
-                      </label>
-                      <input
-                        type="text"
-                        value={gender}
-                        onChange={(e) => setGender(e.target.value)}
-                        className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                        placeholder="如：男/女"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-xs font-medium text-gray-600 mb-1">
-                        年龄
-                      </label>
-                      <input
-                        type="text"
-                        value={age}
-                        onChange={(e) => setAge(e.target.value)}
-                        className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                        placeholder="如：25"
-                      />
-                    </div>
                   </div>
                   <div>
-                    <label className="block text-xs font-medium text-gray-600 mb-1">
-                      身份背景
-                    </label>
-                    <textarea
-                      value={background}
-                      onChange={(e) => setBackground(e.target.value)}
-                      rows={2}
-                      className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
-                      placeholder="选填，如：大学生、程序员、设计师等"
+                    <div className="text-xs text-slate-500 mb-1.5">年龄</div>
+                    <input
+                      type="text"
+                      value={age}
+                      onChange={(e) => setAge(e.target.value)}
+                      className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-slate-200"
+                      placeholder="如：25"
                     />
                   </div>
-                  <p className="text-xs text-gray-500 leading-relaxed">
-                    💡 这些信息不会在个人主页显示，仅用于帮助AI更好地了解你，提供更个性化的对话体验。
-                  </p>
                 </div>
+                <div>
+                  <div className="text-xs text-slate-500 mb-1.5">身份背景</div>
+                  <textarea
+                    value={background}
+                    onChange={(e) => setBackground(e.target.value)}
+                    rows={3}
+                    className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm bg-white resize-none focus:outline-none focus:ring-2 focus:ring-slate-200"
+                    placeholder="选填，如：大学生、程序员、设计师等"
+                  />
+                </div>
+                <p className="pt-1 text-xs text-slate-500 leading-relaxed">
+                  这些信息不会在个人主页显示，仅用于帮助 AI 更好地了解你。
+                </p>
+              </div>
+            </section>
+
+            <div className="rounded-[22px] border border-slate-200 bg-white p-3 shadow-sm">
+              <div className="flex gap-3">
+                <button
+                  onClick={handleCancel}
+                  className="flex-1 py-3 rounded-xl border border-slate-200 bg-slate-50 text-slate-700 font-medium"
+                >
+                  取消
+                </button>
+                <button
+                  onClick={handleSave}
+                  className="flex-1 py-3 rounded-xl bg-slate-900 text-white font-medium"
+                >
+                  保存资料
+                </button>
               </div>
             </div>
-          ) : (
-            <div>
-              <h2 className="text-2xl font-bold text-gray-900 mb-2">{username}</h2>
-              <p className="text-gray-500 text-sm">{bio}</p>
+          </div>
+        ) : (
+          <div className="mx-4 mt-4 rounded-[30px] border border-slate-200 bg-gradient-to-b from-[#dfe4ff] to-[#eef1ff] p-4 shadow-sm">
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <div className="text-[26px] leading-7 font-semibold text-slate-900 truncate">
+                  Hi, {displayUsername}
+                </div>
+                {profile.avatarBadge ? (
+                  <div className="mt-1 text-[11px] text-slate-600">Badge {String(profile.avatarBadge)}</div>
+                ) : null}
+                {(bio ?? '').length > 0 ? (
+                  <div className="mt-2 text-sm text-slate-700 line-clamp-2">{bio}</div>
+                ) : null}
+              </div>
+              <div className="w-16 h-16 rounded-full overflow-hidden border-4 border-white/70 bg-white flex items-center justify-center flex-shrink-0">
+                {avatar ? (
+                  <img src={avatar} alt="Avatar" className="w-full h-full object-cover" />
+                ) : (
+                  <span className="text-slate-900 font-semibold text-3xl">{usernameInitial}</span>
+                )}
+              </div>
             </div>
-          )}
-        </div>
+          </div>
+        )}
 
-        {/* Edit Button */}
-        <div className="px-6 py-4">
-          {isEditing ? (
-            <div className="flex gap-3">
-              <button
-                onClick={handleCancel}
-                className="flex-1 py-3 rounded-lg border border-gray-300 text-gray-700 font-medium"
-              >
-                取消
-              </button>
-              <button
-                onClick={handleSave}
-                className="flex-1 py-3 rounded-lg bg-black text-white font-medium"
-              >
-                保存
-              </button>
-            </div>
-          ) : (
+        {/* Edit Button (display mode only) */}
+        {!isEditing ? (
+          <div className="mx-4 py-4">
             <button
               onClick={() => setIsEditing(true)}
-              className="w-full py-3 rounded-lg bg-black text-white font-medium"
+              className="w-full py-3 rounded-xl bg-white border border-slate-200 text-slate-900 font-medium shadow-sm"
             >
               编辑资料
             </button>
-          )}
-        </div>
-
-        {/* Stats */}
-        <div className="bg-white mx-4 rounded-xl p-6 mb-4">
-          <div className="flex justify-around">
-            <button 
-              onClick={() => onNavigate('contacts')}
-              className="text-center hover:bg-gray-50 rounded-lg p-2 transition-colors"
-            >
-              <div className="text-2xl font-bold text-gray-900">{contactsCount}</div>
-              <div className="text-sm text-gray-500 mt-1">好友</div>
-            </button>
-            <button 
-              onClick={() => onNavigate('moments')}
-              className="text-center hover:bg-gray-50 rounded-lg p-2 transition-colors"
-            >
-              <div className="text-2xl font-bold text-gray-900">{momentsCount}</div>
-              <div className="text-sm text-gray-500 mt-1">动态</div>
-            </button>
-            <div className="text-center p-2">
-              <div className="text-2xl font-bold text-gray-900">0</div>
-              <div className="text-sm text-gray-500 mt-1">获赞</div>
-            </div>
           </div>
-        </div>
+        ) : null}
 
-        {/* Menu Items */}
-        <div className="bg-white mx-4 rounded-xl overflow-hidden mb-4">
-          <button
-            onClick={() => onNavigate('moments')}
-            className="w-full px-6 py-4 flex items-center justify-between hover:bg-gray-50 active:bg-gray-100 transition-colors"
-          >
-            <span className="text-gray-900 font-medium">朋友圈</span>
-            <ChevronRight className="w-5 h-5 text-gray-400" />
-          </button>
-          <div className="h-px bg-gray-100 mx-6"></div>
-          <button className="w-full px-6 py-4 flex items-center justify-between hover:bg-gray-50 active:bg-gray-100 transition-colors">
-            <span className="text-gray-900 font-medium">收藏</span>
-            <ChevronRight className="w-5 h-5 text-gray-400" />
-          </button>
-          <div className="h-px bg-gray-100 mx-6"></div>
-          <button
-            onClick={() => onNavigate('sticker-management')}
-            className="w-full px-6 py-4 flex items-center justify-between hover:bg-gray-50 active:bg-gray-100 transition-colors"
-          >
-            <span className="text-gray-900 font-medium">表情包</span>
-            <ChevronRight className="w-5 h-5 text-gray-400" />
-          </button>
-          <div className="h-px bg-gray-100 mx-6"></div>
-          <button className="w-full px-6 py-4 flex items-center justify-between hover:bg-gray-50 active:bg-gray-100 transition-colors">
-            <span className="text-gray-900 font-medium">相册</span>
-            <ChevronRight className="w-5 h-5 text-gray-400" />
-          </button>
-          <div className="h-px bg-gray-100 mx-6"></div>
-          <button
-            onClick={() => onNavigate('wallet')}
-            className="w-full px-6 py-4 flex items-center justify-between hover:bg-gray-50 active:bg-gray-100 transition-colors"
-          >
-            <span className="text-gray-900 font-medium">钱包</span>
-            <ChevronRight className="w-5 h-5 text-gray-400" />
-          </button>
-        </div>
+        {!isEditing ? (
+          <>
+            {/* Stats */}
+            <div className="mx-4 rounded-[30px] border border-slate-200 bg-white overflow-hidden mb-4">
+              <div className="grid grid-cols-4">
+                <button
+                  onClick={() => onNavigate('contacts')}
+                  className="text-center py-4 border-r border-slate-100 last:border-r-0"
+                >
+                  <div className="text-[22px] font-semibold text-slate-900">{contactsCount}</div>
+                  <div className="text-[11px] text-slate-500 mt-1">好友</div>
+                </button>
+                <button
+                  onClick={() => onNavigate('wallet')}
+                  className="text-center py-4 border-r border-slate-100 last:border-r-0"
+                >
+                  <div className="text-[22px] font-semibold text-slate-900">¥{Math.round(walletBalance)}</div>
+                  <div className="text-[11px] text-slate-500 mt-1">余额</div>
+                </button>
+                <div className="text-center py-4 border-r border-slate-100 last:border-r-0">
+                  <div className="text-[22px] font-semibold text-slate-900">0</div>
+                  <div className="text-[11px] text-slate-500 mt-1">获赞</div>
+                </div>
+                <div className="text-center py-4 last:border-r-0">
+                  <div className="text-[22px] font-semibold text-slate-900">0</div>
+                  <div className="text-[11px] text-slate-500 mt-1">等级</div>
+                </div>
+              </div>
+            </div>
+
+            {/* Menu Items */}
+            <div className="mx-4 rounded-[30px] border border-slate-200 bg-white overflow-hidden mb-4">
+              <div className="divide-y divide-slate-100">
+                <div className="px-4 py-4 flex items-center gap-3 text-slate-400">
+                  <Heart className="w-5 h-5" />
+                  <span className="text-sm font-medium">收藏</span>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    try {
+                      sessionStorage.setItem('momoyu:stickerManagementTab', 'mine');
+                    } catch {
+                      /* ignore */
+                    }
+                    onNavigate('sticker-management');
+                  }}
+                  className="w-full px-4 py-4 flex items-center justify-between hover:bg-slate-50 active:bg-slate-100 transition-colors"
+                >
+                  <div className="flex items-center gap-3">
+                    <Sparkles className="w-5 h-5 text-slate-900" />
+                    <span className="text-sm font-medium text-slate-900">表情包</span>
+                  </div>
+                  <ChevronRight className="w-5 h-5 text-slate-400" />
+                </button>
+
+                <div className="px-4 py-4 flex items-center gap-3 text-slate-400">
+                  <Upload className="w-5 h-5" />
+                  <span className="text-sm font-medium">相册</span>
+                </div>
+
+                <button
+                  onClick={() => onNavigate('wallet')}
+                  className="w-full px-4 py-4 flex items-center justify-between hover:bg-slate-50 active:bg-slate-100 transition-colors"
+                >
+                  <div className="flex items-center gap-3">
+                    <Wallet className="w-5 h-5 text-slate-900" />
+                    <span className="text-sm font-medium text-slate-900">钱包</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm text-slate-500">¥{Math.round(walletBalance)}</span>
+                    <ChevronRight className="w-5 h-5 text-slate-400" />
+                  </div>
+                </button>
+              </div>
+            </div>
+          </>
+        ) : null}
       </div>
     </div>
   );

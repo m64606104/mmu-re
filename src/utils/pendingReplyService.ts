@@ -13,14 +13,16 @@ import {
   isValidDocumentJsonOutput,
   buildDocumentJsonRetryInstruction,
 } from '../domains/chat/outputProtocol';
-import {
-  getConversationMemories, buildMemoryContext,
-  shouldTriggerAutoSummary, updateSummaryCounter,
-  buildMemorySummaryPrompt, parseMemorySummaryResponse, addMemory,
-} from './memorySystem';
+import { enqueueMemoryEngineCycle, buildMemoryAndIdentityContext } from './memorySystem';
 import { splitMessages, cleanAIMessage } from './messageFormatter';
 import { MEDIA_DECISION_GUIDANCE } from './mediaDecisionPrompt';
 import { generateDocxOriginalFile } from './documentFileGenerator';
+import { buildLifeChatContextSnippet } from '../sim/chatContext';
+import { applyUserChatImpact } from '../sim/storage';
+import { retrieveKnowledgeChunks, retrieveTextChunks } from './knowledgeRetrieval';
+import { smartLoad } from './storage';
+import { getErrorFromResponse } from './apiErrorHandler';
+import { findStickerByDescription } from './stickerMessageParser';
 
 /* ── 内部状态 ── */
 interface PendingEntry { timerId: ReturnType<typeof setTimeout>; }
@@ -41,9 +43,13 @@ const generatingSet = new Set<string>();
 type ParsedStickerToken = {
   description: string;
   stickerKind: 'systemEmoji' | 'custom';
+  imageUrl?: string;
 };
 
-function extractStickerTokens(raw: string): { text: string; stickers: ParsedStickerToken[] } {
+async function extractStickerTokens(
+  raw: string,
+  conversationId: string
+): Promise<{ text: string; stickers: ParsedStickerToken[] }> {
   if (!raw) return { text: '', stickers: [] };
 
   let text = raw;
@@ -60,15 +66,70 @@ function extractStickerTokens(raw: string): { text: string; stickers: ParsedStic
       text = text.replace(match[0], emoji || payload);
       continue;
     }
+    let imageUrl: string | undefined;
+    try {
+      // 与 momoyu-demo 行为对齐：优先把 [表情包:描述] 映射为真实图片
+      imageUrl = (await findStickerByDescription(payload, conversationId)) || undefined;
+    } catch {
+      imageUrl = undefined;
+    }
     stickers.push({
       description: payload,
       stickerKind: 'custom',
+      imageUrl,
     });
     text = text.replace(match[0], ' ');
   }
 
   // 仅压缩空格/tab，保留换行语义给 splitMessages 做分条判断
   return { text: text.replace(/[ \t]{2,}/g, ' ').trim(), stickers };
+}
+
+function stripAvatarActionMarkers(raw: string): {
+  text: string;
+  hasAvatarChange: boolean;
+  hasRestoreAvatar: boolean;
+  selectedImageIndex?: number;
+} {
+  const indexedMatch = raw.match(/\[换头像[:：]\s*(\d+)\s*\]/);
+  const selectedImageIndex = indexedMatch ? Number(indexedMatch[1]) : undefined;
+  const hasAvatarChange = /\[换头像\]|\[换头像[:：]\s*\d+\s*\]|【换头像】/.test(raw);
+  const hasRestoreAvatar = /\[换回原头像\]|【换回原头像】/.test(raw);
+  const text = raw
+    .replace(/\[换头像\]|\[换头像[:：]\s*\d+\s*\]|【换头像】/g, '')
+    .replace(/\[换回原头像\]|【换回原头像】/g, '')
+    .replace(/[ \t]{2,}/g, ' ')
+    .trim();
+  return { text, hasAvatarChange, hasRestoreAvatar, selectedImageIndex };
+}
+
+function pickLatestUserImageFromConversation(conversation: Conversation): string | null {
+  for (let i = conversation.messages.length - 1; i >= 0; i--) {
+    const msg = conversation.messages[i];
+    if (msg.role === 'user' && msg.mediaType === 'image' && msg.mediaUrl) return msg.mediaUrl;
+  }
+  return null;
+}
+
+function listRecentUserImagesFromConversation(
+  conversation: Conversation,
+  limit = 6
+): Array<{ url: string; label: string }> {
+  const result: Array<{ url: string; label: string }> = [];
+  const seen = new Set<string>();
+  for (let i = conversation.messages.length - 1; i >= 0; i--) {
+    const msg = conversation.messages[i];
+    if (msg.role !== 'user' || msg.mediaType !== 'image' || !msg.mediaUrl) continue;
+    if (seen.has(msg.mediaUrl)) continue;
+    seen.add(msg.mediaUrl);
+    result.push({
+      url: msg.mediaUrl,
+      label: msg.mediaDescription?.trim() || `图片${result.length + 1}`,
+    });
+    if (result.length >= limit) break;
+  }
+  // 变成时间正序：1=最早，N=最新
+  return result.reverse();
 }
 
 /* ── typing 通知 ── */
@@ -174,6 +235,26 @@ export function schedulePendingReply(conversationId: string, delaySec: number) {
 
 function toModelMessageContent(m: Message): string {
   let content = m.content;
+  if ((m as any).document) {
+    const doc = (m as any).document as {
+      title: string;
+      type?: 'text' | 'markdown' | 'code';
+      content: string;
+      greeting?: string;
+      originalFile?: { fileName: string; mimeType: string; fileSize: number };
+    };
+    const typeLabel = doc.type === 'markdown' ? 'Markdown' : doc.type === 'code' ? '代码' : '文本';
+    const originalFileInfo = doc.originalFile
+      ? `\n原始文件：${doc.originalFile.fileName} (${doc.originalFile.mimeType}, ${(doc.originalFile.fileSize / 1024).toFixed(1)}KB)`
+      : '';
+    // 避免极端超长导致请求失败：超出部分明确告知模型“有截断”
+    const rawBody = typeof doc.content === 'string' ? doc.content : '';
+    const MAX_DOC_CHARS_FOR_CONTEXT = 20000;
+    const body = rawBody.length > MAX_DOC_CHARS_FOR_CONTEXT
+      ? `${rawBody.slice(0, MAX_DOC_CHARS_FOR_CONTEXT)}\n\n（内容过长，已截断。若需要后续部分，请提示用户继续发送或分段。）`
+      : rawBody;
+    content = `[用户发送了${typeLabel}文档]\n标题：${doc.title || '未命名'}${originalFileInfo}\n内容：\n${body}`;
+  }
   if (m.mediaType === 'image') {
     content = m.mediaDescription
       ? `[用户发送了一张图片：${m.mediaDescription}]`
@@ -286,13 +367,113 @@ async function triggerReply(conversationId: string) {
   notifyTyping(conversationId, true);
 
   try {
-    let systemPrompt = buildSystemPrompt(conversation, userProfile);
+    const recentUserMessages = [...conversation.messages]
+      .filter((m) => m.role === 'user')
+      .filter((m) => Date.now() - Number(m.timestamp || 0) <= 3 * 60 * 1000);
+    const chatImpact = await applyUserChatImpact({
+      conversationId,
+      now: Date.now(),
+      recentUserMessageCount: recentUserMessages.length,
+      wakeSensitivityMode: conversation.characterSettings?.proactiveMessaging?.wakeSensitivityMode || 'auto',
+    });
+    // 睡眠联动：只有一条消息时，视作“轻微打扰”并继续睡，不立即回复
+    if (chatImpact.wasSleeping && !chatImpact.wokeUp) {
+      notifyTyping(conversationId, false);
+      return;
+    }
+
+    const lastUserMsg = [...conversation.messages].reverse().find(m => m.role === 'user');
+    const ragDebugEnabled = (() => {
+      try {
+        if (localStorage.getItem('momoyu_debug_rag_hit') === '1') return true;
+        const q = new URLSearchParams(window.location.search);
+        return q.get('ragDebug') === '1';
+      } catch {
+        return false;
+      }
+    })();
+    const ragDebugLines: string[] = [];
+
+    const promptBuilt = buildSystemPrompt(conversation, userProfile, lastUserMsg?.content || '', ragDebugEnabled);
+    let systemPrompt = promptBuilt.prompt;
+    if (ragDebugEnabled && promptBuilt.debugLines.length > 0) {
+      ragDebugLines.push(...promptBuilt.debugLines);
+    }
+
+    // 📚 文档库（document_library）检索：把用户上传/保存过的文档按问题检索后注入
+    if (lastUserMsg?.content) {
+      try {
+        const parsed = await smartLoad('document_library');
+        const docsRaw: any[] = Array.isArray(parsed)
+          ? parsed
+          : parsed && typeof parsed === 'object'
+            ? ((parsed as any).docs || (parsed as any).documents || (parsed as any).items || [])
+            : [];
+
+        const cs = conversation.characterSettings;
+        const nick = cs?.nickname || '';
+
+        const docs = (docsRaw || [])
+          .filter(Boolean)
+          .filter((d) => {
+            // 优先与当前会话/角色相关；未绑定的也允许参与（全局文档）
+            const convOk = !d.conversationId || d.conversationId === conversation.id;
+            const charOk = !d.characterName || !nick || d.characterName === nick;
+            return convOk && charOk;
+          })
+          .slice(0, 120);
+
+        const hits = retrieveTextChunks(
+          docs.map((d) => ({
+            id: String(d.id || d.savedAt || Math.random()),
+            title: String(d.title || '未命名文档'),
+            content: String(d.content || ''),
+          })),
+          lastUserMsg.content,
+          { topK: 5, maxTotalChars: 2600 }
+        );
+
+        if (hits.length > 0) {
+          systemPrompt += '\n\n【文档库（已检索）】\n';
+          hits.forEach((h, i) => {
+            systemPrompt += `${i + 1}. ${h.title}\n${h.text}\n\n`;
+          });
+          if (ragDebugEnabled) {
+            ragDebugLines.push(
+              `文档库命中 ${hits.length} 条：`,
+              ...hits.map((h, i) => `${i + 1}. ${h.title} ｜ ${(h.text || '').slice(0, 80).replace(/\n/g, ' ')}...`)
+            );
+          }
+        } else if (ragDebugEnabled && docs.length > 0) {
+          ragDebugLines.push(`文档库未命中（候选 ${docs.length} 条）`);
+        }
+      } catch {
+        // ignore
+      }
+    }
+
+    if (ragDebugEnabled && ragDebugLines.length > 0) {
+      const fresh = _getConversation(conversationId);
+      if (fresh) {
+        _updateConversation(conversationId, {
+          messages: [
+            ...fresh.messages,
+            {
+              id: `rag_dbg_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+              role: 'system',
+              content: `🧪 RAG命中调试\n${ragDebugLines.join('\n')}`,
+              timestamp: Date.now(),
+            },
+          ],
+          lastMessageTime: Date.now(),
+        });
+      }
+    }
 
     // 🧪 调试：打印延迟回复是否触发 & 最后一条用户消息
     const debugEnabled = (() => {
       try { return localStorage.getItem('momoyu_debug_pending_reply') === '1'; } catch { return false; }
     })();
-    const lastUserMsg = [...conversation.messages].reverse().find(m => m.role === 'user');
     if (debugEnabled) {
       console.log('🧪 [延迟回复调试] triggerReply', {
         conversationId,
@@ -336,11 +517,34 @@ async function triggerReply(conversationId: string) {
 禁止输出任何自然语言前后缀、禁止输出 [DOC:...]、禁止分条。`;
     }
 
-    // 🧠 记忆上下文
+    // 🧠 记忆 + 动态画像 + AI事件上下文（高优先级覆盖初始人设）
     if (conversation.enabledFeatures?.includes('memory-system')) {
-      const memories = getConversationMemories(conversationId);
-      const important = memories.filter(m => m.importance === 'high' || m.importance === 'medium').slice(0, 10);
-      if (important.length > 0) systemPrompt += buildMemoryContext(important);
+      systemPrompt += buildMemoryAndIdentityContext(conversationId);
+    }
+
+    // 🌱 AI后台生活轨迹（仅在对话中自然利用，不强行暴露）
+    try {
+      systemPrompt += await buildLifeChatContextSnippet({
+        conversation,
+        lastUserMessage: lastUserMsg,
+      });
+    } catch {
+      // ignore life context failures, must not block replies
+    }
+    systemPrompt += `\n【创造性与连贯性平衡】
+- 你的后台生活轨迹是“根基”，不是“牢笼”。
+- 允许在真实基础上做有趣延伸：联想、愿望、轻幽默、对未来的小展望。
+- 避免机械复述状态数据；优先用“人话”表达感受与故事性。`;
+    if (chatImpact.wasSleeping && chatImpact.wokeUp) {
+      systemPrompt += `\n- 你刚被用户消息叫醒（阈值${chatImpact.wakeThreshold}条，模式${chatImpact.wakeMode}），回复时请自然体现“刚醒来”的状态（可简短、带点困意），但仍要正常回应用户内容。`;
+    }
+    if (conversation.type === 'private') {
+      systemPrompt += `\n\n【头像变更协议（只在相关时使用）】
+- 当用户请求你把头像换成他发的图片，并且你同意执行时：
+  - 若用户近期只发了一张图，回复末尾附加 [换头像]
+  - 若用户近期发了多张图且你能明确选择，请附加 [换头像:N]（N 从 1 开始，按用户发送顺序）
+- 当用户请求恢复原头像，并且你同意执行时，请在回复末尾附加 [换回原头像]。
+- 普通聊天不要输出这些标记。`;
     }
 
     const bufferMs = (conversation.messageBufferSeconds ?? 15) * 1000;
@@ -356,13 +560,17 @@ async function triggerReply(conversationId: string) {
     const apiUrl = buildApiUrl(apiConfig);
     const res = await fetch(apiUrl, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiConfig.apiKey}` },
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${apiConfig.apiKey}`,
+        'X-Momoyu-Source': 'pendingReplyService:reply',
+      },
       body: JSON.stringify({ model: apiConfig.modelName, messages, temperature: 0.7, max_tokens: maxTokens }),
     });
 
     if (!res.ok) {
-      const errText = await res.text();
-      throw new Error(`API ${res.status}: ${errText.slice(0, 200)}`);
+      const errorInfo = await getErrorFromResponse(res);
+      throw new Error(`${errorInfo.icon} ${errorInfo.title}：${errorInfo.message}`);
     }
 
     const data = await res.json();
@@ -373,7 +581,11 @@ async function triggerReply(conversationId: string) {
       console.warn('⚠️ [延迟回复] 检测到不合规输出，触发一次协议重试:', outputValidation.reason);
       const retryRes = await fetch(apiUrl, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiConfig.apiKey}` },
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${apiConfig.apiKey}`,
+          'X-Momoyu-Source': 'pendingReplyService:protocol-retry',
+        },
         body: JSON.stringify({
           model: apiConfig.modelName,
           messages: [...messages, { role: 'system', content: buildProtocolRetryInstruction() }],
@@ -392,7 +604,11 @@ async function triggerReply(conversationId: string) {
       console.warn('⚠️ [延迟回复] 检测到文档发送意图但未按JSON协议输出，触发文档协议重试');
       const docRetryRes = await fetch(apiUrl, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiConfig.apiKey}` },
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${apiConfig.apiKey}`,
+          'X-Momoyu-Source': 'pendingReplyService:doc-retry',
+        },
         body: JSON.stringify({
           model: apiConfig.modelName,
           messages: [...messages, { role: 'system', content: buildDocumentJsonRetryInstruction() }],
@@ -468,6 +684,9 @@ async function triggerReply(conversationId: string) {
     ]
       .filter(Boolean)
       .join('\n');
+    const avatarAction = stripAvatarActionMarkers(aiContent || '');
+    aiContent = avatarAction.text;
+
     const parts = splitMessages(aiContent, {
       preference: conversation.replySplitPreference ?? 'smart',
       conversationType: conversation.type,
@@ -486,7 +705,7 @@ async function triggerReply(conversationId: string) {
       if (freshConv) currentMsgs = [...freshConv.messages];
 
       const nowTs = Date.now();
-      const parsed = extractStickerTokens(parts[i]);
+      const parsed = await extractStickerTokens(parts[i], conversationId);
       const nextMessages: Message[] = [];
       if (parsed.text) {
         nextMessages.push({
@@ -505,7 +724,8 @@ async function triggerReply(conversationId: string) {
           mediaType: 'sticker',
           mediaDescription: sticker.description,
           stickerKind: sticker.stickerKind,
-          isMediaDescriptionOnly: true,
+          mediaUrl: sticker.imageUrl,
+          isMediaDescriptionOnly: !sticker.imageUrl,
         });
       });
       if (nextMessages.length === 0) {
@@ -521,16 +741,71 @@ async function triggerReply(conversationId: string) {
       _updateConversation(conversationId, { messages: currentMsgs, lastMessageTime: Date.now() });
     }
 
+    // 先结束“正在输入”、让文字气泡提交到屏幕；头像更新放到下一帧，避免和大段消息渲染挤在同一帧变慢
     notifyTyping(conversationId, false);
 
-    // 🧠 记忆总结
+    // 🧠 记忆与画像引擎（后台队列，不阻塞用户）
     if (conversation.enabledFeatures?.includes('memory-system')) {
       const freshConv2 = _getConversation(conversationId);
-      if (freshConv2 && shouldTriggerAutoSummary(conversationId, freshConv2.messages.length)) {
-        performMemorySummary(conversationId, freshConv2.messages, apiConfig).catch((e: unknown) =>
-          console.error('[memory] 总结失败:', e)
-        );
+      if (freshConv2) {
+        enqueueMemoryEngineCycle(freshConv2, apiConfig);
       }
+    }
+
+    const deferAvatarApply =
+      Boolean(avatarAction.hasAvatarChange || avatarAction.hasRestoreAvatar) &&
+      _getConversation(conversationId)?.type === 'private';
+
+    const applyDeferredAvatar = () => {
+      const latestConversation = _getConversation(conversationId);
+      if (!latestConversation || latestConversation.type !== 'private') return;
+
+      if (avatarAction.hasAvatarChange) {
+        const candidates = listRecentUserImagesFromConversation(latestConversation);
+        const selectedByIndex =
+          typeof avatarAction.selectedImageIndex === 'number' &&
+          Number.isFinite(avatarAction.selectedImageIndex) &&
+          avatarAction.selectedImageIndex > 0 &&
+          avatarAction.selectedImageIndex <= candidates.length
+            ? candidates[avatarAction.selectedImageIndex - 1]?.url
+            : null;
+        const latestImageUrl = pickLatestUserImageFromConversation(latestConversation);
+        const targetImageUrl = selectedByIndex || latestImageUrl;
+        if (targetImageUrl) {
+          const nextCharacterSettings = latestConversation.characterSettings
+            ? {
+                ...latestConversation.characterSettings,
+                originalAvatar:
+                  latestConversation.characterSettings.originalAvatar ||
+                  latestConversation.characterSettings.avatar,
+                avatar: targetImageUrl,
+              }
+            : latestConversation.characterSettings;
+          _updateConversation(conversationId, {
+            avatar: targetImageUrl,
+            ...(nextCharacterSettings ? { characterSettings: nextCharacterSettings } : {}),
+          });
+        }
+      } else if (avatarAction.hasRestoreAvatar) {
+        const originalAvatar = latestConversation.characterSettings?.originalAvatar;
+        if (originalAvatar) {
+          const nextCharacterSettings = latestConversation.characterSettings
+            ? { ...latestConversation.characterSettings, avatar: originalAvatar }
+            : latestConversation.characterSettings;
+          _updateConversation(conversationId, {
+            avatar: originalAvatar,
+            ...(nextCharacterSettings ? { characterSettings: nextCharacterSettings } : {}),
+          });
+        }
+      }
+    };
+
+    if (deferAvatarApply && typeof window !== 'undefined') {
+      window.requestAnimationFrame(() => {
+        window.requestAnimationFrame(applyDeferredAvatar);
+      });
+    } else if (deferAvatarApply) {
+      setTimeout(applyDeferredAvatar, 0);
     }
   } catch (err: unknown) {
     console.error('[pendingReply] AI回复失败:', err);
@@ -550,11 +825,17 @@ async function triggerReply(conversationId: string) {
 }
 
 /* ── 构建 system prompt ── */
-function buildSystemPrompt(conversation: Conversation, userProfile: UserProfile): string {
+function buildSystemPrompt(
+  conversation: Conversation,
+  userProfile: UserProfile,
+  userQuery: string,
+  ragDebugEnabled: boolean
+): { prompt: string; debugLines: string[] } {
   const cs = conversation.characterSettings;
-  if (!cs) return '你是一个人。';
+  if (!cs) return { prompt: '你是一个人。', debugLines: [] };
 
   let prompt = '';
+  const debugLines: string[] = [];
   if (cs.systemPrompt) prompt += cs.systemPrompt + '\n';
   prompt += `\n你的名字是"${cs.nickname}"。`;
   if (cs.personality) prompt += `\n性格特征：${cs.personality}`;
@@ -573,8 +854,24 @@ function buildSystemPrompt(conversation: Conversation, userProfile: UserProfile)
   }
 
   if (cs.knowledgeBase && cs.knowledgeBase.length > 0) {
-    prompt += '\n\n【专属资料库】\n';
-    cs.knowledgeBase.forEach((item, i) => { prompt += `${i + 1}. ${item.title}\n${item.content}\n\n`; });
+    const hits = retrieveKnowledgeChunks(cs.knowledgeBase, userQuery || '', { topK: 6, maxTotalChars: 2400 });
+    if (hits.length > 0) {
+      prompt += '\n\n【专属资料库（已检索）】\n';
+      hits.forEach((h, i) => {
+        prompt += `${i + 1}. ${h.title}\n${h.text}\n\n`;
+      });
+      if (ragDebugEnabled) {
+        debugLines.push(
+          `专属资料库命中 ${hits.length} 条：`,
+          ...hits.map((h, i) => `${i + 1}. ${h.title} ｜ ${(h.text || '').slice(0, 80).replace(/\n/g, ' ')}...`)
+        );
+      }
+    } else {
+      // 无明显命中时，只给标题列表避免噪声
+      prompt += '\n\n【专属资料库（可用条目）】\n';
+      cs.knowledgeBase.slice(0, 12).forEach((item, i) => { prompt += `${i + 1}. ${item.title}\n`; });
+      if (ragDebugEnabled) debugLines.push(`专属资料库未命中（候选 ${cs.knowledgeBase.length} 条）`);
+    }
   }
 
   // 时间 + 农历
@@ -587,6 +884,11 @@ function buildSystemPrompt(conversation: Conversation, userProfile: UserProfile)
 
 【当前时间】${solarTime}${lunarDate ? `（农历${lunarDate}）` : ''}
 请根据当前时间自然调整你的状态和语气。
+
+【📎 文件/文档说明（重要）】
+- 当用户发送文件/文档时，系统会把“标题、文件信息、以及可提取到的正文内容”直接附在对话消息里（形如“[用户发送了…文档] … 内容：…”）。
+- 你**可以直接阅读这些内容并回答**，不要说“我打不开附件”“我看不到文件”“请复制粘贴”等。
+- 只有当正文明确提示“未能提取到可读文本（扫描件/图片PDF）”时，你才可以让用户改发可复制文字版本或提供 OCR 后的文字。
 
 【💬 微信聊天核心原则 — 最重要】
 
@@ -653,32 +955,7 @@ RULE-6 不回复：[SKIP]
 以上标记可自由组合：
 ✅ "今天去爬山了[IMG:山顶风景] 累死 [STICKER:瘫倒的猫]"`;
 
-  return prompt;
+  return { prompt, debugLines };
 }
 
-/* ── 记忆自动总结 ── */
-async function performMemorySummary(conversationId: string, messages: Message[], apiConfig: ApiConfig) {
-  const existing = getConversationMemories(conversationId);
-  const summaryPrompt = buildMemorySummaryPrompt(messages, existing);
-
-  const apiUrl = buildApiUrl(apiConfig);
-  const res = await fetch(apiUrl, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiConfig.apiKey}` },
-    body: JSON.stringify({
-      model: apiConfig.modelName,
-      messages: [{ role: 'system', content: summaryPrompt }],
-      temperature: 0.3,
-      max_tokens: 1000,
-    }),
-  });
-
-  if (!res.ok) return;
-  const data = await res.json();
-  const content = data.choices?.[0]?.message?.content?.trim();
-  if (!content) return;
-
-  const newMemories = parseMemorySummaryResponse(content);
-  newMemories.forEach(m => addMemory(conversationId, m.content, m.importance, m.category, true));
-  updateSummaryCounter(conversationId, messages.length);
-}
+/* 记忆引擎已统一到 memorySystem.runMemoryEngineCycle */

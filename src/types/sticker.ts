@@ -1,10 +1,10 @@
 // 表情包数据类型定义
 
 /**
- * 表情包类型
- * - common: 通用表情包（AI和用户都能用）
- * - character: 角色专属表情包（只有指定AI能用）
- * - user: 用户专属表情包（只有用户能用，AI不能用）
+ * 表情包类型（IndexedDB 分库存储，互不混写）
+ * - common: 公共表情（所有 AI 可选用；与用户发消息时的「我的表情包」合并展示）
+ * - character: 角色专属（仅该角色 AI 匹配；不进用户选表情列表、不与 common/user 混库）
+ * - user: 用户专属（仅用户在聊天中选用；不进 AI 匹配库）
  */
 export type StickerScope = 'common' | 'character' | 'user';
 

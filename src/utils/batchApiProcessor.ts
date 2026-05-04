@@ -233,7 +233,7 @@ ${decisionsText}
     // 这里需要从某个地方获取API配置
     // 临时从localStorage获取
     try {
-      const stored = localStorage.getItem('ai_api_config');
+      const stored = localStorage.getItem('apiConfig');
       if (stored) {
         return JSON.parse(stored);
       }

@@ -4,6 +4,7 @@
  */
 
 import { Conversation, Message } from '../types';
+import { getCachedData, load, save, setCachedData } from './storage';
 
 interface PrivateChatIntent {
   fromGroupId: string;
@@ -51,11 +52,19 @@ export class GroupToPrivateMemoryService {
    */
   private loadFromStorage(): void {
     try {
-      const stored = localStorage.getItem(STORAGE_KEY);
-      if (stored) {
-        const data = JSON.parse(stored);
+      const data = getCachedData<any>(STORAGE_KEY);
+      if (data && typeof data === 'object') {
         this.bridges = data.bridges || [];
         this.intents = data.intents || [];
+      } else {
+        // 异步补载（不阻塞构造）
+        void load(STORAGE_KEY).then((stored) => {
+          if (stored && typeof stored === 'object') {
+            setCachedData(STORAGE_KEY, stored);
+            this.bridges = (stored as any).bridges || [];
+            this.intents = (stored as any).intents || [];
+          }
+        });
       }
     } catch (error) {
       console.error('加载群聊私聊记忆桥接数据失败:', error);
@@ -73,9 +82,25 @@ export class GroupToPrivateMemoryService {
         bridges: this.bridges,
         intents: this.intents
       };
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+      setCachedData(STORAGE_KEY, data);
+      void save(STORAGE_KEY, data);
     } catch (error) {
       console.error('保存群聊私聊记忆桥接数据失败:', error);
+    }
+  }
+
+  async initialize(): Promise<void> {
+    try {
+      const stored = await load(STORAGE_KEY);
+      const data = stored && typeof stored === 'object' ? stored : null;
+      setCachedData(STORAGE_KEY, data);
+      if (data) {
+        this.bridges = (data as any).bridges || [];
+        this.intents = (data as any).intents || [];
+      }
+    } catch (error) {
+      console.error('初始化群聊私聊记忆桥接存储失败:', error);
+      setCachedData(STORAGE_KEY, null);
     }
   }
 
