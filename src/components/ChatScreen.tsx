@@ -695,6 +695,12 @@ ${recentMessages}
     lastMessageCountRef.current = currentMessageCount;
   }, [conversation.messages.length, conversation.id, shouldScrollToBottom, smartScrollToBottom]);
 
+  // 切换对话时 React 会复用同一 ChatScreen 实例；必须重置水位线，否则会沿用上一会话的条数，
+  // 导致新会话「条数 <= ref」永远不触发记忆引擎（用户已超 50 条也看不到总结/画像）。
+  useEffect(() => {
+    lastMemoryEngineCountRef.current = 0;
+  }, [conversation.id]);
+
   useEffect(() => {
     if (conversation.type !== 'private') return;
     if (!conversation.enabledFeatures?.includes('memory-system')) return;

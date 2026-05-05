@@ -473,7 +473,7 @@ export async function supabaseSyncDerivedMemory(
     );
     if (diaryError) throw diaryError;
     addMemory(conversationId, finalDiaryText, 'medium', 'AI经历', true);
-    addDiaryEntry(conversationId, day, finalDiaryText, moodTags, 'auto');
+    addDiaryEntry(conversationId, day, finalDiaryText, moodTags, 'auto', 'diary');
 
     const { aiSelf, userImpression } = await generateImpressionsByAI(
       apiConfig,

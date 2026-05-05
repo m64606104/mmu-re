@@ -11,6 +11,7 @@ import { addMomentPost } from '../utils/aiMomentsGenerator';
 import { parseComplexFrequencyRules, getCurrentFrequencyRule, getRulesSummary } from '../utils/momentsFrequencyParser';
 import { bubbleStylePresets, getAllCategories, type BubbleStylePreset } from '../utils/bubbleStylePresets';
 import { smartLoad } from '../utils/storage';
+import { enqueueMemoryEngineIfBacklogAfterSave } from '../utils/memorySystem';
 import { parseDocument } from '../utils/enhancedDocumentParser';
 import '../styles/relationshipAnimations.css';
 
@@ -308,52 +309,61 @@ export default function CharacterSettingsScreen({
       }
       
       console.log('📝 准备更新对话数据...');
-      
+
+      const nextName = nickname || conversation.name;
+      const nextCharacterSettings = {
+        avatar,
+        nickname,
+        username,
+        chatBackground,
+        systemPrompt,
+        personality,
+        languageStyle,
+        languageExample,
+        memoryEvents,
+        proactiveMessaging: {
+          enabled: proactiveEnabled,
+          minInterval,
+          maxInterval,
+          activeHourStart,
+          activeHourEnd,
+          lastMessageTime: settings.proactiveMessaging?.lastMessageTime,
+        },
+        memoryConfig: {
+          enabled: memoryConfigEnabled,
+        },
+        momentsMemoryConfig: {
+          enabled: momentsMemoryEnabled,
+        },
+        disableWorldbook: disableWorldbook,
+        momentsConfig: {
+          description: momentsFrequencyDescription,
+        },
+        // 保存自定义气泡样式
+        customBubbleCss,
+        hideBubbleTail,
+        bubbleDecoration: decorationConfig,
+        callSettings: callSettings,
+        contextConfig: {
+          enabled: contextConfigEnabled,
+          messageCount: contextMessageCount,
+        },
+        knowledgeBase: knowledgeBase,
+      };
+
       onUpdateConversation(conversation.id, {
         isBlocked, // 保存拉黑状态
-        name: nickname || conversation.name,
-        characterSettings: {
-          avatar,
-          nickname,
-          username,
-          chatBackground,
-          systemPrompt,
-          personality,
-          languageStyle,
-          languageExample,
-          memoryEvents,
-          proactiveMessaging: {
-            enabled: proactiveEnabled,
-            minInterval,
-            maxInterval,
-            activeHourStart,
-            activeHourEnd,
-            lastMessageTime: settings.proactiveMessaging?.lastMessageTime,
-          },
-          memoryConfig: {
-            enabled: memoryConfigEnabled,
-          },
-          momentsMemoryConfig: {
-            enabled: momentsMemoryEnabled,
-          },
-          disableWorldbook: disableWorldbook,
-          momentsConfig: {
-            description: momentsFrequencyDescription,
-          },
-          // 保存自定义气泡样式
-          customBubbleCss,
-          hideBubbleTail,
-          bubbleDecoration: decorationConfig,
-          callSettings: callSettings,
-          contextConfig: {
-            enabled: contextConfigEnabled,
-            messageCount: contextMessageCount,
-          },
-          knowledgeBase: knowledgeBase,
-        },
+        name: nextName,
+        characterSettings: nextCharacterSettings,
         enabledFeatures: updatedFeatures, // 同步更新 enabledFeatures
       });
-      
+
+      enqueueMemoryEngineIfBacklogAfterSave(
+        conversation,
+        { name: nextName, enabledFeatures: updatedFeatures, characterSettings: nextCharacterSettings },
+        apiConfig
+      );
+
       console.log('✅ 角色设置保存成功');
       alert('角色设置已保存');
       

@@ -13,6 +13,7 @@ import type { ApiConfig, Conversation, KnowledgeBaseItem } from '../types';
 import MemoryManager from './MemoryManager';
 import { useMobileBottomDock } from '../hooks/useMobileBottomDock';
 import { smartLoad } from '../utils/storage';
+import { enqueueMemoryEngineIfBacklogAfterSave } from '../utils/memorySystem';
 
 type Props = {
   conversation: Conversation;
@@ -153,38 +154,47 @@ export default function CharacterSettingsScreenV2(props: Props) {
       updatedFeatures = updatedFeatures.filter((f) => f !== 'memory-system');
     }
 
-    onUpdateConversation(conversation.id, {
-      name: nickname || conversation.name,
-      characterSettings: {
-        ...(conversation.characterSettings || ({} as any)),
-        avatar,
-        nickname,
-        username,
-        systemPrompt,
-        personality,
-        languageStyle,
-        languageExample,
-        memoryEvents,
-        memoryConfig: { enabled: memoryConfigEnabled },
-        momentsMemoryConfig: { enabled: momentsMemoryEnabled },
-        disableWorldbook,
-        proactiveMessaging: {
-          ...(conversation.characterSettings?.proactiveMessaging || ({} as any)),
-          enabled: proactiveEnabled,
-          activeHourStart,
-          activeHourEnd,
-          autoIntervalByAI: true,
-          relationAware: true,
-          wakeSensitivityMode,
-          // 兼容字段保留
-          minInterval: conversation.characterSettings?.proactiveMessaging?.minInterval || 30,
-          maxInterval: conversation.characterSettings?.proactiveMessaging?.maxInterval || 180,
-          lastMessageTime: conversation.characterSettings?.proactiveMessaging?.lastMessageTime,
-        },
-        knowledgeBase,
+    const nextName = nickname || conversation.name;
+    const nextCharacterSettings = {
+      ...(conversation.characterSettings || ({} as any)),
+      avatar,
+      nickname,
+      username,
+      systemPrompt,
+      personality,
+      languageStyle,
+      languageExample,
+      memoryEvents,
+      memoryConfig: { enabled: memoryConfigEnabled },
+      momentsMemoryConfig: { enabled: momentsMemoryEnabled },
+      disableWorldbook,
+      proactiveMessaging: {
+        ...(conversation.characterSettings?.proactiveMessaging || ({} as any)),
+        enabled: proactiveEnabled,
+        activeHourStart,
+        activeHourEnd,
+        autoIntervalByAI: true,
+        relationAware: true,
+        wakeSensitivityMode,
+        // 兼容字段保留
+        minInterval: conversation.characterSettings?.proactiveMessaging?.minInterval || 30,
+        maxInterval: conversation.characterSettings?.proactiveMessaging?.maxInterval || 180,
+        lastMessageTime: conversation.characterSettings?.proactiveMessaging?.lastMessageTime,
       },
+      knowledgeBase,
+    };
+
+    onUpdateConversation(conversation.id, {
+      name: nextName,
+      characterSettings: nextCharacterSettings,
       enabledFeatures: updatedFeatures,
     });
+
+    enqueueMemoryEngineIfBacklogAfterSave(
+      conversation,
+      { name: nextName, enabledFeatures: updatedFeatures, characterSettings: nextCharacterSettings },
+      apiConfig
+    );
 
     alert('已保存');
     setPage('summary');
@@ -590,32 +600,7 @@ export default function CharacterSettingsScreenV2(props: Props) {
             </div>
           </div>
 
-          {editStep === 'basic' ? (
-            <button
-              type="button"
-              onClick={() => setEditStep('advanced')}
-              className="w-full py-3 rounded-2xl bg-gray-900 text-white text-sm font-medium"
-            >
-              下一页（主动消息 / 资料库 / 聊天记录）
-            </button>
-          ) : (
-            <div className="grid grid-cols-2 gap-3">
-              <button
-                type="button"
-                onClick={() => setEditStep('basic')}
-                className="py-3 rounded-2xl border border-gray-200 text-gray-900 text-sm font-medium"
-              >
-                上一页
-              </button>
-              <button
-                type="button"
-                onClick={() => setEditStep('basic')}
-                className="py-3 rounded-2xl bg-gray-900 text-white text-sm font-medium"
-              >
-                回到基础
-              </button>
-            </div>
-          )}
+          {/* 翻页按钮仅在底部固定区渲染一份，避免与滚动区内重复 */}
 
           {/* proactive */}
           <div className={`bg-white rounded-3xl p-4 shadow-sm border border-gray-100 ${editStep === 'advanced' ? '' : 'hidden'}`}>
@@ -670,8 +655,6 @@ export default function CharacterSettingsScreenV2(props: Props) {
               <ListRow label="角色迁移" value="导入/导出" onClick={() => setShowMigrationSheet(true)} />
             </div>
           </div>
-
-          {/* 翻页按钮已在上方统一渲染 */}
 
           {/* knowledge base */}
           <div className={`bg-white rounded-3xl p-4 shadow-sm border border-gray-100 ${editStep === 'advanced' ? '' : 'hidden'}`}>

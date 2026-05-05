@@ -497,7 +497,10 @@ export interface MemoryEntry {
   groupId?: string; // 如果是群聊记忆，记录群ID
 }
 
-// AI日记条目
+/** 日记条目类型：角色口吻日记 vs（历史兼容）曾写入日记流的类型 */
+export type MemoryDiaryRecordType = 'diary' | 'chat_summary';
+
+// AI日记条目（默认 recordType 为角色日记；客观纪要现存在「记忆」里 category=聊天总结）
 export interface MemoryDiaryEntry {
   id: string;
   day: string; // YYYY-MM-DD (UTC+8)
@@ -505,6 +508,8 @@ export interface MemoryDiaryEntry {
   content: string;
   moodTags?: string[];
   source: 'auto' | 'manual';
+  /** 未设置时视为「角色日记」 */
+  recordType?: MemoryDiaryRecordType;
 }
 
 // AI动态画像（高于初始人设）

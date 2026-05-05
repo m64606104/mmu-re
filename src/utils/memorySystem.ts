@@ -7,7 +7,7 @@ import { AIEvent, ApiConfig, Conversation, MemoryBank, MemoryDiaryEntry, MemoryE
 import { save, load } from './storage';
 
 // 重新导出类型以便其他组件使用
-export type { MemoryEntry };
+export type { MemoryEntry, MemoryDiaryEntry };
 
 const MEMORY_STORAGE_KEY = 'chat_memory_banks';
 
@@ -38,6 +38,10 @@ export const getMemoryBank = (conversationId: string): MemoryBank => {
     if (!existing.aiSelfProfile) existing.aiSelfProfile = undefined;
     if (!existing.userProfile) existing.userProfile = undefined;
     if (!existing.aiEvents) existing.aiEvents = [];
+    // 私聊阶段总结与引擎一致：间隔至少 50（旧版 15/25 与运行逻辑不一致）
+    if (typeof existing.settings?.autoSummaryInterval === 'number' && existing.settings.autoSummaryInterval < 50) {
+      existing.settings.autoSummaryInterval = 50;
+    }
     return existing;
   }
   
@@ -234,7 +238,8 @@ export const addDiaryEntry = (
   day: string,
   content: string,
   moodTags: string[] = [],
-  source: 'auto' | 'manual' = 'auto'
+  source: 'auto' | 'manual' = 'auto',
+  recordType: MemoryDiaryEntry['recordType'] = 'diary'
 ): MemoryDiaryEntry => {
   const bank = getMemoryBank(conversationId);
   if (!bank.diaryEntries) bank.diaryEntries = [];
@@ -246,6 +251,7 @@ export const addDiaryEntry = (
     content,
     moodTags,
     source,
+    recordType,
   };
   if (existingIndex >= 0) bank.diaryEntries[existingIndex] = next;
   else bank.diaryEntries.unshift(next);
@@ -300,9 +306,11 @@ export const buildDynamicProfileContext = (conversationId: string): string => {
           .join('\n')
     );
   }
-  const latestDiary = bank.diaryEntries?.[0];
+  const latestDiary = (bank.diaryEntries || []).find(
+    (d) => !d.recordType || d.recordType === 'diary'
+  );
   if (latestDiary?.content) {
-    sections.push(`【最近日记】\n日期：${latestDiary.day}\n${latestDiary.content}`);
+    sections.push(`【最近角色日记】\n日期：${latestDiary.day}\n${latestDiary.content}`);
   }
   return sections.length ? `\n${sections.join('\n\n')}\n` : '';
 };
@@ -345,7 +353,11 @@ export const updateMemorySettings = (
   settings: Partial<MemoryBank['settings']>
 ): void => {
   const bank = getMemoryBank(conversationId);
-  bank.settings = { ...bank.settings, ...settings };
+  const merged = { ...bank.settings, ...settings };
+  if (typeof merged.autoSummaryInterval === 'number') {
+    merged.autoSummaryInterval = Math.max(50, Math.min(500, merged.autoSummaryInterval));
+  }
+  bank.settings = merged;
   saveMemoryBank(bank);
 };
 
@@ -387,7 +399,10 @@ function dayPartOf(ts: number): 'morning' | 'noon' | 'evening' {
 }
 
 async function askJson(apiConfig: ApiConfig, prompt: string): Promise<any | null> {
-  if (!apiConfig.baseUrl || !apiConfig.apiKey || !apiConfig.modelName) return null;
+  if (!apiConfig.baseUrl || !apiConfig.apiKey || !apiConfig.modelName) {
+    console.warn('[memory-engine] 缺少 API 配置（baseUrl / apiKey / modelName），跳过本次调用');
+    return null;
+  }
   try {
     const res = await fetch(`${apiConfig.baseUrl}/v1/chat/completions`, {
       method: 'POST',
@@ -402,13 +417,21 @@ async function askJson(apiConfig: ApiConfig, prompt: string): Promise<any | null
         max_tokens: 900,
       }),
     });
-    if (!res.ok) return null;
+    if (!res.ok) {
+      const errBody = await res.text().catch(() => '');
+      console.warn('[memory-engine] API 非成功状态', res.status, errBody.slice(0, 200));
+      return null;
+    }
     const data = await res.json();
     const text = String(data?.choices?.[0]?.message?.content || '');
     const match = text.match(/\{[\s\S]*\}/);
-    if (!match) return null;
+    if (!match) {
+      console.warn('[memory-engine] 模型返回中未找到 JSON 对象', text.slice(0, 160));
+      return null;
+    }
     return JSON.parse(match[0]);
-  } catch {
+  } catch (e) {
+    console.warn('[memory-engine] askJson 异常', e);
     return null;
   }
 }
@@ -417,6 +440,20 @@ function toDialogue(messages: Message[]): string {
   return messages
     .map((m) => `${m.role === 'user' ? '用户' : m.role === 'assistant' ? 'AI' : '系统'}: ${m.content || '[媒体消息]'}`)
     .join('\n');
+}
+
+/** 供「角色日记」模型使用的口吻与人设摘要 */
+function buildCharacterVoicePack(conversation: Conversation): string {
+  const cs = conversation.characterSettings;
+  if (!cs) return '（未配置角色设定：请仅依据对话推断合理口吻。）';
+  const lines: string[] = [];
+  if (cs.nickname) lines.push(`角色称呼：${cs.nickname}`);
+  if (cs.personality) lines.push(`性格：${cs.personality}`);
+  if (cs.languageStyle) lines.push(`语言风格：${cs.languageStyle}`);
+  if (cs.languageExample) lines.push(`说话示例（节选）：${String(cs.languageExample).slice(0, 220)}`);
+  const sp = (cs.systemPrompt || '').trim();
+  if (sp) lines.push(`人设与背景（节选）：${sp.slice(0, 520)}${sp.length > 520 ? '…' : ''}`);
+  return lines.join('\n');
 }
 
 export async function runMemoryEngineCycle(
@@ -429,26 +466,51 @@ export async function runMemoryEngineCycle(
   const allMessages = conversation.messages || [];
   if (allMessages.length < 10) return;
 
+  /** 用户设置的「日常」阶段总结步长（至少 50） */
   const interval = Math.max(50, bank.settings.autoSummaryInterval || 50);
+  /** 积压未总结条数 ≥ 此值时，每批按 100 条调用一次模型，减少补跑费用与等待 */
+  const LARGE_BACKLOG_STEP = 100;
   while (allMessages.length - bank.lastSummaryMessageCount >= interval) {
+    const backlog = allMessages.length - bank.lastSummaryMessageCount;
+    const step = backlog >= LARGE_BACKLOG_STEP ? Math.min(LARGE_BACKLOG_STEP, backlog) : interval;
     const start = bank.lastSummaryMessageCount;
-    const end = start + interval;
+    const end = start + step;
     const chunk = allMessages.slice(start, end);
+    const diaryLenHint = step >= LARGE_BACKLOG_STEP ? '120-260字' : '80-180字';
+    const summaryLenHint = step >= LARGE_BACKLOG_STEP ? '100-220字' : '60-160字';
+    const voicePack = buildCharacterVoicePack(conversation);
     const prompt =
-      `你要写“聊天记忆日记”和“候选长期记忆”。\n` +
-      `定义：\n` +
-      `- 自我画像：AI当前的身份/状态/承诺/重要经历/价值观（会随事件变化，覆盖初始人设）\n` +
-      `- 用户画像：用户的稳定信息+偏好+目标+与AI关系走向（会随互动更新）\n` +
-      `- AI事件：发生了“状态变化/人生节点/关系变化/角色定位变化”的事实（如辞职、被雇佣、关系升级），需要后续持续一致。\n\n` +
-      `请从“角色第一人称视角”写一段聊天记忆日记（80-180字），基于以下对话，不要编造。\n` +
-      `输出JSON: {"summary":"...","moodTags":["..."],"memoryCandidates":[{"content":"...","importance":"high|medium|low","category":"关系|事件|喜好|对话互动|情感|AI观点|AI经历"}],"aiEventCandidates":[{"title":"...","description":"...","status":"pending|confirmed|failed","tags":["..."]}]}\n` +
+      `你是「记忆引擎」，同时产出两类文本，必须严格区分：\n` +
+      `A) **角色日记（diary）**：用【该角色第一人称】写日记（${diaryLenHint}）。要贴合下面「角色口吻依据」里的性格、语言风格与身份，像在写自己的私密日记：可以有情绪与主观感受，但不要编造对话里没有的事。\n` +
+      `B) **聊天纪要（chatSummary）**：用【旁观记录员、第三人称或「用户/AI」称谓】写客观纪要（${summaryLenHint}）。只整理对话里出现的事实、信息点、约定与决定；不要写「我觉得」「我很…」等角色内心独白；不要抒情。\n` +
+      `另外请输出候选长期记忆与事件候选（与 A/B 区分开）：\n` +
+      `- memoryCandidates：可入库的短事实条目（偏客观、可执行）\n` +
+      `- aiEventCandidates：可能影响后续行为的状态/关系节点\n\n` +
+      `【角色口吻依据】\n${voicePack}\n\n` +
+      `输出 JSON（字段缺一不可，若无内容用空字符串）：\n` +
+      `{"diary":"...","chatSummary":"...","moodTags":["..."],"memoryCandidates":[{"content":"...","importance":"high|medium|low","category":"关系|事件|喜好|对话互动|情感|AI观点|AI经历"}],"aiEventCandidates":[{"title":"...","description":"...","status":"pending|confirmed|failed","tags":["..."]}]}\n` +
       `对话：\n${toDialogue(chunk)}`;
     const parsed = await askJson(apiConfig, prompt);
-    const summary = String(parsed?.summary || '').trim();
+    if (!parsed) {
+      console.warn('[memory-engine] 阶段总结未得到有效 JSON（仍会推进水位避免死循环，本段内容丢失）', {
+        conversationId: conversation.id,
+        range: `${start}-${end}`,
+        step,
+      });
+    }
+    let diaryText = String(parsed?.diary || '').trim();
+    let chatSummaryText = String(parsed?.chatSummary || '').trim();
+    if (!diaryText && !chatSummaryText) {
+      const legacy = String(parsed?.summary || '').trim();
+      if (legacy) diaryText = legacy;
+    }
     const moodTags = Array.isArray(parsed?.moodTags) ? parsed.moodTags.map((x: any) => String(x)).filter(Boolean).slice(0, 6) : [];
-    if (summary) {
-      addDiaryEntry(conversation.id, utc8DayKey(chunk[chunk.length - 1]?.timestamp || Date.now()), `【${interval}条阶段日记】${summary}`, moodTags, 'auto');
-      addMemory(conversation.id, summary, 'medium', '对话互动', true);
+    const dayKey = utc8DayKey(chunk[chunk.length - 1]?.timestamp || Date.now());
+    if (diaryText) {
+      addDiaryEntry(conversation.id, dayKey, `【${step}条阶段·角色日记】${diaryText}`, moodTags, 'auto', 'diary');
+    }
+    if (chatSummaryText) {
+      addMemory(conversation.id, `【${step}条阶段·聊天纪要】${chatSummaryText}`, 'medium', '聊天总结', true);
     }
     const candidates = Array.isArray(parsed?.memoryCandidates) ? parsed.memoryCandidates : [];
     candidates.forEach((m: any) => {
@@ -531,7 +593,14 @@ export async function runMemoryEngineCycle(
     const summary = String(parsed?.summary || '').trim();
     const moodTags = Array.isArray(parsed?.moodTags) ? parsed.moodTags.map((x: any) => String(x)).filter(Boolean).slice(0, 6) : [];
     if (summary) {
-      addDiaryEntry(conversation.id, day, `【${part === 'morning' ? '早间' : part === 'noon' ? '午间' : '晚间'}总结】${summary}`, moodTags, 'auto');
+      addDiaryEntry(
+        conversation.id,
+        day,
+        `【${part === 'morning' ? '早间' : part === 'noon' ? '午间' : '晚间'}·角色日记】${summary}`,
+        moodTags,
+        'auto',
+        'diary'
+      );
       bank.dayPartSummaryMarks![key] = Date.now();
       saveMemoryBank(bank);
     }
@@ -553,8 +622,7 @@ export async function runMemoryEngineCycle(
       const dailySummary = String(parsed?.dailySummary || '').trim();
       const moodTags = Array.isArray(parsed?.moodTags) ? parsed.moodTags.map((x: any) => String(x)).filter(Boolean).slice(0, 8) : [];
       if (dailySummary) {
-        addDiaryEntry(conversation.id, day, `【今日总结】${dailySummary}`, moodTags, 'auto');
-        addMemory(conversation.id, dailySummary, 'medium', 'AI经历', true);
+        addDiaryEntry(conversation.id, day, `【今日·角色日记】${dailySummary}`, moodTags, 'auto', 'diary');
       }
       const aiSelf = String(parsed?.aiSelfProfile || '').trim();
       const userP = String(parsed?.userProfile || '').trim();
@@ -642,6 +710,35 @@ export function enqueueMemoryEngineCycle(
         }
       });
   });
+}
+
+/**
+ * 角色设置保存后：若已开启完整记忆系统且未总结消息数达到自动总结阈值，
+ * 立即排队补跑记忆引擎（无需再等一条新消息）。
+ */
+export function enqueueMemoryEngineIfBacklogAfterSave(
+  base: Conversation,
+  updates: {
+    name?: string;
+    enabledFeatures: string[];
+    characterSettings: Conversation['characterSettings'];
+  },
+  apiConfig: ApiConfig
+): void {
+  if (base.type !== 'private') return;
+  if (!updates.enabledFeatures.includes('memory-system')) return;
+  const bank = getMemoryBank(base.id);
+  if (!bank.settings.enableAutoSummary) return;
+  const msgCount = base.messages?.length || 0;
+  if (!shouldTriggerAutoSummary(base.id, msgCount)) return;
+
+  const merged: Conversation = {
+    ...base,
+    name: updates.name ?? base.name,
+    enabledFeatures: updates.enabledFeatures,
+    characterSettings: updates.characterSettings,
+  };
+  enqueueMemoryEngineCycle(merged, apiConfig);
 }
 
 /**
