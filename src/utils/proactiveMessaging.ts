@@ -318,10 +318,10 @@ ${MEDIA_DECISION_GUIDANCE}
 ${context}
 ${memoryContext}
 
-【AI自我画像（动态）】
+【「我」对自己的认知（动态）】
 ${aiSelfProfile || '（无）'}
 
-【用户画像（动态）】
+【「我」对用户的认知（动态）】
 ${userProfile || '（无）'}
 
 【AI近期事件】

@@ -289,10 +289,10 @@ export const buildDynamicProfileContext = (conversationId: string): string => {
   const bank = getMemoryBank(conversationId);
   const sections: string[] = [];
   if (bank.aiSelfProfile?.text) {
-    sections.push(`【动态自我画像（高优先级，覆盖初始人设）】\n${bank.aiSelfProfile.text}`);
+    sections.push(`【「我」对自己的认知（动态，高优先级，可覆盖初始人设中的静态描述）】\n${bank.aiSelfProfile.text}`);
   }
   if (bank.userProfile?.text) {
-    sections.push(`【动态用户画像（高优先级）】\n${bank.userProfile.text}`);
+    sections.push(`【「我」对用户的认知（动态，高优先级，主观印象）】\n${bank.userProfile.text}`);
   }
   const recentEvents = (bank.aiEvents || [])
     .slice()
@@ -456,6 +456,18 @@ function buildCharacterVoicePack(conversation: Conversation): string {
   return lines.join('\n');
 }
 
+/** 记忆引擎写入动态画像：锚定角色设定里的「我」，强调第一人称、可带主观色彩 */
+function buildProfileEngineRoleAnchor(conversation: Conversation): string {
+  return (
+    `【动态画像的写作视角】\n` +
+    `你必须代入下方「角色设定锚点」中的这个 AI 角色，全程用第一人称「我」书写；不要用第三方说明书、简历或新闻稿语气。\n` +
+    `- aiSelfProfile：写「我对我自己的认知」——在角色身份与处境下，我如何看自己（心情、自我定位、在意的事、与设定的呼应），可与性格一致的主观色彩。\n` +
+    `- userProfile：写「我对用户的认知」——作为这个角色，我眼中的聊天对象是怎样的人、关系亲疏与情绪倾向；这是**局中人视角**，可带主观印象与揣测，但不要编造对话里从未出现的事实。\n\n` +
+    `【角色设定锚点】\n` +
+    `${buildCharacterVoicePack(conversation)}`
+  );
+}
+
 export async function runMemoryEngineCycle(
   conversation: Conversation,
   apiConfig: ApiConfig
@@ -543,11 +555,13 @@ export async function runMemoryEngineCycle(
       .slice(0, 12)
       .map((e) => `- (${e.day})[${e.status}] ${e.title}：${e.description}`)
       .join('\n');
+    const roleAnchor = buildProfileEngineRoleAnchor(conversation);
     const prompt =
       `你要做100条对话复盘（关键：AI是“成长和流动的”）。\n` +
-      `定义：\n` +
-      `- 自我画像：AI当前身份/状态/承诺/重要经历/价值观/职业状态（必须能覆盖初始人设的旧设定）\n` +
-      `- 用户画像：用户的稳定画像+变化趋势+与AI关系定位（比如雇佣、朋友、师徒等）\n` +
+      `${roleAnchor}\n\n` +
+      `定义（须与上面「动态画像的写作视角」一致）：\n` +
+      `- aiSelfProfile：第一人称「我」——「我对我自己的认知」（身份感、处境、承诺、经历、价值观等），贴合角色设定，可带主观色彩；用于覆盖对话中已证伪或过时的初始人设。\n` +
+      `- userProfile：第一人称「我」——「我对用户的认知」（我眼中的 TA、关系定位如朋友/雇佣/师徒等、变化趋势），是角色主观视角，不是客观人口统计。\n` +
       `- AI事件：会改变未来行为的事实节点（辞职成功/失败、被雇佣、关系升级、搬家、重大承诺等）。\n\n` +
       `任务：先看旧记忆与旧事件，再看新对话，决定哪些要新增/更新。输出尽量“可执行、可保持一致”。\n` +
       `输出JSON: {"newMemories":[{"content":"...","importance":"high|medium|low","category":"关系|事件|喜好|对话互动|情感|AI观点|AI经历"}],"aiEvents":[{"title":"...","description":"...","status":"pending|confirmed|failed","tags":["..."]}],"aiSelfProfile":"...","userProfile":"..."}\n` +
@@ -609,12 +623,14 @@ export async function runMemoryEngineCycle(
   if (bank.lastDailySummaryDay !== day) {
     const todayMsgs = allMessages.filter((m) => utc8DayKey(m.timestamp || Date.now()) === day);
     if (todayMsgs.length >= 8) {
+      const roleAnchor = buildProfileEngineRoleAnchor(conversation);
       const parsed = await askJson(apiConfig, 
         `你要输出“今日总结 + 画像更新 + 事件”。\n` +
+        `${roleAnchor}\n\n` +
         `定义：\n` +
         `- 今日总结：角色第一人称，记录今天与用户的关键互动\n` +
-        `- 自我画像：AI当前身份/状态/承诺/职业状态/关系定位（覆盖初始人设）\n` +
-        `- 用户画像：用户的稳定画像与变化趋势，以及与AI关系定位\n` +
+        `- aiSelfProfile：第一人称「我」——「我对我自己的认知」，须贴合角色设定锚点，可主观，用于覆盖初始人设中已被对话更新的部分\n` +
+        `- userProfile：第一人称「我」——「我对用户的认知」，局中人视角、可带印象与情绪倾向，非客观第三方档案\n` +
         `- AI事件：今天如果出现状态变化/关系变化/角色定位变化，必须产出事件。\n\n` +
         `输出JSON: {"dailySummary":"...","moodTags":["..."],"aiSelfProfile":"...","userProfile":"...","aiEvents":[{"title":"...","description":"...","status":"pending|confirmed|failed","tags":["..."]}]}\n` +
         `${toDialogue(todayMsgs)}`

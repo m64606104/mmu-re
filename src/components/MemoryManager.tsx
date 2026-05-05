@@ -671,17 +671,17 @@ export default function MemoryManager({ conversationId, conversationName, onClos
             <div className="space-y-3">
         {/* 自我画像与用户画像（高优先级） */}
         <div className="mb-4 p-4 rounded-xl border border-purple-200 bg-purple-50">
-          <div className="flex items-center justify-between mb-2">
-            <div className="text-sm font-semibold text-purple-900">动态画像（高于初始人设）</div>
+          <div className="flex items-start justify-between gap-2 mb-1">
+            <div className="text-sm font-semibold text-purple-900">动态画像（角色视角，高于初始人设）</div>
             {!editingProfiles ? (
               <button
                 onClick={() => setEditingProfiles(true)}
-                className="text-xs px-2 py-1 rounded border border-purple-300 text-purple-700 hover:bg-purple-100"
+                className="text-xs px-2 py-1 rounded border border-purple-300 text-purple-700 hover:bg-purple-100 shrink-0"
               >
                 编辑
               </button>
             ) : (
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 shrink-0">
                 <button
                   onClick={handleSaveProfiles}
                   className="text-xs px-2 py-1 rounded bg-purple-600 text-white hover:bg-purple-700"
@@ -700,36 +700,39 @@ export default function MemoryManager({ conversationId, conversationName, onClos
               </div>
             )}
           </div>
+          <p className="text-[10px] text-purple-800/75 leading-snug mb-3">
+            两段均按角色设定里的「我」书写：自我=我对我自己的认知；用户=我对聊天对象的认知。均可带主观色彩，勿写成客观简历。
+          </p>
           <div className="space-y-3">
             <div>
-              <div className="text-xs text-purple-700 mb-1">自我画像（AI当前状态）</div>
+              <div className="text-xs text-purple-700 mb-1">「我」对我自己的认知</div>
               {editingProfiles ? (
                 <textarea
                   value={aiSelfProfileText}
                   onChange={(e) => setAiSelfProfileText(e.target.value)}
                   rows={3}
                   className="w-full text-sm bg-white border border-purple-200 rounded-lg p-2 text-gray-700 resize-none"
-                  placeholder="输入AI当前自我画像"
+                  placeholder="用第一人称「我」写：在角色设定下，我如何看自己（可带主观感受）"
                 />
               ) : (
                 <div className="text-sm bg-white border border-purple-100 rounded-lg p-2 text-gray-700 whitespace-pre-wrap">
-                  {aiSelfProfileText || '暂无（会随聊天自动更新）'}
+                  {aiSelfProfileText || '暂无（记忆引擎会按角色设定与聊天自动更新）'}
                 </div>
               )}
             </div>
             <div>
-              <div className="text-xs text-purple-700 mb-1">用户画像（AI对用户的理解）</div>
+              <div className="text-xs text-purple-700 mb-1">「我」对用户的认知</div>
               {editingProfiles ? (
                 <textarea
                   value={userProfileText}
                   onChange={(e) => setUserProfileText(e.target.value)}
                   rows={3}
                   className="w-full text-sm bg-white border border-purple-200 rounded-lg p-2 text-gray-700 resize-none"
-                  placeholder="输入AI对用户的画像"
+                  placeholder="用第一人称「我」写：我眼中的用户、关系与感受（可带主观印象）"
                 />
               ) : (
                 <div className="text-sm bg-white border border-purple-100 rounded-lg p-2 text-gray-700 whitespace-pre-wrap">
-                  {userProfileText || '暂无（会随聊天自动更新）'}
+                  {userProfileText || '暂无（记忆引擎会按角色设定与聊天自动更新）'}
                 </div>
               )}
             </div>

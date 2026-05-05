@@ -512,7 +512,7 @@ export interface MemoryDiaryEntry {
   recordType?: MemoryDiaryRecordType;
 }
 
-// AI动态画像（高于初始人设）
+// AI 动态画像（高于初始人设）：均按角色设定中的第一人称「我」书写，可带主观色彩
 export interface DynamicIdentityProfile {
   text: string;
   version: number;
@@ -537,8 +537,8 @@ export interface MemoryBank {
   conversationId: string; // 对话ID
   memories: MemoryEntry[];
   diaryEntries?: MemoryDiaryEntry[]; // 日记区块
-  aiSelfProfile?: DynamicIdentityProfile; // 自我画像（高优先级）
-  userProfile?: DynamicIdentityProfile; // 用户画像（高优先级）
+  aiSelfProfile?: DynamicIdentityProfile; // 「我」对自己的认知（高优先级）
+  userProfile?: DynamicIdentityProfile; // 「我」对用户的认知（高优先级）
   aiEvents?: AIEvent[]; // AI 事件区（高优先级，覆盖初始人设）
   lastSummaryMessageCount: number; // 上次总结时的消息数量（私聊）
   totalMessagesSinceLastSummary: number; // 距离上次总结的消息数量

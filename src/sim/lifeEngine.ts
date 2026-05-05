@@ -433,8 +433,8 @@ function buildPrompt(
     `  ],\n` +
     `  "goalAdjustments": [{"id":"目标id","progressDelta":-10~10,"active":true|false}],\n` +
     `  "narrativeThreadUpdates": [{"id":"可选。已有线程id","title":"线程标题","summary":"线程推进描述","status":"active|fading|closed","tags":["可选"],"relatedCategories":["可选动作类"]}],\n` +
-    `  "aiSelfProfileDelta": "可选。若出现身份/状态变化，用1~2句更新自我画像",\n` +
-    `  "userProfileDelta": "可选。若本次涉及用户关系变化，用1~2句更新用户画像"\n` +
+    `  "aiSelfProfileDelta": "可选。若身份/状态变化：1~2句，第一人称「我」，写「我对我自己的认知」，贴合上面角色设定，可主观",\n` +
+    `  "userProfileDelta": "可选。若与用户关系/印象变化：1~2句，第一人称「我」，写「我对用户的认知」，可带主观倾向"\n` +
     `}`
   );
 }
