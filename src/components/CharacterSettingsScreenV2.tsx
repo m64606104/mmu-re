@@ -14,6 +14,7 @@ import MemoryManager from './MemoryManager';
 import { useMobileBottomDock } from '../hooks/useMobileBottomDock';
 import { smartLoad } from '../utils/storage';
 import { enqueueMemoryEngineIfBacklogAfterSave } from '../utils/memorySystem';
+import { resolvePrivateChatApiConfig } from '../utils/chatApiConfig';
 
 type Props = {
   conversation: Conversation;
@@ -89,6 +90,7 @@ export default function CharacterSettingsScreenV2(props: Props) {
   const [memoryConfigEnabled, setMemoryConfigEnabled] = useState(cs.memoryConfig?.enabled ?? true);
   const [momentsMemoryEnabled, setMomentsMemoryEnabled] = useState(cs.momentsMemoryConfig?.enabled ?? true);
   const [disableWorldbook, setDisableWorldbook] = useState(cs.disableWorldbook ?? false);
+  const [chatModelOverride, setChatModelOverride] = useState(cs.chatModelOverride ?? '');
 
   // 主动消息默认开启（若用户从未配置过）
   const [proactiveEnabled, setProactiveEnabled] = useState(cs.proactiveMessaging?.enabled ?? true);
@@ -129,6 +131,7 @@ export default function CharacterSettingsScreenV2(props: Props) {
     setMemoryConfigEnabled(cs.memoryConfig?.enabled ?? true);
     setMomentsMemoryEnabled(cs.momentsMemoryConfig?.enabled ?? true);
     setDisableWorldbook(cs.disableWorldbook ?? false);
+    setChatModelOverride(cs.chatModelOverride ?? '');
     setProactiveEnabled(cs.proactiveMessaging?.enabled ?? true);
     setActiveHourStart(clampHour(cs.proactiveMessaging?.activeHourStart ?? 8));
     setActiveHourEnd(clampHour(cs.proactiveMessaging?.activeHourEnd ?? 23));
@@ -182,6 +185,7 @@ export default function CharacterSettingsScreenV2(props: Props) {
         lastMessageTime: conversation.characterSettings?.proactiveMessaging?.lastMessageTime,
       },
       knowledgeBase,
+      chatModelOverride: chatModelOverride.trim() ? chatModelOverride.trim() : undefined,
     };
 
     onUpdateConversation(conversation.id, {
@@ -190,10 +194,16 @@ export default function CharacterSettingsScreenV2(props: Props) {
       enabledFeatures: updatedFeatures,
     });
 
+    const mergedForApi: Conversation = {
+      ...conversation,
+      name: nextName,
+      enabledFeatures: updatedFeatures,
+      characterSettings: nextCharacterSettings,
+    };
     enqueueMemoryEngineIfBacklogAfterSave(
       conversation,
       { name: nextName, enabledFeatures: updatedFeatures, characterSettings: nextCharacterSettings },
-      apiConfig
+      resolvePrivateChatApiConfig(apiConfig, mergedForApi)
     );
 
     alert('已保存');
@@ -645,6 +655,22 @@ export default function CharacterSettingsScreenV2(props: Props) {
                 </div>
               </div>
             ) : null}
+          </div>
+
+          <div className={`bg-white rounded-3xl p-4 shadow-sm border border-gray-100 ${editStep === 'advanced' ? '' : 'hidden'}`}>
+            <div className="text-sm font-semibold text-gray-900 mb-1">单独配置模型</div>
+            <p className="text-[11px] text-gray-500 mb-3 leading-relaxed">
+              留空则使用设置里的全局对话模型。仅覆盖文字对话；视觉模型仍在全局设置中配置。
+            </p>
+            <input
+              value={chatModelOverride}
+              onChange={(e) => setChatModelOverride(e.target.value)}
+              className="w-full rounded-2xl border border-gray-200 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-gray-900/10 font-mono"
+              placeholder={apiConfig.modelName ? `默认：${apiConfig.modelName}` : '例如 gpt-4o-mini'}
+              autoCapitalize="off"
+              autoCorrect="off"
+              spellCheck={false}
+            />
           </div>
 
           {/* managers */}

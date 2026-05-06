@@ -280,6 +280,8 @@ export interface CharacterSettings {
   disableWorldbook?: boolean; // 是否禁用世界书（默认false）
   // 📮 笔友来源标记
   penPalSourceLetterId?: string; // 如果是从信箱笔友添加的，记录来源信件ID
+  /** 单独配置对话模型（非空则替代全局「模型名称」；视觉模型仍用全局） */
+  chatModelOverride?: string;
 }
 
 export interface AIIdentityUpdateDraft {
@@ -389,6 +391,8 @@ export interface Conversation {
   };
   messageBufferSeconds?: number; // 消息缓冲时间（秒），用于延后回复
   replySplitPreference?: 'smart' | 'single' | 'split'; // 新拆分策略偏好：智能/整段/拆条
+  /** 群聊单独配置对话模型（非空则本群内 AI 回复优先使用该模型；视觉仍全局） */
+  groupChatModelOverride?: string;
 }
 
 export interface UserProfile {

@@ -12,6 +12,7 @@ export {
   onTypingChange,
   isGenerating,
   initPendingReplyService,
+  setPendingReplyComposerGate,
 } from '../../utils/pendingReplyService';
 
 export * from './messageRenderParser';

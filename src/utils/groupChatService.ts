@@ -5,6 +5,7 @@ import { buildTimeAwarePrompt } from './timeAwareness';
 import { formatLetterMemoryForAI } from './letterMemorySystem';
 import { MEDIA_DECISION_GUIDANCE } from './mediaDecisionPrompt';
 import { getNoActionRoleplayPrompt } from './chatStylePrompt';
+import { resolveGroupParticipantApiConfig } from './chatApiConfig';
 
 /**
  * 群聊API服务
@@ -656,8 +657,9 @@ async function generateAIReply(
     const temperature = (typeof groupConversation.groupTemperature === 'number')
       ? groupConversation.groupTemperature
       : (isFreeMode ? 0.6 : 0.8);
+    const chatCfg = resolveGroupParticipantApiConfig(apiConfig, groupConversation, aiMember);
     const requestBody = {
-      model: apiConfig.modelName,
+      model: chatCfg.modelName,
       messages: [
         { role: 'system', content: systemPrompt },
         ...apiMessages

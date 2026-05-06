@@ -5,6 +5,8 @@ import { Conversation } from '../types';
 interface GroupChatSettingsModalProps {
   conversation: Conversation;
   conversations: Conversation[];
+  /** 全局设置里的对话模型名，用于占位提示 */
+  globalDefaultModelName?: string;
   onClose: () => void;
   onUpdateConversation: (conversationId: string, updates: Partial<Conversation>) => void;
   onDeleteConversation?: (conversationId: string) => void;
@@ -13,6 +15,7 @@ interface GroupChatSettingsModalProps {
 const GroupChatSettingsModal: React.FC<GroupChatSettingsModalProps> = ({
   conversation,
   conversations,
+  globalDefaultModelName,
   onClose,
   onUpdateConversation,
   onDeleteConversation,
@@ -41,13 +44,19 @@ const GroupChatSettingsModal: React.FC<GroupChatSettingsModalProps> = ({
   
   const imageInputRef = React.useRef<HTMLInputElement>(null);
 
+  const [groupChatModelOverride, setGroupChatModelOverride] = useState(
+    conversation.groupChatModelOverride ?? ''
+  );
+
   const handleSave = () => {
+    const trimmedModel = groupChatModelOverride.trim();
     onUpdateConversation(conversation.id, {
       name: groupName,
       groupRemark: groupRemark,
       avatar: groupAvatar,
       groupChatMode: groupChatMode,
       groupTemperature: groupTemperature,
+      groupChatModelOverride: trimmedModel ? trimmedModel : undefined,
       groupContextConfig: {
         enabled: contextEnabled,
         messageCount: contextMessageCount,
@@ -374,6 +383,35 @@ const GroupChatSettingsModal: React.FC<GroupChatSettingsModalProps> = ({
                     </div>
                   </div>
                 )}
+              </div>
+            </div>
+          </details>
+
+          {/* 🤖 单独配置模型 */}
+          <details className="bg-white rounded-lg shadow-sm overflow-hidden group border border-gray-100">
+            <summary className="px-4 py-3 flex items-center justify-between bg-gray-50 border-b border-gray-100 cursor-pointer list-none select-none hover:bg-gray-100 transition-colors">
+              <div className="flex items-center gap-2">
+                <div className="w-1 h-4 bg-indigo-500 rounded-full"></div>
+                <h3 className="text-sm font-medium text-gray-900">单独配置模型</h3>
+              </div>
+              <ChevronRight className="w-4 h-4 text-gray-500 transition-transform group-open:rotate-90" />
+            </summary>
+            <div className="p-4 space-y-3">
+              <p className="text-xs text-gray-600 leading-relaxed">
+                留空则使用设置里的全局对话模型。本群所有 AI 发言与群记忆总结会优先使用此处模型；成员角色上的单独模型仅在未填写群模型时生效。视觉模型仍在全局设置中配置。
+              </p>
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1.5">对话模型 ID</label>
+                <input
+                  type="text"
+                  value={groupChatModelOverride}
+                  onChange={(e) => setGroupChatModelOverride(e.target.value)}
+                  className="w-full px-3 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm font-mono"
+                  placeholder={globalDefaultModelName ? `默认：${globalDefaultModelName}` : '例如 gpt-4o'}
+                  autoCapitalize="off"
+                  autoCorrect="off"
+                  spellCheck={false}
+                />
               </div>
             </div>
           </details>

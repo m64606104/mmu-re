@@ -34,3 +34,6 @@ pnpm-debug.log*
 
 # Vercel
 .vercel
+
+# gh-pages deploy worktree (scripts/deploy-gh-pages.sh)
+.gh-pages-worktree/

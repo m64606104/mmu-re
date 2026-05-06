@@ -6,6 +6,7 @@
 
 import { Conversation, Message, ApiConfig, UserProfile } from '../types';
 import { buildApiUrl } from './apiHelper';
+import { resolvePrivateChatApiConfig } from './chatApiConfig';
 import { resolveSystemEmoji, isSingleEmojiText } from './systemEmoji';
 import {
   validateAssistantOutput,
@@ -39,6 +40,47 @@ let _getUserProfile: GetUserProfileFn;
 
 const pendingMap = new Map<string, PendingEntry>();
 const generatingSet = new Set<string>();
+
+/** 输入框占用：正在聚焦或有草稿时暂停触发 AI 生成，避免与用户抢节奏 */
+let _composerBlocksReply: ((conversationId: string) => boolean) | undefined;
+
+const COMPOSER_IDLE_MS = 4000;
+const COMPOSER_POLL_MS = 220;
+
+export function setPendingReplyComposerGate(fn: ((conversationId: string) => boolean) | undefined) {
+  _composerBlocksReply = fn;
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((r) => setTimeout(r, ms));
+}
+
+/** 延迟计时结束后：若用户仍在输入框打字/停留，则等待其空闲 COMPOSER_IDLE_MS 再回复 */
+async function runReplyWithComposerIdle(conversationId: string) {
+  const gate = _composerBlocksReply;
+  if (!gate) {
+    await triggerReply(conversationId);
+    return;
+  }
+  for (;;) {
+    while (gate(conversationId)) {
+      await sleep(COMPOSER_POLL_MS);
+    }
+    let idleAccum = 0;
+    while (idleAccum < COMPOSER_IDLE_MS) {
+      await sleep(COMPOSER_POLL_MS);
+      if (gate(conversationId)) {
+        idleAccum = 0;
+        break;
+      }
+      idleAccum += COMPOSER_POLL_MS;
+    }
+    if (idleAccum >= COMPOSER_IDLE_MS) {
+      await triggerReply(conversationId);
+      return;
+    }
+  }
+}
 
 type ParsedStickerToken = {
   description: string;
@@ -227,7 +269,7 @@ export function schedulePendingReply(conversationId: string, delaySec: number) {
 
   const timerId = setTimeout(() => {
     pendingMap.delete(conversationId);
-    triggerReply(conversationId);
+    void runReplyWithComposerIdle(conversationId);
   }, delaySec * 1000);
 
   pendingMap.set(conversationId, { timerId });
@@ -361,7 +403,8 @@ async function triggerReply(conversationId: string) {
 
   const apiConfig = _getApiConfig();
   const userProfile = _getUserProfile();
-  if (!apiConfig.baseUrl || !apiConfig.apiKey || !apiConfig.modelName) return;
+  const effectiveApiConfig = resolvePrivateChatApiConfig(apiConfig, conversation);
+  if (!apiConfig.baseUrl || !apiConfig.apiKey || !effectiveApiConfig.modelName?.trim()) return;
   if (conversation.messages.length === 0) return;
 
   notifyTyping(conversationId, true);
@@ -565,7 +608,7 @@ async function triggerReply(conversationId: string) {
         Authorization: `Bearer ${apiConfig.apiKey}`,
         'X-Momoyu-Source': 'pendingReplyService:reply',
       },
-      body: JSON.stringify({ model: apiConfig.modelName, messages, temperature: 0.7, max_tokens: maxTokens }),
+      body: JSON.stringify({ model: effectiveApiConfig.modelName, messages, temperature: 0.7, max_tokens: maxTokens }),
     });
 
     if (!res.ok) {
@@ -587,7 +630,7 @@ async function triggerReply(conversationId: string) {
           'X-Momoyu-Source': 'pendingReplyService:protocol-retry',
         },
         body: JSON.stringify({
-          model: apiConfig.modelName,
+          model: effectiveApiConfig.modelName,
           messages: [...messages, { role: 'system', content: buildProtocolRetryInstruction() }],
           temperature: 0.7,
           max_tokens: maxTokens,
@@ -610,7 +653,7 @@ async function triggerReply(conversationId: string) {
           'X-Momoyu-Source': 'pendingReplyService:doc-retry',
         },
         body: JSON.stringify({
-          model: apiConfig.modelName,
+          model: effectiveApiConfig.modelName,
           messages: [...messages, { role: 'system', content: buildDocumentJsonRetryInstruction() }],
           temperature: 0.3,
           max_tokens: 9000,
@@ -748,7 +791,7 @@ async function triggerReply(conversationId: string) {
     if (conversation.enabledFeatures?.includes('memory-system')) {
       const freshConv2 = _getConversation(conversationId);
       if (freshConv2) {
-        enqueueMemoryEngineCycle(freshConv2, apiConfig);
+        enqueueMemoryEngineCycle(freshConv2, effectiveApiConfig);
       }
     }
 

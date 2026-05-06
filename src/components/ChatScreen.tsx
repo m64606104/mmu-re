@@ -37,7 +37,14 @@ import { SmartHTMLGenerator } from '../utils/smartHTMLGenerator';
 import { SavedDocument } from '../utils/documentLibrary';
 import { sendMoney, receiveMoney, getBalance, aiPayForUser, refundGift } from '../utils/wallet';
 import { backgroundGenerationService, type GenerationTask } from '../domains/generation';
-import { schedulePendingReply, onTypingChange, isGenerating as isConvGenerating, initPendingReplyService } from '../domains/chat';
+import {
+  schedulePendingReply,
+  onTypingChange,
+  isGenerating as isConvGenerating,
+  initPendingReplyService,
+  setPendingReplyComposerGate,
+} from '../domains/chat';
+import { resolvePrivateChatApiConfig, resolveGroupSummaryApiConfig } from '../utils/chatApiConfig';
 import { handleAIGroupRedPacketClaiming } from '../utils/aiGroupRedPacketDecision';
 import { processExpiredRedPacketRefund } from '../utils/groupRedPacket';
 import { calculateDeliveryStatus, formatEstimatedTime, getActiveStageIndex, getRiderInfo } from '../utils/orderDeliverySimulator';
@@ -144,7 +151,12 @@ export default function ChatScreen({
   onOpenStickerManagement,
 }: ChatScreenProps) {
   const { showToast } = useToast();
-  
+
+  const effectivePrivateApiConfig = useMemo(
+    () => resolvePrivateChatApiConfig(apiConfig, conversation),
+    [apiConfig, conversation]
+  );
+
   // 启用消息通知
   useMessageNotification({
     conversation,
@@ -408,14 +420,15 @@ ${recentMessages}
 
 现在请生成提示：`;
 
-      const response = await fetch(`${apiConfig.baseUrl}/v1/chat/completions`, {
+      const hintCfg = resolvePrivateChatApiConfig(apiConfig, conversationData);
+      const response = await fetch(`${hintCfg.baseUrl}/v1/chat/completions`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${apiConfig.apiKey}`,
+          'Authorization': `Bearer ${hintCfg.apiKey}`,
         },
         body: JSON.stringify({
-          model: apiConfig.modelName,
+          model: hintCfg.modelName,
           messages: [{ role: 'user', content: hintPrompt }],
           max_tokens: 50,
           temperature: 0.7
@@ -706,8 +719,23 @@ ${recentMessages}
     if (!conversation.enabledFeatures?.includes('memory-system')) return;
     if (conversation.messages.length <= lastMemoryEngineCountRef.current) return;
     lastMemoryEngineCountRef.current = conversation.messages.length;
-    enqueueMemoryEngineCycle(conversation, apiConfig);
-  }, [conversation, apiConfig]);
+    enqueueMemoryEngineCycle(conversation, effectivePrivateApiConfig);
+  }, [conversation, effectivePrivateApiConfig]);
+
+  const inputComposerFocusedRef = useRef(false);
+  const currentInputDraftRef = useRef('');
+  useEffect(() => {
+    currentInputDraftRef.current = currentInput;
+  }, [currentInput]);
+
+  useEffect(() => {
+    setPendingReplyComposerGate((convId) => {
+      if (convId !== conversation.id) return false;
+      if (conversation.type === 'group') return false;
+      return inputComposerFocusedRef.current || currentInputDraftRef.current.trim().length > 0;
+    });
+    return () => setPendingReplyComposerGate(undefined);
+  }, [conversation.id, conversation.type]);
   
   // 初始滚动到底部，显示最新消息
   useEffect(() => {
@@ -1418,14 +1446,14 @@ ${buildAvatarIdentityPrompt(characterInfo)}
         })),
       ];
       
-      const response = await fetch(`${apiConfig.baseUrl}/v1/chat/completions`, {
+      const response = await fetch(`${effectivePrivateApiConfig.baseUrl}/v1/chat/completions`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${apiConfig.apiKey}`,
+          'Authorization': `Bearer ${effectivePrivateApiConfig.apiKey}`,
         },
         body: JSON.stringify({
-          model: apiConfig.modelName,
+          model: effectivePrivateApiConfig.modelName,
           messages,
           temperature: 0.8,
         }),
@@ -2881,7 +2909,7 @@ ${buildAvatarIdentityPrompt(characterInfo)}
         const { getAIResponse } = await import('../utils/apiHelper');
         
         const aiReply = await getAIResponse(
-          apiConfig,
+          resolvePrivateChatApiConfig(apiConfig, privateConversation),
           [
             {
               role: 'system',
@@ -3229,15 +3257,15 @@ ${buildAvatarIdentityPrompt(characterInfo)}
         groupMemories
       );
       
-      // 调用AI进行总结
-      const response = await fetch(`${apiConfig.baseUrl}/v1/chat/completions`, {
+      const groupSummaryCfg = resolveGroupSummaryApiConfig(apiConfig, conversation);
+      const response = await fetch(`${groupSummaryCfg.baseUrl}/v1/chat/completions`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${apiConfig.apiKey}`,
+          'Authorization': `Bearer ${groupSummaryCfg.apiKey}`,
         },
         body: JSON.stringify({
-          model: apiConfig.modelName,
+          model: groupSummaryCfg.modelName,
           messages: [
             { role: 'user', content: summaryPrompt }
           ],
@@ -3297,15 +3325,14 @@ ${buildAvatarIdentityPrompt(characterInfo)}
       const memoryBank = await getMemoryBank(conversation.id);
       const summaryPrompt = buildMemorySummaryPrompt(currentMessages, memoryBank.memories);
       
-      // 调用AI进行总结
-      const response = await fetch(`${apiConfig.baseUrl}/v1/chat/completions`, {
+      const response = await fetch(`${effectivePrivateApiConfig.baseUrl}/v1/chat/completions`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${apiConfig.apiKey}`,
+          'Authorization': `Bearer ${effectivePrivateApiConfig.apiKey}`,
         },
         body: JSON.stringify({
-          model: apiConfig.modelName,
+          model: effectivePrivateApiConfig.modelName,
           messages: [
             { role: 'user', content: summaryPrompt }
           ],
@@ -4950,6 +4977,12 @@ ${buildAvatarIdentityPrompt(characterInfo)}
               <textarea
                 ref={inputRef as any}
                 value={currentInput}
+                onFocus={() => {
+                  inputComposerFocusedRef.current = true;
+                }}
+                onBlur={() => {
+                  inputComposerFocusedRef.current = false;
+                }}
                 onChange={(e) => {
                   const value = e.target.value;
                   const cursorPos = e.target.selectionStart || 0;
@@ -5750,7 +5783,7 @@ ${buildAvatarIdentityPrompt(characterInfo)}
           <SubChatWindow
             subChat={subChat}
             conversation={conversation}
-            apiConfig={apiConfig}
+            apiConfig={effectivePrivateApiConfig}
             onClose={() => handleCloseSubChat(activeSubChatId)}
             onMinimize={() => handleToggleMinimizeSubChat(activeSubChatId)}
             onSendMessage={handleSendSubChatMessage}
@@ -5786,7 +5819,7 @@ ${buildAvatarIdentityPrompt(characterInfo)}
           key={subChat.id}
           subChat={subChat}
           conversation={conversation}
-          apiConfig={apiConfig}
+          apiConfig={effectivePrivateApiConfig}
           onClose={() => handleCloseSubChat(subChat.id)}
           onMinimize={() => handleToggleMinimizeSubChat(subChat.id)}
           onSendMessage={handleSendSubChatMessage}
@@ -5888,6 +5921,7 @@ ${buildAvatarIdentityPrompt(characterInfo)}
       <GroupChatSettingsModal
         conversation={conversation}
         conversations={conversations}
+        globalDefaultModelName={apiConfig.modelName}
         onClose={() => setShowGroupSettings(false)}
         onUpdateConversation={onUpdateConversation}
         onDeleteConversation={(conversationId) => {
