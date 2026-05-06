@@ -5921,6 +5921,7 @@ ${buildAvatarIdentityPrompt(characterInfo)}
       <GroupChatSettingsModal
         conversation={conversation}
         conversations={conversations}
+        apiConfig={apiConfig}
         globalDefaultModelName={apiConfig.modelName}
         onClose={() => setShowGroupSettings(false)}
         onUpdateConversation={onUpdateConversation}
