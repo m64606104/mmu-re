@@ -1,16 +1,17 @@
 import { useState, useRef } from 'react';
 import { ChevronLeft, Upload, Key } from 'lucide-react';
-import { Conversation } from '../types';
+import type { CharacterInteractionMode, Conversation } from '../types';
 
 interface AddFriendScreenProps {
   onAddFriend: (friendData: {
+    realName: string;
     nickname: string;
-    username: string;
     avatar: string;
     systemPrompt: string;
     personality: string;
     languageStyle: string;
     languageExample: string;
+    interactionMode?: CharacterInteractionMode;
   }) => void;
   onBack: () => void;
   conversations?: Conversation[]; // 用于好友码添加
@@ -18,13 +19,14 @@ interface AddFriendScreenProps {
 }
 
 export default function AddFriendScreen({ onAddFriend, onBack, conversations, onAddPenPal }: AddFriendScreenProps) {
+  const [realName, setRealName] = useState('');
   const [nickname, setNickname] = useState('');
-  const [username, setUsername] = useState('');
   const [avatar, setAvatar] = useState('');
   const [systemPrompt, setSystemPrompt] = useState('');
   const [personality, setPersonality] = useState('');
   const [languageStyle, setLanguageStyle] = useState('');
   const [languageExample, setLanguageExample] = useState('');
+  const [interactionMode, setInteractionMode] = useState<CharacterInteractionMode>('companion');
   const [friendCode, setFriendCode] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -40,19 +42,24 @@ export default function AddFriendScreen({ onAddFriend, onBack, conversations, on
   };
 
   const handleAddFriend = () => {
+    if (!realName.trim()) {
+      alert('请输入角色本名');
+      return;
+    }
     if (!nickname.trim()) {
       alert('请输入备注名');
       return;
     }
 
     onAddFriend({
+      realName: realName.trim(),
       nickname: nickname.trim(),
-      username: username.trim(),
       avatar,
       systemPrompt: systemPrompt.trim(),
       personality: personality.trim(),
       languageStyle: languageStyle.trim(),
       languageExample: languageExample.trim(),
+      interactionMode,
     });
   };
 
@@ -159,7 +166,7 @@ export default function AddFriendScreen({ onAddFriend, onBack, conversations, on
                 <img src={avatar} alt="Avatar" className="w-full h-full object-cover" />
               ) : (
                 <span className="text-white font-semibold text-2xl">
-                  {nickname.charAt(0) || '?'}
+                  {(nickname || realName).charAt(0) || '?'}
                 </span>
               )}
             </div>
@@ -180,7 +187,21 @@ export default function AddFriendScreen({ onAddFriend, onBack, conversations, on
           </div>
         </div>
 
-        {/* Nickname */}
+        {/* 角色本名 */}
+        <div className="rounded-[26px] border border-slate-200 bg-white shadow-sm p-4">
+          <label className="block text-sm font-medium text-slate-700 mb-2">
+            角色本名 <span className="text-red-500">*</span>
+          </label>
+          <input
+            type="text"
+            value={realName}
+            onChange={(e) => setRealName(e.target.value)}
+            placeholder="角色自己知道的名字（真实姓名/自称）"
+            className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-300"
+          />
+        </div>
+
+        {/* 备注名 */}
         <div className="rounded-[26px] border border-slate-200 bg-white shadow-sm p-4">
           <label className="block text-sm font-medium text-slate-700 mb-2">
             备注名 <span className="text-red-500">*</span>
@@ -189,24 +210,47 @@ export default function AddFriendScreen({ onAddFriend, onBack, conversations, on
             type="text"
             value={nickname}
             onChange={(e) => setNickname(e.target.value)}
-            placeholder="输入角色备注名"
+            placeholder="仅在通讯录/列表中显示，角色本人不会当成自己的本名"
             className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-300"
           />
         </div>
 
-        {/* Username */}
+        <div className="rounded-[26px] border border-emerald-100 bg-emerald-50/80 shadow-sm p-4">
+          <p className="text-xs text-emerald-900 leading-relaxed">
+            <span className="font-semibold">角色网名</span>将在创建成功后由角色根据人设自动生成；之后在聊天或群聊中，角色也可随时改名（会自动同步到「角色网名」）。
+          </p>
+        </div>
+
+        {/* 互动类型 */}
         <div className="rounded-[26px] border border-slate-200 bg-white shadow-sm p-4">
-          <label className="block text-sm font-medium text-slate-700 mb-2">
-            角色网名
-          </label>
-          <input
-            type="text"
-            value={username}
-            onChange={(e) => setUsername(e.target.value)}
-            placeholder="例如：AI小助手2024"
-            className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-300"
-          />
-          <p className="text-xs text-slate-500 mt-1">在群聊中显示的网名</p>
+          <label className="block text-sm font-medium text-slate-700 mb-2">互动类型</label>
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={() => setInteractionMode('companion')}
+              className={`flex-1 py-2.5 rounded-xl text-sm font-medium border-2 transition-colors ${
+                interactionMode === 'companion'
+                  ? 'border-emerald-500 bg-emerald-50 text-emerald-900'
+                  : 'border-slate-200 bg-white text-slate-600'
+              }`}
+            >
+              陪伴型
+            </button>
+            <button
+              type="button"
+              onClick={() => setInteractionMode('tool')}
+              className={`flex-1 py-2.5 rounded-xl text-sm font-medium border-2 transition-colors ${
+                interactionMode === 'tool'
+                  ? 'border-emerald-500 bg-emerald-50 text-emerald-900'
+                  : 'border-slate-200 bg-white text-slate-600'
+              }`}
+            >
+              工具型
+            </button>
+          </div>
+          <p className="text-xs text-slate-500 mt-2 leading-relaxed">
+            工具型：回复偏助手/客服式，不跑生活轨迹模拟、不主动发消息、不参与 AI 朋友圈互动。陪伴型：默认角色扮演与日常感。
+          </p>
         </div>
 
         {/* System Prompt */}

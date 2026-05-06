@@ -72,7 +72,6 @@ import {
 } from '../domains/chat';
 import { buildUserMessageFromInput, commitUserMessage } from '../domains/chat';
 import { buildMediaChatRequest } from '../domains/chat';
-import { buildTextChatRequest } from '../domains/chat';
 // 子聊天相关导入
 import ChatExtractPreview from './ChatExtractPreview';
 import {
@@ -106,7 +105,7 @@ import { MEDIA_DECISION_GUIDANCE } from '../utils/mediaDecisionPrompt';
 import { getNoActionRoleplayPrompt } from '../utils/chatStylePrompt';
 import { getErrorFromResponse, formatErrorMessage, cleanAIMessage, stripDisplayControlTags, SmartLinkParser, buildTimeAwarePrompt, hasActionKeywords } from '../domains/chat';
 // 群聊服务
-import { generateGroupChatReplies, generateGroupChatRepliesFreeMode } from '../utils/groupChatService';
+import { generateGroupChatReplies } from '../utils/groupChatService';
 import GroupChatSettingsModal from './GroupChatSettingsModal';
 import VideoCallModal from './VideoCallModal'; // 导入视频通话组件
 import { CallLog } from '../types';
@@ -122,6 +121,7 @@ import { MessageActionMenu } from './MessageActionMenu';
 import { useToast } from './Toast';
 import { useMessageNotification } from '../hooks/useMessageNotification';
 import { buildAvatarIdentityPrompt } from '../utils/avatarVision';
+import { getCharacterRealName } from '../utils/characterIdentity';
 // import { transcribeAudio, isValidSpeechConfig } from '../utils/speechToText';
 
 interface ChatScreenProps {
@@ -270,6 +270,9 @@ export default function ChatScreen({
   const [atFilterText, setAtFilterText] = useState('');
   const [atCursorPosition, setAtCursorPosition] = useState(0);
   
+  /** 供 initPendingReplyService 调用：延迟回复链路里模型选择 [SKIP] 时的情境提示 */
+  const handleAINoReplyRef = useRef<(id: string) => Promise<void>>(async () => {});
+
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const advancedToolbarPanelRef = useRef<HTMLDivElement | null>(null);
@@ -343,9 +346,18 @@ export default function ChatScreen({
       onUpdateConversation,
       (id: string) => conversations.find(c => c.id === id),
       () => apiConfig,
-      () => currentUserProfile || { username: '我', bio: '', personalInfo: {} }
+      () => currentUserProfile || { username: '我', bio: '', personalInfo: {} },
+      {
+        onGroupChatRound: (conversationId) => {
+          if (conversationId !== conversation.id) return;
+          window.setTimeout(() => void handleGroupChatGenerateRef.current?.(), 80);
+        },
+        onPrivateAiSkippedReply: (conversationId) => {
+          void handleAINoReplyRef.current(conversationId);
+        },
+      }
     );
-  }, [onUpdateConversation, conversations, apiConfig, currentUserProfile]);
+  }, [onUpdateConversation, conversations, apiConfig, currentUserProfile, conversation.id]);
 
   // 🚀 订阅延后回复服务的 typing 状态更新
   useEffect(() => {
@@ -495,6 +507,8 @@ ${recentMessages}
       setIsGenerating(false);
     }
   };
+
+  handleAINoReplyRef.current = handleAINoReply;
   
   // 追踪用户是否还在当前聊天页面
   const isComponentMountedRef = useRef(true);
@@ -728,6 +742,31 @@ ${recentMessages}
     currentInputDraftRef.current = currentInput;
   }, [currentInput]);
 
+  /** 私聊延迟回复会读草稿 ref；必须在 setState 之外同步清空，否则要等 render 后才放行 AI */
+  const clearComposerDraftOnly = useCallback(() => {
+    setCurrentInput('');
+    currentInputDraftRef.current = '';
+  }, []);
+
+  /** Edge 等浏览器偶发不触发 textarea onBlur；用 capture focusout 对照 activeElement 校准 */
+  useEffect(() => {
+    const syncFocusFromDom = () => {
+      window.setTimeout(() => {
+        const el = document.activeElement as Node | null;
+        const composerEl = inputRef.current as unknown as HTMLElement | null;
+        inputComposerFocusedRef.current = Boolean(
+          composerEl && el && (composerEl === el || composerEl.contains(el))
+        );
+      }, 0);
+    };
+    document.addEventListener('focusout', syncFocusFromDom, true);
+    document.addEventListener('focusin', syncFocusFromDom, true);
+    return () => {
+      document.removeEventListener('focusout', syncFocusFromDom, true);
+      document.removeEventListener('focusin', syncFocusFromDom, true);
+    };
+  }, []);
+
   useEffect(() => {
     setPendingReplyComposerGate((convId) => {
       if (convId !== conversation.id) return false;
@@ -736,6 +775,8 @@ ${recentMessages}
     });
     return () => setPendingReplyComposerGate(undefined);
   }, [conversation.id, conversation.type]);
+
+  const handleGroupChatGenerateRef = useRef<(() => Promise<void>) | null>(null);
   
   // 初始滚动到底部，显示最新消息
   useEffect(() => {
@@ -1552,6 +1593,7 @@ ${buildAvatarIdentityPrompt(characterInfo)}
 
   const finalizeMessageInput = (options?: { clearQuotedMessage?: boolean; focusInput?: boolean }) => {
     setCurrentInput('');
+    currentInputDraftRef.current = '';
     if (options?.clearQuotedMessage) {
       setQuotedMessage(null);
     }
@@ -1560,6 +1602,9 @@ ${buildAvatarIdentityPrompt(characterInfo)}
       inputRef.current?.focus();
     }
   };
+
+  /** 私聊发完后默认不再抢焦点，避免「延迟回复」一直认为输入框仍占用 */
+  const shouldRefocusComposerAfterSend = conversation.type === 'group';
 
   const getDisplayText = (content?: string): string => stripDisplayControlTags(content || '').trim();
   const isMediaPlaceholderText = (content: string): boolean =>
@@ -1660,9 +1705,16 @@ ${buildAvatarIdentityPrompt(characterInfo)}
       onHandleAIChildExperienceUpdate: handleChatExperienceUpdate,
     });
 
+    const messageToCommit =
+      conversation.type === 'group' &&
+      conversation.groupIcebreakerPending &&
+      !newMessage.groupAiOnlyTrigger
+        ? { ...newMessage, groupOrientationTrigger: true as const }
+        : newMessage;
+
     commitUserMessage({
       conversation,
-      newMessage,
+      newMessage: messageToCommit,
       isGenerating,
       onUpdateConversation,
       ...commitHandlers,
@@ -1690,20 +1742,30 @@ ${buildAvatarIdentityPrompt(characterInfo)}
   }, [conversation.id, commitOutgoingUserMessage]);
 
   const commitOutgoingUserMessageWithBase = useCallback((baseMessages: Message[], newMessage: Message) => {
+    const orientFirstGroupMsg =
+      conversation.type === 'group' &&
+      conversation.groupIcebreakerPending &&
+      !newMessage.groupAiOnlyTrigger;
+    const msgToStore = orientFirstGroupMsg
+      ? { ...newMessage, groupOrientationTrigger: true as const }
+      : newMessage;
+    const clearIcebreaker = orientFirstGroupMsg;
+
     onUpdateConversation(conversation.id, {
-      messages: [...baseMessages, newMessage],
+      messages: [...baseMessages, msgToStore],
       lastMessageTime: Date.now(),
       isHidden: false,
+      ...(clearIcebreaker ? { groupIcebreakerPending: false } : {}),
     });
 
-    messagePerceptionService.perceiveMessage(conversation, newMessage);
+    messagePerceptionService.perceiveMessage(conversation, msgToStore);
 
     if (isGenerating && conversation.type === 'group') {
-      setPendingUserMessages(prev => [...prev, newMessage.id]);
+      setPendingUserMessages(prev => [...prev, msgToStore.id]);
     }
 
     if (conversation.aiChildData) {
-      handleChatExperienceUpdate(conversation, newMessage).catch((error) => {
+      handleChatExperienceUpdate(conversation, msgToStore).catch((error) => {
         console.error('❌ 处理AI儿童经验失败：', error);
       });
     }
@@ -1715,22 +1777,45 @@ ${buildAvatarIdentityPrompt(characterInfo)}
   const commitOutgoingUserMessagesBatch = useCallback((newMessages: Message[]) => {
     if (newMessages.length === 0) return;
 
+    let toAppend = newMessages;
+    let clearIcebreaker = false;
+    if (
+      conversation.type === 'group' &&
+      conversation.groupIcebreakerPending &&
+      newMessages.some((m) => !m.groupAiOnlyTrigger)
+    ) {
+      let lastIdx = -1;
+      for (let i = newMessages.length - 1; i >= 0; i--) {
+        if (!newMessages[i].groupAiOnlyTrigger) {
+          lastIdx = i;
+          break;
+        }
+      }
+      if (lastIdx >= 0) {
+        clearIcebreaker = true;
+        toAppend = newMessages.map((m, i) =>
+          i === lastIdx ? { ...m, groupOrientationTrigger: true as const } : m
+        );
+      }
+    }
+
     onUpdateConversation(conversation.id, {
-      messages: [...conversation.messages, ...newMessages],
+      messages: [...conversation.messages, ...toAppend],
       lastMessageTime: Date.now(),
       isHidden: false,
+      ...(clearIcebreaker ? { groupIcebreakerPending: false } : {}),
     });
 
-    newMessages.forEach((msg) => {
+    toAppend.forEach((msg) => {
       messagePerceptionService.perceiveMessage(conversation, msg);
     });
 
     if (isGenerating && conversation.type === 'group') {
-      setPendingUserMessages(prev => [...prev, ...newMessages.map(msg => msg.id)]);
+      setPendingUserMessages(prev => [...prev, ...toAppend.map(msg => msg.id)]);
     }
 
     if (conversation.aiChildData) {
-      newMessages.forEach((msg) => {
+      toAppend.forEach((msg) => {
         handleChatExperienceUpdate(conversation, msg).catch((error) => {
           console.error('❌ 处理AI儿童经验失败：', error);
         });
@@ -1817,7 +1902,7 @@ ${buildAvatarIdentityPrompt(characterInfo)}
       }
       finalizeMessageInput({
         clearQuotedMessage: true,
-        focusInput: true,
+        focusInput: shouldRefocusComposerAfterSend,
       });
     } catch {
       // ignore malformed draft payload
@@ -1840,10 +1925,31 @@ ${buildAvatarIdentityPrompt(characterInfo)}
       onUpdateConversation,
       ...commitHandlers,
     });
-  }, [onUpdateConversation]);
+  }, [conversation.id, onUpdateConversation]);
 
   const handleSendMessage = async () => {
-    if (!currentInput.trim()) return;
+    const trimmed = currentInput.trim();
+    const isGroup = conversation.type === 'group';
+
+    // 群聊：空发送（无引用）= 触发仅 AI 互动一轮，用户旁观
+    if (isGroup && !trimmed && !quotedMessage && !messageBeingEdited) {
+      const triggerMessage: Message = {
+        id: `${Date.now()}_${Math.random()}`,
+        role: 'user',
+        content: '',
+        timestamp: Date.now(),
+        groupAiOnlyTrigger: true,
+        ...(conversation.groupIcebreakerPending ? { groupIcebreakerTrigger: true as const } : {}),
+      };
+      commitOutgoingUserMessage(triggerMessage);
+      finalizeMessageInput({
+        clearQuotedMessage: true,
+        focusInput: shouldRefocusComposerAfterSend,
+      });
+      return;
+    }
+
+    if (!trimmed) return;
 
     // 如果是编辑模式,保存编辑
     if (messageBeingEdited) {
@@ -1867,7 +1973,7 @@ ${buildAvatarIdentityPrompt(characterInfo)}
 
     finalizeMessageInput({
       clearQuotedMessage: true,
-      focusInput: true,
+      focusInput: shouldRefocusComposerAfterSend,
     });
   };
 
@@ -2062,12 +2168,29 @@ ${buildAvatarIdentityPrompt(characterInfo)}
           reader.readAsDataURL(file);
         });
       }
-      
-      commitOutgoingUserMessagesBatch(newMessages);
+
+      const trimmedText = currentInput.trim();
+      let batch = newMessages;
+      if (trimmedText) {
+        batch = [
+          ...newMessages,
+          {
+            ...buildUserMessageFromInput(currentInput, quotedMessage),
+            timestamp: baseTimestamp + newMessages.length,
+          },
+        ];
+      }
+      commitOutgoingUserMessagesBatch(batch);
 
       // 关闭工具栏
       setShowToolbar(false);
-      
+      if (trimmedText) {
+        finalizeMessageInput({
+          clearQuotedMessage: true,
+          focusInput: shouldRefocusComposerAfterSend,
+        });
+      }
+
       console.log(`✅ 已发送${files.length}张图片`);
 
     } catch (error) {
@@ -2196,10 +2319,25 @@ ${buildAvatarIdentityPrompt(characterInfo)}
           }
         }
 
-        if (docMessages.length === 1) {
-          commitOutgoingUserMessage(docMessages[0]);
-        } else if (docMessages.length > 1) {
-          commitOutgoingUserMessagesBatch(docMessages);
+        const trimmedDocCaption = currentInput.trim();
+        let docCommitBatch = [...docMessages];
+        if (trimmedDocCaption) {
+          docCommitBatch.push({
+            ...buildUserMessageFromInput(currentInput, quotedMessage),
+            timestamp: baseTimestamp + docMessages.length,
+          });
+        }
+
+        if (docCommitBatch.length === 1) {
+          commitOutgoingUserMessage(docCommitBatch[0]);
+        } else if (docCommitBatch.length > 1) {
+          commitOutgoingUserMessagesBatch(docCommitBatch);
+        }
+        if (trimmedDocCaption) {
+          finalizeMessageInput({
+            clearQuotedMessage: true,
+            focusInput: shouldRefocusComposerAfterSend,
+          });
         }
       }
     } catch (error) {
@@ -2234,7 +2372,10 @@ ${buildAvatarIdentityPrompt(characterInfo)}
     
     // 添加到对话
     commitOutgoingUserMessage(stickerMessage);
-    
+    if (conversation.type === 'private') {
+      clearComposerDraftOnly();
+    }
+
     setShowUserStickerPicker(false);
   };
 
@@ -2256,6 +2397,9 @@ ${buildAvatarIdentityPrompt(characterInfo)}
 
     // 添加到聊天记录
     commitOutgoingUserMessage(musicMessage);
+    if (conversation.type === 'private') {
+      clearComposerDraftOnly();
+    }
 
     // 🎵 启动音乐上下文服务 - AI开始"感知"音乐
     setCurrentMusic(musicInfo);
@@ -2297,6 +2441,9 @@ ${buildAvatarIdentityPrompt(characterInfo)}
 
     // 添加到聊天记录
     commitOutgoingUserMessage(musicMessage);
+    if (conversation.type === 'private') {
+      clearComposerDraftOnly();
+    }
 
     console.log('✅ 真实音乐已添加到聊天');
     setShowRealMusicModal(false);
@@ -2349,6 +2496,9 @@ ${buildAvatarIdentityPrompt(characterInfo)}
 
     // 添加到对话
     commitOutgoingUserMessage(stickerMessage);
+    if (conversation.type === 'private') {
+      clearComposerDraftOnly();
+    }
 
     // 关闭弹窗并清空输入
     setShowStickerModal(false);
@@ -2626,20 +2776,38 @@ ${buildAvatarIdentityPrompt(characterInfo)}
       const reader = new FileReader();
       reader.onload = () => {
         const videoUrl = reader.result as string;
-        
+        const tsBase = Date.now();
+
         // 创建用户消息
         const userMessage: Message = {
-          id: `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+          id: `msg_${tsBase}_${Math.random().toString(36).substr(2, 9)}`,
           role: 'user',
           content: `[视频] ${videoDescInput}`,
-          timestamp: Date.now(),
+          timestamp: tsBase,
           mediaType: 'video',
           mediaUrl: videoUrl,
-          mediaDescription: videoDescInput
+          mediaDescription: videoDescInput,
         };
 
-        // 保存用户消息到聊天记录
-        commitOutgoingUserMessage(userMessage);
+        const trimmedMain = currentInput.trim();
+        const batch: Message[] = [userMessage];
+        if (trimmedMain) {
+          batch.push({
+            ...buildUserMessageFromInput(currentInput, quotedMessage),
+            timestamp: tsBase + 1,
+          });
+        }
+        if (batch.length === 1) {
+          commitOutgoingUserMessage(userMessage);
+        } else {
+          commitOutgoingUserMessagesBatch(batch);
+        }
+        if (trimmedMain) {
+          finalizeMessageInput({
+            clearQuotedMessage: true,
+            focusInput: shouldRefocusComposerAfterSend,
+          });
+        }
 
         // 关闭弹窗
         setShowVideoDescModal(false);
@@ -2913,7 +3081,7 @@ ${buildAvatarIdentityPrompt(characterInfo)}
           [
             {
               role: 'system',
-              content: `你是${privateConversation.characterSettings?.nickname || privateConversation.name}。${privateConversation.characterSettings?.systemPrompt || ''}${buildAvatarIdentityPrompt(privateConversation.characterSettings)}`
+              content: `你是${getCharacterRealName(privateConversation.characterSettings) || privateConversation.name}。${privateConversation.characterSettings?.systemPrompt || ''}${buildAvatarIdentityPrompt(privateConversation.characterSettings)}`
             },
             {
               role: 'user',
@@ -2967,9 +3135,6 @@ ${buildAvatarIdentityPrompt(characterInfo)}
     setShowSendingHint(true);
 
     try {
-      const isFreeMode = conversation.groupChatMode === 'free';
-      const generateFunction = isFreeMode ? generateGroupChatRepliesFreeMode : generateGroupChatReplies;
-      
       // 使用ref来追踪最新的消息列表
       let currentMessages = [...conversation.messages];
       
@@ -2985,7 +3150,7 @@ ${buildAvatarIdentityPrompt(characterInfo)}
       
       // 调用群聊服务
       // 无人回复检查已在 onAllComplete 回调中处理，避免误报
-      await generateFunction(
+      await generateGroupChatReplies(
         conversation,
         apiConfig,
         conversations,
@@ -3083,6 +3248,17 @@ ${buildAvatarIdentityPrompt(characterInfo)}
               lastMessageTime: Date.now()
             });
           },
+
+          onCharacterOnlineHandleChange: (aiId, handle) => {
+            const member = conversations.find((c) => c.id === aiId);
+            if (!member?.characterSettings || !handle.trim()) return;
+            onUpdateConversation(aiId, {
+              characterSettings: {
+                ...member.characterSettings,
+                username: handle.trim(),
+              },
+            });
+          },
           
           onAIComplete: (aiId, messages) => {
             console.log(`✅ ${aiId} 完成回复，共${messages.length}条消息`);
@@ -3133,11 +3309,15 @@ ${buildAvatarIdentityPrompt(characterInfo)}
             
             // 🚀 通知后台服务生成完成
             backgroundGenerationService.completeGeneration(conversation.id, finalMessages);
+
+            if (conversation.groupIcebreakerPending) {
+              onUpdateConversation(conversation.id, { groupIcebreakerPending: false });
+            }
             
             // 🧠 群聊记忆总结（后台处理）
             if (conversation.type === 'group' && conversation.members) {
               setTimeout(() => {
-                performGroupMemorySummary(currentMessages).catch(err => {
+                performGroupMemorySummary(finalMessages).catch(err => {
                   console.error('群聊记忆总结失败:', err);
                 });
               }, 1000); // 延迟1秒后执行，避免阻塞
@@ -3172,30 +3352,6 @@ ${buildAvatarIdentityPrompt(characterInfo)}
               }, 1000);
               return;
             }
-            
-            // 自由模式：如果没有AI回复，显示提示
-            if (isFreeMode && replies.length === 0) {
-              // 添加系统消息提示
-              // 随机选择一个友好的提示
-              const friendlyHints = [
-                '😊 大家好像都在忙哦，一会再问一次吧',
-                '👀 好像暂时没人看到消息呢',
-                '☕ 大家可能都去忙其他事了，稍后再聊~',
-                '💬 此刻无人回应，不妨等等看',
-              ];
-              const randomHint = friendlyHints[Math.floor(Math.random() * friendlyHints.length)];
-              const systemMessage: Message = {
-                id: `system_${Date.now()}`,
-                role: 'system',
-                content: randomHint,
-                timestamp: Date.now()
-              };
-              const messagesWithHint = [...finalMessages, systemMessage];
-              onUpdateConversation(conversation.id, {
-                messages: messagesWithHint,
-                lastMessageTime: Date.now()
-              });
-            }
           }
         }
       );
@@ -3214,6 +3370,8 @@ ${buildAvatarIdentityPrompt(characterInfo)}
       backgroundGenerationService.failGeneration(conversation.id, error.message || '未知错误');
     }
   };
+
+  handleGroupChatGenerateRef.current = handleGroupChatGenerate;
 
   // 旧的同步代码已被删除，现在使用后台任务
   
@@ -3383,7 +3541,7 @@ ${buildAvatarIdentityPrompt(characterInfo)}
   const handleKeyPress = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
-      if (currentInput.trim()) {
+      if (currentInput.trim() || (conversation.type === 'group' && !quotedMessage && !messageBeingEdited)) {
         handleSendMessage();
       }
     }
@@ -3654,6 +3812,14 @@ ${buildAvatarIdentityPrompt(characterInfo)}
                     </div>
                   )}
                 </>
+              ) : message.role === 'user' && message.groupAiOnlyTrigger ? (
+              <div id={`message-${message.id}`} className="flex justify-center my-2">
+                <span className="text-xs text-gray-500 bg-violet-50 border border-violet-100/80 px-3 py-1.5 rounded-full max-w-[90%] text-center leading-relaxed">
+                  {message.groupIcebreakerTrigger
+                    ? '入群破冰 · 空消息触发全员（你可旁观）'
+                    : '空消息 · 仅 AI 参与本轮（旁观）'}
+                </span>
+              </div>
               ) : (
               <div id={`message-${message.id}`} className={`message-bubble flex gap-2 items-end transition-colors ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}>
                 {message.role === 'assistant' && (
@@ -5013,7 +5179,7 @@ ${buildAvatarIdentityPrompt(characterInfo)}
                   e.target.style.height = Math.min(e.target.scrollHeight, 120) + 'px';
                 }}
                 onKeyPress={handleKeyPress}
-                placeholder={messageBeingEdited ? "编辑消息..." : quotedMessage ? "回复消息..." : isGenerating && conversation.type === 'group' ? "输入消息（将在下轮回复）..." : "输入消息..."}
+                placeholder={messageBeingEdited ? "编辑消息..." : quotedMessage ? "回复消息..." : conversation.type === 'group' && !quotedMessage ? (isGenerating ? "输入消息（下轮处理）；空行发送可旁观 AI 闲聊" : "输入消息… 群聊可空行发送触发 AI 闲聊") : isGenerating && conversation.type === 'group' ? "输入消息（将在下轮回复）..." : "输入消息..."}
                 className="flex-1 outline-none text-[15px] bg-transparent text-gray-900 placeholder-gray-400 resize-none overflow-y-auto max-h-[120px] min-h-[24px]"
                 disabled={false}
                 rows={1}
@@ -5053,7 +5219,13 @@ ${buildAvatarIdentityPrompt(characterInfo)}
             ) : (
               <button
                 onClick={handleSendMessage}
-                disabled={!currentInput.trim()}
+                disabled={
+                  messageBeingEdited
+                    ? !currentInput.trim()
+                    : conversation.type === 'group'
+                      ? !!quotedMessage && !currentInput.trim()
+                      : !currentInput.trim()
+                }
                 className="w-10 h-10 bg-blue-500 text-white rounded-full hover:bg-blue-600 active:scale-95 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex-shrink-0 flex items-center justify-center shadow-md"
               >
                 <Send className="w-5 h-5" />

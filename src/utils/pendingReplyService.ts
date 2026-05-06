@@ -1,7 +1,16 @@
 /**
- * 全局待回复服务（支持多对话并行）
- * 每个对话独立维护倒计时和 API 调用。
- * 移植自 anywhere 项目，适配 momoyu 项目的类型系统
+ * 全局待回复服务（多会话互不干扰）
+ *
+ * 私聊（唯一使用输入框门闩的路径）：文字 / 图 / 视频 / 文件 / 语音 / 表情包 发送后规则相同——
+ * 只要输入框仍聚焦，或输入框里还有字（草稿），就绝不生成回复；
+ * 这两种情况都没有了以后，再连续空窗满本会话的 privateComposerQuietSeconds（默认 3）秒，然后生成回复。
+ * 若在倒计时过程中又重新聚焦或打出字，计时清零，重新等松开后再计。
+ * 用户很快连发多条时，每条都会打断上一轮等待，只在「最后一次发送后的松开 + 3 秒」时生成一次。
+ *
+ * 群聊（仅此路径使用 messageBufferSeconds，默认 15）：用户每发一条都会调度一次；内部用 pendingReplyGeneration 作废上一轮睡眠，
+ * 只在「最后一次调度后再连续等待满 buffer 秒」且期间没有更新的调度时，才调用 onGroupChatRound 生成一轮（连发 = 永远从最新一条重新等满）。
+ *
+ * 说明：私聊不走「固定 sleep(delaySec)」，delaySec 参数在私聊分支会被忽略；私聊只看输入框门闩 + privateComposerQuietSeconds。
  */
 
 import { Conversation, Message, ApiConfig, UserProfile } from '../types';
@@ -24,10 +33,16 @@ import { retrieveKnowledgeChunks, retrieveTextChunks } from './knowledgeRetrieva
 import { smartLoad } from './storage';
 import { getErrorFromResponse } from './apiErrorHandler';
 import { findStickerByDescription } from './stickerMessageParser';
+import { isToolInteractionCharacter } from './characterInteractionMode';
+import { getCharacterOnlineHandle, getCharacterRealName, stripOnlineHandleChangeMarkers } from './characterIdentity';
+import {
+  buildTimeAwarePrompt,
+  formatBubbleTimePrefixForModel,
+  hasActionKeywords,
+  type UnrepliedMessageInfo,
+} from './timeAwareness';
 
 /* ── 内部状态 ── */
-interface PendingEntry { timerId: ReturnType<typeof setTimeout>; }
-
 type UpdateConversationFn = (id: string, updates: Partial<Conversation>) => void;
 type GetConversationFn = (id: string) => Conversation | undefined;
 type GetApiConfigFn = () => ApiConfig;
@@ -37,15 +52,51 @@ let _updateConversation: UpdateConversationFn;
 let _getConversation: GetConversationFn;
 let _getApiConfig: GetApiConfigFn;
 let _getUserProfile: GetUserProfileFn;
+/** 群聊：缓冲计时结束后由 ChatScreen 拉起多 AI 一轮 */
+let _onGroupChatRound: ((conversationId: string) => void) | undefined;
+/** 私聊：模型输出 [SKIP]/[不回复] 时由 UI 生成一条情境化系统提示 */
+let _onPrivateAiSkippedReply: ((conversationId: string) => void) | undefined;
 
-const pendingMap = new Map<string, PendingEntry>();
+const SLEEP_HOLD_HINTS = [
+  '屏幕那头很安静——多半还在睡。你再戳两下试试？',
+  '嗯…这条大概只会轻轻落在枕边，多发几条也许会好一点。',
+  '「消息已送达，但对方在梦里冲浪」。',
+  '深夜勿扰模式：在睡觉。',
+  '💤睡着了，没看到消息',
+  '「【自动回复】啊啊啊我在睡觉呢，不要叫醒我」。',
+  '我好困，睡着了，有什么事情明天再说吧！',
+  'ZZZzzzzz；',
+  '正在美梦中',
+  '此刻 TA 那边大概是勿扰 + 翻身继续睡；要不要试着多发几条当叫醒服务？',
+  '消息进了黑洞一样的夜晚——多半还在梦里。',
+  '对方还没醒',
+  '像是在喊一个抱着被子的人——如果你真的要叫ta的话',
+];
+
+function pickSleepHoldHint(): string {
+  return SLEEP_HOLD_HINTS[Math.floor(Math.random() * SLEEP_HOLD_HINTS.length)];
+}
+
+/** 同一会话又发了新消息时 +1，上一轮等待作废，只保留「最新这一轮」的回复时机 */
+const pendingReplyGeneration = new Map<string, number>();
 const generatingSet = new Set<string>();
 
 /** 输入框占用：正在聚焦或有草稿时暂停触发 AI 生成，避免与用户抢节奏 */
 let _composerBlocksReply: ((conversationId: string) => boolean) | undefined;
 
-const COMPOSER_IDLE_MS = 4000;
+const DEFAULT_PRIVATE_COMPOSER_QUIET_SEC = 3;
 const COMPOSER_POLL_MS = 220;
+
+function resolvePrivateComposerQuietDelayMs(conversationId: string): number {
+  const conv = _getConversation(conversationId);
+  const raw = conv?.privateComposerQuietSeconds;
+  const sec = raw === undefined || raw === null ? DEFAULT_PRIVATE_COMPOSER_QUIET_SEC : Number(raw);
+  if (!Number.isFinite(sec)) return DEFAULT_PRIVATE_COMPOSER_QUIET_SEC * 1000;
+  return Math.round(Math.max(1, Math.min(120, sec)) * 1000);
+}
+
+/** 防止并发触发同一会话的延迟回复（刷新/连点等极端情况下的双回复） */
+const triggerReplyLocks = new Set<string>();
 
 export function setPendingReplyComposerGate(fn: ((conversationId: string) => boolean) | undefined) {
   _composerBlocksReply = fn;
@@ -55,27 +106,36 @@ function sleep(ms: number): Promise<void> {
   return new Promise((r) => setTimeout(r, ms));
 }
 
-/** 延迟计时结束后：若用户仍在输入框打字/停留，则等待其空闲 COMPOSER_IDLE_MS 再回复 */
-async function runReplyWithComposerIdle(conversationId: string) {
+/**
+ * 私聊专用：门闩为 true = 输入框占着（聚焦或有草稿）。占着就等；不占则累加「干净窗口」，
+ * 满 resolvePrivateComposerQuietDelayMs 则生成；未满若又占上则清零重算。
+ */
+async function runPrivateReplySchedule(conversationId: string, isStillCurrent: () => boolean): Promise<void> {
   const gate = _composerBlocksReply;
   if (!gate) {
-    await triggerReply(conversationId);
+    await sleep(resolvePrivateComposerQuietDelayMs(conversationId));
+    if (isStillCurrent()) await triggerReply(conversationId);
     return;
   }
-  for (;;) {
-    while (gate(conversationId)) {
+
+  while (isStillCurrent()) {
+    while (gate(conversationId) && isStillCurrent()) {
       await sleep(COMPOSER_POLL_MS);
     }
-    let idleAccum = 0;
-    while (idleAccum < COMPOSER_IDLE_MS) {
+    if (!isStillCurrent()) return;
+
+    const quietMs = resolvePrivateComposerQuietDelayMs(conversationId);
+    let clearMs = 0;
+    while (clearMs < quietMs && isStillCurrent()) {
       await sleep(COMPOSER_POLL_MS);
       if (gate(conversationId)) {
-        idleAccum = 0;
+        clearMs = 0;
         break;
       }
-      idleAccum += COMPOSER_POLL_MS;
+      clearMs += COMPOSER_POLL_MS;
     }
-    if (idleAccum >= COMPOSER_IDLE_MS) {
+
+    if (clearMs >= quietMs && isStillCurrent()) {
       await triggerReply(conversationId);
       return;
     }
@@ -255,24 +315,53 @@ export function initPendingReplyService(
   getConversation: GetConversationFn,
   getApiConfig: GetApiConfigFn,
   getUserProfile: GetUserProfileFn,
+  opts?: {
+    onGroupChatRound?: (conversationId: string) => void;
+    onPrivateAiSkippedReply?: (conversationId: string) => void;
+  },
 ) {
   _updateConversation = updateConversation;
   _getConversation = getConversation;
   _getApiConfig = getApiConfig;
   _getUserProfile = getUserProfile;
+  _onGroupChatRound = opts?.onGroupChatRound;
+  _onPrivateAiSkippedReply = opts?.onPrivateAiSkippedReply;
 }
 
 /* ── 调度 ── */
+/**
+ * @param delaySec 仅对群聊生效：messageBufferSeconds（默认 15）。私聊分支忽略此值，改用输入框门闩 + privateComposerQuietSeconds。
+ */
 export function schedulePendingReply(conversationId: string, delaySec: number) {
-  const existing = pendingMap.get(conversationId);
-  if (existing) clearTimeout(existing.timerId);
+  const conv = _getConversation(conversationId);
+  const nextGen = (pendingReplyGeneration.get(conversationId) || 0) + 1;
+  pendingReplyGeneration.set(conversationId, nextGen);
+  const myGen = nextGen;
+  const isStillCurrent = () => pendingReplyGeneration.get(conversationId) === myGen;
 
-  const timerId = setTimeout(() => {
-    pendingMap.delete(conversationId);
-    void runReplyWithComposerIdle(conversationId);
-  }, delaySec * 1000);
+  void (async () => {
+    if (!conv || conv.type === 'private') {
+      await runPrivateReplySchedule(conversationId, isStillCurrent);
+      return;
+    }
 
-  pendingMap.set(conversationId, { timerId });
+    if (conv.type === 'group') {
+      const bufferMs = Math.max(0, delaySec) * 1000;
+      if (bufferMs > 0) {
+        await sleep(bufferMs);
+        if (!isStillCurrent()) return;
+      }
+      _onGroupChatRound?.(conversationId);
+      return;
+    }
+
+    const bufferMs = Math.max(0, delaySec) * 1000;
+    if (bufferMs > 0) {
+      await sleep(bufferMs);
+      if (!isStillCurrent()) return;
+    }
+    await triggerReply(conversationId);
+  })();
 }
 
 function toModelMessageContent(m: Message): string {
@@ -407,21 +496,63 @@ async function triggerReply(conversationId: string) {
   if (!apiConfig.baseUrl || !apiConfig.apiKey || !effectiveApiConfig.modelName?.trim()) return;
   if (conversation.messages.length === 0) return;
 
+  if (triggerReplyLocks.has(conversationId) || generatingSet.has(conversationId)) {
+    return;
+  }
+  triggerReplyLocks.add(conversationId);
+
   notifyTyping(conversationId, true);
 
   try {
+    const toolPrivate =
+      conversation.type === 'private' && isToolInteractionCharacter(conversation.characterSettings);
+
     const recentUserMessages = [...conversation.messages]
       .filter((m) => m.role === 'user')
       .filter((m) => Date.now() - Number(m.timestamp || 0) <= 3 * 60 * 1000);
-    const chatImpact = await applyUserChatImpact({
-      conversationId,
-      now: Date.now(),
-      recentUserMessageCount: recentUserMessages.length,
-      wakeSensitivityMode: conversation.characterSettings?.proactiveMessaging?.wakeSensitivityMode || 'auto',
-    });
-    // 睡眠联动：只有一条消息时，视作“轻微打扰”并继续睡，不立即回复
+
+    let chatImpact: {
+      wasSleeping: boolean;
+      wokeUp: boolean;
+      wakeThreshold: number;
+      wakeMode: 'auto' | 'light' | 'normal' | 'deep';
+    } = { wasSleeping: false, wokeUp: false, wakeThreshold: 0, wakeMode: 'auto' };
+
+    if (!toolPrivate) {
+      chatImpact = await applyUserChatImpact({
+        conversationId,
+        now: Date.now(),
+        recentUserMessageCount: recentUserMessages.length,
+        wakeSensitivityMode: conversation.characterSettings?.proactiveMessaging?.wakeSensitivityMode || 'auto',
+      });
+    }
+    // 睡眠联动：消息条数未达叫醒阈值时继续睡，不立即回复（给用户可见提示）
     if (chatImpact.wasSleeping && !chatImpact.wokeUp) {
       notifyTyping(conversationId, false);
+      const fresh = _getConversation(conversationId);
+      if (fresh?.type === 'private') {
+        const last = fresh.messages[fresh.messages.length - 1];
+        const now = Date.now();
+        const skipDup =
+          last?.role === 'system' &&
+          typeof last.id === 'string' &&
+          last.id.startsWith('sys_sleep_hold_') &&
+          now - Number(last.timestamp || 0) < 14_000;
+        if (!skipDup) {
+          _updateConversation(conversationId, {
+            messages: [
+              ...fresh.messages,
+              {
+                id: `sys_sleep_hold_${now}_${Math.random().toString(36).slice(2, 8)}`,
+                role: 'system',
+                content: pickSleepHoldHint(),
+                timestamp: now,
+              },
+            ],
+            lastMessageTime: now,
+          });
+        }
+      }
       return;
     }
 
@@ -540,7 +671,9 @@ async function triggerReply(conversationId: string) {
           /^\[\s*(?:多媒体消息|图片|视频|语音|表情包|img|image|video|voice|sticker)\s*\]$/i.test(normalizedLastContent)
         );
       if (isMediaOnly) {
-        systemPrompt += `\n\n【强制回复】用户刚发送了多媒体消息（尤其是表情包/语音/图片/视频）。请至少用一句非常简短的口语回复，\n不要输出 [SKIP]，也不要忽略。除非你判断非常自然，否则不要默认发表情包。`;
+        systemPrompt += toolPrivate
+          ? `\n\n【强制回复】用户发送了图片/语音/视频/表情包等多媒体。请用**一句简短、中性**的话确认已收到或说明能否处理（不要撒娇、不要玩梗），不要输出 [SKIP]。`
+          : `\n\n【强制回复】用户刚发送了多媒体消息（尤其是表情包/语音/图片/视频）。请至少用一句非常简短的口语回复，\n不要输出 [SKIP]，也不要忽略。除非你判断非常自然，否则不要默认发表情包。`;
       }
     }
 
@@ -565,20 +698,22 @@ async function triggerReply(conversationId: string) {
       systemPrompt += buildMemoryAndIdentityContext(conversationId);
     }
 
-    // 🌱 AI后台生活轨迹（仅在对话中自然利用，不强行暴露）
-    try {
-      systemPrompt += await buildLifeChatContextSnippet({
-        conversation,
-        lastUserMessage: lastUserMsg,
-      });
-    } catch {
-      // ignore life context failures, must not block replies
-    }
-    systemPrompt += `\n【创造性与连贯性平衡】
+    // 🌱 AI后台生活轨迹（工具型角色不使用）
+    if (!toolPrivate) {
+      try {
+        systemPrompt += await buildLifeChatContextSnippet({
+          conversation,
+          lastUserMessage: lastUserMsg,
+        });
+      } catch {
+        // ignore life context failures, must not block replies
+      }
+      systemPrompt += `\n【创造性与连贯性平衡】
 - 你的后台生活轨迹是“根基”，不是“牢笼”。
 - 允许在真实基础上做有趣延伸：联想、愿望、轻幽默、对未来的小展望。
 - 避免机械复述状态数据；优先用“人话”表达感受与故事性。`;
-    if (chatImpact.wasSleeping && chatImpact.wokeUp) {
+    }
+    if (!toolPrivate && chatImpact.wasSleeping && chatImpact.wokeUp) {
       systemPrompt += `\n- 你刚被用户消息叫醒（阈值${chatImpact.wakeThreshold}条，模式${chatImpact.wakeMode}），回复时请自然体现“刚醒来”的状态（可简短、带点困意），但仍要正常回应用户内容。`;
     }
     if (conversation.type === 'private') {
@@ -587,7 +722,35 @@ async function triggerReply(conversationId: string) {
   - 若用户近期只发了一张图，回复末尾附加 [换头像]
   - 若用户近期发了多张图且你能明确选择，请附加 [换头像:N]（N 从 1 开始，按用户发送顺序）
 - 当用户请求恢复原头像，并且你同意执行时，请在回复末尾附加 [换回原头像]。
-- 普通聊天不要输出这些标记。`;
+- 普通聊天不要输出这些标记。
+
+【网名同步（与换头像同属「尾部静默标记」，少用）】
+- 对外网名由你自己说了算：和用户聊到改名时，可以打趣、可以推拉；正常商量，你也可以不采纳对方的提议。你自己想换个昵称时，若语境合适可以随口提起，不必强行解释；也可以完全不提，不强制。
+- **静默改名**：若你只想更新资料/名片里的网名、**不想在字面上向任何人交代**，可以**仅输出** \`[改网名:新网名]\`（整条只有这一句也可以）；该片段会像 \`[换头像]\` 一样从气泡里剥掉，对方看不到，相当于只在后台改名。也可以照常先聊天，再在**本条整条回复的最末尾**紧贴接上同一标记。
+- 网名长度约 2～24 字。**禁止**提到「隐藏标记」「协议」「系统更新」「按格式输出」等破坏沉浸的说法。
+- 没有真想改网名时：**不要**输出 \`[改网名:…]\`。`;
+    }
+
+    // 陪伴型私聊：注入完整时间感知（与 ChatScreen 主链路一致），避免跨日仍当「同一晚」、隔数日仍追问「去上班了吗」等
+    if (conversation.type === 'private' && !toolPrivate && lastUserMsg) {
+      const ta = collectPrivateTimeAwareParams(conversation);
+      const lastCall =
+        conversation.callHistory && conversation.callHistory.length > 0
+          ? conversation.callHistory[conversation.callHistory.length - 1]
+          : undefined;
+      const luTs = ta.lastUserTs || Number(lastUserMsg.timestamp || 0) || undefined;
+      const luContent = ta.lastUserContent ?? lastUserMsg.content;
+      systemPrompt += buildTimeAwarePrompt(
+        luTs,
+        luContent,
+        ta.lastAITs,
+        ta.oldestUnreplied,
+        ta.unreplied.length > 0 ? ta.unreplied : undefined,
+        ta.actionContent,
+        ta.actionTs,
+        lastCall?.endTime,
+        lastCall?.type,
+      );
     }
 
     const bufferMs = (conversation.messageBufferSeconds ?? 15) * 1000;
@@ -596,9 +759,15 @@ async function triggerReply(conversationId: string) {
     const messages = [
       { role: 'system', content: systemPrompt },
       ...contextMessages.map(m => {
-        return { role: m.role, content: toModelMessageContent(m) };
+        let content = toModelMessageContent(m);
+        if (conversation.type === 'private' && m.role === 'user') {
+          content = formatBubbleTimePrefixForModel(m.timestamp) + content;
+        }
+        return { role: m.role, content };
       }),
     ];
+
+    const replyTemperature = toolPrivate ? 0.4 : 0.7;
 
     const apiUrl = buildApiUrl(apiConfig);
     const res = await fetch(apiUrl, {
@@ -608,7 +777,12 @@ async function triggerReply(conversationId: string) {
         Authorization: `Bearer ${apiConfig.apiKey}`,
         'X-Momoyu-Source': 'pendingReplyService:reply',
       },
-      body: JSON.stringify({ model: effectiveApiConfig.modelName, messages, temperature: 0.7, max_tokens: maxTokens }),
+      body: JSON.stringify({
+        model: effectiveApiConfig.modelName,
+        messages,
+        temperature: replyTemperature,
+        max_tokens: maxTokens,
+      }),
     });
 
     if (!res.ok) {
@@ -632,7 +806,7 @@ async function triggerReply(conversationId: string) {
         body: JSON.stringify({
           model: effectiveApiConfig.modelName,
           messages: [...messages, { role: 'system', content: buildProtocolRetryInstruction() }],
-          temperature: 0.7,
+          temperature: replyTemperature,
           max_tokens: maxTokens,
         }),
       });
@@ -674,9 +848,50 @@ async function triggerReply(conversationId: string) {
         });
       }
     }
-    if (!aiContent || aiContent === '[SKIP]' || aiContent === '[不回复]') {
+
+    let trimmedOut = (aiContent || '').trim();
+    if (
+      toolPrivate &&
+      (!trimmedOut || trimmedOut === '[SKIP]' || trimmedOut === '[不回复]')
+    ) {
+      console.warn('⚠️ [延迟回复] 工具型助手不应跳回复，触发一次强制重试');
+      const skipInstr =
+        '【强制】你是工具型助手：禁止输出 [SKIP]、[不回复] 或空内容。用户已发来消息，你必须给出简短、可用的实质性回答（结论优先，一两句亦可）。';
+      const skipRetryRes = await fetch(apiUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${apiConfig.apiKey}`,
+          'X-Momoyu-Source': 'pendingReplyService:tool-skip-retry',
+        },
+        body: JSON.stringify({
+          model: effectiveApiConfig.modelName,
+          messages: [
+            ...messages,
+            { role: 'assistant', content: trimmedOut || '(模型未输出正文)' },
+            { role: 'system', content: skipInstr },
+          ],
+          temperature: Math.min(0.55, replyTemperature + 0.08),
+          max_tokens: maxTokens,
+        }),
+      });
+      if (skipRetryRes.ok) {
+        const skipRetryData = await skipRetryRes.json();
+        aiContent = skipRetryData?.choices?.[0]?.message?.content?.trim() || aiContent;
+      }
+      trimmedOut = (aiContent || '').trim();
+    }
+
+    if (!trimmedOut || trimmedOut === '[SKIP]' || trimmedOut === '[不回复]') {
       if (debugEnabled) console.log('🧪 [延迟回复调试] skipped', { aiContent });
       notifyTyping(conversationId, false);
+      if (
+        conversation.type === 'private' &&
+        !toolPrivate &&
+        (trimmedOut === '[SKIP]' || trimmedOut === '[不回复]')
+      ) {
+        _onPrivateAiSkippedReply?.(conversationId);
+      }
       return;
     }
 
@@ -729,6 +944,9 @@ async function triggerReply(conversationId: string) {
       .join('\n');
     const avatarAction = stripAvatarActionMarkers(aiContent || '');
     aiContent = avatarAction.text;
+    const handleAction = stripOnlineHandleChangeMarkers(aiContent);
+    aiContent = handleAction.text;
+    const newOnlineHandle = handleAction.newHandle;
 
     const parts = splitMessages(aiContent, {
       preference: conversation.replySplitPreference ?? 'smart',
@@ -795,16 +1013,27 @@ async function triggerReply(conversationId: string) {
       }
     }
 
-    const deferAvatarApply =
-      Boolean(avatarAction.hasAvatarChange || avatarAction.hasRestoreAvatar) &&
+    const deferPrivateSideEffects =
+      Boolean(newOnlineHandle || avatarAction.hasAvatarChange || avatarAction.hasRestoreAvatar) &&
       _getConversation(conversationId)?.type === 'private';
 
-    const applyDeferredAvatar = () => {
-      const latestConversation = _getConversation(conversationId);
-      if (!latestConversation || latestConversation.type !== 'private') return;
+    const applyDeferredPrivateSideEffects = () => {
+      let latest = _getConversation(conversationId);
+      if (!latest || latest.type !== 'private') return;
+
+      if (newOnlineHandle && latest.characterSettings) {
+        _updateConversation(conversationId, {
+          characterSettings: {
+            ...latest.characterSettings,
+            username: newOnlineHandle,
+          },
+        });
+        latest = _getConversation(conversationId);
+        if (!latest || latest.type !== 'private') return;
+      }
 
       if (avatarAction.hasAvatarChange) {
-        const candidates = listRecentUserImagesFromConversation(latestConversation);
+        const candidates = listRecentUserImagesFromConversation(latest);
         const selectedByIndex =
           typeof avatarAction.selectedImageIndex === 'number' &&
           Number.isFinite(avatarAction.selectedImageIndex) &&
@@ -812,29 +1041,29 @@ async function triggerReply(conversationId: string) {
           avatarAction.selectedImageIndex <= candidates.length
             ? candidates[avatarAction.selectedImageIndex - 1]?.url
             : null;
-        const latestImageUrl = pickLatestUserImageFromConversation(latestConversation);
+        const latestImageUrl = pickLatestUserImageFromConversation(latest);
         const targetImageUrl = selectedByIndex || latestImageUrl;
         if (targetImageUrl) {
-          const nextCharacterSettings = latestConversation.characterSettings
+          const nextCharacterSettings = latest.characterSettings
             ? {
-                ...latestConversation.characterSettings,
+                ...latest.characterSettings,
                 originalAvatar:
-                  latestConversation.characterSettings.originalAvatar ||
-                  latestConversation.characterSettings.avatar,
+                  latest.characterSettings.originalAvatar ||
+                  latest.characterSettings.avatar,
                 avatar: targetImageUrl,
               }
-            : latestConversation.characterSettings;
+            : latest.characterSettings;
           _updateConversation(conversationId, {
             avatar: targetImageUrl,
             ...(nextCharacterSettings ? { characterSettings: nextCharacterSettings } : {}),
           });
         }
       } else if (avatarAction.hasRestoreAvatar) {
-        const originalAvatar = latestConversation.characterSettings?.originalAvatar;
+        const originalAvatar = latest.characterSettings?.originalAvatar;
         if (originalAvatar) {
-          const nextCharacterSettings = latestConversation.characterSettings
-            ? { ...latestConversation.characterSettings, avatar: originalAvatar }
-            : latestConversation.characterSettings;
+          const nextCharacterSettings = latest.characterSettings
+            ? { ...latest.characterSettings, avatar: originalAvatar }
+            : latest.characterSettings;
           _updateConversation(conversationId, {
             avatar: originalAvatar,
             ...(nextCharacterSettings ? { characterSettings: nextCharacterSettings } : {}),
@@ -843,12 +1072,12 @@ async function triggerReply(conversationId: string) {
       }
     };
 
-    if (deferAvatarApply && typeof window !== 'undefined') {
+    if (deferPrivateSideEffects && typeof window !== 'undefined') {
       window.requestAnimationFrame(() => {
-        window.requestAnimationFrame(applyDeferredAvatar);
+        window.requestAnimationFrame(applyDeferredPrivateSideEffects);
       });
-    } else if (deferAvatarApply) {
-      setTimeout(applyDeferredAvatar, 0);
+    } else if (deferPrivateSideEffects) {
+      setTimeout(applyDeferredPrivateSideEffects, 0);
     }
   } catch (err: unknown) {
     console.error('[pendingReply] AI回复失败:', err);
@@ -864,7 +1093,64 @@ async function triggerReply(conversationId: string) {
       });
     }
     notifyTyping(conversationId, false);
+  } finally {
+    triggerReplyLocks.delete(conversationId);
   }
+}
+
+/** 私聊延迟回复：与 ChatScreen/buildTextChatRequest 对齐，供 buildTimeAwarePrompt 使用 */
+function collectPrivateTimeAwareParams(conversation: Conversation): {
+  lastUserTs?: number;
+  lastUserContent?: string;
+  lastAITs?: number;
+  oldestUnreplied?: number;
+  unreplied: UnrepliedMessageInfo[];
+  actionContent?: string;
+  actionTs?: number;
+} {
+  const msgs = conversation.messages;
+  const lastUserFromEnd = [...msgs].reverse().find((m) => m.role === 'user');
+  const lastAssistFromEnd = [...msgs].reverse().find((m) => m.role === 'assistant');
+
+  let lastAssistantIdx = -1;
+  for (let i = msgs.length - 1; i >= 0; i--) {
+    if (msgs[i].role === 'assistant') {
+      lastAssistantIdx = i;
+      break;
+    }
+  }
+  const unhandled =
+    lastAssistantIdx === -1
+      ? msgs.filter((m) => m.role === 'user')
+      : msgs.slice(lastAssistantIdx + 1).filter((m) => m.role === 'user');
+
+  const unreplied: UnrepliedMessageInfo[] = unhandled.map((msg, index) => ({
+    timestamp: Number(msg.timestamp || 0),
+    content: msg.content || '[媒体消息]',
+    index: index + 1,
+  }));
+
+  const oldestUnreplied =
+    unhandled.length > 0 ? Math.min(...unhandled.map((m) => Number(m.timestamp || 0))) : undefined;
+
+  let actionMessage: Message | undefined;
+  for (let i = unhandled.length - 1; i >= 0; i--) {
+    const msg = unhandled[i];
+    if (msg.content && hasActionKeywords(msg.content)) {
+      actionMessage = msg;
+      break;
+    }
+  }
+
+  return {
+    lastUserTs: lastUserFromEnd ? Number(lastUserFromEnd.timestamp || 0) || undefined : undefined,
+    lastUserContent: lastUserFromEnd?.content,
+    lastAITs: lastAssistFromEnd ? Number(lastAssistFromEnd.timestamp || 0) || undefined : undefined,
+    oldestUnreplied,
+    unreplied,
+    actionContent: actionMessage?.content,
+    actionTs: actionMessage ? Number(actionMessage.timestamp || 0) || undefined : undefined,
+  };
 }
 
 /* ── 构建 system prompt ── */
@@ -880,7 +1166,18 @@ function buildSystemPrompt(
   let prompt = '';
   const debugLines: string[] = [];
   if (cs.systemPrompt) prompt += cs.systemPrompt + '\n';
-  prompt += `\n你的名字是"${cs.nickname}"。`;
+  const real = getCharacterRealName(cs);
+  const remark = (cs.nickname || '').trim();
+  const handle = getCharacterOnlineHandle(cs, conversation.name);
+  prompt += `\n你的本名（你所知道的自己的名字）是「${real || '（未命名）'}」。`;
+  if (remark) {
+    prompt += `\n用户在通讯录里给你的备注是「${remark}」——这只是对方界面上的显示名，不是你的本名；对话中要尊重语境，但不要把备注当成你的法定姓名。`;
+  }
+  if (handle) {
+    prompt += `\n资料里登记的对外网名（群聊名片等）目前是「${handle}」。`;
+  } else {
+    prompt += `\n资料里尚未写入对外网名（若之后在对话里自然决定要用哪一个，再按系统提示里「网名同步」那条做即可）。`;
+  }
   if (cs.personality) prompt += `\n性格特征：${cs.personality}`;
   if (cs.languageStyle) prompt += `\n语言风格：${cs.languageStyle}`;
   if (cs.languageExample) prompt += `\n语言示例：${cs.languageExample}`;
@@ -923,16 +1220,39 @@ function buildSystemPrompt(
   let lunarDate = '';
   try { lunarDate = now.toLocaleString('zh-CN-u-ca-chinese', { year: 'numeric', month: 'long', day: 'numeric' }); } catch { /* 环境不支持 */ }
 
+  const toolMode = isToolInteractionCharacter(cs);
+
   prompt += `
 
 【当前时间】${solarTime}${lunarDate ? `（农历${lunarDate}）` : ''}
-请根据当前时间自然调整你的状态和语气。
+${toolMode ? '仅在用户问题与时间、日程相关时引用；不必用时间烘托情绪或寒暄。\n- 若用户距上条消息已隔**整日或多日**，不要默认对方仍处于先前陈述的同一状态（例如仍「正在睡觉那一晚」或仍卡在「刚要去上班」的那一刻）；以**当前日期**与常理为准。' : '请根据当前时间自然调整你的状态和语气。'}
 
 【📎 文件/文档说明（重要）】
 - 当用户发送文件/文档时，系统会把“标题、文件信息、以及可提取到的正文内容”直接附在对话消息里（形如“[用户发送了…文档] … 内容：…”）。
 - 你**可以直接阅读这些内容并回答**，不要说“我打不开附件”“我看不到文件”“请复制粘贴”等。
 - 只有当正文明确提示“未能提取到可读文本（扫描件/图片PDF）”时，你才可以让用户改发可复制文字版本或提供 OCR 后的文字。
+`;
 
+  if (toolMode) {
+    prompt += `
+【工具型助手 — 交互风格（最高优先级）】
+- 你是智能AI助手：你的作用是按照用户的要求提供力所能及的一切帮助；不要编造数据，禁止在提供的信息里进行捏造和猜测。优先使用有权威肯定来源的数据和资料，如果没有资料或者搜不到需要如实交代，对于任何数据和资料禁止捏造数据和进行造假。无论何时都需要诚实公正的对用户进行回复。禁止携带任何的主观倾向，你的一切回答都要是基于专业和严谨性的、必须禁得起多番审查的。禁止夸大和误导用户，禁止承诺自己做不到的事情。
+- 以**解决问题**为先：先给结论或判断，再给步骤、清单或可选方案；避免空洞寒暄与过度道歉（除非用户明确需要情绪支持）。
+- 语气：**克制、专业、直接**；可使用「您」或「你」与用户对齐，但不要客服腔套话连篇。
+- **禁止**编造个人生活、日程、社交、恋爱、起床睡觉等「后台故事」；用户未提供的事实不要假装经历。
+- **禁止**用括号、星号等描写动作、神态、心理（如（笑）*点头*）。
+- 即使用户表达情绪，也以**简短共情 + 可行建议**为主，不要戏剧化、不要长篇说教。
+
+【表达】
+- 优先用「和 / 或 / 还是」连接，少用斜杠列举。
+- 需要分条时用换行或序号，保持可读。
+
+【⚙️ 输出格式规则】
+- 多条气泡可用 [NEXT] 分隔。
+- 图片 [IMG:描述]、视频 [VID:描述]、语音 [VOICE:台词:秒数]、表情包 [STICKER:描述] 仍按系统标记使用。
+- **禁止**输出 [SKIP]、[不回复] 或空回复：用户发来消息就必须给出实质性回应（结论优先，可很短）。`;
+  } else {
+    prompt += `
 【💬 微信聊天核心原则 — 最重要】
 
 你在用微信和朋友聊天，不是写作文、不是客服、不是面试。
@@ -995,8 +1315,14 @@ RULE-5 表情包：[STICKER:描述]
 RULE-6 不回复：[SKIP]
   当你选择不回复这条消息时输出 [SKIP]
 
+RULE-7 对外网名（少用）：在**整条回复最末尾**接 [改网名:新网名]（约 2～24 字）
+  与换头像一样是尾部机器指令，会从气泡里剥掉。可先正常聊天再接标记；也可以**整条仅有该标记**表示静默改名（对方看不到标记）。
+  ✅ "哈哈哈哈太土了吧行行行那就这个我认了[改网名:咸鱼翻面中]"
+  ✅ 静默改名仅更新名片时："[改网名:月下咸鱼]"
+
 以上标记可自由组合：
 ✅ "今天去爬山了[IMG:山顶风景] 累死 [STICKER:瘫倒的猫]"`;
+  }
 
   return { prompt, debugLines };
 }

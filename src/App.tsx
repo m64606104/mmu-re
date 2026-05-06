@@ -41,6 +41,7 @@ import {
   trimConversationMessagesForCache,
 } from './services/conversationCache';
 import { Letter } from './types/letter';
+import { generateInitialOnlineHandle } from './utils/bootstrapOnlineHandle';
 
 function safeLoadFromLocalStorage<T>(key: string, fallback: T): T {
   const saved = localStorage.getItem(key);
@@ -124,6 +125,7 @@ function buildPresetConversation(kind: 'aa' | 'worker' | 'oo1', now = Date.now()
       messages: [],
       characterSettings: {
         avatar: assetUrl('avatars/aa-default.png'),
+        realName: 'aa',
         nickname: 'aa',
         username: 'aa不是研究生',
         systemPrompt: '你叫aa，女生，是我的网友，和我关系很好，在上海读研。',
@@ -147,6 +149,7 @@ function buildPresetConversation(kind: 'aa' | 'worker' | 'oo1', now = Date.now()
       messages: [],
       characterSettings: {
         avatar: assetUrl('avatars/ce-default.png'),
+        realName: '测',
         nickname: '测',
         username: '只要涨薪不要996',
         systemPrompt: '你是一个上班族，26岁，男，在公司做总裁助理。',
@@ -169,8 +172,10 @@ function buildPresetConversation(kind: 'aa' | 'worker' | 'oo1', now = Date.now()
     messages: [],
     characterSettings: {
       avatar: assetUrl('avatars/oo1.png'),
+      realName: 'oo1',
       nickname: 'oo1',
-      username: 'Your Personal AI',
+      username: '',
+      interactionMode: 'tool',
       systemPrompt:
         '你是 oo1，一个对标 ChatGPT/Gemini 的通用智能助手。\n目标：帮助用户把事情做成。\n\n回答偏好：先给结论，再给可执行步骤；必要时给方案对比与推荐。\n表达：简洁、自然、不过度客套；不自我设限。\n\n文档/文件：当用户发送文档时，系统会把可读正文附在消息里（“内容：”之后）。你应直接阅读并处理；不要说“看不到附件/打不开文件/请复制粘贴”。',
       personality: '',
@@ -178,6 +183,16 @@ function buildPresetConversation(kind: 'aa' | 'worker' | 'oo1', now = Date.now()
       languageExample: '',
       memoryEvents: '',
       disableWorldbook: true,
+      proactiveMessaging: {
+        enabled: false,
+        minInterval: 30,
+        maxInterval: 180,
+        activeHourStart: 8,
+        activeHourEnd: 23,
+        autoIntervalByAI: true,
+        relationAware: true,
+        wakeSensitivityMode: 'auto',
+      },
     },
     enabledFeatures: ['memory-system'],
     lastMessageTime: now,
@@ -240,6 +255,25 @@ function normalizePresetAaAvatar(conversations: Conversation[]): Conversation[] 
       ? {
           ...conv.characterSettings,
           avatar: nextAvatar,
+          ...(isPresetOo1
+            ? {
+                interactionMode: 'tool' as const,
+                ...(conv.characterSettings.username === 'Your Personal AI'
+                  ? { username: '' }
+                  : {}),
+                proactiveMessaging: {
+                  ...(conv.characterSettings.proactiveMessaging || {}),
+                  enabled: false,
+                  minInterval: conv.characterSettings.proactiveMessaging?.minInterval || 30,
+                  maxInterval: conv.characterSettings.proactiveMessaging?.maxInterval || 180,
+                  activeHourStart: conv.characterSettings.proactiveMessaging?.activeHourStart ?? 8,
+                  activeHourEnd: conv.characterSettings.proactiveMessaging?.activeHourEnd ?? 23,
+                  autoIntervalByAI: conv.characterSettings.proactiveMessaging?.autoIntervalByAI ?? true,
+                  relationAware: conv.characterSettings.proactiveMessaging?.relationAware ?? true,
+                  wakeSensitivityMode: conv.characterSettings.proactiveMessaging?.wakeSensitivityMode || 'auto',
+                },
+              }
+            : {}),
           ...(isPresetOo1 && conv.characterSettings.systemPrompt === OO1_DEFAULT_PROMPT_V1
             ? {
                 systemPrompt: OO1_DEFAULT_PROMPT_V2,
@@ -958,6 +992,9 @@ function App() {
         // 保留AI状态信息
         aiStatus: data.character?.aiStatus,
         replySplitPreference: data.character?.replySplitPreference || 'smart',
+        ...(typeof data.character?.privateComposerQuietSeconds === 'number'
+          ? { privateComposerQuietSeconds: data.character.privateComposerQuietSeconds }
+          : {}),
       };
       
       console.log('✅ 创建新对话:', newConversation);
@@ -1142,13 +1179,14 @@ function App() {
 
   // 添加好友
   const addFriend = useCallback((friendData: {
+    realName: string;
     nickname: string;
-    username: string;
     avatar: string;
     systemPrompt: string;
     personality: string;
     languageStyle: string;
     languageExample: string;
+    interactionMode?: 'companion' | 'tool';
   }) => {
     const newConversation: Conversation = {
       id: 'friend-' + Date.now(),
@@ -1165,14 +1203,30 @@ function App() {
       ],
       characterSettings: {
         avatar: friendData.avatar,
+        realName: friendData.realName,
         nickname: friendData.nickname,
-        username: friendData.username,
+        username: '',
         systemPrompt: friendData.systemPrompt,
         personality: friendData.personality,
         languageStyle: friendData.languageStyle,
         languageExample: friendData.languageExample,
         memoryEvents: '',
         disableWorldbook: true, // 新建角色默认关闭世界书
+        interactionMode: friendData.interactionMode ?? 'companion',
+        ...(friendData.interactionMode === 'tool'
+          ? {
+              proactiveMessaging: {
+                enabled: false,
+                minInterval: 30,
+                maxInterval: 180,
+                activeHourStart: 8,
+                activeHourEnd: 23,
+                autoIntervalByAI: true,
+                relationAware: true,
+                wakeSensitivityMode: 'auto' as const,
+              },
+            }
+          : {}),
       },
       enabledFeatures: ['memory-system'], // 默认启用记忆系统
       lastMessageTime: Date.now(),
@@ -1182,7 +1236,20 @@ function App() {
     
     setConversations(prev => [newConversation, ...prev]);
     setCurrentConversationId(newConversation.id);
-    
+
+    if ((friendData.interactionMode ?? 'companion') !== 'tool') {
+      void generateInitialOnlineHandle(newConversation, apiConfig).then((handle) => {
+        if (!handle) return;
+        setConversations((prev) =>
+          prev.map((c) =>
+            c.id === newConversation.id && c.characterSettings
+              ? { ...c, characterSettings: { ...c.characterSettings, username: handle } }
+              : c
+          )
+        );
+      });
+    }
+
     navigateTo('chat', newConversation.id, { replace: true });
   }, [navigateTo, apiConfig]);
 
@@ -1222,6 +1289,7 @@ function App() {
       lastMessageTime: Date.now(),
       unreadCount: 0,
       replySplitPreference: 'smart',
+      groupIcebreakerPending: true,
     };
     
     setConversations(prev => [newConversation, ...prev]);

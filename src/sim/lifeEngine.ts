@@ -1,4 +1,5 @@
 import type { ApiConfig, Conversation } from '../types';
+import { isToolInteractionCharacter } from '../utils/characterInteractionMode';
 import { addAIEvent, updateDynamicProfiles, getMemoryBank } from '../utils/memorySystem';
 import type { LifeSimModelOutput } from './types';
 import { applyDeltas, ensureDayTheme, loadLifeSimState, upsertLifeSimState } from './storage';
@@ -748,13 +749,24 @@ export function enqueueLifeSimTick(conversation: Conversation, apiConfig: ApiCon
 
 export function enqueueLifeSimForAll(conversations: Conversation[], apiConfig: ApiConfig): void {
   conversations
-    .filter((c) => c.type === 'private' && Boolean(c.characterSettings) && !(c as any).isBlocked)
+    .filter(
+      (c) =>
+        c.type === 'private' &&
+        Boolean(c.characterSettings) &&
+        !isToolInteractionCharacter(c.characterSettings) &&
+        !(c as any).isBlocked
+    )
     .forEach((c) => enqueueLifeSimTick(c, apiConfig));
 }
 
 export async function forceTickAll(conversations: Conversation[], apiConfig: ApiConfig): Promise<void> {
-  const targets = conversations
-    .filter((c) => c.type === 'private' && Boolean(c.characterSettings) && !(c as any).isBlocked);
+  const targets = conversations.filter(
+    (c) =>
+      c.type === 'private' &&
+      Boolean(c.characterSettings) &&
+      !isToolInteractionCharacter(c.characterSettings) &&
+      !(c as any).isBlocked
+  );
   for (const c of targets) {
     // sequential to avoid spiking API
     // eslint-disable-next-line no-await-in-loop

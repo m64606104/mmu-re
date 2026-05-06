@@ -4,6 +4,7 @@
  */
 
 import { Conversation, Message, ApiConfig } from '../types';
+import { isToolInteractionCharacter } from './characterInteractionMode';
 import { getMemoryBank } from './memorySystem';
 import { cleanAIMessage, splitMessages } from './messageFormatter';
 import { MEDIA_DECISION_GUIDANCE } from './mediaDecisionPrompt';
@@ -135,6 +136,9 @@ export async function getProactiveDiagnostics(conversation: Conversation): Promi
  * 检查是否应该发送主动消息
  */
 export const shouldSendProactiveMessage = (conversation: Conversation): boolean => {
+  if (isToolInteractionCharacter(conversation.characterSettings)) {
+    return false;
+  }
   const settings = conversation.characterSettings?.proactiveMessaging;
   
   if (!settings || !settings.enabled) {
@@ -433,6 +437,9 @@ export const sendProactiveMessage = async (
   onNewMessage: (conversationId: string, message: Message) => void,
   onUpdateSettings: (conversationId: string, lastMessageTime: number) => void
 ): Promise<void> => {
+  if (isToolInteractionCharacter(conversation.characterSettings)) {
+    return;
+  }
   const settings = conversation.characterSettings?.proactiveMessaging;
   
   if (!settings || !settings.enabled) {
@@ -593,6 +600,9 @@ export const sendProactiveMessage = async (
  * 初始化对话的主动消息状态
  */
 export const initProactiveMessaging = (conversation: Conversation): void => {
+  if (isToolInteractionCharacter(conversation.characterSettings)) {
+    return;
+  }
   const settings = conversation.characterSettings?.proactiveMessaging;
   
   if (!settings || !settings.enabled) {

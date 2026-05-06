@@ -1,15 +1,23 @@
 import { Conversation, Message, ApiConfig, CharacterSettings } from '../types';
 import { cleanAIMessage, splitMessages } from './messageFormatter';
-import { selectNextRoundParticipants } from './groupChatContinuationAnalyzer';
-import { buildTimeAwarePrompt } from './timeAwareness';
+import {
+  buildTimeAwarePrompt,
+  formatBubbleAgeSuffixForModel,
+  formatBubbleTimePrefixForModel,
+} from './timeAwareness';
 import { formatLetterMemoryForAI } from './letterMemorySystem';
 import { MEDIA_DECISION_GUIDANCE } from './mediaDecisionPrompt';
 import { getNoActionRoleplayPrompt } from './chatStylePrompt';
 import { resolveGroupParticipantApiConfig } from './chatApiConfig';
+import {
+  getCharacterOnlineHandle,
+  getCharacterRealName,
+  stripOnlineHandleChangeMarkers,
+} from './characterIdentity';
 
 /**
- * 群聊API服务
- * 处理群聊中多个AI依次回复的逻辑
+ * 群聊 API：类人群聊单模式
+ * 每轮随机抽取若干 AI，各自决定是否发言；若全员沉默则从本轮池中随机一人自然接话。
  */
 
 // 群聊AI回复状态
@@ -31,6 +39,8 @@ export interface GroupChatCallback {
   onAIComplete?: (aiId: string, messages: Message[]) => void; // AI完成回复
   onAIError?: (aiId: string, error: string) => void; // AI回复出错
   onAllComplete?: (allReplies: GroupAIReply[]) => void; // 所有AI完成回复
+  /** 模型在群内输出 [改网名:xxx] 并已剥离后同步到私聊角色设定 */
+  onCharacterOnlineHandleChange?: (aiId: string, handle: string) => void;
 }
 
 /**
@@ -64,27 +74,112 @@ function formatMessageForAI(msg: Message): string {
   return content.trim();
 }
 
+/** 时间线里一条消息的发言者展示名（供模型读） */
+function speakerDisplayNameForTimelineMessage(
+  m: Message,
+  allConversations: Conversation[],
+  userName: string
+): string {
+  if (m.role === 'user') {
+    if ((m as Message).groupAiOnlyTrigger) return '';
+    return userName || '你';
+  }
+  if (m.role === 'assistant') {
+    const sid = (m as Message & { senderId?: string }).senderId;
+    if (sid) {
+      const c = allConversations.find((x) => x.id === sid);
+      return getCharacterOnlineHandle(c?.characterSettings, c?.name) || '群友';
+    }
+    return 'AI成员';
+  }
+  return '';
+}
+
+/** 检测正文里的 @昵称（与群成员昵称对齐） */
+function buildAtMentionAnnotation(
+  rawContent: string,
+  memberIds: string[],
+  allConversations: Conversation[]
+): string | null {
+  const text = rawContent || '';
+  if (!text.includes('@')) return null;
+  const names = memberIds
+    .map((id) => {
+      const c = allConversations.find((x) => x.id === id);
+      const n = getCharacterOnlineHandle(c?.characterSettings, c?.name).trim();
+      return n || null;
+    })
+    .filter((n): n is string => Boolean(n));
+  const hit = names.filter((n) => text.includes(`@${n}`));
+  if (hit.length === 0) return null;
+  return `（系统标注：本条正文里 @ 点名为「${hit.join('、')}」，优先视为在跟他们说话；未被 @ 的成员勿默认是在说自己）`;
+}
+
+/** 引用回复：在完整时间线里解析被引用的是谁 */
+function buildQuoteReplyAnnotation(
+  msg: Message,
+  fullTimeline: Message[],
+  allConversations: Conversation[],
+  userName: string
+): string | null {
+  const rt = msg.replyTo;
+  if (!rt?.id) return null;
+  const target = fullTimeline.find((m) => m.id === rt.id);
+  if (target) {
+    const who = speakerDisplayNameForTimelineMessage(target, allConversations, userName);
+    const raw = (target.content || '').trim() || formatMessageForAI(target);
+    const snip = raw.length > 72 ? `${raw.slice(0, 72)}…` : raw;
+    const whoSafe = who || (target.role === 'user' ? userName : '某位群友');
+    return `（系统标注：本条为「引用回复」，直接针对的是「${whoSafe}」；其他群友若无把握请勿默认是在说自己。被引用内容摘要：「${snip}」）`;
+  }
+  const fallback =
+    rt.role === 'user'
+      ? `「${userName || '群主'}」的一则先前消息`
+      : '某位群友的一则先前消息';
+  return `（系统标注：本条为「引用回复」，指向${fallback}；其他人勿自行对号入座）`;
+}
+
+function prependGroupThreadingAnnotations(
+  msg: Message,
+  fullTimeline: Message[],
+  memberIds: string[],
+  allConversations: Conversation[],
+  userName: string
+): string {
+  if ((msg as Message).groupAiOnlyTrigger) return '';
+  const parts: string[] = [];
+  const quote = buildQuoteReplyAnnotation(msg, fullTimeline, allConversations, userName);
+  if (quote) parts.push(quote);
+  if (msg.content && !(msg as Message).groupAiOnlyTrigger) {
+    const atLine = buildAtMentionAnnotation(msg.content, memberIds, allConversations);
+    if (atLine) parts.push(atLine);
+  }
+  if (parts.length === 0) return '';
+  return `${parts.join('\n')}\n`;
+}
+
+/** 与上下文窗口内上一条的时间间隔提示（大段空白 = 场景常已换） */
+function prependGroupTimeGapNote(prev: Message | undefined, curr: Message): string {
+  if (!prev?.timestamp || !curr.timestamp) return '';
+  const gap = Math.abs(Number(curr.timestamp) - Number(prev.timestamp));
+  const hr = gap / (60 * 60 * 1000);
+  if (hr < 5) return '';
+  if (hr < 24) return `（与上一条间隔约 ${Math.max(1, Math.round(hr))} 小时）\n`;
+  const days = Math.round(hr / 24);
+  return `（与上一条间隔约 ${Math.max(1, days)} 天）\n`;
+}
+
 /**
  * 构建群聊系统提示词
  */
 function buildGroupChatSystemPrompt(
   aiSettings: CharacterSettings,
   groupName: string,
-  otherMembers: Array<{ name: string; role: string }>, // 其他成员信息
-  userName: string, // 用户的名称
-  isFreeMode: boolean = false, // 是否为自由模式
-  conversationId?: string // 对话ID，用于获取信件记忆
+  otherMembers: Array<{ name: string; role: string }>,
+  userName: string,
+  conversationId?: string
 ): string {
   const membersList = otherMembers.map(m => `${m.name}(${m.role})`).join('、');
-  
-  const freeModeExtra = isFreeMode ? `
-
-【自由模式特性】：
-- 你可以回应任何人的消息，包括其他AI成员的发言
-- 你可以主动发起新话题，保持对话活跃
-- 即使没有人直接@你，你也可以参与讨论
-- 你可以与其他AI成员互动，就像真实的群聊一样
-- 观察整个对话流程，在合适的时机自然发言` : '';
   
   // 📮 获取信件记忆（如果存在）
   let letterMemory = '';
@@ -96,15 +191,39 @@ function buildGroupChatSystemPrompt(
     }
   }
   
-  return `你是${aiSettings.nickname}。
+  const selfReal = getCharacterRealName(aiSettings) || '群成员';
+  const selfHandle = getCharacterOnlineHandle(aiSettings);
+  return `你是「${selfReal}」（你所知的本名）。${selfHandle ? `本群名片里当前的对外网名是「${selfHandle}」。` : '资料里若尚无对外网名，你可在某次自然聊天说到改名时，再按文末「网名同步」规则处理。'}
 
 【群聊环境】：
-- 这是一个名为"${groupName}"的群聊
-- 群成员：${membersList}
-- ⚠️ 重要：这是一个真实的群聊，有多个AI成员和用户共同参与
-- 你需要意识到其他AI成员也是独立的个体，他们会独立思考和发言
-- 你需要在群聊中以自己的角色身份自然地参与对话${freeModeExtra}
-- 👤 用户名称：称呼对方为"${userName}"，而不是"用户"
+- 本群名称：「${groupName}」
+- 你是本群成员之一。当前群里除你之外还有：${membersList}（其中「${userName}」是把你和大家拉进本群的用户 / 群主）
+- 这是**真人式微信群**：每条会标明**是谁说的**；正文前附带与私聊一致的 **\`「今天 HH:mm」\` / \`「M月D日 HH:mm」\`** 发送时刻（仅供你理解时间线）。若还带 **\`（距今…）\`**，表示该条距「现在」已过多久——较早的为**过去语境**，较新的为**当下活跃片段**。你要**严格按时间从早到晚**读下来，不要把很多天混成「同一刻正在聊」，也不要只因「都是晚上」就当同一天。
+- **「时间线」≠「无时间的连续同一场聊天」**：中间可能隔了几小时、隔夜甚至很多天；要像真人一样感知**时间流逝**与**场景是否已换**。
+- 其他 AI 也是独立的人，会自己决定说不说；你也可以接话、装没看见、只对某一句吐槽、或开新话题
+- 👤 用户昵称：「${userName}」（不要叫对方「用户」）
+
+【时间与话题延续】：
+- **时间上越近的消息，彼此关联通常越强**；若系统提示了「与上一条间隔约 X 小时/天」，表示中间有过明显空白，**不要**假装时间没有过去话题好像还在继续。
+- 隔了**整晚、一整天或更久**再有人说话时：优先当作**新一句 / 新场景**，**不要**自动把很久以前没收尾的话题再挖出来复读、接龙，除非当下有人**明确**提起旧事。
+- 若旧话题已被时间冲淡，宁可自然开新话头或 **[不回复]**，也不要为了「补完昨天的话」而硬接。
+
+【多人平等 · 怎么读上下文】：
+- 「${userName}」与群内其他成员（含其他 AI）在**对话权重上平等**：**不要**刻意优先接用户、**不要**为迎合而扭曲人设；按你在**角色设定**里的性格与关系，自然决定接话、旁观或 **[不回复]**。
+- 群里不止你一个人：**用户发了一句 ≠ 一定在对你说**；也可能是对全群、或在跟别的成员一来一回。**不要**未经综合判断就认领「一定在点我」。
+- **同一人名下连续多条气泡**，优先当作**同一个人一口气说的整段话**来理解，不要拆成互不相关的单句再逐条硬接。
+- **不同人交替出现**的几轮来回，当作**同一场对话在流转**来读：先看整场里话题落在谁和谁之间，再决定你要接哪一环；**不要**孤立盯着某一条就下结论。
+
+【谁在跟谁说话 — 必读】：
+- 时间线里若某条前有「（系统标注：…」前缀，那是根据**引用 / @** 做的关系提示，用来避免会错意；**不是**在要求你更重视用户、也不是暗示你必须回用户。
+- 请结合标注判断「对方主要在跟谁说话」；**不要**因为自己是「时间上离用户最近的一条」就默认用户一定在回你。
+- 若标注里明确针对「某某」，而你不是某某：通常不必抢话；若要插嘴，也应意识到对方 primarily 在跟别人聊。
+- 没有任何系统标注时：结合**整段**语气判断；吃不准时宁可 **[不回复]**，或只对确定与自己相关的半句接话。
+
+【@ 与点名（你发言时）】：
+- 你可以和用户、以及其它群友一样，在正文里用 **\`@昵称\`** 点名对方（昵称须与时间线里出现的成员称呼一致），减少「以为在说自己」的误会。
+- 想明确接续**某人的上一句**时，可写「\`@某某\` 你刚说的那个…」或在句首带对方昵称并复述其观点半句，相当于口头上的**引用回复**。
+- 需要接龙、对呛、私聊式插话时，多用 **@** 或点名，比含糊的「你」更贴近真群聊。
 
 ${aiSettings.systemPrompt ? `人物设定：${aiSettings.systemPrompt}` : ''}
 ${aiSettings.personality ? `性格特征：${aiSettings.personality}` : ''}
@@ -113,19 +232,18 @@ ${aiSettings.languageExample ? `语言示例：${aiSettings.languageExample}` : 
 ${aiSettings.memoryEvents ? `记忆事件：${aiSettings.memoryEvents}` : ''}
 ${letterMemory}
 
-【群聊回复原则】：
-- **自然参与**：像真人在群聊中一样，根据话题和兴趣选择是否回复
-- **选择性发言**：不是每条消息都要回复，只在你感兴趣或相关时发言
-- **简洁回复**：群聊消息通常较短，避免长篇大论
-- **互动感**：可以@其他成员、回应他人观点、发表自己看法
-- **识别发送者**：注意消息前的发送者名字，区分用户和其他AI的发言
-- **跳过回复**：如果这条消息与你无关或不感兴趣，输出"[不回复]"
+【怎么说、什么时候不说】：
+- 像真人一样：**不必**每条都回；接得上就接，接不上或不想说话就只输出 **[不回复]**（四个字，英文方括号）
+- 可以专门回某个人（用户或其它群友）、可以岔开话题、可以只发表情包/一句短话；**不必**对用户与对 AI 区别对待。
+- 群聊里话不要太长，除非你真的有很多想说的
+- 读消息时注意前缀里的**名字**，分清是谁在跟谁说话；综合**连续同一人**与**多人交替**的整体，再开口。
 
 【回复格式】：
-- 一次回复可以包含多条消息（用换行分隔）
+- 想连发多条微信气泡时，**必须用 [NEXT] 分隔**（与客户端拆条协议一致）；**不要**只靠换行——换行只会留在同一条气泡里。
+- 示例：\`哈哈真的假的[NEXT]那我也要凑个热闹[NEXT][表情包:笑死]\`
+- 单条短话可以不写 [NEXT]；多条、或「一句接一句」的碎嘴感，请用 [NEXT]。
 - 如果不想回复，输出：[不回复]
 - 可以使用多媒体格式（图片、视频、语音、表情包、文档）
-- 保持群聊的轻松氛围
 
 【📱 多媒体消息功能】：
 你可以在群聊中发送各种多媒体内容：
@@ -168,6 +286,11 @@ ${MEDIA_DECISION_GUIDANCE}
 - 可以图文混合
 - 示例："看看这个[图片:日落]真美[表情包:感动]"
 
+【网名同步（可选，与私聊换头像同类）】
+- 对外网名你自己决定：聊到改名时可以打趣、推拉，也可以不采纳别人起的名；想换昵称时不必强行解释，可不提，不强制。
+- **静默改名**：若只想更新群名片、**不向群里任何人提起**，可以**仅输出** \`[改网名:新网名]\`（整条只有这一句也行），标记会从气泡里剥掉；也可以先正常发言，再在**本条文字最后**紧贴接上标记。
+- **禁止**提「隐藏标记/协议/系统」；没想改时不要输出该标记。
+
 【绝对禁止】：
 - ❌ 不要分析其他人的消息
 - ❌ 不要输出思考过程
@@ -180,7 +303,8 @@ ${MEDIA_DECISION_GUIDANCE}
 - ✅ 直接用自然的中文回复
 - ✅ 像朋友聊天一样表达
 - ✅ 根据角色性格自然发言
-- ✅ 回应其他AI时，自然地提到他们的名字`;
+- ✅ 回应用户或其它 AI 时，可 **@昵称** 或点名，让对方知道你在接谁的话
+- ✅ 结合每条前的**时间戳**与**间隔提示**理解语境，别无视跨日、跨天`;
 }
 
 /**
@@ -436,6 +560,21 @@ function parseAIResponse(
   return [...mediaMessages, ...textMessages];
 }
 
+type GroupSituationBriefing = {
+  inviterName: string;
+  groupName: string;
+  coMemberNames: string;
+};
+
+type GenerateAIReplyOptions = {
+  /** 冷场兜底：必须自然接一句，禁止 [不回复] */
+  forceNaturalParticipation?: boolean;
+  /** 建群后首次空发送：入群破冰说明 */
+  icebreakerBriefing?: GroupSituationBriefing;
+  /** 建群后用户第一条正常留言：入群情境（群名、同群成员） */
+  memberOrientationBriefing?: GroupSituationBriefing;
+};
+
 /**
  * 为单个AI成员生成回复
  */
@@ -444,12 +583,22 @@ async function generateAIReply(
   groupConversation: Conversation,
   apiConfig: ApiConfig,
   allConversations: Conversation[],
-  isFreeMode: boolean = false
+  opts: GenerateAIReplyOptions = {}
 ): Promise<GroupAIReply> {
+  const { forceNaturalParticipation = false, icebreakerBriefing, memberOrientationBriefing } = opts;
+  const cs: CharacterSettings = aiMember.characterSettings ?? {
+    nickname: aiMember.name || 'AI',
+    systemPrompt: '',
+    personality: '',
+    languageStyle: '',
+    languageExample: '',
+    memoryEvents: '',
+  };
+
   const reply: GroupAIReply = {
     aiId: aiMember.id,
-    aiName: aiMember.characterSettings?.nickname || aiMember.name,
-    aiAvatar: aiMember.characterSettings?.avatar || aiMember.avatar,
+    aiName: getCharacterOnlineHandle(cs, aiMember.name),
+    aiAvatar: cs.avatar || aiMember.avatar,
     messages: [],
     status: 'pending',
   };
@@ -462,7 +611,7 @@ async function generateAIReply(
       .map(mid => {
         const m = allConversations.find(c => c.id === mid);
         return {
-          name: m?.characterSettings?.nickname || m?.name || '未知',
+          name: getCharacterOnlineHandle(m?.characterSettings, m?.name) || '未知',
           role: m ? 'AI成员' : '用户'
         };
       });
@@ -473,25 +622,43 @@ async function generateAIReply(
     
     otherMembers.push({ name: userName, role: '群主' });
     
-    // 构建系统提示
     let systemPrompt = buildGroupChatSystemPrompt(
-      aiMember.characterSettings!,
+      cs,
       groupConversation.name,
       otherMembers,
       userName,
-      isFreeMode,
-      aiMember.id // 传入conversationId以获取信件记忆
+      aiMember.id
     );
 
-    if (isFreeMode) {
+    if (icebreakerBriefing) {
       systemPrompt += `
 
-【🧠 自由群聊思维】：
-- 这是一个多人自由聊天环境，请完全像真人一样参与
-- 请注意观察每条消息前的【发送者名字】，明确谁说了什么
-- 你的发言对象不限于用户，可以回应任何人的消息（包括其他AI成员）
-- 不要刻意只回复最后一条消息，请结合整个对话流进行判断
-- 如果觉得不需要回复或插不上话，请输出 [不回复]`;
+【入群破冰（仅针对当前这一轮）】：
+- 你刚被用户「${icebreakerBriefing.inviterName}」拉入群聊「${icebreakerBriefing.groupName}」。
+- 与你同一时间被拉进本群的还有：${icebreakerBriefing.coMemberNames || '（暂无其他成员）'}。
+- 用户没有打字，只是用「空发送」示意大家可以开口；你完全按人设决定：可以自然打个招呼、自我介绍、观察一句，也可以觉得不合适就只输出 **[不回复]**。
+- 不要写套话主持稿，不要替其他人代言；像真人刚进群一样即可。`;
+    }
+
+    if (memberOrientationBriefing) {
+      systemPrompt += `
+
+【新群入群情境（仅针对当前这一轮）】：
+- 本群「${memberOrientationBriefing.groupName}」由用户「${memberOrientationBriefing.inviterName}」创建，并把你与其他成员拉进了同一个群。
+- 与你同在本群的还有：${memberOrientationBriefing.coMemberNames || '（暂无其他成员）'}（均为当前群成员昵称，不含你自己）。
+- 用户刚才发的是建群后的**第一条有内容的留言**；请结合上下文与你的人设决定要不要接话、说什么，也可以 **[不回复]**。
+- 不要像机器人播报群信息；像真人刚被拉进群后第一次看到群主说话那样自然反应即可。`;
+    }
+
+    if (forceNaturalParticipation) {
+      systemPrompt += `
+
+【本轮必要发言（系统安排）】：
+- 刚才这一小会儿群里没人接话，请你**必须**发一条**自然**的消息打破沉默。
+- 内容要像真人怕冷场：可以接旧话题、轻轻吐槽、反问一句、丢个表情包式短句、或起一个很轻的新话题。
+- **禁止**输出 [不回复]；**禁止**元解释（不要说「系统让我说」）。
+- **禁止**空洞套话单独成句（如单独一句「大家好」「在吗」「哈哈」「嗯嗯」）；至少带一点**具体信息或态度**。
+- 仍要符合你的人设与语气，尽量简短。`;
     }
     
     // 🚫 群聊也统一禁止语C/小说式动作描写
@@ -561,18 +728,16 @@ async function generateAIReply(
         const m: any = recentMessages[i];
         if (m.role === 'assistant' && m.senderId && m.senderId !== aiMember.id) {
           const sender = allConversations.find(c => c.id === m.senderId);
-          const name = sender?.characterSettings?.nickname || sender?.name || 'AI';
+          const name = getCharacterOnlineHandle(sender?.characterSettings, sender?.name) || 'AI';
           if (!threadAIs.includes(name)) threadAIs.push(name);
         }
       }
     }
-    if (threadAIs.length >= 1 && isFreeMode) {
-      const focusName = threadAIs[threadAIs.length - 1];
+    if (threadAIs.length >= 1) {
       systemPrompt += `
-【🤝 互动引导】：
-- 最近接力发言：${threadAIs.join('、')}
-- 优先基于「${focusName}」的观点进行互动（认同/补充/不同意见/追问）
-- 避免再次单独回应最初发言者；更像群聊中的“接力讨论”`;
+【🤝 接力参考（可选）】：
+- 最近这一小段里陆续开口的群友包括：${threadAIs.join('、')}（含用户与其它成员时，**没有谁更优先**）
+- 若你愿意插话，可从上述几人**最近几句里任选接得上的环节**接，**不是**非要接时间上最后一人、**更不是**非要接用户；接不上就 [不回复]`;
     }
     
     // 拍一拍感知：检测最近针对自己的拍一拍
@@ -590,11 +755,16 @@ async function generateAIReply(
 - 也可以不回应，保持自然`;
     }
     
-    // 1. 格式化最近消息（保留媒体标记）
-    const apiMessages = recentMessages.map(msg => {
+    // 1. 格式化最近消息（保留媒体标记；附时间戳与间隔，便于跨日/隔天理解）
+    const apiMessages = recentMessages.map((msg, idx) => {
       if (msg.role === 'system') {
         return null; // 跳过系统消息
       }
+
+      const prevInWindow = idx > 0 ? recentMessages[idx - 1] : undefined;
+      const gapNote = prependGroupTimeGapNote(prevInWindow, msg);
+      const timePrefix = formatBubbleTimePrefixForModel(msg.timestamp);
+      const ageSuffix = formatBubbleAgeSuffixForModel(msg.timestamp);
       
       // 判断消息发送者
       let senderName = '用户';
@@ -603,6 +773,15 @@ async function generateAIReply(
 
       // 🧑‍💻 用户消息：使用具体昵称
       if (msg.role === 'user') {
+        if ((msg as Message).groupAiOnlyTrigger) {
+          const ice = (msg as Message).groupIcebreakerTrigger;
+          return {
+            role: 'user',
+            content: ice
+              ? `${userName || '你'}: ${gapNote}${timePrefix}${ageSuffix}（刚创建本群，未输入文字；请你作为新入群成员决定是否开口。）`
+              : `${userName || '你'}: ${gapNote}${timePrefix}${ageSuffix}（本回合未输入文字，旁观中；群内可自然闲聊。）`,
+          };
+        }
         senderName = userName || '你';
         role = 'user';
       }
@@ -612,7 +791,7 @@ async function generateAIReply(
         senderId = (msg as any).senderId; // 赋值
         if (senderId) {
           const sender = allConversations.find(c => c.id === senderId);
-          senderName = sender?.characterSettings?.nickname || sender?.name || 'AI';
+          senderName = getCharacterOnlineHandle(sender?.characterSettings, sender?.name) || 'AI';
           role = senderId === aiMember.id ? 'assistant' : 'user';
         } else {
           // 无法确定发送者，标记为其他AI
@@ -621,7 +800,14 @@ async function generateAIReply(
         }
       }
       
-      const content = formatMessageForAI(msg);
+      const threadingPrefix = prependGroupThreadingAnnotations(
+        msg,
+        groupConversation.messages,
+        groupConversation.members || [],
+        allConversations,
+        userName
+      );
+      const content = gapNote + timePrefix + ageSuffix + threadingPrefix + formatMessageForAI(msg);
       
       // 🎯 关键修复：自由模式下，清晰标识每个角色的身份
       // 无论是用户还是其他AI，都统一格式为 "名字: 内容"
@@ -653,10 +839,9 @@ async function generateAIReply(
     // 调用API
     reply.status = 'typing';
     
-    // 读取群聊自定义温度；若未设置，则自由模式0.6、顺序模式0.8
     const temperature = (typeof groupConversation.groupTemperature === 'number')
       ? groupConversation.groupTemperature
-      : (isFreeMode ? 0.6 : 0.8);
+      : 0.75;
     const chatCfg = resolveGroupParticipantApiConfig(apiConfig, groupConversation, aiMember);
     const requestBody = {
       model: chatCfg.modelName,
@@ -697,12 +882,41 @@ async function generateAIReply(
         const m = allConversations.find(c => c.id === mid);
         return m ? {
           id: m.id,
-          name: m.characterSettings?.nickname || m.name
+          name: getCharacterOnlineHandle(m.characterSettings, m.name)
         } : null;
       })
       .filter(Boolean) as Array<{id: string; name: string}>;
     
-    const messages = parseAIResponse(assistantMessage, groupMembersInfo, userName);
+    let messages = parseAIResponse(assistantMessage, groupMembersInfo, userName);
+
+    if (forceNaturalParticipation && messages.length === 0) {
+      const retryBody = {
+        model: chatCfg.modelName,
+        messages: [
+          {
+            role: 'system' as const,
+            content: `${systemPrompt}\n\n【补试一次】仍没有有效气泡。只输出**一条**口语化中文（可带语气词），禁止 [不回复]、禁止说明原因。`,
+          },
+          ...apiMessages,
+        ],
+        temperature: Math.min(0.95, temperature + 0.12),
+        max_tokens: 320,
+      };
+      const response2 = await fetch(`${apiConfig.baseUrl}/v1/chat/completions`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${apiConfig.apiKey}`,
+        },
+        body: JSON.stringify(retryBody),
+      });
+      if (response2.ok) {
+        const data2 = await response2.json();
+        const t2 = data2.choices?.[0]?.message?.content;
+        messages = parseAIResponse(t2, groupMembersInfo, userName);
+      }
+    }
+
     const parseDuration = Date.now() - parseStartTime;
     
     // 👍 性能监控：记录解析时间
@@ -722,10 +936,90 @@ async function generateAIReply(
   }
 }
 
-/**
- * 群聊生成服务主函数 - 顺序模式
- * 依次为每个AI成员生成回复，支持回调
- */
+/** 入群破冰：全员参与，顺序随机；否则人数 >7：随机 1–7 人，≤7：随机 1–n 人 */
+function pickParticipantsForRound(
+  aiMembers: Conversation[],
+  mode: 'normal' | 'icebreaker'
+): Conversation[] {
+  if (mode === 'icebreaker') {
+    return [...aiMembers].sort(() => Math.random() - 0.5);
+  }
+  const n = aiMembers.length;
+  const cap = n > 7 ? 7 : n;
+  const k = 1 + Math.floor(Math.random() * cap);
+  const shuffled = [...aiMembers].sort(() => Math.random() - 0.5);
+  return shuffled.slice(0, k);
+}
+
+/** 与 emit 到前端一致：挂上 senderId，供下一轮 AI 上下文使用 */
+function attachGroupSender(reply: GroupAIReply, message: Message): Message {
+  const messageWithSender = {
+    ...message,
+    senderId: reply.aiId,
+    senderName: reply.aiName,
+    senderAvatar: reply.aiAvatar,
+  } as Message & {
+    senderId?: string;
+    senderName?: string;
+    senderAvatar?: string;
+    moneyTransfer?: Message['moneyTransfer'];
+  };
+  if (messageWithSender.moneyTransfer?.type === 'groupRedPacket' && messageWithSender.moneyTransfer.groupRedPacket) {
+    messageWithSender.moneyTransfer.groupRedPacket.senderId = reply.aiId;
+    messageWithSender.moneyTransfer.groupRedPacket.senderName = reply.aiName;
+  }
+  return messageWithSender as Message;
+}
+
+async function emitReplyThroughCallbacks(
+  reply: GroupAIReply,
+  aiMember: Conversation,
+  callbacks?: GroupChatCallback
+): Promise<void> {
+  let displayName = getCharacterOnlineHandle(aiMember.characterSettings, aiMember.name);
+  if (reply.status === 'error') {
+    callbacks?.onAIError?.(reply.aiId, reply.error || '未知错误');
+    return;
+  }
+  if (reply.messages.length === 0) {
+    callbacks?.onAIComplete?.(reply.aiId, []);
+    return;
+  }
+  callbacks?.onAIStart?.(aiMember.id, displayName);
+  callbacks?.onAITyping?.(aiMember.id);
+  await new Promise((r) => setTimeout(r, 400));
+  for (let i = 0; i < reply.messages.length; i++) {
+    let message = reply.messages[i];
+    let silentRenameOnly = false;
+    if (message.content && typeof message.content === 'string') {
+      const stripped = stripOnlineHandleChangeMarkers(message.content);
+      if (stripped.newHandle) {
+        reply.aiName = stripped.newHandle;
+        displayName = stripped.newHandle;
+        callbacks?.onCharacterOnlineHandleChange?.(reply.aiId, stripped.newHandle);
+        if (!(stripped.text || '').trim()) {
+          silentRenameOnly = true;
+        }
+      }
+      message = { ...message, content: stripped.text };
+    }
+    const hasBubblePayload =
+      (typeof message.content === 'string' && message.content.trim().length > 0) ||
+      Boolean(message.mediaType) ||
+      Boolean(message.moneyTransfer) ||
+      Boolean(message.document);
+    if (silentRenameOnly && !hasBubblePayload) {
+      continue;
+    }
+    const messageWithSender = attachGroupSender(reply, message);
+    callbacks?.onAIMessage?.(reply.aiId, messageWithSender);
+    if (i < reply.messages.length - 1) {
+      await new Promise((r) => setTimeout(r, 300));
+    }
+  }
+  callbacks?.onAIComplete?.(reply.aiId, reply.messages);
+}
+
 export async function generateGroupChatReplies(
   groupConversation: Conversation,
   apiConfig: ApiConfig,
@@ -734,297 +1028,116 @@ export async function generateGroupChatReplies(
 ): Promise<GroupAIReply[]> {
   const members = groupConversation.members || [];
   const aiMembers = members
-    .map(mid => allConversations.find(c => c.id === mid))
-    .filter(c => c && c.type === 'private') as Conversation[];
-  
+    .map((mid) => allConversations.find((c) => c.id === mid))
+    .filter((c) => c && c.type === 'private') as Conversation[];
+
   if (aiMembers.length === 0) {
     throw new Error('群聊中没有AI成员');
   }
-  
-  const allReplies: GroupAIReply[] = [];
-  const isFreeMode = groupConversation.groupChatMode === 'free';
-  
-  // 🚀 全局开始：显示群聊处理中状态
+
+  const userSettings = JSON.parse(localStorage.getItem('userSettings') || '{}');
+  const inviterName = userSettings.nickname || userSettings.name || '你';
+
+  const lastUserMsg = [...groupConversation.messages].reverse().find((m) => m.role === 'user');
+  const isIcebreakerRound = !!lastUserMsg?.groupIcebreakerTrigger;
+  const isOrientationRound = !!lastUserMsg?.groupOrientationTrigger;
+
+  const selected = pickParticipantsForRound(aiMembers, isIcebreakerRound ? 'icebreaker' : 'normal');
+  console.log(
+    (isIcebreakerRound
+      ? '🧊 入群破冰，全员参与：'
+      : isOrientationRound
+        ? '📍 新群首条留言，入群情境：'
+        : '🎲 本轮参与候选 ') +
+      `${selected.length}/${aiMembers.length}：` +
+      `${selected.map((a) => getCharacterOnlineHandle(a.characterSettings, a.name)).join('、')}`
+  );
+
   callbacks?.onGroupChatProcessing?.();
-  
-  // 依次为每个AI生成回复
-  for (let idx = 0; idx < aiMembers.length; idx++) {
-    const aiMember = aiMembers[idx];
-    
-    // 🎯 优化：如果不是第一个AI，先等待短暂间隔
+
+  const allReplies: GroupAIReply[] = [];
+  let anyMessageEmitted = false;
+  /** 本轮内每发言一位 AI 就追加，避免后续成员 API 上下文缺前面人的气泡 */
+  let workingMessages = [...groupConversation.messages];
+
+  for (let idx = 0; idx < selected.length; idx++) {
+    const aiMember = selected[idx];
     if (idx > 0) {
-      await new Promise(resolve => setTimeout(resolve, 300));
+      await new Promise((r) => setTimeout(r, 300));
     }
-    
-    // ⚠️ 注意：不再预先显示typing动画，直到确认有回复内容
-    
-    // 调用API生成回复
     const apiStartTime = Date.now();
-    const reply = await generateAIReply(aiMember, groupConversation, apiConfig, allConversations, isFreeMode);
-    const apiDuration = Date.now() - apiStartTime;
-    
-    // 👍 性能监控：记录API调用时间
-    console.log(`⏱️ ${aiMember.characterSettings?.nickname || aiMember.name} API调用耗时: ${apiDuration}ms`);
+    const coNames = members
+      .filter((mid) => mid !== aiMember.id)
+      .map((mid) => {
+        const m = allConversations.find((c) => c.id === mid);
+        return getCharacterOnlineHandle(m?.characterSettings, m?.name) || '群友';
+      })
+      .join('、');
+    const briefing: GroupSituationBriefing = {
+      inviterName,
+      groupName: groupConversation.name,
+      coMemberNames: coNames,
+    };
+    const convForThisTurn = { ...groupConversation, messages: workingMessages };
+    const reply = await generateAIReply(aiMember, convForThisTurn, apiConfig, allConversations, {
+      icebreakerBriefing: isIcebreakerRound ? briefing : undefined,
+      memberOrientationBriefing: isOrientationRound && !isIcebreakerRound ? briefing : undefined,
+    });
+    console.log(
+      `⏱️ ${getCharacterOnlineHandle(aiMember.characterSettings, aiMember.name)} API调用耗时: ${Date.now() - apiStartTime}ms`
+    );
     allReplies.push(reply);
-    
-    // API返回后处理
     if (reply.status !== 'error' && reply.messages.length > 0) {
-      // ✅ 确认有回复：现在才显示输入中动画
-      callbacks?.onAIStart?.(aiMember.id, aiMember.characterSettings?.nickname || aiMember.name);
-      callbacks?.onAITyping?.(aiMember.id);
-      
-      // ⏳ 必须给一点时间让用户看到"正在输入"的状态，否则消息出来得太突兀
-      await new Promise(resolve => setTimeout(resolve, 400));
+      anyMessageEmitted = true;
     }
-    
-    if (reply.status === 'error') {
-      callbacks?.onAIError?.(reply.aiId, reply.error || '未知错误');
-      continue;
-    }
-    
-    if (reply.messages.length === 0) {
-      // AI选择不回复
-      callbacks?.onAIComplete?.(reply.aiId, []);
-      continue;
-    }
-    
-    // 逐条发送消息
-    for (let i = 0; i < reply.messages.length; i++) {
-      const message = reply.messages[i];
-      
-      // 添加senderId以标识消息来源
-      const messageWithSender = {
-        ...message,
-        senderId: reply.aiId,
-        senderName: reply.aiName,
-        senderAvatar: reply.aiAvatar,
-      } as any;
-      
-      // 🎁 如果是群红包消息，更新红包信息中的发送者
-      if (messageWithSender.moneyTransfer?.type === 'groupRedPacket' && messageWithSender.moneyTransfer.groupRedPacket) {
-        messageWithSender.moneyTransfer.groupRedPacket.senderId = reply.aiId;
-        messageWithSender.moneyTransfer.groupRedPacket.senderName = reply.aiName;
-      }
-      
-      callbacks?.onAIMessage?.(reply.aiId, messageWithSender);
-      
-      // 🎯 优化：缩短消息间延迟，让对话更流畅
-      if (i < reply.messages.length - 1) {
-        await new Promise(resolve => setTimeout(resolve, 300));
+    await emitReplyThroughCallbacks(reply, aiMember, callbacks);
+    if (reply.status !== 'error' && reply.messages.length > 0) {
+      for (const m of reply.messages) {
+        workingMessages.push(attachGroupSender(reply, m));
       }
     }
-    
-    callbacks?.onAIComplete?.(reply.aiId, reply.messages);
   }
-  
-  // 所有AI完成
+
+  if (!anyMessageEmitted && selected.length > 0) {
+    const lucky = selected[Math.floor(Math.random() * selected.length)];
+    console.log(`💬 本轮候选全员未发言，随机由 ${getCharacterOnlineHandle(lucky.characterSettings, lucky.name)} 自然接话`);
+    const nudgeCo = members
+      .filter((mid) => mid !== lucky.id)
+      .map((mid) => {
+        const m = allConversations.find((c) => c.id === mid);
+        return getCharacterOnlineHandle(m?.characterSettings, m?.name) || '群友';
+      })
+      .join('、');
+    const nudgeBriefing: GroupSituationBriefing = {
+      inviterName,
+      groupName: groupConversation.name,
+      coMemberNames: nudgeCo,
+    };
+    const convForNudge = { ...groupConversation, messages: workingMessages };
+    const nudge = await generateAIReply(lucky, convForNudge, apiConfig, allConversations, {
+      forceNaturalParticipation: true,
+      icebreakerBriefing: isIcebreakerRound ? nudgeBriefing : undefined,
+      memberOrientationBriefing: isOrientationRound && !isIcebreakerRound ? nudgeBriefing : undefined,
+    });
+    allReplies.push(nudge);
+    await emitReplyThroughCallbacks(nudge, lucky, callbacks);
+    if (nudge.status !== 'error' && nudge.messages.length > 0) {
+      for (const m of nudge.messages) {
+        workingMessages.push(attachGroupSender(nudge, m));
+      }
+    }
+  }
+
   callbacks?.onAllComplete?.(allReplies);
-  
   return allReplies;
 }
 
-// 注意：原有的 detectConversationEnd 函数已被智能分析器替代
-
-/**
- * 单轮生成函数
- */
-async function generateSingleRound(
-  aiMembers: Conversation[],
-  groupConversation: Conversation,
-  apiConfig: ApiConfig,
-  allConversations: Conversation[],
-  callbacks?: GroupChatCallback,
-  suggestedParticipants?: number,
-  previousRoundReplies?: GroupAIReply[]
-): Promise<GroupAIReply[]> {
-  let selectedAIs: Conversation[];
-  
-  if (suggestedParticipants !== undefined && previousRoundReplies) {
-    // 🧠 使用智能参与者选择
-    selectedAIs = selectNextRoundParticipants(aiMembers, suggestedParticipants, previousRoundReplies);
-    console.log(`🧠 智能选择AI (建议${suggestedParticipants}个): ${selectedAIs.map(ai => ai.characterSettings?.nickname || ai.name).join('、')}`);
-  } else {
-    // 传统随机选择
-    const replyCount = Math.floor(Math.random() * (aiMembers.length + 1));
-    
-    if (replyCount === 0) {
-      console.log('💤 本轮无AI回复');
-      return [];
-    }
-    
-    const shuffled = [...aiMembers].sort(() => Math.random() - 0.5);
-    selectedAIs = shuffled.slice(0, replyCount);
-    console.log(`🎲 随机选择AI: ${selectedAIs.map(ai => ai.characterSettings?.nickname || ai.name).join('、')}`);
-  }
-  
-  if (selectedAIs.length === 0) {
-    console.log('💤 本轮无AI回复');
-    return [];
-  }
-  
-  const roundReplies: GroupAIReply[] = [];
-  
-  // 依次为选中的AI生成回复
-  for (let idx = 0; idx < selectedAIs.length; idx++) {
-    const aiMember = selectedAIs[idx];
-    
-    // 🎯 优化：如果不是第一个AI，先等待短暂间隔
-    if (idx > 0) {
-      await new Promise(resolve => setTimeout(resolve, 300));
-    }
-    
-    // ⚠️ 注意：移除预先显示typing逻辑，等待API结果
-    
-    // 调用API生成回复
-    const reply = await generateAIReply(aiMember, groupConversation, apiConfig, allConversations, true);
-    roundReplies.push(reply);
-    
-    // API返回后处理
-    if (reply.status !== 'error' && reply.messages.length > 0) {
-      // ✅ 确认有回复：现在才显示输入中动画
-      callbacks?.onAIStart?.(aiMember.id, aiMember.characterSettings?.nickname || aiMember.name);
-      callbacks?.onAITyping?.(aiMember.id);
-      
-      // ⏳ 必须给一点时间让用户看到"正在输入"的状态
-      await new Promise(resolve => setTimeout(resolve, 400));
-    }
-    
-    if (reply.status === 'error') {
-      callbacks?.onAIError?.(reply.aiId, reply.error || '未知错误');
-      continue;
-    }
-    
-    if (reply.messages.length === 0) {
-      // AI选择不回复
-      callbacks?.onAIComplete?.(reply.aiId, []);
-      continue;
-    }
-    
-    // 逐条发送消息
-    for (let i = 0; i < reply.messages.length; i++) {
-      const message = reply.messages[i];
-      
-      const messageWithSender = {
-        ...message,
-        senderId: reply.aiId,
-        senderName: reply.aiName,
-        senderAvatar: reply.aiAvatar,
-      } as any;
-      
-      // 🎁 如果是群红包消息，更新红包信息中的发送者
-      if (messageWithSender.moneyTransfer?.type === 'groupRedPacket' && messageWithSender.moneyTransfer.groupRedPacket) {
-        messageWithSender.moneyTransfer.groupRedPacket.senderId = reply.aiId;
-        messageWithSender.moneyTransfer.groupRedPacket.senderName = reply.aiName;
-      }
-      
-      callbacks?.onAIMessage?.(reply.aiId, messageWithSender);
-      
-      // 🎯 优化：缩短消息间延迟，让对话更流畅
-      if (i < reply.messages.length - 1) {
-        await new Promise(resolve => setTimeout(resolve, 300));
-      }
-    }
-    
-    callbacks?.onAIComplete?.(reply.aiId, reply.messages);
-  }
-  
-  return roundReplies.filter(r => r.messages.length > 0);
-}
-
-/**
- * 群聊生成服务 - 自由模式（支持多轮回复）
- * 随机选择0到全部AI进行回复，支持2-3轮循环
- */
+/** @deprecated 与 generateGroupChatReplies 相同，保留兼容旧 import */
 export async function generateGroupChatRepliesFreeMode(
   groupConversation: Conversation,
   apiConfig: ApiConfig,
   allConversations: Conversation[],
   callbacks?: GroupChatCallback
 ): Promise<GroupAIReply[]> {
-  const members = groupConversation.members || [];
-  const aiMembers = members
-    .map(mid => allConversations.find(c => c.id === mid))
-    .filter(c => c && c.type === 'private') as Conversation[];
-  
-  if (aiMembers.length === 0) {
-    throw new Error('群聊中没有AI成员');
-  }
-
-  const allReplies: GroupAIReply[] = [];
-
-  // 🚀 全局开始：显示群聊处理中状态
-  callbacks?.onGroupChatProcessing?.();
-
-  console.log('🔄 自由模式：开始单轮回复 + 随机二次补刀');
-
-  // 第1轮：整群自由模式随机选择若干AI回复
-  const firstRoundReplies = await generateSingleRound(
-    aiMembers,
-    groupConversation,
-    apiConfig,
-    allConversations,
-    callbacks
-  );
-
-  allReplies.push(...firstRoundReplies);
-
-  if (firstRoundReplies.length === 0) {
-    console.log('💤 第一轮无人回复，对话结束');
-    callbacks?.onAllComplete?.(allReplies);
-    return allReplies;
-  }
-
-  // 第2步：从第一轮真正发过言的AI中，随机抽取少量进行二次回复
-  const activeAIs = firstRoundReplies.filter(r => r.messages.length > 0);
-  const maxSecondWave = Math.min(2, activeAIs.length); // 最多2个
-  const secondWaveCount = maxSecondWave > 0 ? Math.floor(Math.random() * (maxSecondWave + 1)) : 0; // 0~maxSecondWave 个
-
-  if (secondWaveCount > 0) {
-    const shuffled = [...activeAIs].sort(() => Math.random() - 0.5);
-    const selectedForSecond = shuffled.slice(0, secondWaveCount);
-    const selectedIds = new Set(selectedForSecond.map(r => r.aiId));
-
-    console.log(`🎯 第二轮补刀AI: ${selectedForSecond.map(r => r.aiName).join('、')}`);
-
-    const secondRoundMembers = aiMembers.filter(ai => selectedIds.has(ai.id));
-
-    // 🧠 将第一轮所有实际发言，作为“已发生的群聊历史”拼接进上下文
-    const firstRoundContextMessages = firstRoundReplies.flatMap(r =>
-      r.messages.map(msg => ({
-        ...msg,
-        // 标记这是哪个AI说的话，后续在 generateAIReply 中会按 senderId 决定角色和前缀
-        senderId: r.aiId,
-        senderName: r.aiName,
-        senderAvatar: r.aiAvatar,
-      } as any))
-    );
-
-    const extendedGroupConversation: Conversation = {
-      ...groupConversation,
-      // 注意：这里只是为了本次补刀构造一个虚拟快照，不会影响真实会话里的消息列表
-      messages: [
-        ...groupConversation.messages,
-        ...firstRoundContextMessages,
-      ],
-    };
-
-    const secondRoundReplies = await generateSingleRound(
-      secondRoundMembers,
-      extendedGroupConversation,
-      apiConfig,
-      allConversations,
-      callbacks
-    );
-
-    allReplies.push(...secondRoundReplies);
-  } else {
-    console.log('💤 本次不触发第二轮补刀');
-  }
-
-  console.log(`\n✅ 自由模式完成，本次共 ${allReplies.length} 个AI回复`);
-
-  // 所有轮次完成
-  callbacks?.onAllComplete?.(allReplies);
-
-  return allReplies;
+  return generateGroupChatReplies(groupConversation, apiConfig, allConversations, callbacks);
 }

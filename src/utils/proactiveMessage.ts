@@ -1,4 +1,5 @@
 import { Conversation, ApiConfig, Message } from '../types';
+import { getCharacterRealName } from './characterIdentity';
 
 // AI主动消息配置
 export interface ProactiveMessageConfig {
@@ -21,7 +22,7 @@ export const generateProactivePrompt = (conversation: Conversation): string => {
   const settings = conversation.characterSettings;
   const lastMessages = conversation.messages.slice(-5);
   
-  let prompt = `你是${settings?.nickname || conversation.name}。`;
+  let prompt = `你是${getCharacterRealName(settings) || conversation.name}。`;
   
   if (settings?.systemPrompt) {
     prompt += `\n${settings.systemPrompt}`;

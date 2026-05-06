@@ -8,7 +8,7 @@
     "build": "tsc && vite build",
     "preview": "vite preview",
     "predeploy": "npm run build",
-    "deploy": "gh-pages-clean && gh-pages -d dist -b gh-pages --no-history",
+    "deploy": "rm -rf node_modules/.cache/gh-pages && gh-pages -d dist -b gh-pages --no-history",
     "deploy:check": "git fetch origin gh-pages && git log origin/gh-pages -1 --format='%H %ci %s'"
   },
   "dependencies": {

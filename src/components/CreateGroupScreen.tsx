@@ -1,6 +1,7 @@
 import { useState, useRef } from 'react';
 import { ChevronLeft, Upload, Plus, X } from 'lucide-react';
 import { Conversation } from '../types';
+import { getCharacterOnlineHandle } from '../utils/characterIdentity';
 
 interface CreateGroupScreenProps {
   conversations: Conversation[];
@@ -172,6 +173,9 @@ export default function CreateGroupScreen({ conversations, onCreateGroup, onBack
               {selectedMembers.map(memberId => {
                 const member = contacts.find(c => c.id === memberId);
                 if (!member) return null;
+                const handle = getCharacterOnlineHandle(member.characterSettings, member.name);
+                const remark = (member.characterSettings?.nickname || '').trim();
+                const rawHandle = (member.characterSettings?.username || '').trim();
                 return (
                   <div key={memberId} className="flex items-center justify-between py-2 border-b border-slate-100 last:border-0">
                     <div className="flex items-center gap-3">
@@ -189,10 +193,10 @@ export default function CreateGroupScreen({ conversations, onCreateGroup, onBack
                         )}
                       </div>
                       <div>
-                        <div className="font-medium">{member.characterSettings?.nickname || member.name}</div>
-                        {member.characterSettings?.username && (
-                          <div className="text-xs text-slate-500">{member.characterSettings.username}</div>
-                        )}
+                        <div className="font-medium">{handle || member.name}</div>
+                        {remark && remark !== rawHandle ? (
+                          <div className="text-xs text-slate-500">备注 {remark}</div>
+                        ) : null}
                       </div>
                     </div>
                     <button
@@ -242,6 +246,9 @@ export default function CreateGroupScreen({ conversations, onCreateGroup, onBack
               <div className="space-y-2">
                 {contacts.map(contact => {
                   const isSelected = selectedMembers.includes(contact.id);
+                  const handle = getCharacterOnlineHandle(contact.characterSettings, contact.name);
+                  const remark = (contact.characterSettings?.nickname || '').trim();
+                  const rawHandle = (contact.characterSettings?.username || '').trim();
                   return (
                     <button
                       key={contact.id}
@@ -267,10 +274,10 @@ export default function CreateGroupScreen({ conversations, onCreateGroup, onBack
                           )}
                         </div>
                         <div className="text-left">
-                          <div className="font-medium">{contact.characterSettings?.nickname || contact.name}</div>
-                          {contact.characterSettings?.username && (
-                            <div className="text-xs text-gray-500">{contact.characterSettings.username}</div>
-                          )}
+                          <div className="font-medium">{handle || contact.name}</div>
+                          {remark && remark !== rawHandle ? (
+                            <div className="text-xs text-gray-500">备注 {remark}</div>
+                          ) : null}
                         </div>
                       </div>
                       {isSelected && (

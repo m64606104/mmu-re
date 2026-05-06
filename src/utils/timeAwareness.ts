@@ -124,6 +124,43 @@ const formatTimeGap = (minutes: number): string => {
 };
 
 /**
+ * 私聊 / 群聊进模型：每条气泡正文前统一加上发送的日历时刻（与界面展示无关）
+ * - 当天：`「今天 HH:mm」`
+ * - 其它：`「M月D日 HH:mm」` 或跨年带年份
+ */
+export function formatBubbleTimePrefixForModel(timestamp: unknown): string {
+  const ts =
+    typeof timestamp === 'number' && Number.isFinite(timestamp)
+      ? timestamp
+      : Number(timestamp || 0);
+  if (!ts) return '';
+  const d = new Date(ts);
+  const now = new Date();
+  const hm = d.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', hour12: false });
+  const sameYear = d.getFullYear() === now.getFullYear();
+  const dayPart = sameYear
+    ? `${d.getMonth() + 1}月${d.getDate()}日`
+    : `${d.getFullYear()}年${d.getMonth() + 1}月${d.getDate()}日`;
+  const sameDay = d.toDateString() === now.toDateString();
+  const tag = sameDay ? `「今天 ${hm}」` : `「${dayPart} ${hm}」`;
+  return `${tag} `;
+}
+
+/**
+ * 距今多久（仅模型提示）；间隔很短返回空串，避免刷屏
+ */
+export function formatBubbleAgeSuffixForModel(messageTimestamp: unknown, nowMs = Date.now()): string {
+  const ts =
+    typeof messageTimestamp === 'number' && Number.isFinite(messageTimestamp)
+      ? messageTimestamp
+      : Number(messageTimestamp || 0);
+  if (!ts) return '';
+  const minutes = Math.max(0, (nowMs - ts) / (1000 * 60));
+  if (minutes < 120) return '';
+  return `（距今${formatTimeGap(minutes)}）`;
+}
+
+/**
  * 检查消息是否包含行为关键词（用于判断是否需要做时长分析）
  * @param message 消息内容
  * @returns 是否包含行为关键词
@@ -176,6 +213,14 @@ const analyzeUserAction = (message: string, timeGapMinutes: number): string | nu
     const isGoingToDo = willDoPatterns.some(pattern => message.includes(pattern));
     
     if (!isGoingToDo) continue;
+
+    const isWorkOrLeave =
+      action.description.includes('上班') ||
+      action.description.includes('工作') ||
+      action.keywords.some((k) => k.includes('上班') || k.includes('工作'));
+    if (isWorkOrLeave && timeGapMinutes >= 360) {
+      return `⚠️ 用户约 ${formatTimeGap(timeGapMinutes)} 前提到要去${action.description}。这段时间在现实里足够下班、换场甚至隔天——**不要**把对方钉在旧状态；默认对方日程已推进，顺着对方**现在**聊的内容自然接话即可。`;
+    }
     
     // 如果时间间隔超过12小时，降低追问的刻意感
     if (timeGapMinutes > 720) {
@@ -241,6 +286,7 @@ const generateSuggestions = (minutes: number, currentHour: number, lastHour?: nu
     suggestions.push('- ⚠️ 时间间隔较长（几个小时到一天），不要刻意延续之前的话题');
     suggestions.push('- 像真人一样：可以开启新话题、简单问候、或者等对方引导');
     suggestions.push('- 不要"打卡式"地追问之前的每件小事，这不符合真实对话习惯');
+    suggestions.push('- 若已**跨日**（例如昨夜说睡、今夜再聊）：不要当成「同一晚刚说完晚安」仍在延续，要意识到**日期已变**');
     suggestions.push('- 如果跨越了重要时间点（用餐、睡眠），可以自然提及，但不要强求');
   } else if (minutes < 2880) { // 2天内
     suggestions.push('- ⚠️ 已经隔了1-2天，完全不需要延续之前的具体话题');
@@ -421,6 +467,11 @@ export const buildTimeAwarePrompt = (
   prompt += `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n`;
   
   prompt += `📅 当前时间（你现在回复的时间）: ${context.currentTime}\n`;
+
+  prompt += `\n【🗓 日历 vs 钟点 — 必读】\n`;
+  prompt += `- **换日 ≠「同一晚的延续」**：不要只看「都是晚上」就把昨夜和今夜当成无缝同一场景。必须结合**日期、间隔**判断：若已跨日或隔了十几个小时，对方说的「去睡了」「晚安」指的是**过去那一晚**，不是当下这一刻。\n`;
+  prompt += `- **中间沉默了很久**：用户说过要去工作/上班/出门等，若距那条消息已隔**大半天、整天或多日**，现实里对方多半早已换场、下班或在聊别的事——**不要**连环质问「你不是去上班了吗」「上班怎么样了」当作对方仍卡在那一刻；除非对方**主动**提起旧事，否则以**当下新话题**为准。\n`;
+  prompt += `- **话题未在聊天里收尾 ≠ 时间没走**：几天没说话再开口，往往已是新语境；不要假装中间没有空白，也不要把旧话题当刚发生的事来追问。\n`;
   
   // 🆕 添加AI消息时间感知
   if (lastAIMessageTimestamp) {
@@ -495,10 +546,10 @@ export const buildTimeAwarePrompt = (
     prompt += `📨 对方最新消息发送时间: ${context.lastMessageTime}\n`;
     prompt += `⏱️ 时间间隔: ${context.timeGap}（${context.timeGapMinutes.toFixed(0)}分钟）\n\n`;
     
-    // 🆕 如果有多条待回复消息，显示每条消息的详细时间
-    if (unrepliedMessages && unrepliedMessages.length > 1) {
+    // 待回复用户消息（含仅 1 条）：逐条给出发送时刻，便于区分「过去那条」与「刚发的这条」
+    if (unrepliedMessages && unrepliedMessages.length >= 1) {
       prompt += `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`;
-      prompt += `【📋 待回复消息列表】（共${unrepliedMessages.length}条）\n`;
+      prompt += `【📋 待回复用户消息】（共${unrepliedMessages.length}条，按时间顺序）\n`;
       prompt += `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n`;
       
       const now = new Date();
@@ -532,10 +583,9 @@ export const buildTimeAwarePrompt = (
       });
       
       prompt += `💡 **重要提示**：\n`;
-      prompt += `- 上面列出了所有待回复的消息及其发送时间\n`;
-      prompt += `- 你可以根据时间远近和内容重要性选择性回复\n`;
-      prompt += `- 时间久远的消息（超过1天）建议忽略，专注于最新的消息\n`;
-      prompt += `- 如果多条消息跨越很长时间，优先回复最新的高优先级消息\n\n`;
+      prompt += `- 上面列出了待回复用户消息及其**发送时间**与**距今多久**；请把较早的当作「过去语境」，把较新的当作「当下主要要接的话」\n`;
+      prompt += `- 若只有 1 条：以该条时间与正文为准；若有多条：时间久远的（尤其超过 1 天）不必逐句复读，**优先**自然回应**最新一条**的意图\n`;
+      prompt += `- 若多条跨越很长时间，不要假装中间没有空白，也不要把旧话当「刚发生」\n\n`;
     }
     
     // 🚨 根据时间间隔给出明确的禁止指令

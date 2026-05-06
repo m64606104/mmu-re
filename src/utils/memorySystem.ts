@@ -5,6 +5,7 @@
 
 import { AIEvent, ApiConfig, Conversation, MemoryBank, MemoryDiaryEntry, MemoryEntry, Message } from '../types';
 import { save, load } from './storage';
+import { getCharacterOnlineHandle, getCharacterRealName } from './characterIdentity';
 
 // 重新导出类型以便其他组件使用
 export type { MemoryEntry, MemoryDiaryEntry };
@@ -447,7 +448,12 @@ function buildCharacterVoicePack(conversation: Conversation): string {
   const cs = conversation.characterSettings;
   if (!cs) return '（未配置角色设定：请仅依据对话推断合理口吻。）';
   const lines: string[] = [];
-  if (cs.nickname) lines.push(`角色称呼：${cs.nickname}`);
+  const real = getCharacterRealName(cs);
+  if (real) lines.push(`角色本名：${real}`);
+  const remark = (cs.nickname || '').trim();
+  if (remark) lines.push(`用户通讯录备注：${remark}`);
+  const handle = getCharacterOnlineHandle(cs, conversation.name);
+  if (handle && handle !== remark) lines.push(`对外网名：${handle}`);
   if (cs.personality) lines.push(`性格：${cs.personality}`);
   if (cs.languageStyle) lines.push(`语言风格：${cs.languageStyle}`);
   if (cs.languageExample) lines.push(`说话示例（节选）：${String(cs.languageExample).slice(0, 220)}`);

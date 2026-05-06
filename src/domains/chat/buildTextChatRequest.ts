@@ -2,6 +2,7 @@ import type { ApiConfig, Conversation, Message, UserProfile } from '../../types'
 import type { UnrepliedMessageInfo } from '../../utils/timeAwareness';
 import { buildMomentsMemorySystemMessage } from '../moments';
 import { buildGroupChatMemorySystemMessage } from './groupMemoryInjection';
+import { isToolInteractionCharacter } from '../../utils/characterInteractionMode';
 
 export interface BuildTextChatRequestDeps {
   buildTimeAwarePrompt: (...args: any[]) => string;
@@ -69,6 +70,9 @@ export async function buildTextChatRequest(
     logDebug,
   } = options;
 
+  const toolPrivate =
+    conversation.type === 'private' && isToolInteractionCharacter(conversation.characterSettings);
+
   const getTimeLabel = (timestamp: number): string => {
     const now = new Date();
     const msgDate = new Date(timestamp);
@@ -128,13 +132,34 @@ export async function buildTextChatRequest(
 
   // Recent user messages hint
   const recentUserMessages = conversation.messages.filter(m => m.role === 'user').slice(-3);
-  let contextPrompt =
-    systemPrompt +
+
+  const companionContextTail =
     '\n\n【消息拆条规则（重要）】\n- 如果你想分成多条气泡发送，必须使用 [NEXT] 分隔\n- 示例：哈哈哈[NEXT]你怎么才来[NEXT]我等半天了\n- 不要用单纯换行来代替分条\n\n【多媒体消息使用指南】\n- 可以发送图片、视频、语音、表情包、文档等\n- 使用格式：[图片:描述]、[视频:描述]、[语音:内容,时长]、[表情包:描述]\n\n⚠️ 视频和图片描述要求（强制执行）：\n- **电影级画面感**：描述必须包含光影（如"斑驳树影"）、声音氛围（如"静谧"）、动态细节（如"烟雾缭绕"）。\n- **字数要求**：50-100字，越详细越好。\n- **第三人称**：禁止使用第一人称（"我"），必须用客观视角描述（"画面中"、"一个女孩"）。\n- **特定场景**：如果是寺庙、古迹等，着重描写庄严感、历史感和环境细节。\n\n📄 文档发送协议（唯一有效）：\n- 当你要发送文档时，必须输出一个 JSON 对象（不要自然语言包装，不要分条）。\n- JSON 格式：\n```json\n{\n  "document": {\n    "title": "文档标题",\n    "type": "text",\n    "greeting": "请查收",\n    "content": "完整正文内容"\n  }\n}\n```\n- `type` 仅可为 `text` / `markdown` / `code`\n- `content` 必须是完整正文，不能只写标题\n- 文档 JSON 必须独占一条回复，禁止和其他普通文本混发\n\n📋 转发聊天记录处理指南：\n**🎯 关键理解：当用户转发聊天记录时，就像朋友把手机拿给你看聊天截图一样！**\n\n**📱 你会收到的格式：**\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n📋 转发的聊天记录  \n📍 来源：对话名称\n📅 时间范围：开始时间 - 结束时间\n👥 参与者：用户、AI助手 (共X人)\n💬 对话内容：共X条消息\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n[1/5] 20:15 用户:\n     消息内容...\n     [🖼️图片] 图片描述\n\n[2/5] 20:16 AI助手:\n     回复内容...\n\n**🧠 像真人一样理解聊天记录：**\n1. 📖 **逐条仔细阅读**每条消息，就像看朋友的聊天截图\n2. 👥 **识别参与者**：谁说了什么，什么时候说的\n3. 📝 **理解对话流程**：先发生了什么，然后怎么发展的\n4. 🎭 **感受对话情绪**：开心、生气、困惑、兴奋等\n5. 🔗 **把握对话主题**：在讨论什么问题或话题\n6. ⏰ **注意时间线**：事件的先后顺序\n\n**💭 自然回应方式（就像真人看聊天记录后的反应）：**\n✅ "我看了你们的聊天，[具体内容分析]..."\n✅ "从你们的对话可以看出..."\n✅ "哈哈，你们聊得真有意思，特别是[具体内容]..."\n✅ "看起来[参与者名]在[时间]说的[具体内容]很关键..."\n✅ "我注意到对话中提到了[具体细节]..."\n\n**🚫 避免机械化回应：**\n❌ 不要说"根据转发的聊天记录..."\n❌ 不要过于正式或模板化\n❌ 不要忽略具体的人名和细节\n❌ 不要遗漏重要的情感或语气\n\n**💡 就像真朋友一样，你可以：**\n- 😄 对有趣的内容表示开心或好笑\n- 🤔 对复杂情况给出分析和建议  \n- 😮 对意外信息表示惊讶\n- 💪 给出鼓励和支持\n- 🎯 提供针对性的解决方案\n\n**重点：把转发的聊天记录当作朋友给你看的真实对话，自然地回应！**';
 
-  if (recentUserMessages.length > 1) {
-    contextPrompt +=
-      '\n\n【当前对话情境】：\n用户最近发了多条消息，请根据优先级判断标准，优先回复重要的、有趣的话题。可以合并回复，也可以选择性跳过某些消息。';
+  let contextPrompt: string;
+  if (toolPrivate) {
+    contextPrompt =
+      systemPrompt +
+      `\n\n【工具型助手 — 格式与约束】
+- 你是智能AI助手：你的作用是按照用户的要求提供力所能及的一切帮助；不要编造数据，禁止在提供的信息里进行捏造和猜测。优先使用有权威肯定来源的数据和资料，如果没有资料或者搜不到需要如实交代，对于任何数据和资料禁止捏造数据和进行造假。无论何时都需要诚实公正的对用户进行回复。禁止携带任何的主观倾向，你的一切回答都要是基于专业和严谨性的、必须禁得起多番审查的。禁止夸大和误导用户，禁止承诺自己做不到的事情。
+- 需要多条气泡时使用 [NEXT] 分隔。
+- 多媒体：[图片:描述]、[视频:描述]、[语音:内容,时长]、[表情包:描述]。
+- 文档：仅允许输出以下 JSON（独占一条回复，勿加前后说明）：
+\`\`\`json
+{ "document": { "title": "文档标题", "type": "text", "greeting": "请查收", "content": "完整正文内容" } }
+\`\`\`
+- \`type\` 仅可为 text / markdown / code；\`content\` 须为完整正文。
+- 转发聊天记录：客观梳理事实、分歧与可执行建议，避免「像朋友八卦」式语气。`;
+    if (recentUserMessages.length > 1) {
+      contextPrompt +=
+        '\n\n【当前对话】：用户连续发送了多条消息，请合并理解时间顺序，优先回答实质问题与待办。';
+    }
+  } else {
+    contextPrompt = systemPrompt + companionContextTail;
+    if (recentUserMessages.length > 1) {
+      contextPrompt +=
+        '\n\n【当前对话情境】：\n用户最近发了多条消息，请根据优先级判断标准，优先回复重要的、有趣的话题。可以合并回复，也可以选择性跳过某些消息。';
+    }
   }
 
   // Subchat context injection based on last user message
@@ -254,12 +279,12 @@ ${doc.content}`;
   const requestBody = {
     model: apiConfig.modelName,
     messages,
-    temperature: 0.7,
+    temperature: toolPrivate ? 0.4 : 0.7,
     max_tokens: 2000,
   };
 
   // 🧠 Cross-channel memory injection (kept from legacy ChatScreen)
-  {
+  if (!toolPrivate) {
     const momentContext = await buildMomentsMemorySystemMessage({
       conversationId: conversation.id,
       probability: 0.25,

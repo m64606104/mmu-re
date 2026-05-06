@@ -69,6 +69,7 @@ interface CreateCommitUserMessageHandlersOptions {
   onPerceiveMessage: (conversation: Conversation, message: Message) => void;
   onQueuePendingUserMessage: (messageId: string) => void;
   onSchedulePendingReply: (conversationId: string, delaySec: number) => void;
+  onTriggerGroupAiRound?: (conversationId: string) => void;
   onHandleAIChildExperienceUpdate?: (
     conversation: Conversation,
     message: Message
@@ -137,10 +138,17 @@ export function commitUserMessage(options: CommitUserMessageOptions): void {
     onSchedulePendingReply,
   } = options;
 
+  const clearIcebreakerPending =
+    conversation.type === 'group' &&
+    conversation.groupIcebreakerPending &&
+    newMessage.role === 'user' &&
+    !newMessage.groupIcebreakerTrigger;
+
   onUpdateConversation(conversation.id, {
     messages: [...conversation.messages, newMessage],
     lastMessageTime: Date.now(),
     isHidden: false,
+    ...(clearIcebreakerPending ? { groupIcebreakerPending: false } : {}),
   });
 
   onPerceiveMessage(conversation, newMessage);
@@ -153,6 +161,8 @@ export function commitUserMessage(options: CommitUserMessageOptions): void {
     onHandleAIChildExperience?.(conversation, newMessage);
   }
 
+  // 私聊：schedulePendingReply 内部走输入框门闩 + privateComposerQuietSeconds，忽略下面的秒数。
+  // 群聊：才用 messageBufferSeconds 做「发消息后等待、连发则重置」的防抖，到时拉起多 AI 一轮。
   const bufferSeconds = conversation.messageBufferSeconds ?? 15;
   onSchedulePendingReply(conversation.id, bufferSeconds);
 }

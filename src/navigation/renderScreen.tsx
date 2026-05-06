@@ -78,13 +78,14 @@ export type RenderScreenParams = {
   onImportCharacter: (data: any) => void;
   onAddPenPal: (newConversation: Conversation) => void;
   addFriend: (friendData: {
+    realName: string;
     nickname: string;
-    username: string;
     avatar: string;
     systemPrompt: string;
     personality: string;
     languageStyle: string;
     languageExample: string;
+    interactionMode?: 'companion' | 'tool';
   }) => void;
   createGroup: (groupData: {
     groupName: string;

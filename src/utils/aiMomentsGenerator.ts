@@ -17,6 +17,7 @@ import {
   canAIsViewEachOtherMoments,
   loadMomentsVisibilityGroups,
 } from './momentsVisibility';
+import { isToolInteractionCharacter } from './characterInteractionMode';
 
 const MOMENTS_STORAGE_KEY = 'moments_data';
 
@@ -583,6 +584,9 @@ export const generateAIMoment = async (
   apiConfig: ApiConfig
 ): Promise<MomentPost | null> => {
   try {
+    if (isToolInteractionCharacter(conversation.characterSettings)) {
+      return null;
+    }
     console.log(`🎭 开始为 ${conversation.name} 生成朋友圈...`);
     
     // 检查API配置
@@ -1072,7 +1076,9 @@ export const generateAIMomentsInteraction = async (
     if (allMomentsData.length === 0) return;
 
     // 获取所有AI角色
-    const aiConversations = conversations.filter(c => c.type === 'private' && c.characterSettings);
+    const aiConversations = conversations.filter(
+      (c) => c.type === 'private' && c.characterSettings && !isToolInteractionCharacter(c.characterSettings)
+    );
     if (aiConversations.length < 2) return;
 
     // 🎯 随机选择几个"在线"的AI
@@ -1258,6 +1264,7 @@ export const handleUserInteractionResponse = async (
 ): Promise<void> => {
   try {
     if (!aiConversation.characterSettings || !apiConfig) return;
+    if (isToolInteractionCharacter(aiConversation.characterSettings)) return;
 
     const { getRelationship, getRelationshipLabel } = await import('./aiRelationships');
     
@@ -1419,7 +1426,9 @@ export const generateCommentSectionInteraction = async (
     const allMomentsData = await getAllMomentsData();
     if (allMomentsData.length === 0) return;
 
-    const aiConversations = conversations.filter(c => c.type === 'private' && c.characterSettings);
+    const aiConversations = conversations.filter(
+      (c) => c.type === 'private' && c.characterSettings && !isToolInteractionCharacter(c.characterSettings)
+    );
     if (aiConversations.length < 2) return;
 
     // 🎯 随机选择几个"在线"的AI

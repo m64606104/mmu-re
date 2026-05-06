@@ -79,6 +79,12 @@ export interface Message {
     from: 'user' | 'assistant';
     type: string; // emoji
   }>;
+  /** 群聊：用户发送「空消息」仅触发 AI 互聊一轮，用户旁观（不在模型里当作文本发言） */
+  groupAiOnlyTrigger?: boolean;
+  /** 群聊：与 groupAiOnlyTrigger 同时出现，表示「刚建群后的首次空发送」入群破冰轮 */
+  groupIcebreakerTrigger?: boolean;
+  /** 群聊：建群后用户第一条有内容的留言，触发本轮「新群入群情境」说明（与破冰二选一） */
+  groupOrientationTrigger?: boolean;
 }
 
 // 💰 红包/转账类型
@@ -194,12 +200,19 @@ export interface SocialFeedMessage {
   rawContent: string;  // 原始格式化内容（包含所有标记）
 }
 
+/** 角色互动模式：陪伴型默认；工具型为助手风格，不参与生活轨迹/朋友圈侧逻辑 */
+export type CharacterInteractionMode = 'companion' | 'tool';
+
 export interface CharacterSettings {
   avatar?: string;
   originalAvatar?: string; // 原始头像（用于"换回去"功能）
   chatBackground?: string; // 聊天背景图
+  /** 用户通讯录中的备注名（列表展示），不是角色的法定本名 */
   nickname: string;
-  username?: string; // 角色网名
+  /** 角色本名：用户设定，角色自我认同的真实姓名 */
+  realName?: string;
+  /** 对外网名（群聊名片等），通常由角色自拟，也可通过回复中的 [改网名:xxx] 更新 */
+  username?: string;
   avatarVisionProfile?: {
     summary: string; // 视觉模型总结
     appearanceTags: string[]; // 外观标签
@@ -210,6 +223,11 @@ export interface CharacterSettings {
     sourceModel?: string; // 使用的模型
   };
   systemPrompt: string;
+  /**
+   * 陪伴型（默认）：拟人聊天、可参与生活轨迹/朋友圈等。
+   * 工具型：助手式回答，系统会关闭生活轨迹注入并屏蔽朋友圈侧行为。
+   */
+  interactionMode?: CharacterInteractionMode; // 默认 undefined 视为 companion
   personality: string;
   languageStyle: string;
   languageExample: string;
@@ -374,7 +392,8 @@ export interface Conversation {
   aiStatus?: AIStatusInfo; // AI状态信息（仅私聊AI角色）
   subChats?: SubChat[]; // 子聊天列表
   callHistory?: CallLog[]; // 通话记录历史
-  groupChatMode?: 'sequential' | 'free'; // 群聊回复模式：顺序模式 | 自由模式（默认sequential）
+  /** @deprecated 已废弃；群聊统一为「类人群聊」单模式，字段仅兼容旧数据 */
+  groupChatMode?: 'sequential' | 'free';
   groupContextConfig?: { // 群聊上下文配置（仅群聊）
     enabled: boolean; // 是否启用自定义上下文数量
     messageCount: number; // 上下文消息数量（1-100，默认30）
@@ -389,10 +408,18 @@ export interface Conversation {
     selectedIds: string[];
     categoryFilter?: string;
   };
-  messageBufferSeconds?: number; // 消息缓冲时间（秒），用于延后回复
+  /** 已废弃：私聊不再使用滚动缓冲秒数。 */
+  messageBufferSeconds?: number;
+  /**
+   * 私聊：离开输入框且无输入草稿后，再等待这么多秒再生成 AI 回复（默认 3）。
+   * 仅私聊生效；所有消息类型（文字/媒体/文件等）共用。
+   */
+  privateComposerQuietSeconds?: number;
   replySplitPreference?: 'smart' | 'single' | 'split'; // 新拆分策略偏好：智能/整段/拆条
   /** 群聊单独配置对话模型（非空则本群内 AI 回复优先使用该模型；视觉仍全局） */
   groupChatModelOverride?: string;
+  /** 新建群后尚未完成破冰：用户若先空发送则触发全员入群说明；若先发文字则自动清除 */
+  groupIcebreakerPending?: boolean;
 }
 
 export interface UserProfile {

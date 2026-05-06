@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { X, Users, Info, Image as ImageIcon, UserPlus, UserMinus, Trash2, Camera, ChevronRight } from 'lucide-react';
+import { X, Users, Image as ImageIcon, UserPlus, UserMinus, Trash2, Camera, ChevronRight } from 'lucide-react';
 import type { ApiConfig, Conversation } from '../types';
 import ChatModelOverridePicker from './ChatModelOverridePicker';
 
@@ -24,9 +24,6 @@ const GroupChatSettingsModal: React.FC<GroupChatSettingsModalProps> = ({
   onDeleteConversation,
 }) => {
   // 状态管理
-  const [groupChatMode, setGroupChatMode] = useState<'sequential' | 'free'>(
-    conversation.groupChatMode || 'sequential'
-  );
   const [groupName, setGroupName] = useState(conversation.name);
   const [groupRemark, setGroupRemark] = useState(conversation.groupRemark || '');
   const [groupAvatar, setGroupAvatar] = useState(conversation.avatar || '');
@@ -42,7 +39,7 @@ const GroupChatSettingsModal: React.FC<GroupChatSettingsModalProps> = ({
   const [groupTemperature, setGroupTemperature] = useState<number>(
     typeof conversation.groupTemperature === 'number'
       ? Math.max(0, Math.min(1, conversation.groupTemperature))
-      : ((conversation.groupChatMode || 'sequential') === 'free' ? 0.6 : 0.8)
+      : 0.75
   );
   
   const imageInputRef = React.useRef<HTMLInputElement>(null);
@@ -57,7 +54,6 @@ const GroupChatSettingsModal: React.FC<GroupChatSettingsModalProps> = ({
       name: groupName,
       groupRemark: groupRemark,
       avatar: groupAvatar,
-      groupChatMode: groupChatMode,
       groupTemperature: groupTemperature,
       groupChatModelOverride: trimmedModel ? trimmedModel : undefined,
       groupContextConfig: {
@@ -240,81 +236,18 @@ const GroupChatSettingsModal: React.FC<GroupChatSettingsModalProps> = ({
             </div>
           </details>
 
-          {/* 💬 回复模式 */}
+          {/* 群聊生成 */}
           <details className="bg-white rounded-lg shadow-sm overflow-hidden group border border-gray-100">
             <summary className="px-4 py-3 flex items-center justify-between bg-gray-50 border-b border-gray-100 cursor-pointer list-none select-none hover:bg-gray-100 transition-colors">
               <div className="flex items-center gap-2">
                 <div className="w-1 h-4 bg-purple-500 rounded-full"></div>
-                <h3 className="text-sm font-medium text-gray-900">回复模式</h3>
+                <h3 className="text-sm font-medium text-gray-900">群聊生成</h3>
               </div>
               <ChevronRight className="w-4 h-4 text-gray-500 transition-transform group-open:rotate-90" />
             </summary>
             <div className="p-4 space-y-4">
-              {/* 对话行为 */}
-              <div className="space-y-3">
-                <h4 className="text-xs font-medium text-gray-500 uppercase tracking-wide">对话行为</h4>
-                
-                {/* 顺序模式 */}
-                <button
-                  onClick={() => setGroupChatMode('sequential')}
-                  className={`w-full text-left p-4 rounded-xl border-2 transition-all ${
-                    groupChatMode === 'sequential'
-                      ? 'border-blue-500 bg-blue-50'
-                      : 'border-gray-200 bg-white hover:border-gray-300'
-                  }`}
-                >
-                  <div className="flex items-start justify-between mb-2">
-                    <div className="font-medium text-gray-900">顺序模式</div>
-                    {groupChatMode === 'sequential' && (
-                      <div className="w-5 h-5 bg-blue-500 rounded-full flex items-center justify-center">
-                        <div className="w-2 h-2 bg-white rounded-full"></div>
-                      </div>
-                    )}
-                  </div>
-                  <div className="text-sm text-gray-600">
-                    所有AI成员依次回复，确保每个AI都能发言
-                  </div>
-                </button>
-
-                {/* 自由模式 */}
-                <button
-                  onClick={() => setGroupChatMode('free')}
-                  className={`w-full text-left p-4 rounded-xl border-2 transition-all ${
-                    groupChatMode === 'free'
-                      ? 'border-purple-500 bg-purple-50'
-                      : 'border-gray-200 bg-white hover:border-gray-300'
-                  }`}
-                >
-                  <div className="flex items-start justify-between mb-2">
-                    <div className="font-medium text-gray-900">自由模式</div>
-                    {groupChatMode === 'free' && (
-                      <div className="w-5 h-5 bg-purple-500 rounded-full flex items-center justify-center">
-                        <div className="w-2 h-2 bg-white rounded-full"></div>
-                      </div>
-                    )}
-                  </div>
-                  <div className="text-sm text-gray-600">
-                    随机选择0到全部AI回复，AI之间可以自由对话
-                  </div>
-                </button>
-                
-                {/* 自由模式说明 */}
-                {groupChatMode === 'free' && (
-                  <div className="bg-purple-50 rounded-xl p-4 border border-purple-200">
-                    <div className="flex items-start gap-2">
-                      <Info className="w-5 h-5 text-purple-500 flex-shrink-0 mt-0.5" />
-                      <div className="text-sm text-gray-700">
-                        <div className="font-medium text-purple-900 mb-2">自由模式特性：</div>
-                        <ul className="space-y-1 list-disc list-inside text-xs">
-                          <li>每次生成时随机选择参与回复的AI数量</li>
-                          <li>AI可以根据其他AI的消息进行回复</li>
-                          <li>AI可以引入新话题，保持对话活跃</li>
-                          <li>即使没有新消息，AI也会继续聊天</li>
-                        </ul>
-                      </div>
-                    </div>
-                  </div>
-                )}
+              <div className="text-xs text-gray-600 bg-gray-50 rounded-lg p-3 border border-gray-100 leading-relaxed">
+                群聊为统一模式：共享时间线、可见发言人；每轮随机抽取若干位 AI，各自可接话、沉默或换话题。聊天页输入框空行发送可触发仅 AI 互动（你旁观）。若当轮无人开口，会自然请其中一位接话，减少冷场。
               </div>
 
               {/* 生成温度设置 */}

@@ -1,10 +1,14 @@
 import { useEffect, useState } from 'react';
 
 /**
- * Returns the bottom area (px) that is obscured by mobile browser UI
- * (e.g. iOS Safari/Chrome bottom address bar). Use it to lift fixed
- * bottom UI (nav bars, input toolbars) above the browser bar.
+ * Returns extra bottom offset (px) for fixed bottom UI, beyond `env(safe-area-inset-bottom)`.
+ * Uses VisualViewport when the browser chrome actually obscures content.
+ *
+ * Note: Do NOT derive this from `visualViewport.height - constant` on tall viewports — that
+ * produced huge values in Edge/mobile and pushed `position:fixed; bottom:…` bars to mid-screen.
  */
+const MAX_DOCK = 120;
+
 export function useMobileBottomDock(): number {
   const [dock, setDock] = useState(0);
 
@@ -21,29 +25,26 @@ export function useMobileBottomDock(): number {
         setDock(0);
         return;
       }
-      // Use layout viewport height instead of innerHeight (more stable on iOS).
+
       const layoutHeight = document.documentElement.clientHeight || window.innerHeight;
       const obscured = Math.max(0, layoutHeight - vv.height - vv.offsetTop);
 
-      // Keep browser behavior unchanged when there is a real obstruction.
-      // If there is little/no obstruction (standalone or tall unobscured viewport),
-      // synthesize a larger dock so layout matches the browser-with-toolbar proportion.
+      if (obscured > 1) {
+        setDock(Math.min(obscured, MAX_DOCK));
+        return;
+      }
+
       const isStandalone =
         window.matchMedia('(display-mode: standalone)').matches ||
         ('standalone' in navigator && Boolean((navigator as Navigator & { standalone?: boolean }).standalone));
 
-      // "p4-like" target visible height. Larger viewports get lifted more.
-      const TARGET_VISIBLE_HEIGHT = 720;
-      const syntheticDock = Math.max(52, Math.round(vv.height - TARGET_VISIBLE_HEIGHT - 4));
-      const shouldUseSyntheticDock = isStandalone || vv.height >= 760;
-
-      if (obscured > 1) {
-        setDock(obscured);
-      } else if (shouldUseSyntheticDock) {
-        setDock(syntheticDock);
-      } else {
-        setDock(0);
+      // PWA：没有可测量的浏览器底栏时，给一点与刘海 home 条无关的留白（safe-area 仍由 CSS 处理）
+      if (isStandalone) {
+        setDock(12);
+        return;
       }
+
+      setDock(0);
     };
 
     updateDock();
@@ -59,4 +60,3 @@ export function useMobileBottomDock(): number {
 
   return dock;
 }
-

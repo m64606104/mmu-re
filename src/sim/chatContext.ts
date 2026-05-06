@@ -1,4 +1,5 @@
 import type { Conversation, Message } from '../types';
+import { isToolInteractionCharacter } from '../utils/characterInteractionMode';
 import { smartLoad } from '../utils/storage';
 
 function isLifeStatusQuery(text: string): boolean {
@@ -19,6 +20,7 @@ export async function buildLifeChatContextSnippet(params: {
 }): Promise<string> {
   const { conversation, lastUserMessage } = params;
   if (!conversation?.id || conversation.type !== 'private') return '';
+  if (isToolInteractionCharacter(conversation.characterSettings)) return '';
 
   const all = (await smartLoad('ai_life_sim_states')) as Record<string, any> | null;
   const state = all?.[conversation.id];

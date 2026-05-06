@@ -9,13 +9,14 @@ import {
   Upload,
   X,
 } from 'lucide-react';
-import type { ApiConfig, Conversation, KnowledgeBaseItem } from '../types';
+import type { ApiConfig, CharacterInteractionMode, Conversation, KnowledgeBaseItem } from '../types';
 import MemoryManager from './MemoryManager';
 import { useMobileBottomDock } from '../hooks/useMobileBottomDock';
 import { smartLoad } from '../utils/storage';
 import { enqueueMemoryEngineIfBacklogAfterSave } from '../utils/memorySystem';
 import { resolvePrivateChatApiConfig } from '../utils/chatApiConfig';
 import ChatModelOverridePicker from './ChatModelOverridePicker';
+import { getCharacterOnlineHandle } from '../utils/characterIdentity';
 
 type Props = {
   conversation: Conversation;
@@ -30,6 +31,11 @@ type Props = {
 function clampHour(n: number) {
   if (!Number.isFinite(n)) return 0;
   return Math.max(0, Math.min(23, Math.round(n)));
+}
+
+function clampPrivateQuietSec(n: number) {
+  if (!Number.isFinite(n)) return 3;
+  return Math.max(1, Math.min(120, Math.round(n)));
 }
 
 function ListRow(props: {
@@ -71,6 +77,7 @@ export default function CharacterSettingsScreenV2(props: Props) {
 
   const cs = useMemo(() => ({
     nickname: '',
+    realName: '',
     systemPrompt: '',
     personality: '',
     languageStyle: '',
@@ -79,6 +86,7 @@ export default function CharacterSettingsScreenV2(props: Props) {
     ...(conversation.characterSettings || {}),
   }), [conversation.characterSettings]);
 
+  const [realName, setRealName] = useState(cs.realName ?? '');
   const [nickname, setNickname] = useState(cs.nickname ?? '');
   const [username, setUsername] = useState(cs.username || '');
   const [avatar, setAvatar] = useState(cs.avatar || '');
@@ -87,6 +95,7 @@ export default function CharacterSettingsScreenV2(props: Props) {
   const [languageStyle, setLanguageStyle] = useState(cs.languageStyle ?? '');
   const [languageExample, setLanguageExample] = useState(cs.languageExample ?? '');
   const [memoryEvents, setMemoryEvents] = useState(cs.memoryEvents ?? '');
+  const [interactionMode, setInteractionMode] = useState<CharacterInteractionMode>(cs.interactionMode ?? 'companion');
 
   const [memoryConfigEnabled, setMemoryConfigEnabled] = useState(cs.memoryConfig?.enabled ?? true);
   const [momentsMemoryEnabled, setMomentsMemoryEnabled] = useState(cs.momentsMemoryConfig?.enabled ?? true);
@@ -99,6 +108,10 @@ export default function CharacterSettingsScreenV2(props: Props) {
   const [activeHourEnd, setActiveHourEnd] = useState(clampHour(cs.proactiveMessaging?.activeHourEnd ?? 23));
   const [wakeSensitivityMode, setWakeSensitivityMode] = useState<'auto' | 'light' | 'normal' | 'deep'>(
     cs.proactiveMessaging?.wakeSensitivityMode || 'auto'
+  );
+
+  const [privateComposerQuietSeconds, setPrivateComposerQuietSeconds] = useState(
+    clampPrivateQuietSec(conversation.privateComposerQuietSeconds ?? 3)
   );
 
   const [showMemoryManager, setShowMemoryManager] = useState(false);
@@ -121,6 +134,7 @@ export default function CharacterSettingsScreenV2(props: Props) {
 
   useEffect(() => {
     // 当切换到别的角色时同步字段（避免残留）
+    setRealName(cs.realName ?? '');
     setNickname(cs.nickname ?? '');
     setUsername(cs.username || '');
     setAvatar(cs.avatar || '');
@@ -129,6 +143,7 @@ export default function CharacterSettingsScreenV2(props: Props) {
     setLanguageStyle(cs.languageStyle ?? '');
     setLanguageExample(cs.languageExample ?? '');
     setMemoryEvents(cs.memoryEvents ?? '');
+    setInteractionMode(cs.interactionMode ?? 'companion');
     setMemoryConfigEnabled(cs.memoryConfig?.enabled ?? true);
     setMomentsMemoryEnabled(cs.momentsMemoryConfig?.enabled ?? true);
     setDisableWorldbook(cs.disableWorldbook ?? false);
@@ -137,6 +152,7 @@ export default function CharacterSettingsScreenV2(props: Props) {
     setActiveHourStart(clampHour(cs.proactiveMessaging?.activeHourStart ?? 8));
     setActiveHourEnd(clampHour(cs.proactiveMessaging?.activeHourEnd ?? 23));
     setWakeSensitivityMode(cs.proactiveMessaging?.wakeSensitivityMode || 'auto');
+    setPrivateComposerQuietSeconds(clampPrivateQuietSec(conversation.privateComposerQuietSeconds ?? 3));
     setKnowledgeBase(cs.knowledgeBase || []);
     setEditStep('basic');
   }, [cs, conversation.id]);
@@ -159,9 +175,15 @@ export default function CharacterSettingsScreenV2(props: Props) {
     }
 
     const nextName = nickname || conversation.name;
+    const nextPrivateQuiet = clampPrivateQuietSec(privateComposerQuietSeconds);
+    const isTool = interactionMode === 'tool';
+    const effectiveMomentsMemory = isTool ? false : momentsMemoryEnabled;
+    const effectiveProactive = isTool ? false : proactiveEnabled;
+
     const nextCharacterSettings = {
       ...(conversation.characterSettings || ({} as any)),
       avatar,
+      realName: realName.trim(),
       nickname,
       username,
       systemPrompt,
@@ -169,12 +191,13 @@ export default function CharacterSettingsScreenV2(props: Props) {
       languageStyle,
       languageExample,
       memoryEvents,
+      interactionMode,
       memoryConfig: { enabled: memoryConfigEnabled },
-      momentsMemoryConfig: { enabled: momentsMemoryEnabled },
+      momentsMemoryConfig: { enabled: effectiveMomentsMemory },
       disableWorldbook,
       proactiveMessaging: {
         ...(conversation.characterSettings?.proactiveMessaging || ({} as any)),
-        enabled: proactiveEnabled,
+        enabled: effectiveProactive,
         activeHourStart,
         activeHourEnd,
         autoIntervalByAI: true,
@@ -193,6 +216,7 @@ export default function CharacterSettingsScreenV2(props: Props) {
       name: nextName,
       characterSettings: nextCharacterSettings,
       enabledFeatures: updatedFeatures,
+      ...(conversation.type === 'private' ? { privateComposerQuietSeconds: nextPrivateQuiet } : {}),
     });
 
     const mergedForApi: Conversation = {
@@ -200,6 +224,7 @@ export default function CharacterSettingsScreenV2(props: Props) {
       name: nextName,
       enabledFeatures: updatedFeatures,
       characterSettings: nextCharacterSettings,
+      ...(conversation.type === 'private' ? { privateComposerQuietSeconds: nextPrivateQuiet } : {}),
     };
     enqueueMemoryEngineIfBacklogAfterSave(
       conversation,
@@ -364,6 +389,7 @@ export default function CharacterSettingsScreenV2(props: Props) {
           groupRemark: conversation.groupRemark,
           members: conversation.members,
           aiStatus: conversation.aiStatus,
+          privateComposerQuietSeconds: conversation.privateComposerQuietSeconds,
         },
         memoryBank,
         moments,
@@ -417,7 +443,7 @@ export default function CharacterSettingsScreenV2(props: Props) {
     reader.readAsText(file);
   };
 
-  const signature = username || '自信sayhi 轻松追爱';
+  const onlineHandlePreview = getCharacterOnlineHandle({ ...cs, nickname, username, realName: realName.trim() }, conversation.name);
 
   return (
     <div className="h-[100dvh] md:h-full min-h-0 bg-[#F3F4F6] flex flex-col overflow-hidden">
@@ -482,7 +508,23 @@ export default function CharacterSettingsScreenV2(props: Props) {
                     <div className="text-lg font-semibold text-gray-900 truncate">
                       {nickname || conversation.name || '未命名角色'}
                     </div>
-                    <div className="text-[12px] text-gray-700/80 truncate">{signature}</div>
+                    {(realName || '').trim() || onlineHandlePreview ? (
+                      <div className="text-[12px] text-gray-700/80 truncate space-x-2">
+                        {(realName || '').trim() ? <span>本名：{(realName || '').trim()}</span> : null}
+                        {onlineHandlePreview ? <span>网名：{onlineHandlePreview}</span> : null}
+                      </div>
+                    ) : null}
+                    <div className="mt-2">
+                      <span
+                        className={`inline-block text-[11px] px-2 py-0.5 rounded-full font-medium ${
+                          (cs.interactionMode ?? 'companion') === 'tool'
+                            ? 'bg-slate-800/90 text-white'
+                            : 'bg-white/70 text-gray-800 border border-white/60'
+                        }`}
+                      >
+                        {(cs.interactionMode ?? 'companion') === 'tool' ? '工具型助手' : '陪伴型角色'}
+                      </span>
+                    </div>
                   </div>
                 </div>
 
@@ -540,23 +582,72 @@ export default function CharacterSettingsScreenV2(props: Props) {
                   <input type="file" accept="image/*" className="hidden" onChange={handlePickAvatar} />
                 </label>
               </div>
-              <div className="flex-1 min-w-0">
-                <div className="text-xs text-gray-500">昵称</div>
-                <input
-                  value={nickname}
-                  onChange={(e) => setNickname(e.target.value)}
-                  className="mt-1 w-full text-base font-semibold text-gray-900 outline-none"
-                  placeholder="输入昵称"
-                />
-                <div className="mt-3 text-xs text-gray-500">签名</div>
-                <input
-                  value={username}
-                  onChange={(e) => setUsername(e.target.value)}
-                  className="mt-1 w-full text-sm text-gray-800 outline-none"
-                  placeholder="一句话介绍/签名"
-                />
+              <div className="flex-1 min-w-0 space-y-3">
+                <div>
+                  <div className="text-xs text-gray-500">角色本名</div>
+                  <input
+                    value={realName}
+                    onChange={(e) => setRealName(e.target.value)}
+                    className="mt-1 w-full text-base font-semibold text-gray-900 outline-none"
+                    placeholder="角色自我认同的名字"
+                  />
+                </div>
+                <div>
+                  <div className="text-xs text-gray-500">备注名（仅在你的列表显示）</div>
+                  <input
+                    value={nickname}
+                    onChange={(e) => setNickname(e.target.value)}
+                    className="mt-1 w-full text-sm font-medium text-gray-900 outline-none"
+                    placeholder="通讯录备注"
+                  />
+                </div>
+                <div>
+                  <div className="text-xs text-gray-500">角色网名（对外展示，可由角色自改）</div>
+                  <input
+                    value={username}
+                    onChange={(e) => setUsername(e.target.value)}
+                    className="mt-1 w-full text-sm text-gray-800 outline-none"
+                    placeholder="群聊名片展示；可聊天末尾改名，也可仅后台静默更新（你不一定会看到一条「改名通知」）"
+                  />
+                </div>
               </div>
             </div>
+          </div>
+
+          {/* 互动类型 */}
+          <div className={`bg-white rounded-3xl p-4 shadow-sm border border-gray-100 ${editStep === 'basic' ? '' : 'hidden'}`}>
+            <div className="text-sm font-semibold text-gray-900 mb-2">互动类型</div>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => setInteractionMode('companion')}
+                className={`flex-1 py-2.5 rounded-2xl text-sm font-medium border-2 transition-colors ${
+                  interactionMode === 'companion'
+                    ? 'border-gray-900 bg-gray-900 text-white'
+                    : 'border-gray-200 bg-white text-gray-700'
+                }`}
+              >
+                陪伴型
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setInteractionMode('tool');
+                  setProactiveEnabled(false);
+                  setMomentsMemoryEnabled(false);
+                }}
+                className={`flex-1 py-2.5 rounded-2xl text-sm font-medium border-2 transition-colors ${
+                  interactionMode === 'tool'
+                    ? 'border-gray-900 bg-gray-900 text-white'
+                    : 'border-gray-200 bg-white text-gray-700'
+                }`}
+              >
+                工具型
+              </button>
+            </div>
+            <p className="mt-2 text-[11px] text-gray-500 leading-relaxed">
+              工具型：偏助手式回复，无生活轨迹与主动消息，不参与 AI 朋友圈。陪伴型：默认角色感与日常互动。
+            </p>
           </div>
 
           {/* persona */}
@@ -596,12 +687,19 @@ export default function CharacterSettingsScreenV2(props: Props) {
                   <div className={`absolute top-1 left-1 w-4 h-4 bg-white rounded-full transition-transform ${memoryConfigEnabled ? 'translate-x-5' : ''}`} />
                 </button>
               </div>
-              <div className="py-3 flex items-center justify-between">
-                <div className="text-sm text-gray-700">朋友圈记忆</div>
-                <button type="button" onClick={() => setMomentsMemoryEnabled(!momentsMemoryEnabled)} className={`w-11 h-6 rounded-full relative ${momentsMemoryEnabled ? 'bg-gray-900' : 'bg-gray-300'}`}>
-                  <div className={`absolute top-1 left-1 w-4 h-4 bg-white rounded-full transition-transform ${momentsMemoryEnabled ? 'translate-x-5' : ''}`} />
-                </button>
-              </div>
+              {interactionMode === 'tool' ? (
+                <div className="py-3">
+                  <div className="text-sm text-gray-700">朋友圈记忆</div>
+                  <div className="mt-1 text-[11px] text-gray-500">工具型固定关闭（保存后生效）</div>
+                </div>
+              ) : (
+                <div className="py-3 flex items-center justify-between">
+                  <div className="text-sm text-gray-700">朋友圈记忆</div>
+                  <button type="button" onClick={() => setMomentsMemoryEnabled(!momentsMemoryEnabled)} className={`w-11 h-6 rounded-full relative ${momentsMemoryEnabled ? 'bg-gray-900' : 'bg-gray-300'}`}>
+                    <div className={`absolute top-1 left-1 w-4 h-4 bg-white rounded-full transition-transform ${momentsMemoryEnabled ? 'translate-x-5' : ''}`} />
+                  </button>
+                </div>
+              )}
               <div className="py-3 flex items-center justify-between">
                 <div className="text-sm text-gray-700">禁用世界书</div>
                 <button type="button" onClick={() => setDisableWorldbook(!disableWorldbook)} className={`w-11 h-6 rounded-full relative ${disableWorldbook ? 'bg-gray-900' : 'bg-gray-300'}`}>
@@ -613,49 +711,79 @@ export default function CharacterSettingsScreenV2(props: Props) {
 
           {/* 翻页按钮仅在底部固定区渲染一份，避免与滚动区内重复 */}
 
+          {conversation.type === 'private' ? (
+            <div className={`bg-white rounded-3xl p-4 shadow-sm border border-gray-100 ${editStep === 'advanced' ? '' : 'hidden'}`}>
+              <div className="text-sm font-semibold text-gray-900 mb-1">私聊延迟回复</div>
+              <p className="text-[11px] text-gray-500 mb-3 leading-relaxed">
+                检测到不在输入框内、且输入框里没有草稿后，再等待下列秒数再生成 AI 回复（文字与图片、文件、语音、表情包相同）。
+              </p>
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="text-xs text-gray-600">等待秒数</span>
+                <input
+                  type="number"
+                  min={1}
+                  max={120}
+                  inputMode="numeric"
+                  value={privateComposerQuietSeconds}
+                  onChange={(e) => setPrivateComposerQuietSeconds(clampPrivateQuietSec(Number(e.target.value)))}
+                  className="w-20 rounded-xl border border-gray-200 px-2 py-2 text-sm text-center outline-none focus:ring-2 focus:ring-gray-900/10"
+                />
+                <span className="text-[11px] text-gray-500">范围 1～120，默认 3</span>
+              </div>
+            </div>
+          ) : null}
+
           {/* proactive */}
           <div className={`bg-white rounded-3xl p-4 shadow-sm border border-gray-100 ${editStep === 'advanced' ? '' : 'hidden'}`}>
             <div className="text-sm font-semibold text-gray-900 mb-3">主动消息与睡眠联动</div>
-            <div className="py-3 flex items-center justify-between">
-              <div className="text-sm text-gray-700">AI 主动发消息</div>
-              <button type="button" onClick={() => setProactiveEnabled(!proactiveEnabled)} className={`w-11 h-6 rounded-full relative ${proactiveEnabled ? 'bg-gray-900' : 'bg-gray-300'}`}>
-                <div className={`absolute top-1 left-1 w-4 h-4 bg-white rounded-full transition-transform ${proactiveEnabled ? 'translate-x-5' : ''}`} />
-              </button>
-            </div>
-            {proactiveEnabled ? (
-              <div className="mt-3 space-y-3">
-                <div className="flex items-center justify-between gap-3">
-                  <div className="text-xs text-gray-500">活跃时段</div>
-                  <div className="flex items-center gap-2">
-                    <input value={activeHourStart} onChange={(e) => setActiveHourStart(clampHour(Number(e.target.value)))} inputMode="numeric" className="w-16 text-center rounded-xl border border-gray-200 px-2 py-2 text-sm" />
-                    <div className="text-gray-400">-</div>
-                    <input value={activeHourEnd} onChange={(e) => setActiveHourEnd(clampHour(Number(e.target.value)))} inputMode="numeric" className="w-16 text-center rounded-xl border border-gray-200 px-2 py-2 text-sm" />
+            {interactionMode === 'tool' ? (
+              <p className="text-xs text-gray-500 leading-relaxed">
+                工具型角色不使用主动消息、睡眠与生活轨迹模拟；切换为「陪伴型」后可在此配置。
+              </p>
+            ) : (
+              <>
+                <div className="py-3 flex items-center justify-between">
+                  <div className="text-sm text-gray-700">AI 主动发消息</div>
+                  <button type="button" onClick={() => setProactiveEnabled(!proactiveEnabled)} className={`w-11 h-6 rounded-full relative ${proactiveEnabled ? 'bg-gray-900' : 'bg-gray-300'}`}>
+                    <div className={`absolute top-1 left-1 w-4 h-4 bg-white rounded-full transition-transform ${proactiveEnabled ? 'translate-x-5' : ''}`} />
+                  </button>
+                </div>
+                {proactiveEnabled ? (
+                  <div className="mt-3 space-y-3">
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="text-xs text-gray-500">活跃时段</div>
+                      <div className="flex items-center gap-2">
+                        <input value={activeHourStart} onChange={(e) => setActiveHourStart(clampHour(Number(e.target.value)))} inputMode="numeric" className="w-16 text-center rounded-xl border border-gray-200 px-2 py-2 text-sm" />
+                        <div className="text-gray-400">-</div>
+                        <input value={activeHourEnd} onChange={(e) => setActiveHourEnd(clampHour(Number(e.target.value)))} inputMode="numeric" className="w-16 text-center rounded-xl border border-gray-200 px-2 py-2 text-sm" />
+                      </div>
+                    </div>
+                    <div className="text-xs text-gray-500">叫醒阈值</div>
+                    <div className="grid grid-cols-4 gap-2">
+                      {[
+                        { id: 'auto', label: '自动' },
+                        { id: 'light', label: '易醒' },
+                        { id: 'normal', label: '普通' },
+                        { id: 'deep', label: '深睡' },
+                      ].map((m) => (
+                        <button
+                          key={m.id}
+                          type="button"
+                          onClick={() => setWakeSensitivityMode(m.id as any)}
+                          className={`px-2 py-2 rounded-2xl text-xs border ${
+                            wakeSensitivityMode === m.id
+                              ? 'bg-gray-900 text-white border-gray-900'
+                              : 'bg-white text-gray-700 border-gray-200'
+                          }`}
+                        >
+                          {m.label}
+                        </button>
+                      ))}
+                    </div>
                   </div>
-                </div>
-                <div className="text-xs text-gray-500">叫醒阈值</div>
-                <div className="grid grid-cols-4 gap-2">
-                  {[
-                    { id: 'auto', label: '自动' },
-                    { id: 'light', label: '易醒' },
-                    { id: 'normal', label: '普通' },
-                    { id: 'deep', label: '深睡' },
-                  ].map((m) => (
-                    <button
-                      key={m.id}
-                      type="button"
-                      onClick={() => setWakeSensitivityMode(m.id as any)}
-                      className={`px-2 py-2 rounded-2xl text-xs border ${
-                        wakeSensitivityMode === m.id
-                          ? 'bg-gray-900 text-white border-gray-900'
-                          : 'bg-white text-gray-700 border-gray-200'
-                      }`}
-                    >
-                      {m.label}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            ) : null}
+                ) : null}
+              </>
+            )}
           </div>
 
           <div className={`bg-white rounded-3xl p-4 shadow-sm border border-gray-100 ${editStep === 'advanced' ? '' : 'hidden'}`}>
