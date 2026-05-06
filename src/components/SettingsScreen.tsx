@@ -24,6 +24,7 @@ import {
   supabaseSyncDerivedMemory,
   supabaseUpsertConversation,
 } from '../services/supabaseData';
+import { fetchOpenAiCompatibleModelIds } from '../utils/openaiCompatibleModels';
 
 interface SettingsScreenProps {
   apiConfig: ApiConfig;
@@ -70,6 +71,12 @@ export default function SettingsScreen({ apiConfig, onUpdateConfig, onBack, full
   const [showApiPresetsModal, setShowApiPresetsModal] = useState(false);
   const [selectedBadge, setSelectedBadge] = useState('🎵');
   const importInputRef = useRef<HTMLInputElement>(null);
+  /** 点开模型下拉自动拉取时的节流，避免连续打开菜单刷接口 */
+  const lastDropdownPullAtRef = useRef(0);
+  const DROPDOWN_PULL_MIN_INTERVAL_MS = 25000;
+  const pullModelsForTextAndVisionRef = useRef<
+    ((opts?: { silent?: boolean }) => Promise<void>) | null
+  >(null);
   
   // 存储状态
   const [storageInfo, setStorageInfo] = useState<any>(null);
@@ -430,6 +437,16 @@ export default function SettingsScreen({ apiConfig, onUpdateConfig, onBack, full
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [supabaseStatus, cloudAuthUserId]);
 
+  const requestPullModelsFromDropdown = () => {
+    if (testing || visionTesting) return;
+    if (!baseUrl.trim() || !apiKey.trim()) return;
+    if (useSeparateVisionApi && (!visionBaseUrl.trim() || !visionApiKey.trim())) return;
+    const t = Date.now();
+    if (t - lastDropdownPullAtRef.current < DROPDOWN_PULL_MIN_INTERVAL_MS) return;
+    lastDropdownPullAtRef.current = t;
+    void pullModelsForTextAndVisionRef.current?.({ silent: true });
+  };
+
   const renderDesktopSection = () => {
     switch (activeSection) {
       case 'api-config':
@@ -461,33 +478,70 @@ export default function SettingsScreen({ apiConfig, onUpdateConfig, onBack, full
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">模型名称</label>
-                  {availableModels.length > 0 ? (
-                    <select
-                      value={modelName}
-                      onChange={(e) => setModelName(e.target.value)}
-                      className="w-full px-3 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all bg-white"
+                  <div className="flex gap-2">
+                    {availableModels.length > 0 ? (
+                      <select
+                        value={modelName}
+                        onMouseDown={requestPullModelsFromDropdown}
+                        onChange={(e) => setModelName(e.target.value)}
+                        className="flex-1 min-w-0 px-3 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all bg-white font-mono text-sm"
+                      >
+                        {availableModels.map(model => (
+                          <option key={model} value={model}>{model}</option>
+                        ))}
+                      </select>
+                    ) : (
+                      <input
+                        type="text"
+                        value={modelName}
+                        onFocus={requestPullModelsFromDropdown}
+                        onChange={(e) => setModelName(e.target.value)}
+                        placeholder="gpt-3.5-turbo"
+                        className="flex-1 min-w-0 px-3 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all font-mono text-sm"
+                      />
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => void pullModelsForTextAndVision()}
+                      disabled={testing || visionTesting}
+                      className="shrink-0 px-3 py-2.5 rounded-lg border border-gray-300 bg-white text-sm font-medium text-gray-800 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors whitespace-nowrap"
                     >
-                      {availableModels.map(model => (
-                        <option key={model} value={model}>{model}</option>
-                      ))}
-                    </select>
-                  ) : (
-                    <input
-                      type="text"
-                      value={modelName}
-                      onChange={(e) => setModelName(e.target.value)}
-                      placeholder="gpt-3.5-turbo"
-                      className="w-full px-3 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
-                    />
-                  )}
+                      {testing || visionTesting ? (
+                        <span className="inline-flex items-center gap-1.5">
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                          拉取中
+                        </span>
+                      ) : modelName.trim() || availableModels.length > 0 ? (
+                        '更换模型'
+                      ) : (
+                        '拉取模型列表'
+                      )}
+                    </button>
+                  </div>
+                  <p className="mt-1.5 text-xs text-slate-500">
+                    从接口刷新文本与视觉模型列表；也可手动填写模型 ID。点开模型或视觉下拉时会自动拉取一次（约 {Math.round(DROPDOWN_PULL_MIN_INTERVAL_MS / 1000)} 秒内不重复请求）。
+                  </p>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    视觉模型（可选）
-                  </label>
+                  <div className="flex items-center justify-between gap-2 mb-2">
+                    <label className="text-sm font-medium text-gray-700">
+                      视觉模型（可选）
+                    </label>
+                    <button
+                      type="button"
+                      onClick={testVisionSupport}
+                      disabled={visionTesting}
+                      title="用极小图片测 multimodal / image_url"
+                      className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium rounded-md border border-indigo-200 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      {visionTesting ? <Loader2 className="w-3 h-3 animate-spin" aria-hidden /> : null}
+                      测试视觉
+                    </button>
+                  </div>
                   {availableVisionModels.length > 0 ? (
                     <select
                       value={visionModelName}
+                      onMouseDown={requestPullModelsFromDropdown}
                       onChange={(e) => setVisionModelName(e.target.value)}
                       className="w-full px-3 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all bg-white"
                     >
@@ -500,6 +554,7 @@ export default function SettingsScreen({ apiConfig, onUpdateConfig, onBack, full
                     <input
                       type="text"
                       value={visionModelName}
+                      onFocus={requestPullModelsFromDropdown}
                       onChange={(e) => setVisionModelName(e.target.value)}
                       placeholder="例如：gpt-4o-mini / qwen-vl-max ..."
                       className="w-full px-3 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
@@ -583,20 +638,6 @@ export default function SettingsScreen({ apiConfig, onUpdateConfig, onBack, full
                     请不要选择带“思考”功能的模型，以免返回额外推理内容影响聊天体验。
                   </div>
                   <div className="grid grid-cols-2 gap-3">
-                    <button
-                      onClick={pullModelsForTextAndVision}
-                      disabled={testing || visionTesting}
-                      className="w-full bg-blue-500 hover:bg-blue-600 text-white py-2.5 rounded-lg font-medium flex items-center justify-center gap-2 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors"
-                    >
-                      {testing || visionTesting ? <><Loader2 className="w-4 h-4 animate-spin" />拉取中</> : '一键拉取模型'}
-                    </button>
-                    <button
-                      onClick={testVisionSupport}
-                      disabled={visionTesting}
-                      className="w-full bg-indigo-500 hover:bg-indigo-600 text-white py-2.5 rounded-lg font-medium transition-colors disabled:bg-gray-400"
-                    >
-                      {visionTesting ? '测试中' : visionTestResult === 'success' ? '视觉已通过' : '测试视觉支持'}
-                    </button>
                     <button
                       onClick={testConnection}
                       disabled={testing}
@@ -1024,30 +1065,57 @@ export default function SettingsScreen({ apiConfig, onUpdateConfig, onBack, full
             </div>
             <div className="px-4 py-3 border-b border-slate-100">
               <div className="text-xs text-slate-500 mb-1">模型</div>
-              {availableModels.length > 0 ? (
-                <select
-                  value={modelName}
-                  onChange={(e) => setModelName(e.target.value)}
-                  className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm bg-white"
+              <div className="flex gap-2">
+                {availableModels.length > 0 ? (
+                  <select
+                    value={modelName}
+                    onMouseDown={requestPullModelsFromDropdown}
+                    onChange={(e) => setModelName(e.target.value)}
+                    className="flex-1 min-w-0 rounded-xl border border-slate-200 px-3 py-2 text-sm bg-white font-mono"
+                  >
+                    {availableModels.map((model) => (
+                      <option key={model} value={model}>{model}</option>
+                    ))}
+                  </select>
+                ) : (
+                  <input
+                    value={modelName}
+                    onFocus={requestPullModelsFromDropdown}
+                    onChange={(e) => setModelName(e.target.value)}
+                    className="flex-1 min-w-0 rounded-xl border border-slate-200 px-3 py-2 text-sm bg-white font-mono"
+                  />
+                )}
+                <button
+                  type="button"
+                  onClick={() => void pullModelsForTextAndVision()}
+                  disabled={testing || visionTesting}
+                  className="shrink-0 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-medium text-slate-800 disabled:opacity-50"
                 >
-                  {availableModels.map((model) => (
-                    <option key={model} value={model}>{model}</option>
-                  ))}
-                </select>
-              ) : (
-                <input
-                  value={modelName}
-                  onChange={(e) => setModelName(e.target.value)}
-                  className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm bg-white"
-                />
-              )}
+                  {testing || visionTesting ? '拉取中' : modelName.trim() || availableModels.length > 0 ? '更换' : '拉取'}
+                </button>
+              </div>
+              <div className="mt-1 text-[11px] text-slate-500">
+                点开模型/视觉下拉也会自动拉取（约 {Math.round(DROPDOWN_PULL_MIN_INTERVAL_MS / 1000)} 秒内不重复）
+              </div>
             </div>
 
             <div className="px-4 py-3 border-b border-slate-100">
-              <div className="text-xs text-slate-500 mb-1">视觉模型（可选）</div>
+              <div className="flex items-center justify-between gap-2 mb-1">
+                <div className="text-xs text-slate-500">视觉模型（可选）</div>
+                <button
+                  type="button"
+                  onClick={testVisionSupport}
+                  disabled={visionTesting}
+                  className="inline-flex items-center gap-1 px-2 py-0.5 text-[11px] font-medium rounded-md border border-indigo-200 bg-indigo-50 text-indigo-700 disabled:opacity-50"
+                >
+                  {visionTesting ? <Loader2 className="w-3 h-3 animate-spin" /> : null}
+                  测试
+                </button>
+              </div>
               {availableVisionModels.length > 0 ? (
                 <select
                   value={visionModelName}
+                  onMouseDown={requestPullModelsFromDropdown}
                   onChange={(e) => setVisionModelName(e.target.value)}
                   className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm bg-white"
                 >
@@ -1059,6 +1127,7 @@ export default function SettingsScreen({ apiConfig, onUpdateConfig, onBack, full
               ) : (
                 <input
                   value={visionModelName}
+                  onFocus={requestPullModelsFromDropdown}
                   onChange={(e) => setVisionModelName(e.target.value)}
                   className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm bg-white"
                   placeholder="不填则不发送图片"
@@ -1103,26 +1172,6 @@ export default function SettingsScreen({ apiConfig, onUpdateConfig, onBack, full
                 className="w-full rounded-xl border border-slate-200 bg-slate-50 py-2 text-sm"
               >
                 管理 API 预设
-              </button>
-            </div>
-
-            <div className="px-4 py-3 border-b border-slate-100">
-              <button
-                onClick={pullModelsForTextAndVision}
-                disabled={testing || visionTesting}
-                className="w-full rounded-xl bg-blue-500 text-white py-2 text-sm disabled:bg-slate-400"
-              >
-                {testing || visionTesting ? '拉取中...' : '一键拉取模型'}
-              </button>
-            </div>
-
-            <div className="px-4 py-3 border-b border-slate-100">
-              <button
-                onClick={testVisionSupport}
-                disabled={visionTesting}
-                className="w-full rounded-xl bg-indigo-500 text-white py-2 text-sm disabled:bg-slate-400"
-              >
-                {visionTesting ? '视觉测试中...' : '测试视觉支持'}
               </button>
             </div>
 
@@ -1406,18 +1455,7 @@ export default function SettingsScreen({ apiConfig, onUpdateConfig, onBack, full
     setTextTestMessage('');
 
     try {
-      const response = await fetch(`${baseUrl}/v1/models`, {
-        headers: {
-          'Authorization': `Bearer ${apiKey}`,
-        },
-      });
-
-      if (!response.ok) {
-        throw new Error('API 连接失败');
-      }
-
-      const data = await response.json();
-      const models = data.data?.map((m: any) => m.id) || [];
+      const models = await fetchOpenAiCompatibleModelIds(baseUrl.trim(), apiKey.trim());
       setAvailableModels(models);
       setTestResult('success');
       setTextTestMessage(`文本连接正常，已拉取 ${models.length} 个模型。`);
@@ -1435,19 +1473,6 @@ export default function SettingsScreen({ apiConfig, onUpdateConfig, onBack, full
     }
   };
 
-  const fetchModelsFromEndpoint = async (url: string, key: string): Promise<string[]> => {
-    const response = await fetch(`${url}/v1/models`, {
-      headers: {
-        Authorization: `Bearer ${key}`,
-      },
-    });
-    if (!response.ok) {
-      throw new Error(`models 接口请求失败: ${response.status}`);
-    }
-    const data = await response.json();
-    return data.data?.map((m: any) => m.id) || [];
-  };
-
   const resolveVisionEndpoint = () => {
     const usingSeparate = useSeparateVisionApi;
     const resolvedUrl = (usingSeparate ? visionBaseUrl : baseUrl).trim();
@@ -1459,13 +1484,13 @@ export default function SettingsScreen({ apiConfig, onUpdateConfig, onBack, full
     };
   };
 
-  const pullModelsForTextAndVision = async () => {
+  const pullModelsForTextAndVision = async (opts?: { silent?: boolean }) => {
     if (!baseUrl.trim() || !apiKey.trim()) {
-      alert('请先填写文本接口的 Base URL 和 API Key');
+      if (!opts?.silent) alert('请先填写文本接口的 Base URL 和 API Key');
       return;
     }
     if (useSeparateVisionApi && (!visionBaseUrl.trim() || !visionApiKey.trim())) {
-      alert('你已开启视觉独立接口，请填写视觉 Base URL 和视觉 API Key');
+      if (!opts?.silent) alert('你已开启视觉独立接口，请填写视觉 Base URL 和视觉 API Key');
       return;
     }
 
@@ -1476,7 +1501,7 @@ export default function SettingsScreen({ apiConfig, onUpdateConfig, onBack, full
     setTextTestMessage('');
     setVisionTestMessage('');
     try {
-      const textModels = await fetchModelsFromEndpoint(baseUrl.trim(), apiKey.trim());
+      const textModels = await fetchOpenAiCompatibleModelIds(baseUrl.trim(), apiKey.trim());
       setAvailableModels(textModels);
       if (textModels.length > 0 && !modelName) {
         setModelName(textModels[0]);
@@ -1485,26 +1510,32 @@ export default function SettingsScreen({ apiConfig, onUpdateConfig, onBack, full
       setTextTestMessage(`文本模型拉取成功：${textModels.length} 个。`);
 
       const { resolvedUrl, resolvedKey } = resolveVisionEndpoint();
-      const visionModels = await fetchModelsFromEndpoint(resolvedUrl, resolvedKey);
+      const visionModels = await fetchOpenAiCompatibleModelIds(resolvedUrl, resolvedKey);
       setAvailableVisionModels(visionModels);
       if (visionModels.length > 0 && !visionModelName) {
         setVisionModelName(visionModels[0]);
       }
       setVisionTestResult('success');
       setVisionTestMessage(`视觉模型拉取成功：${visionModels.length} 个。`);
-      alert(`模型拉取成功：文本 ${textModels.length} 个，视觉 ${visionModels.length} 个`);
+      if (!opts?.silent) {
+        alert(`模型拉取成功：文本 ${textModels.length} 个，视觉 ${visionModels.length} 个`);
+      }
     } catch (error) {
       console.error('拉取模型失败:', error);
       setTestResult('error');
       setVisionTestResult('error');
       setTextTestMessage('模型拉取失败，请检查文本接口配置。');
       setVisionTestMessage('模型拉取失败，请检查视觉接口配置。');
-      alert('拉取模型失败，请检查 URL / Key 是否正确');
+      if (!opts?.silent) {
+        alert('拉取模型失败，请检查 URL / Key 是否正确');
+      }
     } finally {
       setTesting(false);
       setVisionTesting(false);
     }
   };
+
+  pullModelsForTextAndVisionRef.current = pullModelsForTextAndVision;
 
   const testVisionSupport = async () => {
     const model = visionModelName.trim();

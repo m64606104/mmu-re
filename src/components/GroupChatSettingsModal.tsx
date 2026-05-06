@@ -1,10 +1,12 @@
 import React, { useState } from 'react';
 import { X, Users, Info, Image as ImageIcon, UserPlus, UserMinus, Trash2, Camera, ChevronRight } from 'lucide-react';
-import { Conversation } from '../types';
+import type { ApiConfig, Conversation } from '../types';
+import ChatModelOverridePicker from './ChatModelOverridePicker';
 
 interface GroupChatSettingsModalProps {
   conversation: Conversation;
   conversations: Conversation[];
+  apiConfig: ApiConfig;
   /** 全局设置里的对话模型名，用于占位提示 */
   globalDefaultModelName?: string;
   onClose: () => void;
@@ -15,6 +17,7 @@ interface GroupChatSettingsModalProps {
 const GroupChatSettingsModal: React.FC<GroupChatSettingsModalProps> = ({
   conversation,
   conversations,
+  apiConfig,
   globalDefaultModelName,
   onClose,
   onUpdateConversation,
@@ -398,19 +401,16 @@ const GroupChatSettingsModal: React.FC<GroupChatSettingsModalProps> = ({
             </summary>
             <div className="p-4 space-y-3">
               <p className="text-xs text-gray-600 leading-relaxed">
-                留空则使用设置里的全局对话模型。本群所有 AI 发言与群记忆总结会优先使用此处模型；成员角色上的单独模型仅在未填写群模型时生效。视觉模型仍在全局设置中配置。
+                留空则使用设置里的全局对话模型。本群所有 AI 发言与群记忆总结会优先使用此处模型；成员角色上的单独模型仅在未填写群模型时生效。视觉模型仍在全局设置中配置。点开模型下拉会自动拉取列表（约 25 秒内不重复）；也可点「拉取」。
               </p>
               <div>
-                <label className="block text-xs font-medium text-gray-700 mb-1.5">对话模型 ID</label>
-                <input
-                  type="text"
+                <label className="block text-xs font-medium text-gray-700 mb-1.5">对话模型</label>
+                <ChatModelOverridePicker
+                  apiConfig={apiConfig}
                   value={groupChatModelOverride}
-                  onChange={(e) => setGroupChatModelOverride(e.target.value)}
-                  className="w-full px-3 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm font-mono"
+                  onChange={setGroupChatModelOverride}
+                  emptyOptionLabel="（留空：使用全局默认）"
                   placeholder={globalDefaultModelName ? `默认：${globalDefaultModelName}` : '例如 gpt-4o'}
-                  autoCapitalize="off"
-                  autoCorrect="off"
-                  spellCheck={false}
                 />
               </div>
             </div>
