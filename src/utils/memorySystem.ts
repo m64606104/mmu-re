@@ -73,6 +73,23 @@ let memoryBanksCache: MemoryBank[] | null = null;
 /**
  * 异步获取所有记忆库（推荐）
  */
+/**
+ * 删除当前会话列表中已不存在的记忆库条目（IndexedDB `chat_memory_banks`），避免会话丢失后残留。
+ */
+export const pruneOrphanMemoryBanks = async (
+  validConversationIds: readonly string[]
+): Promise<number> => {
+  const allowed = new Set(validConversationIds);
+  const banks = await getAllMemoryBanks();
+  const kept = banks.filter((b) => allowed.has(b.conversationId));
+  const removed = banks.length - kept.length;
+  if (removed <= 0) return 0;
+
+  memoryBanksCache = kept;
+  await save(MEMORY_STORAGE_KEY, kept);
+  return removed;
+};
+
 export const getAllMemoryBanks = async (): Promise<MemoryBank[]> => {
   try {
     const banks = await load(MEMORY_STORAGE_KEY);

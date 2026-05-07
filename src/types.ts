@@ -408,11 +408,24 @@ export interface Conversation {
     selectedIds: string[];
     categoryFilter?: string;
   };
-  /** 已废弃：私聊不再使用滚动缓冲秒数。 */
+  /**
+   * 历史字段：旧版群聊「发消息后等待」秒数；新逻辑优先读 `groupComposerQuietSeconds`。
+   * 私聊延迟回复上下文打包仍可能引用（见 pendingReplyService）。
+   */
   messageBufferSeconds?: number;
   /**
-   * 私聊：离开输入框且无输入草稿后，再等待这么多秒再生成 AI 回复（默认 3）。
-   * 仅私聊生效；所有消息类型（文字/媒体/文件等）共用。
+   * 群聊：与私聊同理——草稿为空、IME 未组字时，再连续安静满本秒数后触发下一轮 AI（仍受 pending 代数重置）。
+   * 未配置时默认 DEFAULT_GROUP_COMPOSER_QUIET_SECONDS；若仅有旧数据的 messageBufferSeconds，则沿用其数值。
+   */
+  groupComposerQuietSeconds?: number;
+  /**
+   * 群聊自动续聊（默认关闭）。开启后引擎可在无用户发言时自动衔接下一轮；**尚未接线完整逻辑**，仅预留开关与策略常量。
+   * 上线后须配合 GROUP_AUTO_CHAT_POLICY 做节流，避免挂机刷接口。
+   */
+  groupAutoChatEnabled?: boolean;
+  /**
+   * 私聊：输入框草稿为空（中文输入法组字期间也算「仍在输入」）、再连续安静满这么多秒后生成 AI 回复。
+   * 未配置时使用 DEFAULT_PRIVATE_COMPOSER_QUIET_SECONDS。仅私聊；文字/媒体/文件等共用。
    */
   privateComposerQuietSeconds?: number;
   replySplitPreference?: 'smart' | 'single' | 'split'; // 新拆分策略偏好：智能/整段/拆条
@@ -421,6 +434,22 @@ export interface Conversation {
   /** 新建群后尚未完成破冰：用户若先空发送则触发全员入群说明；若先发文字则自动清除 */
   groupIcebreakerPending?: boolean;
 }
+
+/** 私聊延迟回复：会话未写入 `privateComposerQuietSeconds` 时的默认秒数（与 pendingReplyService 一致） */
+export const DEFAULT_PRIVATE_COMPOSER_QUIET_SECONDS = 5;
+
+/** 群聊延迟触发下一轮：未写入 `groupComposerQuietSeconds` 时的默认秒数（略长于私聊） */
+export const DEFAULT_GROUP_COMPOSER_QUIET_SECONDS = 7;
+
+/**
+ * 群聊「自动续聊」规划用的节流策略（防止挂机时 API 失控）。
+ * 实现自动轮时应：两轮间隔 ≥ minIntervalMs；滑动窗口内自动轮 ≤ maxAutoRoundsPerHour；
+ * 用户发送任意消息或关闭开关即打断自动链。
+ */
+export const GROUP_AUTO_CHAT_POLICY = {
+  minIntervalMs: 45_000,
+  maxAutoRoundsPerHour: 12,
+} as const;
 
 export interface UserProfile {
   avatar?: string;

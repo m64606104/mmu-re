@@ -1,4 +1,4 @@
-import { Conversation, Message, ApiConfig, CharacterSettings } from '../types';
+import { Conversation, Message, ApiConfig, CharacterSettings, UserProfile } from '../types';
 import { cleanAIMessage, splitMessages } from './messageFormatter';
 import {
   buildTimeAwarePrompt,
@@ -14,6 +14,68 @@ import {
   getCharacterRealName,
   stripOnlineHandleChangeMarkers,
 } from './characterIdentity';
+
+/**
+ * 群聊里「人类用户」的网名 / @ 名：与「用户资料」里的 **username** 一致（即界面上的用户名）。
+ * 不再用 userSettings 或「群主」「用户」这类泛称做主标识。
+ */
+function loadCurrentUserGroupHandle(): string {
+  try {
+    const raw = localStorage.getItem('userProfile');
+    if (raw) {
+      const p = JSON.parse(raw) as UserProfile;
+      const u = (p.username || '').trim();
+      if (u) return u;
+      const real = (p.personalInfo?.name || '').trim();
+      if (real) return real;
+    }
+  } catch {
+    /* ignore */
+  }
+  try {
+    const us = JSON.parse(localStorage.getItem('userSettings') || '{}') as { nickname?: string; name?: string };
+    const legacy = (us.nickname || us.name || '').trim();
+    if (legacy) return legacy;
+  } catch {
+    /* ignore */
+  }
+  return '群友';
+}
+
+/** 通讯录中可拉入本群的 AI（私聊 + 有人设 + 未入本群 + 未拉黑） */
+function buildGroupInviteRosterAppend(
+  groupConversation: Conversation,
+  allConversations: Conversation[]
+): string {
+  const memberSet = new Set(groupConversation.members || []);
+  const invitable = allConversations.filter(
+    (c) =>
+      c.type === 'private' &&
+      Boolean(c.characterSettings) &&
+      !memberSet.has(c.id) &&
+      !c.isBlocked
+  );
+  if (invitable.length === 0) {
+    return '\n\n【可邀请入群的通讯录 AI】\n- 当前没有可拉入的 AI（均已在本群或不可用）。**禁止编造**会话 ID。';
+  }
+  const lines = invitable.map((c) => {
+    const cs = c.characterSettings!;
+    const real = getCharacterRealName(cs) || c.name;
+    const handle = getCharacterOnlineHandle(cs, c.name);
+    const label =
+      handle && handle !== real ? `「${real}」（@${handle}）` : `「${real}」`;
+    return `- ${label} → \`[邀请入群:${c.id}]\``;
+  });
+  return `\n\n【可邀请入群的通讯录 AI】\n${lines.join('\n')}`;
+}
+
+/** 在 cleanAIMessage 之前切分，否则会 strip 掉 [NEXT] 导致无法拆成多条气泡 */
+function splitGroupModelNextSegments(raw: string): string[] {
+  const t = (raw || '').trim();
+  if (!t) return [];
+  const parts = t.split(/\[\s*NEXT\s*\]/gi).map((s) => s.trim()).filter((s) => s.length > 0);
+  return parts.length > 0 ? parts : [t];
+}
 
 /**
  * 群聊 API：类人群聊单模式
@@ -88,7 +150,7 @@ function speakerDisplayNameForTimelineMessage(
     const sid = (m as Message & { senderId?: string }).senderId;
     if (sid) {
       const c = allConversations.find((x) => x.id === sid);
-      return getCharacterOnlineHandle(c?.characterSettings, c?.name) || '群友';
+      return getCharacterRealName(c?.characterSettings) || c?.name || '群友';
     }
     return 'AI成员';
   }
@@ -99,7 +161,8 @@ function speakerDisplayNameForTimelineMessage(
 function buildAtMentionAnnotation(
   rawContent: string,
   memberIds: string[],
-  allConversations: Conversation[]
+  allConversations: Conversation[],
+  humanUserHandle?: string
 ): string | null {
   const text = rawContent || '';
   if (!text.includes('@')) return null;
@@ -110,7 +173,12 @@ function buildAtMentionAnnotation(
       return n || null;
     })
     .filter((n): n is string => Boolean(n));
-  const hit = names.filter((n) => text.includes(`@${n}`));
+  const hu = (humanUserHandle || '').trim();
+  if (hu && !names.includes(hu)) names.push(hu);
+  const hit = names.filter((n) => {
+    const at = `@${n}`;
+    return text.includes(at) || text.includes(`${at}\u2005`) || text.includes(`${at}\u00a0`);
+  });
   if (hit.length === 0) return null;
   return `（系统标注：本条正文里 @ 点名为「${hit.join('、')}」，优先视为在跟他们说话；未被 @ 的成员勿默认是在说自己）`;
 }
@@ -134,9 +202,17 @@ function buildQuoteReplyAnnotation(
   }
   const fallback =
     rt.role === 'user'
-      ? `「${userName || '群主'}」的一则先前消息`
+      ? `「${userName || '群友'}」的一则先前消息`
       : '某位群友的一则先前消息';
   return `（系统标注：本条为「引用回复」，指向${fallback}；其他人勿自行对号入座）`;
+}
+
+/** 去掉模型误输出的「系统标注」提示（与 prependGroupThreadingAnnotations 注入给模型的文案同源，不可展示给用户） */
+export function stripGroupModelInternalAnnotations(text: string): string {
+  if (!text || typeof text !== 'string') return text;
+  let t = text.replace(/[（(]系统标注：[\s\S]*?[）)]/g, '');
+  t = t.replace(/^\s*[（(]?系统标注：[^\n]+$/gm, '');
+  return t.replace(/\n{3,}/g, '\n\n').trim();
 }
 
 function prependGroupThreadingAnnotations(
@@ -151,7 +227,7 @@ function prependGroupThreadingAnnotations(
   const quote = buildQuoteReplyAnnotation(msg, fullTimeline, allConversations, userName);
   if (quote) parts.push(quote);
   if (msg.content && !(msg as Message).groupAiOnlyTrigger) {
-    const atLine = buildAtMentionAnnotation(msg.content, memberIds, allConversations);
+    const atLine = buildAtMentionAnnotation(msg.content, memberIds, allConversations, userName);
     if (atLine) parts.push(atLine);
   }
   if (parts.length === 0) return '';
@@ -197,11 +273,11 @@ function buildGroupChatSystemPrompt(
 
 【群聊环境】：
 - 本群名称：「${groupName}」
-- 你是本群成员之一。当前群里除你之外还有：${membersList}（其中「${userName}」是把你和大家拉进本群的用户 / 群主）
+- 你是本群成员之一。当前群里除你之外还有：${membersList}（其中「${userName}」是人类用户：把你拉进群的人也在其中；**@Ta 必须用 \`@${userName}\`**，与 Ta 在应用「用户资料」里设置的**用户名（网名）**一致，**禁止**叫「用户」「群主」或泛泛的「你来」类称呼。）
 - 这是**真人式微信群**：每条会标明**是谁说的**；正文前附带与私聊一致的 **\`「今天 HH:mm」\` / \`「M月D日 HH:mm」\`** 发送时刻（仅供你理解时间线）。若还带 **\`（距今…）\`**，表示该条距「现在」已过多久——较早的为**过去语境**，较新的为**当下活跃片段**。你要**严格按时间从早到晚**读下来，不要把很多天混成「同一刻正在聊」，也不要只因「都是晚上」就当同一天。
 - **「时间线」≠「无时间的连续同一场聊天」**：中间可能隔了几小时、隔夜甚至很多天；要像真人一样感知**时间流逝**与**场景是否已换**。
 - 其他 AI 也是独立的人，会自己决定说不说；你也可以接话、装没看见、只对某一句吐槽、或开新话题
-- 👤 用户昵称：「${userName}」（不要叫对方「用户」）
+- 👤 人类用户网名（时间线前缀里也是这个名字）：「${userName}」。口头称呼：若上下文里还不知道对方真名/小名，可直接用此网名，或为 Ta 起一个自然、不含贬义的小名；**不要**叫「用户」「群主」。
 
 【时间与话题延续】：
 - **时间上越近的消息，彼此关联通常越强**；若系统提示了「与上一条间隔约 X 小时/天」，表示中间有过明显空白，**不要**假装时间没有过去话题好像还在继续。
@@ -220,10 +296,11 @@ function buildGroupChatSystemPrompt(
 - 若标注里明确针对「某某」，而你不是某某：通常不必抢话；若要插嘴，也应意识到对方 primarily 在跟别人聊。
 - 没有任何系统标注时：结合**整段**语气判断；吃不准时宁可 **[不回复]**，或只对确定与自己相关的半句接话。
 
-【@ 与点名（你发言时）】：
-- 你可以和用户、以及其它群友一样，在正文里用 **\`@昵称\`** 点名对方（昵称须与时间线里出现的成员称呼一致），减少「以为在说自己」的误会。
-- 想明确接续**某人的上一句**时，可写「\`@某某\` 你刚说的那个…」或在句首带对方昵称并复述其观点半句，相当于口头上的**引用回复**。
-- 需要接龙、对呛、私聊式插话时，多用 **@** 或点名，比含糊的「你」更贴近真群聊。
+【@ 与称呼（你发言时）】：
+- **时间线**里每条消息前的名字：对 AI 群友是**本名**（角色本名）；对人类用户则是其**用户名（网名）**，与 \`@${userName}\` 一致。
+- **正文里写 @** 时：对 AI 请用**对外网名**（与后文「群成员识别」表一致），格式 \`@网名\`**不要**用本名去 @，否则会匹配不到。**@人类用户**必须用 \`@${userName}\`。
+- 口头称呼对方时：对 AI 优先本名或约定叫法；对人类用户优先用「${userName}」或对话里已出现的小名；需要精确点名防误会时，用 \`@网名\` / \`@${userName}\`。
+- 想接续**某人的上一句**时，可 \`@网名\` 并复述其观点半句，相当于口头引用回复。
 
 ${aiSettings.systemPrompt ? `人物设定：${aiSettings.systemPrompt}` : ''}
 ${aiSettings.personality ? `性格特征：${aiSettings.personality}` : ''}
@@ -291,6 +368,17 @@ ${MEDIA_DECISION_GUIDANCE}
 - **静默改名**：若只想更新群名片、**不向群里任何人提起**，可以**仅输出** \`[改网名:新网名]\`（整条只有这一句也行），标记会从气泡里剥掉；也可以先正常发言，再在**本条文字最后**紧贴接上标记。
 - **禁止**提「隐藏标记/协议/系统」；没想改时不要输出该标记。
 
+【群名】
+- 当你**确实**要改本群在顶部显示的群名称时，可在本条末尾输出 \`[改群名:新名称]\`（约 2～32 字，勿含换行）；标记会剥掉，并出现一条系统提示「某某将群名修改为…」。不要频繁改。
+
+【退群（可选）】
+- 当你**确实**想退出本群时，可在本条消息**末尾**输出 \`[退群]\`（整段仅含此标记也可以）；标记会剥掉，并出现系统提示「某某已退出群聊」。
+- 若群内**只剩你一名 AI**（没有别的 AI 可继续参与群聊），**不要**输出 \`[退群]\`（无效，系统会忽略）。
+
+【邀请入群（可选）】
+- 当你**确实**要把用户**通讯录里、且当前未在本群**的另一位 AI 拉进来时，在本条末输出 \`[邀请入群:对方的会话ID]\`；**会话 ID 必须与下文「可邀请入群的通讯录 AI」表中完全一致**，禁止臆造。
+- 标记会剥掉；邀请成功时会出现系统提示。不要频繁拉人。
+
 【绝对禁止】：
 - ❌ 不要分析其他人的消息
 - ❌ 不要输出思考过程
@@ -298,30 +386,34 @@ ${MEDIA_DECISION_GUIDANCE}
 - ❌ 不要使用英文分析
 - ❌ 不要模仿其他AI的身份发言
 - ❌ 不要使用任何形式的括号来描述动作、神态、语气
+- ❌ 勿在正文开头复述时间线里的「今天 HH:mm」「M月D日 HH:mm」等时刻标签（仅供你理解语境，界面会单独展示时间）
+- ❌ **禁止**在回复里复述、引用或照抄时间线里以「（系统标注：」开头的提示语；那是给你看的内部提示，**不要**写进气泡正文。
 
 ✅ **正确做法**：
 - ✅ 直接用自然的中文回复
 - ✅ 像朋友聊天一样表达
 - ✅ 根据角色性格自然发言
-- ✅ 回应用户或其它 AI 时，可 **@昵称** 或点名，让对方知道你在接谁的话
+- ✅ 回应人类或其它 AI 时，可 **@网名**（人类用资料用户名）或点名，让对方知道你在接谁的话
 - ✅ 结合每条前的**时间戳**与**间隔提示**理解语境，别无视跨日、跨天`;
 }
 
 /**
- * 解析AI回复消息并拆分（支持多媒体）
+ * 解析单段模型输出（一段内仍：媒体在前、文字在后；多段之间由 parseAIResponse 先按 [NEXT] 切开）
  */
-function parseAIResponse(
-  content: string, 
-  groupMembers?: Array<{id: string; name: string}>,  // 群成员信息，用于解析专属红包
-  userName?: string  // 用户名称
+function parseOneGroupModelChunk(
+  segment: string,
+  groupMembers: Array<{ id: string; name: string }> | undefined,
+  userName: string | undefined,
+  baseTimestamp: number
 ): Message[] {
-  if (!content || content.trim() === '' || content.includes('[不回复]')) {
-    return [];
-  }
-  
-  // 统一清洗，去除引用/回复等泄露格式，但保留媒体/红包等标记
-  const sanitized = cleanAIMessage(content.trim());
+  if (!segment || segment.trim() === '') return [];
+
+  const strippedLeak = stripGroupModelInternalAnnotations(segment.trim());
+  if (!strippedLeak) return [];
+
+  const sanitized = cleanAIMessage(strippedLeak);
   const sourceText = sanitized;
+  if (!sourceText) return [];
   
   // 检测各种媒体类型（修复：正则表达式优化，避免嵌套括号导致匹配失败）
   // 使用非贪婪匹配 .+? 并确保匹配到闭合的中括号
@@ -346,9 +438,8 @@ function parseAIResponse(
     .trim();
   
   const messages: Message[] = [];
-  let baseTimestamp = Date.now();
   let msgIndex = 0;
-  
+
   // 1. 添加所有图片消息
   imageMatches.forEach((match) => {
     messages.push({
@@ -560,6 +651,24 @@ function parseAIResponse(
   return [...mediaMessages, ...textMessages];
 }
 
+/** 解析完整模型回复：先按 [NEXT] 分段（须在 cleanAIMessage 之前），再逐段解析 */
+function parseAIResponse(
+  content: string,
+  groupMembers?: Array<{ id: string; name: string }>,
+  userName?: string
+): Message[] {
+  if (!content || content.trim() === '' || content.includes('[不回复]')) {
+    return [];
+  }
+  const segments = splitGroupModelNextSegments(content);
+  const rootBase = Date.now();
+  const out: Message[] = [];
+  segments.forEach((seg, i) => {
+    out.push(...parseOneGroupModelChunk(seg, groupMembers, userName, rootBase + i * 50000));
+  });
+  return out;
+}
+
 type GroupSituationBriefing = {
   inviterName: string;
   groupName: string;
@@ -606,21 +715,25 @@ async function generateAIReply(
   try {
     // 获取群成员信息
     const members = groupConversation.members || [];
-    const otherMembers = members
+    const otherMembers: Array<{ name: string; role: string }> = members
       .filter(mid => mid !== aiMember.id)
       .map(mid => {
         const m = allConversations.find(c => c.id === mid);
-        return {
-          name: getCharacterOnlineHandle(m?.characterSettings, m?.name) || '未知',
-          role: m ? 'AI成员' : '用户'
-        };
+        if (!m) {
+          return { name: '未知', role: '群友' };
+        }
+        if (!m.characterSettings) {
+          return { name: m.name || '未知', role: 'AI成员' };
+        }
+        const real = getCharacterRealName(m.characterSettings) || m.name;
+        const handle = getCharacterOnlineHandle(m.characterSettings, m.name);
+        const label = handle && handle !== real ? `${real}（@${handle}）` : real;
+        return { name: label, role: 'AI成员' };
       });
     
-    // 获取用户名称（从localStorage或默认值）
-    const userSettings = JSON.parse(localStorage.getItem('userSettings') || '{}');
-    const userName = userSettings.nickname || userSettings.name || '你';
-    
-    otherMembers.push({ name: userName, role: '群主' });
+    const userName = loadCurrentUserGroupHandle();
+
+    otherMembers.push({ name: userName, role: '人类' });
     
     let systemPrompt = buildGroupChatSystemPrompt(
       cs,
@@ -630,13 +743,34 @@ async function generateAIReply(
       aiMember.id
     );
 
+    const peerIdentityLines = members
+      .filter((mid) => mid && mid !== aiMember.id)
+      .map((mid) => {
+        const m = allConversations.find((c) => c.id === mid);
+        if (!m?.characterSettings) return null;
+        const real = getCharacterRealName(m.characterSettings) || m.name || '';
+        const handle = getCharacterOnlineHandle(m.characterSettings, m.name);
+        if (handle && handle !== real) {
+          return `- 本名「${real}」｜对外网名「${handle}」→ 写 @ 时用 \`@${handle}\``;
+        }
+        return `- 本名「${real}」`;
+      })
+      .filter(Boolean)
+      .join('\n');
+    if (peerIdentityLines) {
+      systemPrompt += `\n\n【群成员识别】\n${peerIdentityLines}`;
+    }
+    systemPrompt += `\n- 人类用户「${userName}」｜对外网名即资料里的用户名 → 写 @ 时用 \`@${userName}\`；勿称「用户」「群主」。`;
+
+    systemPrompt += buildGroupInviteRosterAppend(groupConversation, allConversations);
+
     if (icebreakerBriefing) {
       systemPrompt += `
 
 【入群破冰（仅针对当前这一轮）】：
-- 你刚被用户「${icebreakerBriefing.inviterName}」拉入群聊「${icebreakerBriefing.groupName}」。
+- 你刚被「${icebreakerBriefing.inviterName}」拉入群聊「${icebreakerBriefing.groupName}」。
 - 与你同一时间被拉进本群的还有：${icebreakerBriefing.coMemberNames || '（暂无其他成员）'}。
-- 用户没有打字，只是用「空发送」示意大家可以开口；你完全按人设决定：可以自然打个招呼、自我介绍、观察一句，也可以觉得不合适就只输出 **[不回复]**。
+- 对方没有打字，只是用「空发送」示意大家可以开口；你完全按人设决定：可以自然打个招呼、自我介绍、观察一句，也可以觉得不合适就只输出 **[不回复]**。
 - 不要写套话主持稿，不要替其他人代言；像真人刚进群一样即可。`;
     }
 
@@ -644,9 +778,9 @@ async function generateAIReply(
       systemPrompt += `
 
 【新群入群情境（仅针对当前这一轮）】：
-- 本群「${memberOrientationBriefing.groupName}」由用户「${memberOrientationBriefing.inviterName}」创建，并把你与其他成员拉进了同一个群。
-- 与你同在本群的还有：${memberOrientationBriefing.coMemberNames || '（暂无其他成员）'}（均为当前群成员昵称，不含你自己）。
-- 用户刚才发的是建群后的**第一条有内容的留言**；请结合上下文与你的人设决定要不要接话、说什么，也可以 **[不回复]**。
+- 本群「${memberOrientationBriefing.groupName}」由「${memberOrientationBriefing.inviterName}」创建，并把你与其他成员拉进了同一个群。
+- 与你同在本群的还有：${memberOrientationBriefing.coMemberNames || '（暂无其他成员）'}（均为当前群成员本名/网名说明，不含你自己）。
+- 「${memberOrientationBriefing.inviterName}」刚才发的是建群后的**第一条有内容的留言**；请结合上下文与你的人设决定要不要接话、说什么，也可以 **[不回复]**。
 - 不要像机器人播报群信息；像真人刚被拉进群后第一次看到群主说话那样自然反应即可。`;
     }
 
@@ -728,7 +862,7 @@ async function generateAIReply(
         const m: any = recentMessages[i];
         if (m.role === 'assistant' && m.senderId && m.senderId !== aiMember.id) {
           const sender = allConversations.find(c => c.id === m.senderId);
-          const name = getCharacterOnlineHandle(sender?.characterSettings, sender?.name) || 'AI';
+          const name = getCharacterRealName(sender?.characterSettings) || sender?.name || 'AI';
           if (!threadAIs.includes(name)) threadAIs.push(name);
         }
       }
@@ -750,7 +884,7 @@ async function generateAIReply(
         sum + (m.reactions?.filter(r => r.type === 'pat' && r.from === 'user').length || 0), 0);
       systemPrompt += `
 【👋 拍一拍提示】：
-- 最近你被 ${userName || '用户'} 拍了拍（${patCount}次）
+- 最近你被 ${userName || '群友'} 拍了拍（${patCount}次）
 - 可以选择简短回应（如表情包、"干嘛～"等），避免强行展开话题
 - 也可以不回应，保持自然`;
     }
@@ -766,8 +900,8 @@ async function generateAIReply(
       const timePrefix = formatBubbleTimePrefixForModel(msg.timestamp);
       const ageSuffix = formatBubbleAgeSuffixForModel(msg.timestamp);
       
-      // 判断消息发送者
-      let senderName = '用户';
+      // 判断消息发送者（勿用泛称「用户」作时间线前缀）
+      let senderName = '某位群友';
       let role: 'user' | 'assistant' = 'user';
       let senderId = ''; // 🆕 增加变量声明
 
@@ -779,7 +913,7 @@ async function generateAIReply(
             role: 'user',
             content: ice
               ? `${userName || '你'}: ${gapNote}${timePrefix}${ageSuffix}（刚创建本群，未输入文字；请你作为新入群成员决定是否开口。）`
-              : `${userName || '你'}: ${gapNote}${timePrefix}${ageSuffix}（本回合未输入文字，旁观中；群内可自然闲聊。）`,
+              : `${userName || '你'}: ${gapNote}${timePrefix}${ageSuffix}（本回合未输入文字；群内可自然闲聊。）`,
           };
         }
         senderName = userName || '你';
@@ -791,7 +925,7 @@ async function generateAIReply(
         senderId = (msg as any).senderId; // 赋值
         if (senderId) {
           const sender = allConversations.find(c => c.id === senderId);
-          senderName = getCharacterOnlineHandle(sender?.characterSettings, sender?.name) || 'AI';
+          senderName = getCharacterRealName(sender?.characterSettings) || sender?.name || 'AI';
           role = senderId === aiMember.id ? 'assistant' : 'user';
         } else {
           // 无法确定发送者，标记为其他AI
@@ -951,6 +1085,15 @@ function pickParticipantsForRound(
   return shuffled.slice(0, k);
 }
 
+/** 与 emit 里展示打字动画用的名字一致（本名优先，与 onAIStart 对齐） */
+function groupParticipantDisplayName(aiMember: Conversation): string {
+  return (
+    getCharacterRealName(aiMember.characterSettings) ||
+    aiMember.name ||
+    getCharacterOnlineHandle(aiMember.characterSettings, aiMember.name)
+  );
+}
+
 /** 与 emit 到前端一致：挂上 senderId，供下一轮 AI 上下文使用 */
 function attachGroupSender(reply: GroupAIReply, message: Message): Message {
   const messageWithSender = {
@@ -976,7 +1119,10 @@ async function emitReplyThroughCallbacks(
   aiMember: Conversation,
   callbacks?: GroupChatCallback
 ): Promise<void> {
-  let displayName = getCharacterOnlineHandle(aiMember.characterSettings, aiMember.name);
+  let displayName =
+    getCharacterRealName(aiMember.characterSettings) ||
+    aiMember.name ||
+    getCharacterOnlineHandle(aiMember.characterSettings, aiMember.name);
   if (reply.status === 'error') {
     callbacks?.onAIError?.(reply.aiId, reply.error || '未知错误');
     return;
@@ -985,14 +1131,14 @@ async function emitReplyThroughCallbacks(
     callbacks?.onAIComplete?.(reply.aiId, []);
     return;
   }
-  callbacks?.onAIStart?.(aiMember.id, displayName);
-  callbacks?.onAITyping?.(aiMember.id);
+  // onAIStart / onAITyping 已在 generateGroupChatReplies 内、各成员 API 请求前触发，避免「请求中仍显示上一位头像」
   await new Promise((r) => setTimeout(r, 400));
   for (let i = 0; i < reply.messages.length; i++) {
     let message = reply.messages[i];
     let silentRenameOnly = false;
     if (message.content && typeof message.content === 'string') {
-      const stripped = stripOnlineHandleChangeMarkers(message.content);
+      const leakClean = stripGroupModelInternalAnnotations(message.content);
+      const stripped = stripOnlineHandleChangeMarkers(leakClean);
       if (stripped.newHandle) {
         reply.aiName = stripped.newHandle;
         displayName = stripped.newHandle;
@@ -1035,8 +1181,7 @@ export async function generateGroupChatReplies(
     throw new Error('群聊中没有AI成员');
   }
 
-  const userSettings = JSON.parse(localStorage.getItem('userSettings') || '{}');
-  const inviterName = userSettings.nickname || userSettings.name || '你';
+  const inviterName = loadCurrentUserGroupHandle();
 
   const lastUserMsg = [...groupConversation.messages].reverse().find((m) => m.role === 'user');
   const isIcebreakerRound = !!lastUserMsg?.groupIcebreakerTrigger;
@@ -1070,7 +1215,10 @@ export async function generateGroupChatReplies(
       .filter((mid) => mid !== aiMember.id)
       .map((mid) => {
         const m = allConversations.find((c) => c.id === mid);
-        return getCharacterOnlineHandle(m?.characterSettings, m?.name) || '群友';
+        if (!m?.characterSettings) return m?.name || '群友';
+        const real = getCharacterRealName(m.characterSettings) || m.name;
+        const handle = getCharacterOnlineHandle(m.characterSettings, m.name);
+        return handle && handle !== real ? `${real}（@${handle}）` : real;
       })
       .join('、');
     const briefing: GroupSituationBriefing = {
@@ -1079,6 +1227,8 @@ export async function generateGroupChatReplies(
       coMemberNames: coNames,
     };
     const convForThisTurn = { ...groupConversation, messages: workingMessages };
+    callbacks?.onAIStart?.(aiMember.id, groupParticipantDisplayName(aiMember));
+    callbacks?.onAITyping?.(aiMember.id);
     const reply = await generateAIReply(aiMember, convForThisTurn, apiConfig, allConversations, {
       icebreakerBriefing: isIcebreakerRound ? briefing : undefined,
       memberOrientationBriefing: isOrientationRound && !isIcebreakerRound ? briefing : undefined,
@@ -1114,6 +1264,8 @@ export async function generateGroupChatReplies(
       coMemberNames: nudgeCo,
     };
     const convForNudge = { ...groupConversation, messages: workingMessages };
+    callbacks?.onAIStart?.(lucky.id, groupParticipantDisplayName(lucky));
+    callbacks?.onAITyping?.(lucky.id);
     const nudge = await generateAIReply(lucky, convForNudge, apiConfig, allConversations, {
       forceNaturalParticipation: true,
       icebreakerBriefing: isIcebreakerRound ? nudgeBriefing : undefined,

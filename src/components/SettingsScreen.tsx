@@ -1,7 +1,23 @@
 import { useState, useEffect, useRef } from 'react';
 import { ChevronLeft, ChevronRight, Check, Loader2, Download, Upload, Database, User, Palette, Cloud, HardDrive, Shield } from 'lucide-react';
 import { ApiConfig } from '../types';
-import { smartLoad, smartSave, checkStorageQuota, saveBatch, getStorageStatus, migrateData, clearAllData, dumpIndexedDBData } from '../utils/storage';
+import {
+  smartLoad,
+  smartSave,
+  checkStorageQuota,
+  saveBatch,
+  getStorageStatus,
+  migrateData,
+  clearAllData,
+  dumpIndexedDBData,
+  resolveStorageLayer,
+} from '../utils/storage';
+import {
+  dumpSidecarIndexedDatabases,
+  restoreSidecarIndexedDatabases,
+  summarizeSidecarForExport,
+  SIDECAR_INDEXED_FIELD,
+} from '../utils/fullBackupSidecars';
 import { apiPresetsManager, APIPreset } from '../utils/apiPresetsManager';
 import APIPresetsModal from './APIPresetsModal';
 import {
@@ -25,6 +41,7 @@ import {
   supabaseUpsertConversation,
 } from '../services/supabaseData';
 import { fetchOpenAiCompatibleModelIds } from '../utils/openaiCompatibleModels';
+import { consumeSettingsOpenIntent } from '../utils/settingsNavigationIntent';
 
 interface SettingsScreenProps {
   apiConfig: ApiConfig;
@@ -102,7 +119,9 @@ export default function SettingsScreen({ apiConfig, onUpdateConfig, onBack, full
   const [mobileProfileName, setMobileProfileName] = useState('moyu.on');
   const [mobileProfileAvatar, setMobileProfileAvatar] = useState('');
   const [isMobileSectionOpen, setIsMobileSectionOpen] = useState(false);
-  
+  /** 从聊天入口因未配置 API 跳转而来时展示 */
+  const [entryIntentBanner, setEntryIntentBanner] = useState<string | null>(null);
+
   // 语音转文字配置
   const [sttEnabled] = useState(apiConfig.speechToText?.enabled || false);
   const [sttApiUrl] = useState(apiConfig.speechToText?.apiUrl || '');
@@ -113,6 +132,17 @@ export default function SettingsScreen({ apiConfig, onUpdateConfig, onBack, full
   useEffect(() => {
     const presets = apiPresetsManager.getPresets();
     setApiPresets(presets);
+  }, []);
+
+  // 从「未配置 API 却进入聊天」跳转来时：定位到对应分区并展示说明
+  useEffect(() => {
+    const intent = consumeSettingsOpenIntent();
+    if (!intent) return;
+    if (SETTINGS_SECTIONS.some((s) => s.id === intent.section)) {
+      setActiveSection(intent.section as SettingsSectionId);
+    }
+    setEntryIntentBanner(intent.message);
+    setIsMobileSectionOpen(true);
   }, []);
 
   useEffect(() => {
@@ -1019,19 +1049,16 @@ export default function SettingsScreen({ apiConfig, onUpdateConfig, onBack, full
               />
             </div>
             <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
-              <h3 className="text-lg font-semibold text-slate-900">迁移说明</h3>
+              <h3 className="text-lg font-semibold text-slate-900">换浏览器 / 整机迁移</h3>
               <div className="mt-5 rounded-2xl bg-amber-50 border border-amber-200 p-4 text-sm text-amber-800 leading-relaxed">
-                <span className="font-semibold">包含内容：</span><br />
-                • 所有对话记录和消息<br />
-                • 所有AI角色设置（头像、性格、知识库等）<br />
-                • 联系人和关系网络<br />
-                • 朋友圈内容和互动记录<br />
-                • 文档库和已保存的文档<br />
-                • 用户头像和背景图片<br />
-                • API配置和其他设置<br />
+                <span className="font-semibold">三步：</span><br />
+                1. 在<strong>旧浏览器</strong>本页点「导出全部数据」，把下载的 JSON 存好（可拷 U 盘/网盘）。<br />
+                2. 在<strong>新浏览器</strong>打开同一网址，进设置 → 数据备份 →「导入全部数据」，选该 JSON。<br />
+                3. 确认覆盖后等待完成并自动刷新；之后在新浏览器里照常使用即可。<br />
+                <span className="font-semibold mt-3 block">导出里会尽量带上：</span>
+                聊天与角色、联系人、朋友圈、文档、设置与主库存的数据，以及表情包（含通用/角色/用户）、世界书大正文、EasyChat 贴纸等独立库内容，减少换环境丢数据。<br />
                 <span className="font-semibold mt-3 block">注意：</span>
-                • 导入会覆盖当前所有数据<br />
-                • 建议定期备份数据
+                导入会清空并覆盖当前浏览器里的本地数据；建议先导出一份再导入。若你还开了云端同步，云端数据另以账号为准。
               </div>
             </div>
           </section>
@@ -1375,8 +1402,9 @@ export default function SettingsScreen({ apiConfig, onUpdateConfig, onBack, full
               <input ref={importInputRef} type="file" accept=".json" onChange={handleImportAllData} className="hidden" />
             </div>
             <div className="px-4 py-3 bg-amber-50">
-              <div className="text-xs text-amber-800 leading-relaxed">
-                导入会覆盖当前所有数据，建议先导出备份。
+              <div className="text-xs text-amber-800 leading-relaxed space-y-1">
+                <div><span className="font-semibold">换浏览器：</span>旧机点导出 → 把 JSON 拷到新浏览器 → 新机点导入。</div>
+                <div>导入会覆盖当前浏览器全部本地数据，建议先导出备份。</div>
               </div>
             </div>
           </section>
@@ -1681,6 +1709,9 @@ export default function SettingsScreen({ apiConfig, onUpdateConfig, onBack, full
       const indexedDBKeys = Object.keys(indexedDBData);
       Object.assign(allData, indexedDBData);
 
+      const sidecarIndexedD = await dumpSidecarIndexedDatabases();
+      const sidecarSummaryLine = summarizeSidecarForExport(sidecarIndexedD);
+
       const conversations = Array.isArray(allData.conversations) ? allData.conversations : [];
       const memoryBanks = Array.isArray(allData.chat_memory_banks) ? allData.chat_memory_banks : [];
       const relationships = Array.isArray(allData.relationships) ? allData.relationships : [];
@@ -1722,6 +1753,7 @@ export default function SettingsScreen({ apiConfig, onUpdateConfig, onBack, full
         localStorageKeys,
         indexedDBKeys,
         stats: stats,
+        [SIDECAR_INDEXED_FIELD]: sidecarIndexedD,
         data: allData
       };
 
@@ -1748,9 +1780,11 @@ export default function SettingsScreen({ apiConfig, onUpdateConfig, onBack, full
         `• 记忆库: ${stats.memories} 条\n` +
         `• 关系网络: ${stats.relationships} 条\n` +
         `• 背景图片: ${stats.images} 张\n` +
-        `• 其他设置和数据\n\n` +
-        `💾 文件已保存到下载文件夹\n` +
-        `🔧 已包含全部 IndexedDB 键与 localStorage 键`;
+        `• 其他设置和数据\n` +
+        (sidecarSummaryLine ? `${sidecarSummaryLine}\n` : '') +
+        `\n💾 文件已保存到下载文件夹\n` +
+        `换浏览器：把该 JSON 拷到新浏览器，在同一页面点「导入全部数据」即可整包恢复。\n` +
+        `（含主库存与表情包等独立库，尽量不丢本地数据。）`;
       
       alert(message);
       console.log('✅ 数据导出完成');
@@ -1825,7 +1859,7 @@ export default function SettingsScreen({ apiConfig, onUpdateConfig, onBack, full
         
         // 构建详细的确认消息
         const stats = importedData.stats || {};
-        let confirmMsg = `📥 即将导入数据备份\n\n` +
+        let confirmMsg = `📥 即将导入数据备份（换浏览器 / 换机时整包恢复）\n\n` +
           `📅 备份时间: ${new Date(importedData.exportDate).toLocaleString()}\n` +
           `📊 数据内容:\n` +
           `  • 对话记录: ${stats.conversations || '?'} 个\n` +
@@ -1913,16 +1947,14 @@ export default function SettingsScreen({ apiConfig, onUpdateConfig, onBack, full
               console.log('✅ conversations数据已恢复到智能存储');
             } catch (error) {
               console.error('智能存储恢复失败:', error);
-              
-              // 检查是否为配额错误
               if (error instanceof Error && error.message.includes('存储空间不足')) {
                 alert(`❌ 导入失败：${error.message}\n\n建议：\n1. 清理应用数据释放空间\n2. 尝试导入较小的数据集\n3. 使用桌面版浏览器进行导入`);
-                return;
-              } else {
-                // 其他错误，回退到localStorage
-                console.log('⚠️ 回退到localStorage保存');
-                localStorage.setItem(key, typeof value === 'string' ? value : JSON.stringify(value));
+                throw error instanceof Error ? error : new Error(String(error));
               }
+              alert(
+                `❌ 会话数据无法写入 IndexedDB（应用只从这里读取会话，不能使用 localStorage 替代）。\n\n${error instanceof Error ? error.message : String(error)}`
+              );
+              throw error instanceof Error ? error : new Error(String(error));
             }
           } else if (indexedKeySet.has(key)) {
             try {
@@ -1939,8 +1971,11 @@ export default function SettingsScreen({ apiConfig, onUpdateConfig, onBack, full
               }
               console.log(`✅ ${key}数据已恢复到智能存储`);
             } catch (error) {
-              console.error(`${key}智能存储恢复失败，回退到localStorage:`, error);
-              localStorage.setItem(key, typeof value === 'string' ? value : JSON.stringify(value));
+              console.error(`${key} 导入写入失败（应为 IndexedDB）:`, error);
+              alert(
+                `❌ 导入中断：「${key}」无法写入 IndexedDB。\n\n${error instanceof Error ? error.message : String(error)}`
+              );
+              throw error instanceof Error ? error : new Error(String(error));
             }
           } else if (localKeySet.has(key)) {
             if (typeof value === 'string') {
@@ -1948,8 +1983,62 @@ export default function SettingsScreen({ apiConfig, onUpdateConfig, onBack, full
             } else {
               localStorage.setItem(key, JSON.stringify(value));
             }
+          } else {
+            try {
+              if (resolveStorageLayer(key) === 'indexedDB') {
+                if (quota.isMobile && Array.isArray(value) && value.length > 50) {
+                  await saveBatch(key, value, {
+                    batchSize: 20,
+                    onProgress: (progress) => {
+                      console.log(`📊 ${key} 导入进度(按策略推断): ${progress.toFixed(1)}%`);
+                    },
+                  });
+                } else {
+                  await smartSave(key, value);
+                }
+                console.log(`✅ ${key} 已写入 IndexedDB（备份 key 列表未单独列出该项）`);
+              } else if (typeof value === 'string') {
+                localStorage.setItem(key, value);
+              } else {
+                localStorage.setItem(key, JSON.stringify(value));
+              }
+            } catch (error) {
+              console.error(`${key} 按存储策略恢复失败:`, error);
+              if (resolveStorageLayer(key) === 'indexedDB') {
+                alert(
+                  `❌ 导入中断：「${key}」必须写入 IndexedDB。\n\n${error instanceof Error ? error.message : String(error)}`
+                );
+                throw error instanceof Error ? error : new Error(String(error));
+              }
+              try {
+                localStorage.setItem(key, typeof value === 'string' ? value : JSON.stringify(value));
+              } catch {
+                /* ignore */
+              }
+            }
           }
           importedCount++;
+        }
+
+        if (!conversationsRestored) {
+          try {
+            const probe = await smartLoad('conversations');
+            if (Array.isArray(probe) && probe.length > 0) {
+              conversationsRestored = true;
+            }
+          } catch {
+            /* ignore */
+          }
+        }
+
+        const sidePayload = (importedData as Record<string, unknown>)[SIDECAR_INDEXED_FIELD];
+        if (sidePayload) {
+          try {
+            await restoreSidecarIndexedDatabases(sidePayload);
+            console.log('✅ 独立 IndexedDB（表情/世界书正文/感知）已恢复');
+          } catch (e) {
+            console.error('❌ 独立 IndexedDB 恢复失败:', e);
+          }
         }
 
         const successMsg = `✅ 数据导入成功！\n\n` +
@@ -1973,7 +2062,8 @@ export default function SettingsScreen({ apiConfig, onUpdateConfig, onBack, full
         
       } catch (error) {
         console.error('导入失败:', error);
-        alert('导入失败：文件格式错误或数据损坏');
+        const detail = error instanceof Error ? error.message : String(error);
+        alert(`导入失败：${detail || '文件格式错误或数据损坏'}`);
       }
     };
     reader.readAsText(file);
@@ -1986,6 +2076,21 @@ export default function SettingsScreen({ apiConfig, onUpdateConfig, onBack, full
 
   return (
     <div className="h-[100dvh] md:h-full min-h-0 bg-gray-50 flex flex-col">
+      {entryIntentBanner && (
+        <div
+          role="status"
+          className="shrink-0 bg-amber-50 border-b border-amber-200 px-4 py-3 text-[13px] text-amber-950 leading-snug flex items-start justify-between gap-3"
+        >
+          <span className="min-w-0">{entryIntentBanner}</span>
+          <button
+            type="button"
+            onClick={() => setEntryIntentBanner(null)}
+            className="shrink-0 text-amber-800 font-medium underline underline-offset-2"
+          >
+            知道了
+          </button>
+        </div>
+      )}
       {/* Header */}
       <div className="bg-white border-b border-gray-200 px-4 py-3 flex items-center">
               <button

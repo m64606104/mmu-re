@@ -161,9 +161,10 @@ export function commitUserMessage(options: CommitUserMessageOptions): void {
     onHandleAIChildExperience?.(conversation, newMessage);
   }
 
-  // 私聊：schedulePendingReply 内部走输入框门闩 + privateComposerQuietSeconds，忽略下面的秒数。
-  // 群聊：才用 messageBufferSeconds 做「发消息后等待、连发则重置」的防抖，到时拉起多 AI 一轮。
-  const bufferSeconds = conversation.messageBufferSeconds ?? 15;
+  // 私聊：schedulePendingReply 内部走门闩 + privateComposerQuietSeconds，忽略 delaySec。
+  // 群聊：0 = 仅 AI/空触发的立即拉轮；>0 = 门闩 + groupComposerQuietSeconds（见 pendingReplyService）。
+  const bufferSeconds =
+    conversation.type === 'group' ? (newMessage.groupAiOnlyTrigger ? 0 : 1) : 0;
   onSchedulePendingReply(conversation.id, bufferSeconds);
 }
 

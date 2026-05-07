@@ -2,6 +2,7 @@ export {
   load,
   save,
   initializeCache,
+  cleanupLegacyLargeLocalStorage,
   checkMigrationNeeded,
   migrateData,
   getStorageStatus,

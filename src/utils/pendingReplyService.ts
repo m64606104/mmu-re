@@ -2,18 +2,27 @@
  * 全局待回复服务（多会话互不干扰）
  *
  * 私聊（唯一使用输入框门闩的路径）：文字 / 图 / 视频 / 文件 / 语音 / 表情包 发送后规则相同——
- * 只要输入框仍聚焦，或输入框里还有字（草稿），就绝不生成回复；
- * 这两种情况都没有了以后，再连续空窗满本会话的 privateComposerQuietSeconds（默认 3）秒，然后生成回复。
- * 若在倒计时过程中又重新聚焦或打出字，计时清零，重新等松开后再计。
- * 用户很快连发多条时，每条都会打断上一轮等待，只在「最后一次发送后的松开 + 3 秒」时生成一次。
+ * 只要输入框里还有字（草稿），就暂不生成回复；草稿清空后，再连续空窗满本会话的 privateComposerQuietSeconds（默认 5）秒，然后生成回复。
+ * （不再把「仍聚焦」算占线：否则发完消息焦点常留在输入区，会长时间不触发回复。）
+ * 若在倒计时过程中草稿又有了字、或中文输入法仍在组字，计时清零重算。
+ * 用户很快连发多条时，每条都会打断上一轮等待，只在最后一次发送后的干净窗口计满（默认 5 秒，见角色设置）时再生成。
  *
- * 群聊（仅此路径使用 messageBufferSeconds，默认 15）：用户每发一条都会调度一次；内部用 pendingReplyGeneration 作废上一轮睡眠，
- * 只在「最后一次调度后再连续等待满 buffer 秒」且期间没有更新的调度时，才调用 onGroupChatRound 生成一轮（连发 = 永远从最新一条重新等满）。
+ * 群聊：用户每发一条都会调度一次；内部用 pendingReplyGeneration 作废上一轮等待，
+ * 只在「最后一次调度后」再满足输入框门闩 + groupComposerQuietSeconds（默认 7，旧数据可回落到 messageBufferSeconds）连续安静满秒，
+ * 才调用 onGroupChatRound。「仅 AI 空触发」消息仍用 delaySec===0 立即拉轮（不占列表气泡，见 ChatScreen）。
  *
- * 说明：私聊不走「固定 sleep(delaySec)」，delaySec 参数在私聊分支会被忽略；私聊只看输入框门闩 + privateComposerQuietSeconds。
+ * 说明：私聊不走 delaySec；私聊只看输入框门闩 + privateComposerQuietSeconds。
+ * schedulePendingReply(id, delaySec)：群聊 delaySec===0 立即 onGroupChatRound；delaySec>0 走群聊门闩安静流（数值不代表秒数）。
  */
 
-import { Conversation, Message, ApiConfig, UserProfile } from '../types';
+import {
+  Conversation,
+  Message,
+  ApiConfig,
+  UserProfile,
+  DEFAULT_PRIVATE_COMPOSER_QUIET_SECONDS,
+  DEFAULT_GROUP_COMPOSER_QUIET_SECONDS,
+} from '../types';
 import { buildApiUrl } from './apiHelper';
 import { resolvePrivateChatApiConfig } from './chatApiConfig';
 import { resolveSystemEmoji, isSingleEmojiText } from './systemEmoji';
@@ -24,7 +33,7 @@ import {
   buildDocumentJsonRetryInstruction,
 } from '../domains/chat/outputProtocol';
 import { enqueueMemoryEngineCycle, buildMemoryAndIdentityContext } from './memorySystem';
-import { splitMessages, cleanAIMessage } from './messageFormatter';
+import { splitMessages } from './messageFormatter';
 import { MEDIA_DECISION_GUIDANCE } from './mediaDecisionPrompt';
 import { generateDocxOriginalFile } from './documentFileGenerator';
 import { buildLifeChatContextSnippet } from '../sim/chatContext';
@@ -81,18 +90,36 @@ function pickSleepHoldHint(): string {
 const pendingReplyGeneration = new Map<string, number>();
 const generatingSet = new Set<string>();
 
-/** 输入框占用：正在聚焦或有草稿时暂停触发 AI 生成，避免与用户抢节奏 */
+/** 输入框占用：草稿非空或 IME 正在组字时暂停触发 AI，避免与用户抢节奏 */
 let _composerBlocksReply: ((conversationId: string) => boolean) | undefined;
 
-const DEFAULT_PRIVATE_COMPOSER_QUIET_SEC = 3;
 const COMPOSER_POLL_MS = 220;
 
 function resolvePrivateComposerQuietDelayMs(conversationId: string): number {
   const conv = _getConversation(conversationId);
   const raw = conv?.privateComposerQuietSeconds;
-  const sec = raw === undefined || raw === null ? DEFAULT_PRIVATE_COMPOSER_QUIET_SEC : Number(raw);
-  if (!Number.isFinite(sec)) return DEFAULT_PRIVATE_COMPOSER_QUIET_SEC * 1000;
+  const sec = raw === undefined || raw === null ? DEFAULT_PRIVATE_COMPOSER_QUIET_SECONDS : Number(raw);
+  if (!Number.isFinite(sec)) return DEFAULT_PRIVATE_COMPOSER_QUIET_SECONDS * 1000;
   return Math.round(Math.max(1, Math.min(120, sec)) * 1000);
+}
+
+function resolveGroupComposerQuietDelayMs(conversationId: string): number {
+  const conv = _getConversation(conversationId);
+  const explicit = conv?.groupComposerQuietSeconds;
+  if (explicit !== undefined && explicit !== null) {
+    const sec = Number(explicit);
+    if (Number.isFinite(sec)) {
+      return Math.round(Math.max(1, Math.min(120, sec)) * 1000);
+    }
+  }
+  const legacy = conv?.messageBufferSeconds;
+  if (legacy !== undefined && legacy !== null) {
+    const sec = Number(legacy);
+    if (Number.isFinite(sec)) {
+      return Math.round(Math.max(1, Math.min(120, sec)) * 1000);
+    }
+  }
+  return DEFAULT_GROUP_COMPOSER_QUIET_SECONDS * 1000;
 }
 
 /** 防止并发触发同一会话的延迟回复（刷新/连点等极端情况下的双回复） */
@@ -110,6 +137,38 @@ function sleep(ms: number): Promise<void> {
  * 私聊专用：门闩为 true = 输入框占着（聚焦或有草稿）。占着就等；不占则累加「干净窗口」，
  * 满 resolvePrivateComposerQuietDelayMs 则生成；未满若又占上则清零重算。
  */
+async function runGroupReplySchedule(conversationId: string, isStillCurrent: () => boolean): Promise<void> {
+  const gate = _composerBlocksReply;
+  if (!gate) {
+    await sleep(resolveGroupComposerQuietDelayMs(conversationId));
+    if (isStillCurrent()) _onGroupChatRound?.(conversationId);
+    return;
+  }
+
+  while (isStillCurrent()) {
+    while (gate(conversationId) && isStillCurrent()) {
+      await sleep(COMPOSER_POLL_MS);
+    }
+    if (!isStillCurrent()) return;
+
+    const quietMs = resolveGroupComposerQuietDelayMs(conversationId);
+    let clearMs = 0;
+    while (clearMs < quietMs && isStillCurrent()) {
+      await sleep(COMPOSER_POLL_MS);
+      if (gate(conversationId)) {
+        clearMs = 0;
+        break;
+      }
+      clearMs += COMPOSER_POLL_MS;
+    }
+
+    if (clearMs >= quietMs && isStillCurrent()) {
+      _onGroupChatRound?.(conversationId);
+      return;
+    }
+  }
+}
+
 async function runPrivateReplySchedule(conversationId: string, isStillCurrent: () => boolean): Promise<void> {
   const gate = _composerBlocksReply;
   if (!gate) {
@@ -305,6 +364,13 @@ export function onTypingChange(fn: TypingListener): () => void {
   };
 }
 
+/** 用户编辑/删除消息等导致上下文变更时调用：作废进行中的延迟调度，并关闭「输入中」动画 */
+export function bumpPendingReplyScheduleEpoch(conversationId: string): void {
+  const next = (pendingReplyGeneration.get(conversationId) || 0) + 1;
+  pendingReplyGeneration.set(conversationId, next);
+  notifyTyping(conversationId, false);
+}
+
 export function isGenerating(convId: string): boolean {
   return generatingSet.has(convId);
 }
@@ -330,7 +396,7 @@ export function initPendingReplyService(
 
 /* ── 调度 ── */
 /**
- * @param delaySec 仅对群聊生效：messageBufferSeconds（默认 15）。私聊分支忽略此值，改用输入框门闩 + privateComposerQuietSeconds。
+ * @param delaySec 私聊忽略（走门闩 + privateComposerQuietSeconds）。群聊：0 = 立即拉群轮；>0 = 门闩 + groupComposerQuietSeconds（数值非秒数）。
  */
 export function schedulePendingReply(conversationId: string, delaySec: number) {
   const conv = _getConversation(conversationId);
@@ -346,12 +412,12 @@ export function schedulePendingReply(conversationId: string, delaySec: number) {
     }
 
     if (conv.type === 'group') {
-      const bufferMs = Math.max(0, delaySec) * 1000;
-      if (bufferMs > 0) {
-        await sleep(bufferMs);
+      if (delaySec <= 0) {
         if (!isStillCurrent()) return;
+        _onGroupChatRound?.(conversationId);
+        return;
       }
-      _onGroupChatRound?.(conversationId);
+      await runGroupReplySchedule(conversationId, isStillCurrent);
       return;
     }
 
@@ -501,7 +567,9 @@ async function triggerReply(conversationId: string) {
   }
   triggerReplyLocks.add(conversationId);
 
-  notifyTyping(conversationId, true);
+  const epochAtReplyStart = pendingReplyGeneration.get(conversationId) || 0;
+  const isReplyStale = () =>
+    (pendingReplyGeneration.get(conversationId) || 0) !== epochAtReplyStart;
 
   try {
     const toolPrivate =
@@ -770,6 +838,12 @@ async function triggerReply(conversationId: string) {
     const replyTemperature = toolPrivate ? 0.4 : 0.7;
 
     const apiUrl = buildApiUrl(apiConfig);
+    if (isReplyStale()) {
+      notifyTyping(conversationId, false);
+      return;
+    }
+    notifyTyping(conversationId, true);
+
     const res = await fetch(apiUrl, {
       method: 'POST',
       headers: {
@@ -791,6 +865,10 @@ async function triggerReply(conversationId: string) {
     }
 
     const data = await res.json();
+    if (isReplyStale()) {
+      notifyTyping(conversationId, false);
+      return;
+    }
     let aiContent = data.choices?.[0]?.message?.content?.trim();
 
     const outputValidation = validateAssistantOutput(aiContent || '');
@@ -904,8 +982,17 @@ async function triggerReply(conversationId: string) {
         console.warn('⚠️ [延迟回复] 生成DOCX附件失败:', error);
       }
 
+      if (isReplyStale()) {
+        notifyTyping(conversationId, false);
+        return;
+      }
+
       const freshDocConv = _getConversation(conversationId);
       if (!freshDocConv) {
+        notifyTyping(conversationId, false);
+        return;
+      }
+      if (isReplyStale()) {
         notifyTyping(conversationId, false);
         return;
       }
@@ -956,11 +1043,20 @@ async function triggerReply(conversationId: string) {
       characterProfileText,
     });
 
+    if (isReplyStale()) {
+      notifyTyping(conversationId, false);
+      return;
+    }
+
     let freshConv = _getConversation(conversationId);
     if (!freshConv) { notifyTyping(conversationId, false); return; }
     let currentMsgs = [...freshConv.messages];
 
     for (let i = 0; i < parts.length; i++) {
+      if (isReplyStale()) {
+        notifyTyping(conversationId, false);
+        return;
+      }
       if (i > 0) await new Promise(r => setTimeout(r, 600 + Math.random() * 800));
       freshConv = _getConversation(conversationId);
       if (freshConv) currentMsgs = [...freshConv.messages];

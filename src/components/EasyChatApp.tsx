@@ -10,7 +10,7 @@ import { EasyChatContactsManager } from './EasyChatContactsManager';
 import { EasyChatSettings } from './EasyChatSettings';
 import { EasyChatUserSettings } from './EasyChatUserSettings';
 import { FloatingCallWindow } from './FloatingCallWindow';
-import { load, save, checkMigrationNeeded, migrateData } from '../utils/storage';
+import { load, save } from '../utils/storage';
 import { toast } from 'sonner';
 
 import { Toaster } from './ui/sonner';
@@ -52,22 +52,10 @@ export function EasyChatApp({ onBack }: EasyChatAppProps) {
     }
   }, []);
 
-  // 从存储加载数据（迁移至 IndexedDB）
+  // 从存储加载（EasyChat 大数据键走 IndexedDB，见 storage 路由）
   useEffect(() => {
     const loadData = async () => {
       try {
-        // 1. 检查是否需要迁移数据 (localStorage -> IndexedDB)
-        if (checkMigrationNeeded()) {
-          console.log('检测到旧数据，开始迁移...');
-          const result = await migrateData();
-          if (result.success) {
-            console.log('EasyChat 数据迁移成功');
-          } else {
-            console.warn('EasyChat 数据迁移部分失败', result.errors);
-          }
-        }
-
-        // 2. 从 IndexedDB 加载数据
         const savedContacts = await load('easychat_contacts');
         const savedConversations = await load('easychat_conversations');
         const savedUser = await load('easychat_user');

@@ -765,20 +765,27 @@ export default function SocialScreen({
                         {groupConversations[groupCarouselStart]?.name}
                       </div>
                       <div className="mt-2 flex -space-x-1.5">
-                        {directConversations.slice(0, 4).map((member) => {
-                          const avatar = getConversationAvatar(member);
-                          return (
-                            <div key={`${groupConversations[groupCarouselStart]?.id}-${member.id}`} className="w-6 h-6 rounded-full border border-white overflow-hidden bg-zinc-200">
-                              {avatar ? (
-                                <img src={avatar} alt={member.name} className="w-full h-full object-cover" />
-                              ) : (
-                                <div className="w-full h-full flex items-center justify-center text-[9px] font-semibold text-zinc-700">
-                                  {member.name.charAt(0)}
-                                </div>
-                              )}
-                            </div>
-                          );
-                        })}
+                        {(groupConversations[groupCarouselStart]?.members || [])
+                          .slice(0, 4)
+                          .map((memberId) => {
+                            const member = conversations.find((c) => c.id === memberId);
+                            const displayName = member?.name || '?';
+                            const avatar = member ? getConversationAvatar(member) : undefined;
+                            return (
+                              <div
+                                key={`${groupConversations[groupCarouselStart]?.id}-m-${memberId}`}
+                                className="w-6 h-6 rounded-full border border-white overflow-hidden bg-zinc-200"
+                              >
+                                {avatar ? (
+                                  <img src={avatar} alt={displayName} className="w-full h-full object-cover" />
+                                ) : (
+                                  <div className="w-full h-full flex items-center justify-center text-[9px] font-semibold text-zinc-700">
+                                    {displayName.charAt(0)}
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })}
                       </div>
                       <div className="mt-2 text-xs text-zinc-600 truncate">
                         {formatTime(groupConversations[groupCarouselStart]?.lastMessageTime || Date.now())}

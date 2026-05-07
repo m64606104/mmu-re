@@ -7,7 +7,7 @@ import { getDefaultScreenForApp, isAppPageValue } from './navigation/appEntry';
 import type { AppPage } from './navigation/appEntry';
 import { buildRouteHash, normalizeNavigationTarget, supportsConversationContext } from './navigation/navigationPolicy';
 import { RuntimeServices } from './services/RuntimeServices';
-import { load, save, initializeCache, checkMigrationNeeded, migrateData } from './domains/storage';
+import { load, save, initializeCache, cleanupLegacyLargeLocalStorage } from './domains/storage';
 import { backgroundGenerationService } from './domains/generation';
 import { initializeLetters, initializeLetterTimers } from './domains/letters';
 import { isCloudSyncEnabled } from './services/supabaseClient';
@@ -20,7 +20,7 @@ import {
   supabaseDeleteConversation,
   supabaseSyncDerivedMemory,
 } from './services/supabaseData';
-import { smartLoad, smartSave, cleanupLegacyLargeLocalStorage } from './utils/storage';
+import { smartLoad, smartSave } from './utils/storage';
 import { initializeRelationshipStorage } from './utils/aiRelationships';
 import { initializeWalletStorage } from './utils/wallet';
 import { initializeUserSystemStorage } from './utils/userSystem';
@@ -42,6 +42,7 @@ import {
 } from './services/conversationCache';
 import { Letter } from './types/letter';
 import { generateInitialOnlineHandle } from './utils/bootstrapOnlineHandle';
+import { stashSettingsOpenIntent } from './utils/settingsNavigationIntent';
 
 function safeLoadFromLocalStorage<T>(key: string, fallback: T): T {
   const saved = localStorage.getItem(key);
@@ -451,14 +452,21 @@ function App() {
     window.location.reload();
   }, []);
 
-  // 不再弹出迁移提示弹窗：数据会按需自动迁移（无打扰）
-
   // 初始化存储系统和对话数据
   useEffect(() => {
     const loadData = async () => {
-      // 🧠 先初始化缓存系统
+      // 🧠 先初始化缓存系统（从 IndexedDB 预载热点键到内存，见 utils/storage.ts）
       await initializeCache();
-      cleanupLegacyLargeLocalStorage();
+
+      // 将误留在 localStorage 的大键迁出：内部顺序为 save→读回校验→再删 LS，不会「先删后写」；失败则保留 LS。
+      try {
+        const lsCleanup = await cleanupLegacyLargeLocalStorage();
+        if (lsCleanup.removedKeys.length > 0) {
+          console.log('📦 启动时已从 localStorage 迁出大键:', lsCleanup.removedKeys);
+        }
+      } catch (e) {
+        console.warn('⚠️ localStorage 大键迁出未完成（已跳过，不影响启动）:', e);
+      }
 
       // ✅ 预热：把“增长型数据”统一从 IndexedDB 载入内存缓存（避免业务代码再碰 localStorage）
       await Promise.allSettled([
@@ -500,13 +508,6 @@ function App() {
         console.error('❌ 关系数据初始化失败:', error);
       }
 
-      // 🔄 检查并执行数据迁移
-      if (checkMigrationNeeded()) {
-        console.log('⚡ 检测到需要迁移的数据，开始自动迁移...');
-        const result = await migrateData();
-        console.log(`📊 迁移结果: ${result.migratedKeys.length} 成功, ${result.errors.length} 失败`);
-      }
-      
       // 从云端优先加载（若已配置 Supabase），否则走本地存储
       const cloudEnabled = isCloudSyncEnabled();
       let loadedConversations: Conversation[] = [];
@@ -570,6 +571,16 @@ function App() {
           setConversations(normalizedPresetContacts);
           cloudSyncMessageCountRef.current = buildMessageCountSnapshot(normalizedPresetContacts);
         }
+      }
+
+      try {
+        const { pruneOrphanMemoryBanks } = await import('./utils/memorySystem');
+        const n = await pruneOrphanMemoryBanks(loadedConversations.map((c) => c.id));
+        if (n > 0) {
+          console.log(`🧹 已清理 ${n} 条会话已删除仍留在记忆库中的残留（chat_memory_banks）`);
+        }
+      } catch (e) {
+        console.warn('⚠️ 记忆库残留清理跳过:', e);
       }
 
       // 📮 自动合并匿名信件
@@ -671,7 +682,7 @@ function App() {
 
   // 保存数据到智能存储
   useEffect(() => {
-    // 🚀 性能优化：使用防抖延迟保存，避免频繁写入localStorage阻塞主线程
+    // 🚀 防抖后写入 IndexedDB（会话等大数据不经 localStorage）
     const timeoutId = setTimeout(async () => {
       if (conversations.length > 0) {
         if (isCloudSyncEnabled()) {
@@ -816,11 +827,19 @@ function App() {
     const targetScreen = normalized.screen;
     const nextConversationId = normalized.conversationId;
 
-    // 如果用户进入聊天但未配置 API，直接提示并跳转到设置页
+    // 如果用户进入聊天但未配置 API：带上说明跳转到设置页，并自动聚焦「API 配置」分区
     if (targetScreen === 'chat') {
-      const ok = Boolean(apiConfig?.baseUrl && apiConfig?.apiKey && apiConfig?.modelName);
+      const ok = Boolean(
+        apiConfig?.baseUrl?.trim() &&
+          apiConfig?.apiKey?.trim() &&
+          apiConfig?.modelName?.trim()
+      );
       if (!ok) {
-        alert('请先在“设置 > API 配置”中填写 Base URL / API Key / 模型名称，才能开始聊天。');
+        stashSettingsOpenIntent({
+          section: 'api-config',
+          message:
+            '要使用聊天功能，请在下方完成「API 配置」：填写 Base URL、API Key 和模型名称。保存后即可返回会话正常对话。',
+        });
         setCurrentScreen('settings');
         setCurrentConversationId(null);
         return;
@@ -854,7 +873,23 @@ function App() {
     }
     
     setCurrentScreen(targetScreen);
-  }, [currentScreen, currentConversationId]);
+  }, [currentScreen, currentConversationId, apiConfig]);
+
+  // 直接改地址栏 / 带聊天 hash 进入时可能绕过 navigateTo，这里再挡一层
+  useEffect(() => {
+    if (currentScreen !== 'chat' || !currentConversationId) return;
+    const ok = Boolean(
+      apiConfig?.baseUrl?.trim() && apiConfig?.apiKey?.trim() && apiConfig?.modelName?.trim()
+    );
+    if (ok) return;
+    stashSettingsOpenIntent({
+      section: 'api-config',
+      message:
+        '要使用聊天功能，请在下方完成「API 配置」：填写 Base URL、API Key 和模型名称。保存后即可返回会话正常对话。',
+    });
+    setCurrentScreen('settings');
+    setCurrentConversationId(null);
+  }, [currentScreen, currentConversationId, apiConfig]);
 
   // URL -> screen（支持每个 app 一个网页入口）
   useEffect(() => {

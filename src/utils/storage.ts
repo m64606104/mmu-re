@@ -1,16 +1,14 @@
 /**
- * 🔥 全新存储系统架构 v2.0
- * 
- * 设计原则：
- * 1. localStorage: 只存储少量配置数据（< 1MB）
- * 2. IndexedDB: 存储所有大数据（无限容量）
- * 3. 内存缓存: 提供高速读取性能
- * 4. 智能迁移: 自动处理老用户数据
- * 
- * 避免问题：
- * - 防止localStorage过载导致应用崩溃
- * - 避免数据激增影响性能
- * - 确保数据持久化安全
+ * 存储约定（与业务一致）
+ *
+ * - **仅小数据 / 配置**走 `localStorage`：`LOCAL_STORAGE_KEYS` 与白名单匹配的前缀（见 `shouldUseLocalStorage`）。
+ * - **所有会增长的数据**走 **IndexedDB**：`INDEXED_DB_KEYS`、前缀表、以及 `shouldUseIndexedDB` 为 true 的键。
+ * - `load(key)` / `save(key)` 对大数据**只读写 IndexedDB + 内存缓存**，不会从 `localStorage` 读 `conversations` 等键。
+ * - 若仅有 `saveBatch` 写出的分片（`*_meta` + `*_batch_*`）而无主键，`load(key)` 会拼回再缓存。
+ *
+ * 事故复盘（为何「小配置像还在、聊天记录没了」）：
+ * - 曾在 **未先写入 IndexedDB** 时删除 localStorage 大键，而 `load()` 只读 IndexedDB，导致唯一副本丢失。
+ * - `cleanupLegacyLargeLocalStorage`（异步）：**仅当** `save`→读回校验通过后才 `localStorage.removeItem`；失败则 **保留 LS**，并记录 `errors`。
  */
 
 // 🟢 localStorage 专用键（仅小量配置数据）
@@ -235,10 +233,32 @@ const saveToIndexedDB = async (key: string, data: any): Promise<void> => {
     return new Promise((resolve, reject) => {
       transaction.oncomplete = () => {
         db.close();
-        // 更新内存缓存
-        memoryCache.set(key, data);
-        console.log(`💾 数据保存: ${key}`);
-        resolve();
+        void (async () => {
+          try {
+            if (key === 'conversations') {
+              const readBack = await readIndexedDBValueUncached(key);
+              if (!conversationsPersistMatches(data, readBack)) {
+                memoryCache.delete(key);
+                reject(
+                  new Error(
+                    'IndexedDB 校验失败：conversations 写入与读回不一致（存储可能被限额截断，请检查配额或浏览器存储权限）'
+                  )
+                );
+                return;
+              }
+              try {
+                await removeIndexedBatchShardsForKey(key);
+              } catch (e) {
+                console.warn('[storage] 清理 conversations 分片键失败（可忽略）:', e);
+              }
+            }
+            memoryCache.set(key, data);
+            console.log(`💾 数据保存: ${key}`);
+            resolve();
+          } catch (e) {
+            reject(e instanceof Error ? e : new Error(String(e)));
+          }
+        })();
       };
       transaction.onerror = () => {
         db.close();
@@ -281,6 +301,87 @@ const loadFromIndexedDB = async (key: string): Promise<any> => {
   }
 };
 
+/** 不落内存缓存，仅用于写入后的校验读 */
+const readIndexedDBValueUncached = async (key: string): Promise<any> => {
+  const db = await openDB();
+  const transaction = db.transaction([STORE_NAME], 'readonly');
+  const store = transaction.objectStore(STORE_NAME);
+  const request = store.get(key);
+  return new Promise((resolve, reject) => {
+    request.onsuccess = () => {
+      db.close();
+      resolve(request.result);
+    };
+    request.onerror = () => {
+      db.close();
+      reject(request.error);
+    };
+    transaction.onerror = () => {
+      db.close();
+      reject(transaction.error);
+    };
+  });
+};
+
+/** 会话列表：按会话 id 与 messages 条数校验写回是否完整（避免静默丢数据） */
+const conversationsPersistMatches = (written: unknown, readBack: unknown): boolean => {
+  if (!Array.isArray(written) || !Array.isArray(readBack)) return false;
+  if (written.length !== readBack.length) return false;
+  for (let i = 0; i < written.length; i++) {
+    const w = written[i] as { id?: string; messages?: unknown[] };
+    const r = readBack[i] as { id?: string; messages?: unknown[] };
+    if (w?.id !== r?.id) return false;
+    const wm = Array.isArray(w.messages) ? w.messages.length : 0;
+    const rm = Array.isArray(r.messages) ? r.messages.length : 0;
+    if (wm !== rm) return false;
+  }
+  return true;
+};
+
+/** 非 conversations 键：用 JSON 快照比对写回（与 save 内嵌校验互补） */
+const idbSnapshotMatches = (written: unknown, readBack: unknown, key: string): boolean => {
+  if (key === 'conversations') {
+    return conversationsPersistMatches(written, readBack);
+  }
+  try {
+    return JSON.stringify(written) === JSON.stringify(readBack);
+  } catch {
+    return written === readBack;
+  }
+};
+
+/** 主键已写入完整 `conversations` 后，删除历史分片，避免与 `loadBatch` 双份并存 */
+const removeIndexedBatchShardsForKey = async (primaryKey: string): Promise<void> => {
+  const metaKey = `${primaryKey}_meta`;
+  const meta =
+    (memoryCache.has(metaKey) ? memoryCache.get(metaKey) : null) ??
+    (await readIndexedDBValueUncached(metaKey).catch(() => null));
+  if (!meta?.isBatched || typeof meta.totalBatches !== 'number') {
+    return;
+  }
+  const db = await openDB();
+  const transaction = db.transaction([STORE_NAME], 'readwrite');
+  const store = transaction.objectStore(STORE_NAME);
+  store.delete(metaKey);
+  for (let i = 0; i < meta.totalBatches; i++) {
+    store.delete(`${primaryKey}_batch_${i}`);
+  }
+  await new Promise<void>((resolve, reject) => {
+    transaction.oncomplete = () => {
+      db.close();
+      resolve();
+    };
+    transaction.onerror = () => {
+      db.close();
+      reject(transaction.error);
+    };
+  });
+  memoryCache.delete(metaKey);
+  for (let i = 0; i < meta.totalBatches; i++) {
+    memoryCache.delete(`${primaryKey}_batch_${i}`);
+  }
+};
+
 /**
  * 🚀 统一存储API - 智能路由
  */
@@ -296,10 +397,8 @@ export const initializeCache = async (): Promise<void> => {
     const hotKeys = ['conversations', 'moments', 'chat_memory_banks', 'slow_letters'];
     await Promise.all(hotKeys.map(async (key) => {
       try {
-        const data = await loadFromIndexedDB(key);
-        if (data !== undefined) {
-          memoryCache.set(key, data);
-        }
+        // load() 命中时会写入 memoryCache（含分片拼回路径）
+        await load(key);
       } catch (error) {
         console.warn(`⚠️ 预载 ${key} 失败:`, error);
       }
@@ -332,7 +431,17 @@ export const load = async (key: string): Promise<any> => {
   if (shouldUseLocalStorage(key)) {
     return loadFromLocal(key);
   } else {
-    return await loadFromIndexedDB(key);
+    const data = await loadFromIndexedDB(key);
+    if (data !== undefined) {
+      return data;
+    }
+    // 仅有 `saveBatch` 分片、无主键时：从 `*_meta` + `*_batch_*` 拼回（导入/移动设备路径）
+    const batched = await loadBatch(key);
+    if (batched !== null && batched !== undefined) {
+      memoryCache.set(key, batched);
+      return batched;
+    }
+    return undefined;
   }
 };
 
@@ -670,21 +779,37 @@ export const saveBatch = async (key: string, data: any, options: {
 // 分批读取大数据
 export const loadBatch = async (key: string): Promise<any> => {
   try {
-    // 先尝试直接读取
-    const directData = await load(key);
+    // 禁止调用 load(key)：会与外层 load()→loadBatch 形成递归
+    let directData: any;
+    if (memoryCache.has(key)) {
+      directData = memoryCache.get(key);
+    } else if (shouldUseLocalStorage(key)) {
+      directData = loadFromLocal(key);
+    } else {
+      directData = await loadFromIndexedDB(key);
+    }
     if (directData !== null && directData !== undefined) {
       return directData;
     }
-    
-    // 检查是否有批次元数据
-    const meta = await load(`${key}_meta`);
+
+    const metaKey = `${key}_meta`;
+    let meta: any;
+    if (memoryCache.has(metaKey)) {
+      meta = memoryCache.get(metaKey);
+    } else if (shouldUseLocalStorage(metaKey)) {
+      meta = loadFromLocal(metaKey);
+    } else {
+      meta = await loadFromIndexedDB(metaKey);
+      if (meta !== undefined) memoryCache.set(metaKey, meta);
+    }
+
     if (!meta || !meta.isBatched) {
       return null;
     }
-    
+
     console.log(`🔄 开始分批读取: ${key}, 总计${meta.totalBatches}批次`);
-    
-    const result = [];
+
+    const result: unknown[] = [];
     for (let i = 0; i < meta.totalBatches; i++) {
       const batchKey = `${key}_batch_${i}`;
       const batch = await load(batchKey);
@@ -692,7 +817,13 @@ export const loadBatch = async (key: string): Promise<any> => {
         result.push(...batch);
       }
     }
-    
+
+    if (typeof meta.totalItems === 'number' && meta.totalItems !== result.length) {
+      console.warn(
+        `[storage] loadBatch(${key}): 合并后 ${result.length} 条，与 meta.totalItems=${meta.totalItems} 不一致（可能有缺失分片）`
+      );
+    }
+
     console.log(`✅ 分批读取完成: ${key}, 读取${result.length}项`);
     return result;
   } catch (error) {
@@ -731,28 +862,87 @@ export const clearAllData = async (): Promise<void> => {
   } catch (error) {
     console.error('❌ 清空IndexedDB失败:', error);
   }
+
+  try {
+    const { clearSidecarIndexedDatabases } = await import('./fullBackupSidecars');
+    await clearSidecarIndexedDatabases();
+  } catch (error) {
+    console.error('❌ 清空侧车 IndexedDB 失败:', error);
+  }
   
   console.log('✅ 所有数据已清空');
 };
 
-export const cleanupLegacyLargeLocalStorage = (): { removedKeys: string[] } => {
+/**
+ * 将仍留在 localStorage 的「应走 IndexedDB」的大键搬迁到 IDB，**仅在写入且读回校验通过后**删除 LS。
+ * 任一键失败时保留该 LS 条目，避免只剩一份时被删。
+ */
+export const cleanupLegacyLargeLocalStorage = async (): Promise<{
+  removedKeys: string[];
+  skippedKeys: string[];
+  errors: string[];
+}> => {
   const removedKeys: string[] = [];
+  const skippedKeys: string[] = [];
+  const errors: string[] = [];
 
-  for (let i = localStorage.length - 1; i >= 0; i--) {
+  const keysToProcess: string[] = [];
+  for (let i = 0; i < localStorage.length; i++) {
     const key = localStorage.key(i);
     if (!key) continue;
     if (shouldUseLocalStorage(key)) continue;
     if (!shouldUseIndexedDB(key)) continue;
+    keysToProcess.push(key);
+  }
 
-    localStorage.removeItem(key);
-    removedKeys.push(key);
+  for (const key of keysToProcess) {
+    const raw = localStorage.getItem(key);
+    if (raw == null) continue;
+
+    let parsed: any;
+    try {
+      parsed = JSON.parse(raw);
+    } catch {
+      parsed = raw;
+    }
+
+    try {
+      memoryCache.delete(key);
+      await save(key, parsed);
+
+      memoryCache.delete(key);
+      const readBack = await readIndexedDBValueUncached(key).catch(() => undefined);
+
+      if (readBack === undefined && parsed !== undefined && parsed !== null) {
+        errors.push(`${key}: IndexedDB 读回为空，保留 localStorage`);
+        skippedKeys.push(key);
+        continue;
+      }
+
+      if (!idbSnapshotMatches(parsed, readBack, key)) {
+        errors.push(`${key}: 读回与写入不一致，保留 localStorage`);
+        skippedKeys.push(key);
+        continue;
+      }
+
+      localStorage.removeItem(key);
+      memoryCache.set(key, readBack);
+      removedKeys.push(key);
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      errors.push(`${key}: ${msg}`);
+      skippedKeys.push(key);
+    }
   }
 
   if (removedKeys.length > 0) {
-    console.log('🧹 已清理旧 localStorage 大数据键:', removedKeys);
+    console.log('🧹 已从 localStorage 安全迁出并删除大键:', removedKeys);
+  }
+  if (errors.length > 0) {
+    console.warn('⚠️ 部分大键未从 localStorage 删除（已保留原数据）:', errors);
   }
 
-  return { removedKeys };
+  return { removedKeys, skippedKeys, errors };
 };
 
 // 🧠 内存缓存访问API（供同步读取使用）

@@ -1,7 +1,17 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { X, Users, Image as ImageIcon, UserPlus, UserMinus, Trash2, Camera, ChevronRight } from 'lucide-react';
-import type { ApiConfig, Conversation } from '../types';
+import {
+  type ApiConfig,
+  type Conversation,
+  DEFAULT_GROUP_COMPOSER_QUIET_SECONDS,
+} from '../types';
 import ChatModelOverridePicker from './ChatModelOverridePicker';
+
+function clampGroupQuietSec(raw: number | undefined): number {
+  const n = Number(raw);
+  if (!Number.isFinite(n)) return DEFAULT_GROUP_COMPOSER_QUIET_SECONDS;
+  return Math.round(Math.max(1, Math.min(120, n)));
+}
 
 interface GroupChatSettingsModalProps {
   conversation: Conversation;
@@ -48,6 +58,24 @@ const GroupChatSettingsModal: React.FC<GroupChatSettingsModalProps> = ({
     conversation.groupChatModelOverride ?? ''
   );
 
+  const [groupComposerQuietSeconds, setGroupComposerQuietSeconds] = useState(() =>
+    clampGroupQuietSec(
+      typeof conversation.groupComposerQuietSeconds === 'number'
+        ? conversation.groupComposerQuietSeconds
+        : conversation.messageBufferSeconds
+    )
+  );
+
+  useEffect(() => {
+    setGroupComposerQuietSeconds(
+      clampGroupQuietSec(
+        typeof conversation.groupComposerQuietSeconds === 'number'
+          ? conversation.groupComposerQuietSeconds
+          : conversation.messageBufferSeconds
+      )
+    );
+  }, [conversation.id, conversation.groupComposerQuietSeconds, conversation.messageBufferSeconds]);
+
   const handleSave = () => {
     const trimmedModel = groupChatModelOverride.trim();
     onUpdateConversation(conversation.id, {
@@ -55,6 +83,7 @@ const GroupChatSettingsModal: React.FC<GroupChatSettingsModalProps> = ({
       groupRemark: groupRemark,
       avatar: groupAvatar,
       groupTemperature: groupTemperature,
+      groupComposerQuietSeconds: clampGroupQuietSec(groupComposerQuietSeconds),
       groupChatModelOverride: trimmedModel ? trimmedModel : undefined,
       groupContextConfig: {
         enabled: contextEnabled,
@@ -248,6 +277,33 @@ const GroupChatSettingsModal: React.FC<GroupChatSettingsModalProps> = ({
             <div className="p-4 space-y-4">
               <div className="text-xs text-gray-600 bg-gray-50 rounded-lg p-3 border border-gray-100 leading-relaxed">
                 群聊为统一模式：共享时间线、可见发言人；每轮随机抽取若干位 AI，各自可接话、沉默或换话题。聊天页输入框空行发送可触发仅 AI 互动（你旁观）。若当轮无人开口，会自然请其中一位接话，减少冷场。
+              </div>
+
+              <div className="space-y-2 pt-2 border-t border-gray-100">
+                <div className="flex items-center justify-between gap-2">
+                  <h4 className="text-xs font-medium text-gray-500 uppercase tracking-wide">发送后延迟触发 AI</h4>
+                  <span className="text-xs text-gray-500">
+                    {groupComposerQuietSeconds} 秒
+                  </span>
+                </div>
+                <p className="text-xs text-gray-600 leading-relaxed">
+                  与私聊一致：输入框草稿清空、且输入法未在组字时，再连续安静满本秒数后才会进入下一轮群 AI（连发会重置计时）。未单独配置时默认{' '}
+                  {DEFAULT_GROUP_COMPOSER_QUIET_SECONDS} 秒（略长于私聊）。
+                </p>
+                <input
+                  type="range"
+                  min={1}
+                  max={120}
+                  step={1}
+                  value={groupComposerQuietSeconds}
+                  onChange={(e) => setGroupComposerQuietSeconds(clampGroupQuietSec(parseInt(e.target.value, 10)))}
+                  className="w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer"
+                />
+                <div className="flex justify-between text-[11px] text-gray-500">
+                  <span>1 秒</span>
+                  <span>默认 {DEFAULT_GROUP_COMPOSER_QUIET_SECONDS} 秒</span>
+                  <span>120 秒</span>
+                </div>
               </div>
 
               {/* 生成温度设置 */}

@@ -13,6 +13,7 @@ export {
   isGenerating,
   initPendingReplyService,
   setPendingReplyComposerGate,
+  bumpPendingReplyScheduleEpoch,
 } from '../../utils/pendingReplyService';
 
 export * from './messageRenderParser';

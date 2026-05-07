@@ -4,6 +4,7 @@
  */
 
 import React from 'react';
+import { createPortal } from 'react-dom';
 import { Reply, Edit2, Trash2, CheckSquare, Share2 } from 'lucide-react';
 
 interface MessageActionMenuProps {
@@ -31,27 +32,25 @@ export const MessageActionMenu: React.FC<MessageActionMenuProps> = ({
 }) => {
   if (!isVisible) return null;
 
-  return (
+  const menu = (
     <>
       {/* 背景遮罩 */}
-      <div 
-        className="fixed inset-0 z-40" 
-        onClick={onClose}
-      />
-      
+      <div className="fixed inset-0 z-[320]" onClick={onClose} aria-hidden />
+
       {/* 表情回应栏 - 放在菜单上方 */}
       <div
-        className="fixed z-50 bg-white rounded-full shadow-lg border border-gray-200 flex items-center px-2 py-1 gap-1"
+        className="fixed z-[330] bg-white rounded-full shadow-lg border border-gray-200 flex items-center px-2 py-1 gap-1"
         style={{
           left: `${position.x}px`,
-          top: `${position.y - 10}px`, // 稍微上移
-          transform: 'translate(-50%, -220%)', // 向上偏移更多，避开菜单
+          top: `${position.y - 10}px`,
+          transform: 'translate(-50%, -220%)',
           maxWidth: '90vw',
         }}
       >
-        {['👍', '❤️', '😂', '😮', '😢', '👏'].map(emoji => (
+        {['👍', '❤️', '😂', '😮', '😢', '👏'].map((emoji) => (
           <button
             key={emoji}
+            type="button"
             onClick={(e) => {
               e.stopPropagation();
               onReact(emoji);
@@ -63,19 +62,19 @@ export const MessageActionMenu: React.FC<MessageActionMenuProps> = ({
           </button>
         ))}
       </div>
-      
-      {/* 胶囊菜单 - 优化尺寸和视觉效果 */}
+
+      {/* 胶囊菜单 */}
       <div
-        className="fixed z-50 bg-white rounded-full shadow-lg border border-gray-200 flex items-center overflow-hidden"
+        className="fixed z-[330] bg-white rounded-full shadow-lg border border-gray-200 flex items-center overflow-hidden"
         style={{
           left: `${position.x}px`,
           top: `${position.y}px`,
           transform: 'translate(-50%, -120%)',
-          maxWidth: '90vw', // 限制最大宽度不超过屏幕90%
+          maxWidth: '90vw',
         }}
       >
-        {/* 引用按钮 */}
         <button
+          type="button"
           onClick={(e) => {
             e.stopPropagation();
             onQuote();
@@ -86,9 +85,9 @@ export const MessageActionMenu: React.FC<MessageActionMenuProps> = ({
           <span className="text-xs font-medium text-gray-700">引用</span>
         </button>
 
-        {/* 转发按钮 */}
         {onForward && (
           <button
+            type="button"
             onClick={(e) => {
               e.stopPropagation();
               onForward();
@@ -100,8 +99,8 @@ export const MessageActionMenu: React.FC<MessageActionMenuProps> = ({
           </button>
         )}
 
-        {/* 编辑按钮（所有消息都可编辑） */}
         <button
+          type="button"
           onClick={(e) => {
             e.stopPropagation();
             onEdit();
@@ -112,8 +111,8 @@ export const MessageActionMenu: React.FC<MessageActionMenuProps> = ({
           <span className="text-xs font-medium text-gray-700">编辑</span>
         </button>
 
-        {/* 多选按钮 */}
         <button
+          type="button"
           onClick={(e) => {
             e.stopPropagation();
             onMultiSelect();
@@ -124,8 +123,8 @@ export const MessageActionMenu: React.FC<MessageActionMenuProps> = ({
           <span className="text-xs font-medium text-gray-700">多选</span>
         </button>
 
-        {/* 删除按钮 */}
         <button
+          type="button"
           onClick={(e) => {
             e.stopPropagation();
             onDelete();
@@ -138,4 +137,7 @@ export const MessageActionMenu: React.FC<MessageActionMenuProps> = ({
       </div>
     </>
   );
+
+  if (typeof document === 'undefined') return null;
+  return createPortal(menu, document.body);
 };

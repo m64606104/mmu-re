@@ -2218,10 +2218,10 @@ export function EasyChatRoom({ conversation, contacts, user, onBack, onUpdateCon
       </div>
 
       {/* 输入框区域 */}
-      <div className="bg-white border-t border-gray-200 px-4 py-2.5 flex-shrink-0">
-        <div className="flex items-center gap-2">{/* 改为 items-center 让按钮在一条线上 */}
+      <div className="min-w-0 overflow-x-hidden bg-white border-t border-gray-200 px-3 sm:px-4 py-2.5 flex-shrink-0">
+        <div className="flex min-w-0 w-full items-center gap-1.5 sm:gap-2">{/* 改为 items-center 让按钮在一条线上 */}
           {/* 输入框容器 */}
-          <div className="flex-1 flex items-center bg-white border border-gray-200 rounded-lg overflow-hidden">
+          <div className="min-w-0 flex-1 flex items-center bg-white border border-gray-200 rounded-lg overflow-hidden">
             {/* 圆形角色切换按钮 */}
             <button
               onClick={handleToggleSender}
@@ -2241,8 +2241,9 @@ export function EasyChatRoom({ conversation, contacts, user, onBack, onUpdateCon
               value={message}
               onChange={(e) => setMessage(e.target.value)}
               onKeyPress={handleKeyPress}
+              title="Enter 发送，Shift+Enter 换行"
               placeholder="输入消息..."
-              className="flex-1 resize-none outline-none bg-transparent px-2 py-2 min-h-[36px] max-h-[120px] text-[15px]"
+              className="min-w-0 flex-1 resize-none outline-none bg-transparent px-2 py-2 min-h-[36px] max-h-[120px] text-[15px]"
               rows={1}
               style={{
                 height: 'auto',
@@ -2306,11 +2307,13 @@ export function EasyChatRoom({ conversation, contacts, user, onBack, onUpdateCon
             />
           </div>
           
-          {/* 发送按钮 */}
+          {/* 发送按钮（窄屏隐藏，Enter 发送） */}
           <button
             onClick={() => handleSendMessage()}
             disabled={!message.trim()}
-            className="flex-shrink-0 w-9 h-9 rounded-full bg-blue-500 hover:bg-blue-600 disabled:bg-gray-100 disabled:cursor-not-allowed flex items-center justify-center transition-colors active:scale-95"
+            className="hidden md:flex flex-shrink-0 w-9 h-9 rounded-full bg-blue-500 hover:bg-blue-600 disabled:bg-gray-100 disabled:cursor-not-allowed items-center justify-center transition-colors active:scale-95"
+            type="button"
+            title="发送（手机上可用 Enter）"
           >
             <Send className="w-4.5 h-4.5 text-white" />
           </button>

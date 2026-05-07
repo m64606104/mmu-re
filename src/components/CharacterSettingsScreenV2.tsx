@@ -9,7 +9,13 @@ import {
   Upload,
   X,
 } from 'lucide-react';
-import type { ApiConfig, CharacterInteractionMode, Conversation, KnowledgeBaseItem } from '../types';
+import {
+  type ApiConfig,
+  type CharacterInteractionMode,
+  type Conversation,
+  type KnowledgeBaseItem,
+  DEFAULT_PRIVATE_COMPOSER_QUIET_SECONDS,
+} from '../types';
 import MemoryManager from './MemoryManager';
 import { useMobileBottomDock } from '../hooks/useMobileBottomDock';
 import { smartLoad } from '../utils/storage';
@@ -34,7 +40,7 @@ function clampHour(n: number) {
 }
 
 function clampPrivateQuietSec(n: number) {
-  if (!Number.isFinite(n)) return 3;
+  if (!Number.isFinite(n)) return DEFAULT_PRIVATE_COMPOSER_QUIET_SECONDS;
   return Math.max(1, Math.min(120, Math.round(n)));
 }
 
@@ -111,7 +117,7 @@ export default function CharacterSettingsScreenV2(props: Props) {
   );
 
   const [privateComposerQuietSeconds, setPrivateComposerQuietSeconds] = useState(
-    clampPrivateQuietSec(conversation.privateComposerQuietSeconds ?? 3)
+    clampPrivateQuietSec(conversation.privateComposerQuietSeconds ?? DEFAULT_PRIVATE_COMPOSER_QUIET_SECONDS)
   );
 
   const [showMemoryManager, setShowMemoryManager] = useState(false);
@@ -152,7 +158,9 @@ export default function CharacterSettingsScreenV2(props: Props) {
     setActiveHourStart(clampHour(cs.proactiveMessaging?.activeHourStart ?? 8));
     setActiveHourEnd(clampHour(cs.proactiveMessaging?.activeHourEnd ?? 23));
     setWakeSensitivityMode(cs.proactiveMessaging?.wakeSensitivityMode || 'auto');
-    setPrivateComposerQuietSeconds(clampPrivateQuietSec(conversation.privateComposerQuietSeconds ?? 3));
+    setPrivateComposerQuietSeconds(
+      clampPrivateQuietSec(conversation.privateComposerQuietSeconds ?? DEFAULT_PRIVATE_COMPOSER_QUIET_SECONDS)
+    );
     setKnowledgeBase(cs.knowledgeBase || []);
     setEditStep('basic');
   }, [cs, conversation.id]);
@@ -715,7 +723,8 @@ export default function CharacterSettingsScreenV2(props: Props) {
             <div className={`bg-white rounded-3xl p-4 shadow-sm border border-gray-100 ${editStep === 'advanced' ? '' : 'hidden'}`}>
               <div className="text-sm font-semibold text-gray-900 mb-1">私聊延迟回复</div>
               <p className="text-[11px] text-gray-500 mb-3 leading-relaxed">
-                检测到不在输入框内、且输入框里没有草稿后，再等待下列秒数再生成 AI 回复（文字与图片、文件、语音、表情包相同）。
+                输入框草稿为空（中文输入法正在组字时也算「还在打字」）、并连续安静满下列秒数后，再生成 AI 回复。未改过此项时默认{' '}
+                {DEFAULT_PRIVATE_COMPOSER_QUIET_SECONDS} 秒。文字与图片、文件、语音、表情包共用。
               </p>
               <div className="flex flex-wrap items-center gap-2">
                 <span className="text-xs text-gray-600">等待秒数</span>
@@ -728,7 +737,9 @@ export default function CharacterSettingsScreenV2(props: Props) {
                   onChange={(e) => setPrivateComposerQuietSeconds(clampPrivateQuietSec(Number(e.target.value)))}
                   className="w-20 rounded-xl border border-gray-200 px-2 py-2 text-sm text-center outline-none focus:ring-2 focus:ring-gray-900/10"
                 />
-                <span className="text-[11px] text-gray-500">范围 1～120，默认 3</span>
+                <span className="text-[11px] text-gray-500">
+                  范围 1～120，默认 {DEFAULT_PRIVATE_COMPOSER_QUIET_SECONDS}
+                </span>
               </div>
             </div>
           ) : null}

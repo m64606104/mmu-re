@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { groupToPrivateMemoryService } from '../utils/groupToPrivateMemoryService';
-import { ChevronLeft, Send, Mic, Smile, BellOff, Bell, Pause, Play, Image as ImageIcon, Video, Phone, MapPin, FileText, Plus, Search, MessageCircle, MessageSquare, Eye, Music, Gift, MoreHorizontal, Wallet } from 'lucide-react';
+import { ChevronLeft, Send, Mic, Smile, BellOff, Bell, Pause, Play, Image as ImageIcon, Video, Phone, MapPin, FileText, Plus, Search, MessageCircle, MessageSquare, Eye, Music, Gift, MoreHorizontal, Wallet, Repeat } from 'lucide-react';
 import { Conversation, Message, ApiConfig, UserProfile, DocumentMessage } from '../types';
 import MoneyTransferModal from './MoneyTransferModal';
 import GroupRedPacketModal from './GroupRedPacketModal';
@@ -43,6 +43,7 @@ import {
   isGenerating as isConvGenerating,
   initPendingReplyService,
   setPendingReplyComposerGate,
+  bumpPendingReplyScheduleEpoch,
 } from '../domains/chat';
 import { resolvePrivateChatApiConfig, resolveGroupSummaryApiConfig } from '../utils/chatApiConfig';
 import { handleAIGroupRedPacketClaiming } from '../utils/aiGroupRedPacketDecision';
@@ -121,7 +122,13 @@ import { MessageActionMenu } from './MessageActionMenu';
 import { useToast } from './Toast';
 import { useMessageNotification } from '../hooks/useMessageNotification';
 import { buildAvatarIdentityPrompt } from '../utils/avatarVision';
-import { getCharacterRealName } from '../utils/characterIdentity';
+import {
+  getCharacterOnlineHandle,
+  getCharacterRealName,
+  stripGroupNameChangeMarkers,
+  stripGroupLeaveInviteMarkers,
+  isContactAiInvitableToGroup,
+} from '../utils/characterIdentity';
 // import { transcribeAudio, isValidSpeechConfig } from '../utils/speechToText';
 
 interface ChatScreenProps {
@@ -177,6 +184,9 @@ export default function ChatScreen({
   const [showToolbar, setShowToolbar] = useState(false);
   const [showAdvancedToolbarActions, setShowAdvancedToolbarActions] = useState(false);
   const [showPrivateExtraActions, setShowPrivateExtraActions] = useState(false);
+  const [showGroupExtraActions, setShowGroupExtraActions] = useState(false);
+  /** 本轮从点「生成」到首条 AI 气泡出现：显示底部「消息收取中」 */
+  const [groupRoundReceivingHint, setGroupRoundReceivingHint] = useState(false);
   const [showMoneyTransferModal, setShowMoneyTransferModal] = useState(false);
   const [showSendDocumentModal, setShowSendDocumentModal] = useState(false);
   const [autoPickDocumentFile, setAutoPickDocumentFile] = useState(false);
@@ -217,6 +227,17 @@ export default function ChatScreen({
   }, [conversation.type, showPrivateExtraActions]);
 
   useEffect(() => {
+    if (conversation.type !== 'group' && showGroupExtraActions) {
+      setShowGroupExtraActions(false);
+    }
+  }, [conversation.type, showGroupExtraActions]);
+
+  useEffect(() => {
+    setGroupRoundReceivingHint(false);
+    setShowGroupExtraActions(false);
+  }, [conversation.id]);
+
+  useEffect(() => {
     if (!showAdvancedToolbarActions) return;
 
     const handleClickOutside = (event: MouseEvent) => {
@@ -251,6 +272,24 @@ export default function ChatScreen({
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [showPrivateExtraActions]);
+
+  useEffect(() => {
+    if (!showGroupExtraActions) return;
+
+    const handleClickOutside = (event: MouseEvent) => {
+      const target = event.target as Node;
+      if (
+        groupExtraActionsPanelRef.current?.contains(target) ||
+        groupExtraActionsToggleRef.current?.contains(target)
+      ) {
+        return;
+      }
+      setShowGroupExtraActions(false);
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [showGroupExtraActions]);
   
   
   // 群聊相关状态
@@ -279,6 +318,8 @@ export default function ChatScreen({
   const advancedToolbarToggleRef = useRef<HTMLButtonElement | null>(null);
   const privateExtraActionsPanelRef = useRef<HTMLDivElement | null>(null);
   const privateExtraActionsToggleRef = useRef<HTMLButtonElement | null>(null);
+  const groupExtraActionsPanelRef = useRef<HTMLDivElement | null>(null);
+  const groupExtraActionsToggleRef = useRef<HTMLButtonElement | null>(null);
 
   // 保存通话记录
   const handleSaveCallLog = (log: CallLog) => {
@@ -737,6 +778,8 @@ ${recentMessages}
   }, [conversation, effectivePrivateApiConfig]);
 
   const inputComposerFocusedRef = useRef(false);
+  /** 中文等 IME 组字过程中，受控 value 往往尚未更新，须单独视为「占线」避免过早触发私聊回复 */
+  const inputComposerComposingRef = useRef(false);
   const currentInputDraftRef = useRef('');
   useEffect(() => {
     currentInputDraftRef.current = currentInput;
@@ -770,8 +813,10 @@ ${recentMessages}
   useEffect(() => {
     setPendingReplyComposerGate((convId) => {
       if (convId !== conversation.id) return false;
-      if (conversation.type === 'group') return false;
-      return inputComposerFocusedRef.current || currentInputDraftRef.current.trim().length > 0;
+      // 私聊 / 群聊：有草稿、或 IME 正在组字，均视为占线（组字时 React value 可能仍为空）
+      return (
+        currentInputDraftRef.current.trim().length > 0 || inputComposerComposingRef.current
+      );
     });
     return () => setPendingReplyComposerGate(undefined);
   }, [conversation.id, conversation.type]);
@@ -928,13 +973,8 @@ ${recentMessages}
 
   // 消息点击处理 - 显示胶囊菜单
   const handleMessageClick = (messageId: string, event: React.MouseEvent) => {
-    // 如果点击的是操作按钮或语音/视频/图片等媒体控件，不处理
     const target = event.target as HTMLElement;
-    if (target.closest('.message-action-btn') || 
-        target.closest('audio') || 
-        target.closest('video') || 
-        target.closest('button') ||
-        target.tagName === 'IMG') {
+    if (target.closest('.message-action-btn') || target.closest('audio') || target.closest('video')) {
       return;
     }
     
@@ -959,6 +999,7 @@ ${recentMessages}
     setIsDeleting(true); // 标记正在删除
     const updatedMessages = conversation.messages.filter(m => m.id !== selectedMessageId);
     onUpdateConversation(conversation.id, { messages: updatedMessages });
+    bumpPendingReplyScheduleEpoch(conversation.id);
     setSelectedMessageId(null);
     
     // 删除完成后立即恢复标记
@@ -1037,6 +1078,7 @@ ${recentMessages}
     setIsDeleting(true);
     const updatedMessages = conversation.messages.filter(m => !selectedMessages.includes(m.id));
     onUpdateConversation(conversation.id, { messages: updatedMessages });
+    bumpPendingReplyScheduleEpoch(conversation.id);
     setSelectedMessages([]);
     setIsMultiSelectMode(false);
     
@@ -1600,6 +1642,11 @@ ${buildAvatarIdentityPrompt(characterInfo)}
     resetInputHeight();
     if (options?.focusInput) {
       inputRef.current?.focus();
+    } else if (conversation.type === 'private') {
+      // 发完后若不主动失焦，门闩曾把「仍聚焦」当成占线，会导致私聊迟迟不触发回复（尤其点发送后焦点还在输入区）
+      inputComposerFocusedRef.current = false;
+      inputComposerComposingRef.current = false;
+      (inputRef.current as unknown as HTMLTextAreaElement | null)?.blur();
     }
   };
 
@@ -1770,7 +1817,8 @@ ${buildAvatarIdentityPrompt(characterInfo)}
       });
     }
 
-    const bufferSeconds = conversation.messageBufferSeconds ?? 15;
+    const bufferSeconds =
+      conversation.type === 'group' ? (msgToStore.groupAiOnlyTrigger ? 0 : 1) : 0;
     schedulePendingReply(conversation.id, bufferSeconds);
   }, [conversation, isGenerating, onUpdateConversation]);
 
@@ -1822,7 +1870,9 @@ ${buildAvatarIdentityPrompt(characterInfo)}
       });
     }
 
-    const bufferSeconds = conversation.messageBufferSeconds ?? 15;
+    const allEmptyAiOnly = toAppend.length > 0 && toAppend.every((m) => m.groupAiOnlyTrigger);
+    const bufferSeconds =
+      conversation.type === 'group' ? (allEmptyAiOnly ? 0 : 1) : 0;
     schedulePendingReply(conversation.id, bufferSeconds);
   }, [conversation, isGenerating, onUpdateConversation]);
 
@@ -1960,6 +2010,7 @@ ${buildAvatarIdentityPrompt(characterInfo)}
         currentInput,
         onUpdateConversation,
       });
+      bumpPendingReplyScheduleEpoch(conversation.id);
       setMessageBeingEdited(null);
       finalizeMessageInput();
       
@@ -2049,7 +2100,11 @@ ${buildAvatarIdentityPrompt(characterInfo)}
   // 单击头像 - 打开操作菜单
   const handleAvatarClick = (messageId: string, senderId: string, senderName: string, senderAvatar?: string) => {
     if (conversation.type !== 'group') return;
-    setAvatarMenuOpen({ messageId, senderId, name: senderName, avatar: senderAvatar });
+    const mem = senderId ? conversations.find((c) => c.id === senderId) : undefined;
+    const displayName = mem?.characterSettings
+      ? getCharacterRealName(mem.characterSettings) || mem.name
+      : senderName;
+    setAvatarMenuOpen({ messageId, senderId, name: displayName, avatar: senderAvatar });
   };
 
   // 拍一拍（从菜单触发）
@@ -2084,11 +2139,13 @@ ${buildAvatarIdentityPrompt(characterInfo)}
     setAvatarMenuOpen(null);
   };
 
-  // @对方（从菜单触发）
-  const handleAtAction = (senderName: string) => {
-    if (conversation.type !== 'group') return;
-    
-    const atText = `@${senderName} `;
+  // @对方（从菜单触发）：插入对外网名，与群内 @ 解析一致
+  const handleAtAction = () => {
+    if (conversation.type !== 'group' || !avatarMenuOpen?.senderId) return;
+    const mem = conversations.find((c) => c.id === avatarMenuOpen.senderId);
+    const handle = mem ? getCharacterOnlineHandle(mem.characterSettings, mem.name) : '';
+    if (!handle) return;
+    const atText = `@${handle} `;
     setCurrentInput(prev => prev + atText);
     // 聚焦输入框
     if (inputRef.current) {
@@ -2099,13 +2156,13 @@ ${buildAvatarIdentityPrompt(characterInfo)}
     setAvatarMenuOpen(null);
   };
 
-  // 发消息（从菜单触发）
-  const handleSendMessageAction = (senderName: string) => {
+  // 发消息（从菜单触发）：用会话列表名（备注）匹配已有私聊
+  const handleSendMessageAction = (senderId: string) => {
     if (conversation.type !== 'group') return;
-    
-    // 导航到私聊
-    if (onNavigateToPrivateChat) {
-      onNavigateToPrivateChat(senderName);
+    const mem = conversations.find((c) => c.id === senderId);
+    const navName = mem?.name || '';
+    if (onNavigateToPrivateChat && navName) {
+      onNavigateToPrivateChat(navName);
     }
     
     // 关闭菜单
@@ -3133,11 +3190,13 @@ ${buildAvatarIdentityPrompt(characterInfo)}
     backgroundGenerationService.startGeneration(conversation.id);
     setIsGenerating(true);
     setShowSendingHint(true);
+    setGroupRoundReceivingHint(true);
 
     try {
       // 使用ref来追踪最新的消息列表
       let currentMessages = [...conversation.messages];
-      
+      let rollingMemberIds = [...(conversation.members || [])];
+
       // 📸 创建消息ID快照（用于检测用户在生成期间发送的新消息）
       const messageIdsSnapshot = new Set(
         conversation.messages.map(m => m.id)
@@ -3164,10 +3223,10 @@ ${buildAvatarIdentityPrompt(characterInfo)}
           
           onAIStart: (aiId, aiName) => {
             console.log(`🤖 ${aiName} 开始回复`);
-            // 隐藏全局处理提示和发送中提示，显示AI打字动画
-            setIsGroupProcessing(false);
             setShowSendingHint(false);
-            
+            setIsGroupProcessing(false);
+            setGroupRoundReceivingHint(false);
+
             // 获取AI头像
             const aiMember = conversations.find(c => c.id === aiId);
             setCurrentTypingAI({
@@ -3185,25 +3244,96 @@ ${buildAvatarIdentityPrompt(characterInfo)}
           onAIMessage: (_aiId, message) => {
             // 🐛 修复方案3的bug：正确处理消息合并
             
-            // 1️⃣ 累积AI消息到快照
-            currentMessages = [...currentMessages, message];
+            let outMsg = message;
+            const prependRename: Message[] = [];
+            const prependMembership: Message[] = [];
+            let patchName: string | undefined;
+            let membershipChanged = false;
+            if (conversation.type === 'group' && typeof outMsg.content === 'string') {
+              const gn = stripGroupNameChangeMarkers(outMsg.content);
+              outMsg = { ...outMsg, content: gn.text };
+              if (gn.newName) {
+                const safe = gn.newName.replace(/[\r\n]/g, '').trim().slice(0, 32);
+                if (safe) {
+                  patchName = safe;
+                  const member = conversations.find((c) => c.id === _aiId);
+                  const who =
+                    getCharacterRealName(member?.characterSettings) || member?.name || '群成员';
+                  prependRename.push({
+                    id: `sys_gr_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+                    role: 'system',
+                    content: `「${who}」将群名修改为「${safe}」`,
+                    timestamp: Date.now(),
+                  });
+                }
+              }
+
+              const lv = stripGroupLeaveInviteMarkers(outMsg.content);
+              outMsg = { ...outMsg, content: lv.text };
+
+              if (lv.wantsLeave && rollingMemberIds.includes(_aiId) && rollingMemberIds.length > 1) {
+                rollingMemberIds = rollingMemberIds.filter((id) => id !== _aiId);
+                membershipChanged = true;
+                const member = conversations.find((c) => c.id === _aiId);
+                const who =
+                  getCharacterRealName(member?.characterSettings) || member?.name || '群成员';
+                prependMembership.push({
+                  id: `sys_leave_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+                  role: 'system',
+                  content: `「${who}」已退出群聊`,
+                  timestamp: Date.now(),
+                });
+              }
+
+              for (const invId of lv.inviteIds) {
+                const target = conversations.find((c) => c.id === invId);
+                if (!isContactAiInvitableToGroup(target, new Set(rollingMemberIds))) continue;
+                rollingMemberIds = [...new Set([...rollingMemberIds, invId])];
+                membershipChanged = true;
+                const inviter = conversations.find((c) => c.id === _aiId);
+                const inviterWho =
+                  getCharacterRealName(inviter?.characterSettings) || inviter?.name || '群成员';
+                const inviteeWho =
+                  getCharacterRealName(target.characterSettings) || target.name || '群成员';
+                prependMembership.push({
+                  id: `sys_inv_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+                  role: 'system',
+                  content: `「${inviterWho}」邀请「${inviteeWho}」加入群聊`,
+                  timestamp: Date.now(),
+                });
+              }
+            }
+
+            const prependSys = [...prependRename, ...prependMembership];
+
+            const isBubbleEmpty =
+              (!outMsg.content || !String(outMsg.content).trim()) &&
+              !outMsg.mediaType &&
+              !(outMsg as Message & { moneyTransfer?: Message['moneyTransfer'] }).moneyTransfer &&
+              !outMsg.document;
+
+            if (isBubbleEmpty && prependSys.length > 0) {
+              currentMessages = [...currentMessages, ...prependSys];
+            } else if (!isBubbleEmpty) {
+              currentMessages = [...currentMessages, ...prependSys, outMsg];
+            }
             
             // 🌉 检测AI消息中的私聊意图
-            if (message.role === 'assistant' && message.content && currentUserProfile) {
+            if (outMsg.role === 'assistant' && outMsg.content && currentUserProfile) {
               groupToPrivateMemoryService.shouldCreateBridge(
-                message,
+                outMsg,
                 conversation.id,
                 currentUserProfile.username,
                 conversations
               );
               
               // 🎯 检测AI承诺私聊发送内容，主动发送私聊消息
-              maybeSendAutoPrivateDM(_aiId, message, conversation.id);
+              maybeSendAutoPrivateDM(_aiId, outMsg, conversation.id);
             }
             
             // 🎁 检测AI发送的群红包，触发其他AI自动领取
-            if (message.moneyTransfer?.type === 'groupRedPacket' && message.moneyTransfer.groupRedPacket) {
-              const redPacket = message.moneyTransfer.groupRedPacket;
+            if (outMsg.moneyTransfer?.type === 'groupRedPacket' && outMsg.moneyTransfer.groupRedPacket) {
+              const redPacket = outMsg.moneyTransfer.groupRedPacket;
               console.log(`🎁 检测到AI发送的群红包: ${redPacket.message} (¥${redPacket.totalAmount})`);
               
               // 延迟1-5秒，让其他AI陆续尝试领取红包
@@ -3245,7 +3375,9 @@ ${buildAvatarIdentityPrompt(characterInfo)}
             // 4️⃣ 更新对话
             onUpdateConversation(conversation.id, {
               messages: mergedMessages,
-              lastMessageTime: Date.now()
+              lastMessageTime: Date.now(),
+              ...(patchName ? { name: patchName } : {}),
+              ...(membershipChanged ? { members: [...rollingMemberIds] } : {}),
             });
           },
 
@@ -3306,6 +3438,7 @@ ${buildAvatarIdentityPrompt(characterInfo)}
             setIsGroupProcessing(false); // 重置群聊处理状态
             setCurrentTypingAI(null);
             setShowSendingHint(false);
+            setGroupRoundReceivingHint(false);
             
             // 🚀 通知后台服务生成完成
             backgroundGenerationService.completeGeneration(conversation.id, finalMessages);
@@ -3365,6 +3498,7 @@ ${buildAvatarIdentityPrompt(characterInfo)}
       setIsGenerating(false);
       setCurrentTypingAI(null);
       setShowSendingHint(false);
+      setGroupRoundReceivingHint(false);
       
       // 🚀 通知后台服务生成失败
       backgroundGenerationService.failGeneration(conversation.id, error.message || '未知错误');
@@ -3628,13 +3762,12 @@ ${buildAvatarIdentityPrompt(characterInfo)}
 
       {/* Header - 固定在顶部 */}
       <div data-ui="chat-header" className="bg-white/95 md:bg-white/85 backdrop-blur-sm border-b border-gray-200 md:border-zinc-200 px-4 md:px-6 py-3 md:py-3 flex items-center justify-between shadow-sm z-10">
-        <div className="flex items-center gap-2 md:gap-2">
-          <button onClick={onBack} className="p-1 -ml-1 hover:bg-gray-100 rounded-full transition-colors">
+        <div className="flex items-center gap-2 md:gap-2 min-w-0">
+          <button onClick={onBack} className="p-1 -ml-1 hover:bg-gray-100 rounded-full transition-colors flex-shrink-0">
             <ChevronLeft className="w-6 h-6 text-gray-800" strokeWidth={2.5} />
           </button>
-          {/* 群聊头像 */}
-          {conversation.type === 'group' && (
-            <div className="w-8 h-8 md:w-7 md:h-7 rounded-full bg-gradient-to-br from-blue-400 to-purple-500 flex items-center justify-center overflow-hidden">
+          {conversation.type === 'group' ? (
+            <div className="w-9 h-9 md:w-8 md:h-8 rounded-full bg-gradient-to-br from-blue-400 to-purple-500 flex items-center justify-center overflow-hidden flex-shrink-0 border border-white shadow-sm">
               {conversation.avatar ? (
                 <img src={conversation.avatar} alt="群头像" className="w-full h-full object-cover" />
               ) : (
@@ -3643,27 +3776,70 @@ ${buildAvatarIdentityPrompt(characterInfo)}
                 </span>
               )}
             </div>
+          ) : (
+            <div className="w-9 h-9 md:w-8 md:h-8 rounded-full overflow-hidden flex-shrink-0 border border-white shadow-sm bg-gradient-to-br from-gray-700 to-gray-900">
+              {conversation.characterSettings?.avatar || conversation.avatar ? (
+                <img
+                  src={conversation.characterSettings?.avatar || conversation.avatar}
+                  alt=""
+                  className="w-full h-full object-cover"
+                />
+              ) : (
+                <div className="w-full h-full flex items-center justify-center">
+                  <span className="text-white font-semibold text-sm">{conversation.name.charAt(0)}</span>
+                </div>
+              )}
+            </div>
           )}
-          <div className="flex flex-col">
-            <h1 className="text-base md:text-[15px] font-semibold text-gray-900">{conversation.name}</h1>
-            {conversation.type === 'private' && conversation.characterSettings ? (
-              <div className="flex items-center gap-1 px-2 py-0.5 -ml-2">
-                <div className={`w-2 h-2 rounded-full flex-shrink-0 ${
-                  aiStatus?.status === 'online' ? 'bg-green-500' :
-                  aiStatus?.status === 'busy' ? 'bg-yellow-500' :
-                  aiStatus?.status === 'resting' ? 'bg-blue-500' :
-                  aiStatus?.status === 'away' ? 'bg-gray-400' :
-                  'bg-gray-300'
-                }`}></div>
-                <span className="text-xs text-gray-500 truncate max-w-[200px]">
-                  {aiStatus?.statusText || '在线'}
-                </span>
-              </div>
+          <div className="flex flex-col min-w-0">
+            {conversation.type === 'group' ? (
+              <>
+                {/* 群名称：与私聊同一位置的主标题，即当前群在列表里显示的名字 */}
+                <h1
+                  className="text-[17px] md:text-base font-semibold text-gray-900 leading-tight truncate pr-1"
+                  title={conversation.name}
+                >
+                  {conversation.name}
+                </h1>
+                <div className="mt-0.5 flex flex-col gap-0.5 px-2 py-0.5 -ml-2 min-w-0">
+                  <span className="text-xs text-gray-500 truncate">
+                    共 {conversation.members?.length ?? 0} 位成员
+                  </span>
+                  {(conversation.groupRemark || '').trim() ? (
+                    <span
+                      className="text-[11px] text-gray-400 truncate"
+                      title={(conversation.groupRemark || '').trim()}
+                    >
+                      备注：{(conversation.groupRemark || '').trim()}
+                    </span>
+                  ) : null}
+                </div>
+              </>
             ) : (
-              <div className="flex items-center gap-1">
-                <div className="w-2 h-2 bg-green-500 rounded-full"></div>
-                <span className="text-xs text-gray-500">在线</span>
-              </div>
+              <>
+                <h1 className="text-base md:text-[15px] font-semibold text-gray-900 truncate">
+                  {conversation.name}
+                </h1>
+                {conversation.characterSettings ? (
+                  <div className="flex items-center gap-1 px-2 py-0.5 -ml-2">
+                    <div className={`w-2 h-2 rounded-full flex-shrink-0 ${
+                      aiStatus?.status === 'online' ? 'bg-green-500' :
+                      aiStatus?.status === 'busy' ? 'bg-yellow-500' :
+                      aiStatus?.status === 'resting' ? 'bg-blue-500' :
+                      aiStatus?.status === 'away' ? 'bg-gray-400' :
+                      'bg-gray-300'
+                    }`}></div>
+                    <span className="text-xs text-gray-500 truncate max-w-[200px]">
+                      {aiStatus?.statusText || '在线'}
+                    </span>
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-1 px-2 py-0.5 -ml-2">
+                    <div className="w-2 h-2 bg-gray-300 rounded-full flex-shrink-0" />
+                    <span className="text-xs text-gray-500 truncate max-w-[200px]">在线</span>
+                  </div>
+                )}
+              </>
             )}
           </div>
         </div>
@@ -3730,9 +3906,28 @@ ${buildAvatarIdentityPrompt(characterInfo)}
       <div 
         ref={messagesContainerRef}
         data-ui="chat-messages"
-        className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden touch-pan-y p-4 md:px-6 md:py-4 space-y-3"
+        className="relative flex-1 min-h-0 overflow-y-auto overflow-x-hidden touch-pan-y p-4 md:px-6 md:py-4 space-y-3"
         style={{ paddingBottom: '24px' }}
       >
+        {conversation.type === 'group' && (
+          <button
+            type="button"
+            title={conversation.groupAutoChatEnabled ? '自动续聊已开（实验）' : '自动续聊已关'}
+            onClick={() =>
+              onUpdateConversation(conversation.id, {
+                groupAutoChatEnabled: !conversation.groupAutoChatEnabled,
+              })
+            }
+            className={`absolute top-2 right-3 z-[5] flex items-center gap-1 rounded-full border px-2.5 py-1 text-[11px] font-medium shadow-sm transition-colors ${
+              conversation.groupAutoChatEnabled
+                ? 'border-amber-300 bg-amber-50 text-amber-900'
+                : 'border-zinc-200 bg-white/90 text-zinc-600'
+            }`}
+          >
+            <Repeat className="w-3.5 h-3.5 flex-shrink-0" />
+            <span>{conversation.groupAutoChatEnabled ? '续聊开' : '续聊'}</span>
+          </button>
+        )}
         {/* 🚀 滚动加载：顶部加载指示器 */}
         {isLoadingMore && (
           <div className="flex justify-center py-4">
@@ -3758,7 +3953,9 @@ ${buildAvatarIdentityPrompt(characterInfo)}
             messageWindow.startIndex,
             messageWindow.startIndex + messageWindow.size
           );
-          const renderableMessages = getRenderableMessages(visibleMessages);
+          const renderableMessages = getRenderableMessages(visibleMessages).filter(
+            (m) => !(conversation.type === 'group' && m.role === 'user' && m.groupAiOnlyTrigger)
+          );
 
           return renderableMessages.map((message, index) => {
           // 🚫 如果是拉黑期间的消息且当前仍在拉黑状态，则不显示
@@ -3812,56 +4009,72 @@ ${buildAvatarIdentityPrompt(characterInfo)}
                     </div>
                   )}
                 </>
-              ) : message.role === 'user' && message.groupAiOnlyTrigger ? (
-              <div id={`message-${message.id}`} className="flex justify-center my-2">
-                <span className="text-xs text-gray-500 bg-violet-50 border border-violet-100/80 px-3 py-1.5 rounded-full max-w-[90%] text-center leading-relaxed">
-                  {message.groupIcebreakerTrigger
-                    ? '入群破冰 · 空消息触发全员（你可旁观）'
-                    : '空消息 · 仅 AI 参与本轮（旁观）'}
-                </span>
-              </div>
               ) : (
               <div id={`message-${message.id}`} className={`message-bubble flex gap-2 items-end transition-colors ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}>
                 {message.role === 'assistant' && (
-                  <div className="relative flex-shrink-0">
-                    {/* 群聊：显示发送者的头像 */}
-                    {conversation.type === 'group' ? (
-                      (message as any).senderAvatar ? (
-                        <div 
-                          className="w-11 h-11 md:w-9 md:h-9 rounded-full overflow-hidden border-2 border-white shadow-md md:shadow-none cursor-pointer hover:ring-2 hover:ring-blue-400 transition-all"
-                          onClick={() => handleAvatarClick(message.id, (message as any).senderId || '', (message as any).senderName || 'AI', (message as any).senderAvatar)}
-                        >
-                          <img src={(message as any).senderAvatar} alt={(message as any).senderName || 'AI'} className="w-full h-full object-cover" />
-                        </div>
-                      ) : (
-                        <div 
-                          className="w-11 h-11 md:w-9 md:h-9 rounded-full bg-gradient-to-br from-blue-400 to-purple-500 flex items-center justify-center border-2 border-white shadow-md md:shadow-none cursor-pointer hover:ring-2 hover:ring-blue-400 transition-all"
-                          onClick={() => handleAvatarClick(message.id, (message as any).senderId || '', (message as any).senderName || 'AI', undefined)}
-                        >
-                          <span className="text-white font-semibold text-sm">{((message as any).senderName || 'AI').charAt(0)}</span>
-                        </div>
-                      )
-                    ) : (
-                      /* 私聊：显示对话角色的头像 */
-                      conversation.characterSettings?.avatar ? (
-                        <div className="w-11 h-11 md:w-9 md:h-9 rounded-full overflow-hidden border-2 border-white shadow-md md:shadow-none">
-                          <img src={conversation.characterSettings.avatar} alt="AI头像" className="w-full h-full object-cover" />
-                        </div>
-                      ) : (
-                        <div className="w-11 h-11 md:w-9 md:h-9 rounded-full bg-gradient-to-br from-gray-700 to-gray-900 flex items-center justify-center border-2 border-white shadow-md md:shadow-none">
-                          <span className="text-white font-semibold text-sm">{conversation.name.charAt(0)}</span>
-                        </div>
-                      )
-                    )}
-                    {/* 只在私聊显示角标 */}
-                    {conversation.type === 'private' && (
-                      <div className="absolute -bottom-0.5 -right-0.5 w-4 h-4 bg-white rounded-full flex items-center justify-center shadow-sm">
-                        <span className="text-[10px]">{getUserBadge()}</span>
+                  <div className={`flex flex-col flex-shrink-0 ${conversation.type === 'group' ? 'items-center w-[52px] md:w-11' : ''}`}>
+                    {conversation.type === 'group' && (message as any).senderId && (
+                      <div
+                        className="text-[10px] md:text-[9px] text-gray-500 max-w-[52px] md:max-w-[44px] truncate text-center leading-tight mb-0.5 px-0.5"
+                        title={(() => {
+                          const sid = (message as any).senderId as string;
+                          const mem = conversations.find((c) => c.id === sid);
+                          if (mem?.characterSettings) {
+                            return getCharacterRealName(mem.characterSettings) || mem.name;
+                          }
+                          return (message as any).senderName || 'AI';
+                        })()}
+                      >
+                        {(() => {
+                          const sid = (message as any).senderId as string;
+                          const mem = conversations.find((c) => c.id === sid);
+                          if (mem?.characterSettings) {
+                            return getCharacterRealName(mem.characterSettings) || mem.name;
+                          }
+                          return (message as any).senderName || 'AI';
+                        })()}
                       </div>
                     )}
+                    <div className="relative">
+                      {/* 群聊：显示发送者的头像 */}
+                      {conversation.type === 'group' ? (
+                        (message as any).senderAvatar ? (
+                          <div 
+                            className="w-11 h-11 md:w-9 md:h-9 rounded-full overflow-hidden border-2 border-white shadow-md md:shadow-none cursor-pointer hover:ring-2 hover:ring-blue-400 transition-all"
+                            onClick={() => handleAvatarClick(message.id, (message as any).senderId || '', (message as any).senderName || 'AI', (message as any).senderAvatar)}
+                          >
+                            <img src={(message as any).senderAvatar} alt={(message as any).senderName || 'AI'} className="w-full h-full object-cover" />
+                          </div>
+                        ) : (
+                          <div 
+                            className="w-11 h-11 md:w-9 md:h-9 rounded-full bg-gradient-to-br from-blue-400 to-purple-500 flex items-center justify-center border-2 border-white shadow-md md:shadow-none cursor-pointer hover:ring-2 hover:ring-blue-400 transition-all"
+                            onClick={() => handleAvatarClick(message.id, (message as any).senderId || '', (message as any).senderName || 'AI', undefined)}
+                          >
+                            <span className="text-white font-semibold text-sm">{((message as any).senderName || 'AI').charAt(0)}</span>
+                          </div>
+                        )
+                      ) : (
+                        /* 私聊：显示对话角色的头像 */
+                        conversation.characterSettings?.avatar ? (
+                          <div className="w-11 h-11 md:w-9 md:h-9 rounded-full overflow-hidden border-2 border-white shadow-md md:shadow-none">
+                            <img src={conversation.characterSettings.avatar} alt="AI头像" className="w-full h-full object-cover" />
+                          </div>
+                        ) : (
+                          <div className="w-11 h-11 md:w-9 md:h-9 rounded-full bg-gradient-to-br from-gray-700 to-gray-900 flex items-center justify-center border-2 border-white shadow-md md:shadow-none">
+                            <span className="text-white font-semibold text-sm">{conversation.name.charAt(0)}</span>
+                          </div>
+                        )
+                      )}
+                      {/* 只在私聊显示角标 */}
+                      {conversation.type === 'private' && (
+                        <div className="absolute -bottom-0.5 -right-0.5 w-4 h-4 bg-white rounded-full flex items-center justify-center shadow-sm">
+                          <span className="text-[10px]">{getUserBadge()}</span>
+                        </div>
+                      )}
+                    </div>
                   </div>
                 )}
-                <div className="relative max-w-[70%]">
+                <div className="relative max-w-[70%] min-w-0">
                   {/* 🚫 拉黑期间消息标记（解除拉黑后显示） */}
                   {message.isBlockedMessage && !conversation.isBlocked && (
                     <div className="absolute -right-6 top-1/2 -translate-y-1/2 text-red-500 font-bold text-lg select-none cursor-help" title="对方在被拉黑期间发送的消息">
@@ -3869,13 +4082,6 @@ ${buildAvatarIdentityPrompt(characterInfo)}
                     </div>
                   )}
 
-                  {/* 群聊：显示发送者名字 */}
-                  {message.role === 'assistant' && conversation.type === 'group' && (message as any).senderName && (
-                    <div className="text-xs text-gray-500 mb-1 ml-1">
-                      {(message as any).senderName}
-                    </div>
-                  )}
-                  
                   {/* 多选模式复选框 */}
                   {isMultiSelectMode && (
                     <input
@@ -4750,19 +4956,15 @@ ${buildAvatarIdentityPrompt(characterInfo)}
         });
         })()}
 
-        {isGroupProcessing && (
-          <div className="flex justify-center my-2">
-            <div className="bg-indigo-500/90 backdrop-blur text-white text-xs px-3 py-1.5 rounded-full shadow-sm flex items-center space-x-1 animate-pulse">
-               <span>⚡</span>
-               <span>群聊响应中...</span>
-            </div>
-          </div>
-        )}
-
-        {showSendingHint && (
-          <div className="flex justify-center my-2">
-            <div className="bg-blue-500 text-white text-xs px-3 py-1.5 rounded-full shadow-sm">
-              消息发送中...
+        {conversation.type === 'group' && groupRoundReceivingHint && (
+          <div className="flex justify-center my-3">
+            <div className="inline-flex items-center gap-2 rounded-full bg-zinc-100/95 border border-zinc-200/80 px-4 py-2 text-xs text-zinc-600 shadow-sm">
+              <div className="flex gap-1">
+                <span className="w-1.5 h-1.5 rounded-full bg-zinc-400 animate-bounce" style={{ animationDelay: '0ms' }} />
+                <span className="w-1.5 h-1.5 rounded-full bg-zinc-400 animate-bounce" style={{ animationDelay: '150ms' }} />
+                <span className="w-1.5 h-1.5 rounded-full bg-zinc-400 animate-bounce" style={{ animationDelay: '300ms' }} />
+              </div>
+              <span>消息收取中</span>
             </div>
           </div>
         )}
@@ -4867,7 +5069,7 @@ ${buildAvatarIdentityPrompt(characterInfo)}
       {/* Input area - in normal page flow */}
       <div
         data-ui="chat-input-area"
-        className="shrink-0 bg-white/95 backdrop-blur-sm border-t border-gray-200 z-10"
+        className="shrink-0 bg-white/95 md:bg-white/85 backdrop-blur-sm border-t border-gray-200 md:border-zinc-200 z-10"
         style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
       >
         {/* 多选模式工具栏 */}
@@ -4894,76 +5096,6 @@ ${buildAvatarIdentityPrompt(characterInfo)}
           </div>
         )}
         
-        {/* Toolbar（群聊/非私聊：保留原有；私聊“+”直接弹系统选择器，不再显示面板） */}
-        {showToolbar && conversation.type !== 'private' && (
-          <div className="px-3 py-3 bg-white border-b border-gray-200">
-            <div className="flex gap-2 items-center overflow-x-auto">
-                <button onClick={() => imageInputRef.current?.click()} className="flex-shrink-0">
-                  <div className="w-9 h-9 rounded-full bg-white border border-gray-300 flex items-center justify-center hover:border-gray-400 transition-colors">
-                    <ImageIcon className="w-4 h-4 text-gray-600" />
-                  </div>
-                </button>
-                <input
-                  ref={imageInputRef}
-                  type="file"
-                  accept="image/*"
-                  multiple
-                  className="hidden"
-                  onChange={handleImageUpload}
-                />
-                <button onClick={() => videoInputRef.current?.click()} className="flex-shrink-0">
-                  <div className="w-9 h-9 rounded-full bg-white border border-gray-300 flex items-center justify-center hover:border-gray-400 transition-colors">
-                    <Video className="w-4 h-4 text-gray-600" />
-                  </div>
-                </button>
-                <input
-                  ref={videoInputRef}
-                  type="file"
-                  accept="video/*"
-                  className="hidden"
-                  onChange={handleVideoUpload}
-                />
-                <button
-                  className="flex-shrink-0"
-                  onClick={handleStickerClick}
-                >
-                  <div className="w-9 h-9 rounded-full bg-white border border-gray-300 flex items-center justify-center hover:border-gray-400 transition-colors">
-                    <Smile className="w-4 h-4 text-gray-600" />
-                  </div>
-                </button>
-                {/* 红包按钮 - 私聊打开普通红包，群聊打开群红包 */}
-                <button
-                  className="flex-shrink-0"
-                  onClick={() => {
-                    if (conversation.type === 'group') {
-                      setShowGroupRedPacketModal(true);
-                    } else {
-                      setShowMoneyTransferModal(true);
-                    }
-                  }}
-                >
-                  <div className="w-9 h-9 rounded-full bg-white border border-gray-300 flex items-center justify-center hover:border-gray-400 transition-colors">
-                    <Gift className="w-4 h-4 text-gray-600" />
-                  </div>
-                </button>
-                <button
-                  ref={advancedToolbarToggleRef}
-                  className="flex-shrink-0"
-                  onClick={() => setShowAdvancedToolbarActions(prev => !prev)}
-                  title="更多功能"
-                >
-                  <div className={`w-9 h-9 rounded-full border flex items-center justify-center transition-colors ${
-                    showAdvancedToolbarActions
-                      ? 'bg-gray-900 border-gray-900'
-                      : 'bg-white border-gray-300 hover:border-gray-400'
-                  }`}>
-                    <MoreHorizontal className={`w-4 h-4 ${showAdvancedToolbarActions ? 'text-white' : 'text-gray-600'}`} />
-                  </div>
-                </button>
-              </div>
-          </div>
-        )}
-
         {/* 引用提示 */}
         {quotedMessage && (
           <div className="px-3 pt-2 pb-1 bg-gray-50 border-t border-gray-200">
@@ -5015,41 +5147,56 @@ ${buildAvatarIdentityPrompt(characterInfo)}
               {(conversation.members || [])
                 .map(memberId => conversations.find(c => c.id === memberId))
                 .filter(c => c)
-                .filter(member => {
-                  const nickname = (member as Conversation).characterSettings?.nickname || (member as Conversation).name;
-                  return nickname.toLowerCase().includes(atFilterText.toLowerCase());
-                })
-                .map(member => {
+                .filter((member) => {
                   const m = member as Conversation;
-                  const nickname = m.characterSettings?.nickname || m.name;
+                  if (!m.characterSettings) {
+                    const nm = m.name || '';
+                    return nm.toLowerCase().includes(atFilterText.toLowerCase());
+                  }
+                  const handle = getCharacterOnlineHandle(m.characterSettings, m.name);
+                  const real = getCharacterRealName(m.characterSettings) || m.name;
+                  const remark = (m.characterSettings.nickname || '').trim();
+                  const q = atFilterText.toLowerCase();
+                  return (
+                    handle.toLowerCase().includes(q) ||
+                    real.toLowerCase().includes(q) ||
+                    remark.toLowerCase().includes(q)
+                  );
+                })
+                .map((member) => {
+                  const m = member as Conversation;
+                  const handle = m.characterSettings
+                    ? getCharacterOnlineHandle(m.characterSettings, m.name)
+                    : m.name;
+                  const real = m.characterSettings
+                    ? getCharacterRealName(m.characterSettings) || m.name
+                    : m.name;
                   return (
                     <button
                       key={m.id}
-                      onClick={() => handleSelectAtMember(nickname)}
+                      onClick={() => handleSelectAtMember(handle)}
                       className="w-full flex items-center gap-3 p-2 rounded-lg hover:bg-gray-100 transition-colors"
                     >
                       <div className="w-10 h-10 rounded-full overflow-hidden border-2 border-white shadow-sm flex-shrink-0">
                         {m.characterSettings?.avatar || m.avatar ? (
                           <img
                             src={m.characterSettings?.avatar || m.avatar}
-                            alt={nickname}
+                            alt={handle}
                             className="w-full h-full object-cover"
                           />
                         ) : (
                           <div className="w-full h-full bg-gradient-to-br from-blue-400 to-purple-500 flex items-center justify-center">
                             <span className="text-white text-sm font-semibold">
-                              {nickname.charAt(0)}
+                              {(handle || real).charAt(0)}
                             </span>
                           </div>
                         )}
                       </div>
                       <div className="flex-1 text-left">
-                        <div className="font-medium text-gray-900 text-sm">{nickname}</div>
-                        {m.characterSettings?.personality && (
-                          <div className="text-xs text-gray-500 truncate">
-                            {m.characterSettings.personality.slice(0, 20)}...
-                          </div>
-                        )}
+                        <div className="font-medium text-gray-900 text-sm">@{handle}</div>
+                        {real && real !== handle ? (
+                          <div className="text-xs text-gray-500 truncate">本名 {real}</div>
+                        ) : null}
                       </div>
                     </button>
                   );
@@ -5057,9 +5204,20 @@ ${buildAvatarIdentityPrompt(characterInfo)}
               {(conversation.members || [])
                 .map(memberId => conversations.find(c => c.id === memberId))
                 .filter(c => c)
-                .filter(member => {
-                  const nickname = (member as Conversation).characterSettings?.nickname || (member as Conversation).name;
-                  return nickname.toLowerCase().includes(atFilterText.toLowerCase());
+                .filter((member) => {
+                  const m = member as Conversation;
+                  if (!m.characterSettings) {
+                    return (m.name || '').toLowerCase().includes(atFilterText.toLowerCase());
+                  }
+                  const handle = getCharacterOnlineHandle(m.characterSettings, m.name);
+                  const real = getCharacterRealName(m.characterSettings) || m.name;
+                  const remark = (m.characterSettings.nickname || '').trim();
+                  const q = atFilterText.toLowerCase();
+                  return (
+                    handle.toLowerCase().includes(q) ||
+                    real.toLowerCase().includes(q) ||
+                    remark.toLowerCase().includes(q)
+                  );
                 }).length === 0 && (
                 <div className="text-center py-4 text-gray-400 text-sm">
                   没有匹配的成员
@@ -5113,25 +5271,77 @@ ${buildAvatarIdentityPrompt(characterInfo)}
               </button>
             </div>
           )}
-          <div className="flex items-center gap-1.5 md:max-w-[820px] md:mx-auto">
+          {conversation.type === 'group' && showGroupExtraActions && (
+            <div
+              ref={groupExtraActionsPanelRef}
+              className="mb-2 w-full px-2 py-2 rounded-2xl border border-gray-200 bg-white flex items-center justify-between text-gray-600 md:max-w-[820px] md:mx-auto"
+            >
+              <button
+                onClick={() => imageInputRef.current?.click()}
+                className="flex-1 h-9 flex items-center justify-center hover:text-gray-900 transition-colors"
+                type="button"
+                title="图片"
+              >
+                <ImageIcon className="w-5 h-5" />
+              </button>
+              <button
+                onClick={() => videoInputRef.current?.click()}
+                className="flex-1 h-9 flex items-center justify-center hover:text-gray-900 transition-colors"
+                type="button"
+                title="视频"
+              >
+                <Video className="w-5 h-5" />
+              </button>
+              <button
+                onClick={() => {
+                  setAutoPickDocumentFile(false);
+                  setShowSendDocumentModal(true);
+                }}
+                className="flex-1 h-9 flex items-center justify-center hover:text-gray-900 transition-colors"
+                type="button"
+                title="文档"
+              >
+                <FileText className="w-5 h-5" />
+              </button>
+              <button
+                onClick={() => setShowGroupRedPacketModal(true)}
+                className="flex-1 h-9 flex items-center justify-center hover:text-gray-900 transition-colors"
+                type="button"
+                title="群红包"
+              >
+                <Gift className="w-5 h-5" />
+              </button>
+              <button
+                onClick={() => setShowMusicShareModal(true)}
+                className="flex-1 h-9 flex items-center justify-center hover:text-gray-900 transition-colors"
+                type="button"
+                title="音乐"
+              >
+                <Music className="w-5 h-5" />
+              </button>
+              <button
+                onClick={() => showToast('位置信息功能即将上线', 'info')}
+                className="flex-1 h-9 flex items-center justify-center hover:text-gray-900 transition-colors"
+                type="button"
+                title="定位"
+              >
+                <MapPin className="w-5 h-5" />
+              </button>
+            </div>
+          )}
+          <div className="flex items-center gap-1 md:gap-1.5 md:max-w-[820px] md:mx-auto min-w-0 w-full">
             <button 
               onClick={() => {
-                if (conversation.type === 'private') {
-                  setShowPrivateExtraActions(false);
-                  unifiedPickInputRef.current?.click();
-                  return;
-                }
-                const nextShowToolbar = !showToolbar;
-                setShowToolbar(nextShowToolbar);
-                if (!nextShowToolbar) {
-                  setShowAdvancedToolbarActions(false);
-                }
+                setShowPrivateExtraActions(false);
+                setShowGroupExtraActions(false);
+                unifiedPickInputRef.current?.click();
               }}
-              className="w-9 h-9 hover:bg-gray-100 rounded-full transition-colors flex-shrink-0 flex items-center justify-center"
+              className="w-9 h-9 shrink-0 hover:bg-gray-100 rounded-full transition-colors flex items-center justify-center"
+              type="button"
+              title="发送文件 / 图片 / 视频"
             >
               <Plus className="w-5 h-5 text-gray-600" />
             </button>
-            {/* 私聊：隐藏的系统选择器入口（让系统自己提供 文件/图片/视频 的选择） */}
             <input
               ref={unifiedPickInputRef}
               type="file"
@@ -5139,7 +5349,22 @@ ${buildAvatarIdentityPrompt(characterInfo)}
               multiple
               onChange={handleUnifiedPick}
             />
-            <div className="flex-1 flex items-center gap-1.5 bg-gray-50 border border-gray-200 rounded-2xl px-3 py-2">
+            <input
+              ref={imageInputRef}
+              type="file"
+              accept="image/*"
+              multiple
+              className="hidden"
+              onChange={handleImageUpload}
+            />
+            <input
+              ref={videoInputRef}
+              type="file"
+              accept="video/*"
+              className="hidden"
+              onChange={handleVideoUpload}
+            />
+            <div className="flex-1 min-w-0 flex items-center gap-1 bg-gray-50 border border-gray-200 rounded-2xl px-2 py-2 md:px-3 md:gap-1.5">
               <textarea
                 ref={inputRef as any}
                 value={currentInput}
@@ -5148,6 +5373,12 @@ ${buildAvatarIdentityPrompt(characterInfo)}
                 }}
                 onBlur={() => {
                   inputComposerFocusedRef.current = false;
+                }}
+                onCompositionStart={() => {
+                  inputComposerComposingRef.current = true;
+                }}
+                onCompositionEnd={() => {
+                  inputComposerComposingRef.current = false;
                 }}
                 onChange={(e) => {
                   const value = e.target.value;
@@ -5179,7 +5410,7 @@ ${buildAvatarIdentityPrompt(characterInfo)}
                   e.target.style.height = Math.min(e.target.scrollHeight, 120) + 'px';
                 }}
                 onKeyPress={handleKeyPress}
-                placeholder={messageBeingEdited ? "编辑消息..." : quotedMessage ? "回复消息..." : conversation.type === 'group' && !quotedMessage ? (isGenerating ? "输入消息（下轮处理）；空行发送可旁观 AI 闲聊" : "输入消息… 群聊可空行发送触发 AI 闲聊") : isGenerating && conversation.type === 'group' ? "输入消息（将在下轮回复）..." : "输入消息..."}
+                placeholder={messageBeingEdited ? "编辑消息..." : quotedMessage ? "回复消息..." : conversation.type === 'group' && !quotedMessage ? (isGenerating ? "输入消息（下轮）；发送空消息可触发自行聊天" : "发送空消息可触发自行聊天") : isGenerating && conversation.type === 'group' ? "输入消息（下轮）…" : "输入消息..."}
                 className="flex-1 outline-none text-[15px] bg-transparent text-gray-900 placeholder-gray-400 resize-none overflow-y-auto max-h-[120px] min-h-[24px]"
                 disabled={false}
                 rows={1}
@@ -5187,26 +5418,29 @@ ${buildAvatarIdentityPrompt(characterInfo)}
               />
               <button
                 onClick={handleVoiceClick}
-                className="w-8 h-8 hover:bg-gray-100 rounded-full transition-colors flex-shrink-0 flex items-center justify-center"
+                className="w-8 h-8 shrink-0 hover:bg-gray-100 rounded-full transition-colors flex items-center justify-center"
                 title="语音转文字"
                 type="button"
               >
                 <Mic className="w-4 h-4 text-gray-600" />
               </button>
             </div>
-            {conversation.type === 'private' ? (
-              <div className="flex items-center gap-1">
-                <button
-                  onClick={handleStickerClick}
-                  className="w-9 h-9 flex items-center justify-center hover:bg-gray-100 rounded-full transition-colors"
-                  type="button"
-                  title="表情包"
-                >
-                  <Smile className="w-5 h-5 text-gray-600" />
-                </button>
+            <div className="flex items-center gap-0.5 md:gap-1 shrink-0">
+              <button
+                onClick={handleStickerClick}
+                className="w-9 h-9 flex items-center justify-center hover:bg-gray-100 rounded-full transition-colors"
+                type="button"
+                title="表情包"
+              >
+                <Smile className="w-5 h-5 text-gray-600" />
+              </button>
+              {conversation.type === 'private' ? (
                 <button
                   ref={privateExtraActionsToggleRef}
-                  onClick={() => setShowPrivateExtraActions((prev) => !prev)}
+                  onClick={() => {
+                    setShowGroupExtraActions(false);
+                    setShowPrivateExtraActions((prev) => !prev);
+                  }}
                   className={`w-9 h-9 flex items-center justify-center rounded-full transition-colors ${
                     showPrivateExtraActions ? 'bg-gray-900' : 'hover:bg-gray-100'
                   }`}
@@ -5215,8 +5449,22 @@ ${buildAvatarIdentityPrompt(characterInfo)}
                 >
                   <MoreHorizontal className={`w-5 h-5 ${showPrivateExtraActions ? 'text-white' : 'text-gray-600'}`} />
                 </button>
-              </div>
-            ) : (
+              ) : (
+                <button
+                  ref={groupExtraActionsToggleRef}
+                  onClick={() => {
+                    setShowPrivateExtraActions(false);
+                    setShowGroupExtraActions((prev) => !prev);
+                  }}
+                  className={`w-9 h-9 flex items-center justify-center rounded-full transition-colors ${
+                    showGroupExtraActions ? 'bg-gray-900' : 'hover:bg-gray-100'
+                  }`}
+                  type="button"
+                  title="全部功能"
+                >
+                  <MoreHorizontal className={`w-5 h-5 ${showGroupExtraActions ? 'text-white' : 'text-gray-600'}`} />
+                </button>
+              )}
               <button
                 onClick={handleSendMessage}
                 disabled={
@@ -5226,11 +5474,13 @@ ${buildAvatarIdentityPrompt(characterInfo)}
                       ? !!quotedMessage && !currentInput.trim()
                       : !currentInput.trim()
                 }
-                className="w-10 h-10 bg-blue-500 text-white rounded-full hover:bg-blue-600 active:scale-95 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex-shrink-0 flex items-center justify-center shadow-md"
+                className="hidden md:flex w-10 h-10 bg-blue-500 text-white rounded-full hover:bg-blue-600 active:scale-95 transition-all disabled:opacity-50 disabled:cursor-not-allowed items-center justify-center shadow-md"
+                type="button"
+                title="发送（窄屏可用回车发送）"
               >
-                <Send className="w-5 h-5" />
+                <Send className="w-5 h-5" aria-hidden />
               </button>
-            )}
+            </div>
           </div>
         </div>
       </div>
@@ -6125,7 +6375,13 @@ ${buildAvatarIdentityPrompt(characterInfo)}
     )}
 
     {/* 头像操作菜单弹窗 */}
-    {avatarMenuOpen && (
+    {avatarMenuOpen && (() => {
+      const menuMem = conversations.find((c) => c.id === avatarMenuOpen.senderId);
+      const menuHandle = menuMem
+        ? getCharacterOnlineHandle(menuMem.characterSettings, menuMem.name)
+        : '';
+      const showHandleSub = menuHandle && menuHandle !== avatarMenuOpen.name;
+      return (
       <div 
         className="fixed inset-0 bg-black bg-opacity-30 z-50 flex items-center justify-center"
         onClick={() => setAvatarMenuOpen(null)}
@@ -6146,12 +6402,15 @@ ${buildAvatarIdentityPrompt(characterInfo)}
               </div>
             )}
             <div className="text-lg font-semibold text-gray-800">{avatarMenuOpen.name}</div>
+            {showHandleSub ? (
+              <div className="text-xs text-gray-500 mt-1">网名 {menuHandle}</div>
+            ) : null}
           </div>
 
           {/* 操作选项 */}
           <div className="divide-y divide-gray-100">
             <button
-              onClick={() => handleSendMessageAction(avatarMenuOpen.name)}
+              onClick={() => handleSendMessageAction(avatarMenuOpen.senderId)}
               className="w-full py-4 px-6 text-left hover:bg-blue-50 transition-colors flex items-center gap-3"
             >
               <MessageCircle className="w-5 h-5 text-blue-500" />
@@ -6167,7 +6426,7 @@ ${buildAvatarIdentityPrompt(characterInfo)}
             </button>
             
             <button
-              onClick={() => handleAtAction(avatarMenuOpen.name)}
+              onClick={() => handleAtAction()}
               className="w-full py-4 px-6 text-left hover:bg-green-50 transition-colors flex items-center gap-3"
             >
               <span className="text-xl font-bold text-green-600">@</span>
@@ -6176,7 +6435,8 @@ ${buildAvatarIdentityPrompt(characterInfo)}
           </div>
         </div>
       </div>
-    )}
+      );
+    })()}
 
     {/* 表情包类型选择菜单 */}
     {showStickerTypeMenu && (
