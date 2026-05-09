@@ -120,9 +120,8 @@ export function buildMediaChatRequest(
       { role: 'user', content: contentParts },
     ];
 
-    const visionOverride = String(apiConfig.visionModelName || '').trim();
     requestBody = {
-      model: visionOverride || apiConfig.modelName,
+      model: apiConfig.modelName,
       messages,
       temperature: 0.7,
       max_tokens: 2000,

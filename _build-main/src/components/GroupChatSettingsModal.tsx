@@ -390,7 +390,7 @@ const GroupChatSettingsModal: React.FC<GroupChatSettingsModalProps> = ({
             </summary>
             <div className="p-4 space-y-3">
               <p className="text-xs text-gray-600 leading-relaxed">
-                留空则使用设置里的全局对话模型。本群所有 AI 发言与群记忆总结会优先使用此处模型；成员角色上的单独模型仅在未填写群模型时生效。视觉模型仍在全局设置中配置。点开模型下拉会自动拉取列表（约 25 秒内不重复）；也可点「拉取」。
+                留空则使用设置里的全局对话模型。本群所有 AI 发言与群记忆总结会优先使用此处模型；成员角色上的单独模型仅在未填写群模型时生效。带图与文字共用此处或成员模型。点开模型下拉会自动拉取列表（约 25 秒内不重复）；也可点「拉取」。
               </p>
               <div>
                 <label className="block text-xs font-medium text-gray-700 mb-1.5">对话模型</label>

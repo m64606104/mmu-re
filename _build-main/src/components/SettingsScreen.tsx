@@ -44,7 +44,6 @@ import {
   supabaseUpsertConversation,
 } from '../services/supabaseData';
 import { fetchOpenAiCompatibleModelIds } from '../utils/openaiCompatibleModels';
-import { buildApiUrl } from '../utils/apiHelper';
 import { filterLikelyChatModels } from '../utils/modelVisionClassifier';
 import { consumeSettingsOpenIntent } from '../utils/settingsNavigationIntent';
 import { exportFullMomoyuBackup, formatFullExportSuccessAlert } from '../utils/fullMomoyuExport';
@@ -90,20 +89,10 @@ export default function SettingsScreen({
   const [baseUrl, setBaseUrl] = useState(apiConfig.baseUrl);
   const [apiKey, setApiKey] = useState(apiConfig.apiKey);
   const [modelName, setModelName] = useState(apiConfig.modelName);
-  const [visionModelName, setVisionModelName] = useState(apiConfig.visionModelName || '');
-  const [visionBaseUrl, setVisionBaseUrl] = useState(apiConfig.visionBaseUrl || '');
-  const [visionApiKey, setVisionApiKey] = useState(apiConfig.visionApiKey || '');
-  const [useSeparateVisionApi, setUseSeparateVisionApi] = useState(
-    Boolean((apiConfig.visionBaseUrl || '').trim() || (apiConfig.visionApiKey || '').trim())
-  );
   const [availableModels, setAvailableModels] = useState<string[]>([]);
-  const [availableVisionModels, setAvailableVisionModels] = useState<string[]>([]);
   const [testing, setTesting] = useState(false);
   const [testResult, setTestResult] = useState<'success' | 'error' | null>(null);
-  const [visionTesting, setVisionTesting] = useState(false);
-  const [visionTestResult, setVisionTestResult] = useState<'success' | 'error' | null>(null);
   const [textTestMessage, setTextTestMessage] = useState('');
-  const [visionTestMessage, setVisionTestMessage] = useState('');
   const [apiPresets, setApiPresets] = useState<APIPreset[]>([]);
   const [showApiPresetsModal, setShowApiPresetsModal] = useState(false);
   const [apiPairHistory, setApiPairHistory] = useState<ApiEndpointPairEntry[]>([]);
@@ -521,9 +510,8 @@ export default function SettingsScreen({
   }, [supabaseStatus, cloudAuthUserId]);
 
   const requestPullModelsFromDropdown = () => {
-    if (testing || visionTesting) return;
+    if (testing) return;
     if (!baseUrl.trim() || !apiKey.trim()) return;
-    if (useSeparateVisionApi && (!visionBaseUrl.trim() || !visionApiKey.trim())) return;
     const t = Date.now();
     if (t - lastDropdownPullAtRef.current < DROPDOWN_PULL_MIN_INTERVAL_MS) return;
     lastDropdownPullAtRef.current = t;
@@ -596,10 +584,10 @@ export default function SettingsScreen({
                     <button
                       type="button"
                       onClick={() => void pullModelsForTextAndVision()}
-                      disabled={testing || visionTesting}
+                      disabled={testing}
                       className="shrink-0 px-3 py-2.5 rounded-lg border border-gray-300 bg-white text-sm font-medium text-gray-800 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors whitespace-nowrap"
                     >
-                      {testing || visionTesting ? (
+                      {testing ? (
                         <span className="inline-flex items-center gap-1.5">
                           <Loader2 className="w-4 h-4 animate-spin" />
                           拉取中
@@ -612,7 +600,7 @@ export default function SettingsScreen({
                     </button>
                   </div>
                   <p className="mt-1.5 text-xs text-slate-500">
-                    从接口刷新：下列表均为网关返回的对话模型（已过滤 embedding 等）。下方「专属视觉模型」与角色设置里单独指定对话模型的用意类似——可选，用来降本或换模型；不填也会正常识图（带图请求用当前对话模型）。点开下拉会自动拉取一次（约 {Math.round(DROPDOWN_PULL_MIN_INTERVAL_MS / 1000)} 秒内不重复）。
+                    从接口刷新：下列表为网关返回的对话模型（已过滤 embedding 等）。带图聊天与纯文字共用当前模型与主接口（与 demo 一致）。点开下拉会自动拉取一次（约 {Math.round(DROPDOWN_PULL_MIN_INTERVAL_MS / 1000)} 秒内不重复）。
                   </p>
                 </div>
                 <div className="rounded-xl border border-slate-200 bg-slate-50/90 p-3">
@@ -651,83 +639,10 @@ export default function SettingsScreen({
                     </div>
                   )}
                 </div>
-                <div>
-                  <div className="flex items-center justify-between gap-2 mb-2">
-                    <label className="text-sm font-medium text-gray-700">
-                      专属视觉模型（可选）
-                    </label>
-                    <button
-                      type="button"
-                      onClick={testVisionSupport}
-                      disabled={visionTesting}
-                      title="用极小图片测 multimodal / image_url"
-                      className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium rounded-md border border-indigo-200 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
-                      {visionTesting ? <Loader2 className="w-3 h-3 animate-spin" aria-hidden /> : null}
-                      测试视觉
-                    </button>
-                  </div>
-                  {availableVisionModels.length > 0 ? (
-                    <select
-                      value={visionModelName}
-                      onMouseDown={requestPullModelsFromDropdown}
-                      onChange={(e) => setVisionModelName(e.target.value)}
-                      className="w-full px-3 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all bg-white"
-                    >
-                      <option value="">默认：与对话模型相同（可识图）</option>
-                      {availableVisionModels.map((model) => (
-                        <option key={model} value={model}>{model}</option>
-                      ))}
-                    </select>
-                  ) : (
-                    <input
-                      type="text"
-                      value={visionModelName}
-                      onFocus={requestPullModelsFromDropdown}
-                      onChange={(e) => setVisionModelName(e.target.value)}
-                      placeholder="可选：如更便宜的 VL；留空则用对话模型识图"
-                      className="w-full px-3 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
-                    />
-                  )}
-                  <div className="mt-2 text-xs text-slate-500 leading-relaxed">
-                    与角色里「单独指定模型」同理：可选，用来降本或换模型。留空时带图仍用当前对话模型识图，照样发图。若填写此处，默认仍走主接口同一 URL/Key，仅请求体里的 <span className="font-mono">model</span> 换成你填的 ID（例如更便宜的 VL）。勾选「识图走独立接口」并填写 Base URL / Key 后，识图才改走别家或另一条线路。「测试视觉」用于验证你填的模型是否接收附图。
-                  </div>
-                  <p className="mt-2 text-[11px] text-amber-800/90 leading-relaxed rounded-lg border border-amber-200 bg-amber-50/90 px-2.5 py-2">
-                    <span className="font-medium text-amber-900">带图变慢说明：</span>
-                    本仓库私聊会把<strong>真实图片</strong>放进模型请求（多模态），数据量比旧版 momoyu-demo（只发一句「用户发了一张图」占位）大很多；填了专属视觉模型时整条请求还会走 VL。相机大图、长边截图会更慢，属正常现象。
-                  </p>
-                </div>
-                <div className="rounded-xl border border-slate-200 p-3 bg-slate-50">
-                  <label className="flex items-center justify-between text-sm font-medium text-slate-700">
-                    <span>识图走独立接口（别家 URL / Key）</span>
-                    <input
-                      type="checkbox"
-                      checked={useSeparateVisionApi}
-                      onChange={(e) => setUseSeparateVisionApi(e.target.checked)}
-                    />
-                  </label>
-                  {useSeparateVisionApi ? (
-                    <div className="mt-3 space-y-2">
-                      <input
-                        type="text"
-                        value={visionBaseUrl}
-                        onChange={(e) => setVisionBaseUrl(e.target.value)}
-                        placeholder="视觉 Base URL"
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-white"
-                      />
-                      <input
-                        type="password"
-                        value={visionApiKey}
-                        onChange={(e) => setVisionApiKey(e.target.value)}
-                        placeholder="视觉 API Key"
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-white"
-                      />
-                      <p className="text-[11px] text-slate-600 leading-relaxed">
-                        独立视觉 Base 与主接口一样走浏览器跨域规则；若聊天被 CORS 拦截，见本卡上方「浏览器里打开的站点」说明。
-                      </p>
-                    </div>
-                  ) : null}
-                </div>
+                <p className="text-[11px] text-amber-800/90 leading-relaxed rounded-lg border border-amber-200 bg-amber-50/90 px-2.5 py-2">
+                  <span className="font-medium text-amber-900">带图变慢说明：</span>
+                  私聊会把<strong>真实图片</strong>放进模型请求（多模态），数据量比只发文字占位大；相机大图、长边截图会更慢，属正常现象。请选用<strong>支持多模态</strong>的对话模型。
+                </p>
 
                 <div className="rounded-xl border border-violet-200 bg-violet-50/50 p-4 space-y-3">
                   <div className="flex items-center justify-between gap-2">
@@ -899,30 +814,15 @@ export default function SettingsScreen({
                       保存配置
                     </button>
                   </div>
-                  {(textTestMessage || visionTestMessage) ? (
-                    <div className="space-y-2">
-                      {textTestMessage ? (
-                        <div
-                          className={`rounded-2xl border p-3 text-xs ${
-                            testResult === 'error'
-                              ? 'bg-red-50 border-red-200 text-red-700'
-                              : 'bg-emerald-50 border-emerald-200 text-emerald-700'
-                          }`}
-                        >
-                          文本测试：{textTestMessage}
-                        </div>
-                      ) : null}
-                      {visionTestMessage ? (
-                        <div
-                          className={`rounded-2xl border p-3 text-xs ${
-                            visionTestResult === 'error'
-                              ? 'bg-red-50 border-red-200 text-red-700'
-                              : 'bg-indigo-50 border-indigo-200 text-indigo-700'
-                          }`}
-                        >
-                          视觉测试：{visionTestMessage}
-                        </div>
-                      ) : null}
+                  {textTestMessage ? (
+                    <div
+                      className={`rounded-2xl border p-3 text-xs ${
+                        testResult === 'error'
+                          ? 'bg-red-50 border-red-200 text-red-700'
+                          : 'bg-emerald-50 border-emerald-200 text-emerald-700'
+                      }`}
+                    >
+                      连接测试：{textTestMessage}
                     </div>
                   ) : null}
                 </div>
@@ -1354,14 +1254,14 @@ export default function SettingsScreen({
                 <button
                   type="button"
                   onClick={() => void pullModelsForTextAndVision()}
-                  disabled={testing || visionTesting}
+                  disabled={testing}
                   className="shrink-0 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-medium text-slate-800 disabled:opacity-50"
                 >
-                  {testing || visionTesting ? '拉取中' : modelName.trim() || availableModels.length > 0 ? '更换' : '拉取'}
+                  {testing ? '拉取中' : modelName.trim() || availableModels.length > 0 ? '更换' : '拉取'}
                 </button>
               </div>
               <div className="mt-1 text-[11px] text-slate-500">
-                下列表为对话模型（已过滤 embedding）。专属视觉模型可不填——不填也会识图（用当前对话模型）；填了多为换便宜 VL。点开下拉会自动拉取（约 {Math.round(DROPDOWN_PULL_MIN_INTERVAL_MS / 1000)} 秒内不重复）。
+                下列表为对话模型（已过滤 embedding）。带图与文字共用当前模型。点开下拉会自动拉取（约 {Math.round(DROPDOWN_PULL_MIN_INTERVAL_MS / 1000)} 秒内不重复）。
               </div>
             </div>
 
@@ -1402,73 +1302,9 @@ export default function SettingsScreen({
             </div>
 
             <div className="px-4 py-3 border-b border-slate-100">
-              <div className="flex items-center justify-between gap-2 mb-1">
-                <div className="text-xs text-slate-500">专属视觉模型（可选）</div>
-                <button
-                  type="button"
-                  onClick={testVisionSupport}
-                  disabled={visionTesting}
-                  className="inline-flex items-center gap-1 px-2 py-0.5 text-[11px] font-medium rounded-md border border-indigo-200 bg-indigo-50 text-indigo-700 disabled:opacity-50"
-                >
-                  {visionTesting ? <Loader2 className="w-3 h-3 animate-spin" /> : null}
-                  测试
-                </button>
-              </div>
-              {availableVisionModels.length > 0 ? (
-                <select
-                  value={visionModelName}
-                  onMouseDown={requestPullModelsFromDropdown}
-                  onChange={(e) => setVisionModelName(e.target.value)}
-                  className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm bg-white"
-                >
-                  <option value="">默认：与对话模型相同（可识图）</option>
-                  {availableVisionModels.map((model) => (
-                    <option key={model} value={model}>{model}</option>
-                  ))}
-                </select>
-              ) : (
-                <input
-                  value={visionModelName}
-                  onFocus={requestPullModelsFromDropdown}
-                  onChange={(e) => setVisionModelName(e.target.value)}
-                  className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm bg-white"
-                  placeholder="可选 VL；留空则用对话模型识图"
-                />
-              )}
-              <div className="mt-2 text-[11px] text-slate-500">
-                与角色里单独指定模型一样，方便降本。不填也会识图；填则只换识图用的 model；勾选「独立接口」才换别家 URL。
-              </div>
-              <p className="mt-2 text-[10px] text-amber-900/90 leading-relaxed rounded-lg border border-amber-200 bg-amber-50/90 px-2 py-1.5">
-                带图回复：本版会把<strong>真实图片</strong>发给模型，比旧 demo 纯文字占位慢；大图更明显。
+              <p className="text-[10px] text-amber-900/90 leading-relaxed rounded-lg border border-amber-200 bg-amber-50/90 px-2 py-1.5">
+                带图回复：本版会把<strong>真实图片</strong>发给当前对话模型；请选用支持多模态的模型。
               </p>
-            </div>
-
-            <div className="px-4 py-3 border-b border-slate-100">
-              <div className="flex items-center justify-between">
-                <div className="text-xs text-slate-500">识图独立接口</div>
-                <input
-                  type="checkbox"
-                  checked={useSeparateVisionApi}
-                  onChange={(e) => setUseSeparateVisionApi(e.target.checked)}
-                />
-              </div>
-              {useSeparateVisionApi ? (
-                <div className="mt-2 space-y-2">
-                  <input
-                    value={visionBaseUrl}
-                    onChange={(e) => setVisionBaseUrl(e.target.value)}
-                    className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm bg-white"
-                    placeholder="视觉 Base URL"
-                  />
-                  <input
-                    type="password"
-                    value={visionApiKey}
-                    onChange={(e) => setVisionApiKey(e.target.value)}
-                    className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm bg-white"
-                    placeholder="视觉 API Key"
-                  />
-                </div>
-              ) : null}
             </div>
 
             <div className="px-4 py-3 border-b border-slate-100 bg-violet-50/40 space-y-2">
@@ -1573,30 +1409,15 @@ export default function SettingsScreen({
               >
                 保存配置
               </button>
-              {(textTestMessage || visionTestMessage) ? (
-                <div className="mt-3 space-y-2">
-                  {textTestMessage ? (
-                    <div
-                      className={`rounded-xl border px-3 py-2 text-xs ${
-                        testResult === 'error'
-                          ? 'bg-red-50 border-red-200 text-red-700'
-                          : 'bg-emerald-50 border-emerald-200 text-emerald-700'
-                      }`}
-                    >
-                      文本测试：{textTestMessage}
-                    </div>
-                  ) : null}
-                  {visionTestMessage ? (
-                    <div
-                      className={`rounded-xl border px-3 py-2 text-xs ${
-                        visionTestResult === 'error'
-                          ? 'bg-red-50 border-red-200 text-red-700'
-                          : 'bg-indigo-50 border-indigo-200 text-indigo-700'
-                      }`}
-                    >
-                      视觉测试：{visionTestMessage}
-                    </div>
-                  ) : null}
+              {textTestMessage ? (
+                <div
+                  className={`mt-3 rounded-xl border px-3 py-2 text-xs ${
+                    testResult === 'error'
+                      ? 'bg-red-50 border-red-200 text-red-700'
+                      : 'bg-emerald-50 border-emerald-200 text-emerald-700'
+                  }`}
+                >
+                  连接测试：{textTestMessage}
                 </div>
               ) : null}
             </div>
@@ -1881,32 +1702,15 @@ export default function SettingsScreen({
     }
   };
 
-  const resolveVisionEndpoint = () => {
-    const usingSeparate = useSeparateVisionApi;
-    const resolvedUrl = (usingSeparate ? visionBaseUrl : baseUrl).trim();
-    const resolvedKey = (usingSeparate ? visionApiKey : apiKey).trim();
-    return {
-      resolvedUrl,
-      resolvedKey,
-      usingSeparate,
-    };
-  };
-
   const pullModelsForTextAndVision = async (opts?: { silent?: boolean }) => {
     if (!baseUrl.trim() || !apiKey.trim()) {
       if (!opts?.silent) alert('请先填写文本接口的 Base URL 和 API Key');
       return;
     }
-    if (useSeparateVisionApi && (!visionBaseUrl.trim() || !visionApiKey.trim())) {
-      if (!opts?.silent) alert('你已开启识图独立接口，请填写 Base URL 与 API Key');
-      return;
-    }
 
     setTesting(true);
     setTestResult(null);
-    setVisionTestResult(null);
     setTextTestMessage('');
-    setVisionTestMessage('');
     try {
       const textModelsRaw = await fetchOpenAiCompatibleModelIds(baseUrl.trim(), apiKey.trim());
       const textModels = filterLikelyChatModels(textModelsRaw);
@@ -1918,37 +1722,17 @@ export default function SettingsScreen({
       const skippedNonChat = textModelsRaw.length - textModels.length;
       setTextTestMessage(
         skippedNonChat > 0
-          ? `文本对话模型 ${textModels.length} 个（已从列表剔除 ${skippedNonChat} 个 embedding 等非对话模型）。`
-          : `文本模型拉取成功：${textModels.length} 个。`
-      );
-
-      const { resolvedUrl, resolvedKey } = resolveVisionEndpoint();
-      let visionChatModels: string[];
-      if (useSeparateVisionApi) {
-        const visionModelsRaw = await fetchOpenAiCompatibleModelIds(resolvedUrl, resolvedKey);
-        visionChatModels = filterLikelyChatModels(visionModelsRaw);
-      } else {
-        visionChatModels = textModels;
-      }
-      setAvailableVisionModels(visionChatModels);
-      setVisionTestResult(null);
-      setVisionTestMessage(
-        visionChatModels.length > 0
-          ? `专属视觉模型下拉已加载 ${visionChatModels.length} 个模型（可不选——不选则用对话模型识图）。若要单独指定 VL，请任选或手填 ID，并可点「测试视觉」。`
-          : '未拿到列表时可手动填写专属视觉模型 ID；不填亦可用对话模型识图。需要时点「测试视觉」。'
+          ? `对话模型 ${textModels.length} 个（已从列表剔除 ${skippedNonChat} 个 embedding 等非对话模型）。带图与文字共用所选模型。`
+          : `模型拉取成功：${textModels.length} 个（带图与文字共用）。`
       );
 
       if (!opts?.silent) {
-        alert(
-          '拉取完成：专属视觉模型为可选项（与角色单独指定模型同理，便于降本）。不填也会正常识图；填了再点「测试视觉」可验证该模型是否接收附图。'
-        );
+        alert('拉取完成：所选模型将同时用于文字与附图（多模态）。');
       }
     } catch (error) {
       console.error('拉取模型失败:', error);
       setTestResult('error');
-      setVisionTestResult('error');
-      setTextTestMessage('模型拉取失败，请检查文本接口配置。');
-      setVisionTestMessage('模型拉取失败，请检查识图独立接口或主接口配置。');
+      setTextTestMessage('模型拉取失败，请检查 URL / Key 是否正确。');
       if (!opts?.silent) {
         alert('拉取模型失败，请检查 URL / Key 是否正确');
       }
@@ -1999,76 +1783,6 @@ export default function SettingsScreen({
     }
   };
 
-  const testVisionSupport = async () => {
-    const model = visionModelName.trim();
-    if (!model) {
-      alert('「测试视觉」需要先填写或选择上方的专属视觉模型 ID。日常识图可以不填此处，带图时会用当前对话模型。');
-      return;
-    }
-    const { resolvedUrl, resolvedKey, usingSeparate } = resolveVisionEndpoint();
-    if (!resolvedUrl || !resolvedKey) {
-      alert(usingSeparate ? '请先填写识图独立接口的 URL / Key' : '请先填写主接口 URL / Key');
-      return;
-    }
-
-    const tinyPngDataUrl =
-      'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9VE3h1wAAAAASUVORK5CYII=';
-
-    setVisionTesting(true);
-    setVisionTestResult(null);
-    setVisionTestMessage('');
-    try {
-      const response = await fetch(buildApiUrl({ baseUrl: resolvedUrl, apiKey: resolvedKey, modelName: model }), {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${resolvedKey}`,
-        },
-        body: JSON.stringify({
-          model,
-          messages: [
-            {
-              role: 'user',
-              content: [
-                { type: 'text', text: '请用一句话描述这张图片内容。' },
-                { type: 'image_url', image_url: { url: tinyPngDataUrl } },
-              ],
-            },
-          ],
-          max_tokens: 30,
-          temperature: 0.2,
-        }),
-      });
-
-      if (!response.ok) {
-        const raw = await response.text();
-        const low = raw.toLowerCase();
-        let reason = '视觉能力测试失败（未知原因）';
-        if (low.includes('model') && (low.includes('not found') || low.includes('unsupported'))) {
-          reason = '模型不存在或该模型不支持视觉';
-        } else if (low.includes('image') || low.includes('vision') || low.includes('multimodal')) {
-          reason = '该模型或网关不支持 image_url 多模态';
-        } else if (low.includes('api key') || low.includes('unauthorized') || low.includes('invalid')) {
-          reason = '视觉接口鉴权失败（Key 可能无效）';
-        } else if (response.status >= 500) {
-          reason = '视觉接口服务异常（5xx）';
-        }
-        throw new Error(reason);
-      }
-
-      setVisionTestResult('success');
-      setVisionTestMessage('视觉模型测试通过：该模型可接收 image_url。');
-      alert('视觉模型测试通过：该模型可接收 image_url。');
-    } catch (error: any) {
-      console.error('视觉模型测试失败:', error);
-      setVisionTestResult('error');
-      setVisionTestMessage(`视觉模型测试失败：${error?.message || '请检查配置'}`);
-      alert(`视觉模型测试失败：${error?.message || '请检查配置'}`);
-    } finally {
-      setVisionTesting(false);
-    }
-  };
-
   const applyApiPairFromHistory = (entry: ApiEndpointPairEntry) => {
     setBaseUrl(entry.baseUrl);
     setApiKey(entry.apiKey);
@@ -2099,27 +1813,11 @@ export default function SettingsScreen({
       return;
     }
 
-    const visionBaseTrim = visionBaseUrl.trim();
-    const visionKeyTrim = visionApiKey.trim();
-
-    if (useSeparateVisionApi && (!visionBaseTrim || !visionKeyTrim)) {
-      alert('你已开启识图独立接口，请同时填写「识图 Base URL」与「识图 API Key」');
-      return;
-    }
-    if ((visionBaseTrim || visionKeyTrim) && !(visionBaseTrim && visionKeyTrim)) {
-      alert('识图独立线路需**同时**填写 Base URL 与 API Key；若只使用主接口 + 下方「视觉模型 ID」，请两项都留空。');
-      return;
-    }
-
     onUpdateConfig({
       ...apiConfig,
       baseUrl,
       apiKey,
       modelName,
-      visionModelName: visionModelName.trim(),
-      // 与「勾选单独接口」解耦：只要两项都填了就持久化，避免未勾选时保存把独立网关清空导致仍用 vision 模型名打到主站
-      visionBaseUrl: visionBaseTrim,
-      visionApiKey: visionKeyTrim,
       privateAiImageGeneration: {
         enabled: pigEnabled,
         baseUrl: pigBaseUrl.trim(),
@@ -2141,9 +1839,6 @@ export default function SettingsScreen({
     });
     addApiEndpointPairSnapshot({ baseUrl, apiKey, modelName });
     setApiPairHistory(listApiEndpointPairHistory());
-    if (visionBaseTrim && visionKeyTrim) {
-      setUseSeparateVisionApi(true);
-    }
     alert('配置已保存');
   };
 
@@ -2156,10 +1851,6 @@ export default function SettingsScreen({
     setBaseUrl(nextBase);
     setApiKey(nextKey);
     setModelName(nextModel);
-    setVisionModelName('');
-    setVisionBaseUrl('');
-    setVisionApiKey('');
-    setUseSeparateVisionApi(false);
     apiPresetsManager.switchToPreset(preset.id);
 
     onUpdateConfig({
@@ -2167,9 +1858,6 @@ export default function SettingsScreen({
       baseUrl: nextBase,
       apiKey: nextKey,
       modelName: nextModel,
-      visionModelName: '',
-      visionBaseUrl: '',
-      visionApiKey: '',
     });
     if (nextBase && nextKey && nextModel) {
       addApiEndpointPairSnapshot({ baseUrl: nextBase, apiKey: nextKey, modelName: nextModel });

@@ -37,11 +37,9 @@ export {
 } from './systemPrompt';
 
 export {
-  isVisionModelConfigured,
-  pickOpenAiCompatibleEndpoint,
   resolveOpenAiCompatibleCompletionRouting,
   resolveVisionImageChatEndpoint,
   type OpenAiCompatibleCompletionRouting,
 } from './completionRouting';
 
-export { hasDedicatedVisionApiLine, resolveTextChatModelAvoidingVisionOnlyModelClash } from '../../utils/textChatModelGuard';
+export { resolveTextChatModelAvoidingVisionOnlyModelClash } from '../../utils/textChatModelGuard';

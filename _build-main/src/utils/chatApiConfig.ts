@@ -2,8 +2,7 @@ import type { ApiConfig, Conversation } from '../types';
 import { resolveTextChatModelAvoidingVisionOnlyModelClash } from './textChatModelGuard';
 
 /**
- * 私聊：优先角色「单独配置模型」，否则全局。
- * 视觉相关字段始终使用全局 apiConfig，不在此覆盖。
+ * 私聊：优先角色「单独配置模型」，否则全局（附图与文字共用该模型）。
  */
 export function resolvePrivateChatApiConfig(apiConfig: ApiConfig, conversation: Conversation): ApiConfig {
   const o = conversation.characterSettings?.chatModelOverride?.trim();

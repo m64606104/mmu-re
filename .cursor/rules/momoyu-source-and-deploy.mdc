@@ -1,0 +1,22 @@
+---
+description: Single app root _build-main; agent owns code changes and Pages deploy
+alwaysApply: true
+---
+
+# Momoyu 工程约定
+
+## 源码与构建
+
+- 应用只在 **`_build-main/`**（`src`、`package.json`、`vite`、`public`）。不要在仓库根再建一套前端。
+- 根目录 `npm run dev|build|preview|deploy` 会进到 `_build-main` 执行；依赖：`npm run install:app` 或在 `_build-main` 里 `npm install`。
+
+## API（聊天）
+
+- **一套 URL + Key + 模型**：文字和带图聊天都用它；角色/群单独模型时，附图也走那个模型。
+- **不要**再加单独的「视觉模型 / 识图接口」字段或 UI。
+- 私聊「真实配图」文生图仍是 **`privateAiImageGeneration`**，和聊天 completions 分开。
+
+## 助手职责
+
+- 改代码在 **`_build-main`**；改完可跑 **`npm run build`** 确认。
+- 发 **GitHub Pages**：构建通过后仓库根 **`npm run deploy`**（需网络、能 push `origin`，本机执行更稳）。

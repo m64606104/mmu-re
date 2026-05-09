@@ -37,7 +37,7 @@ export function appendGroupImageContextHint(systemPrompt: string): string {
   return systemPrompt + GROUP_IMAGE_CONTEXT_HINT;
 }
 
-/** 未配置视觉模型时，塞进 user text，避免后端收到 image_url 报错 */
+/** 预留：历史上用于未配置视觉模型时的降级提示（当前已统一主模型识图，调用处已移除） */
 export function noVisionModelConfiguredHint(): string {
-  return '【系统提示】当前未配置视觉模型，无法把图片发给模型识别。请仅基于下列文字说明回复，并提醒用户到「设置 → API」填写视觉模型 ID。';
+  return '【系统提示】请仅基于下列文字说明回复。';
 }

@@ -87,6 +87,41 @@ function safeLoadFromLocalStorage<T>(key: string, fallback: T): T {
   }
 }
 
+const API_CONFIG_FALLBACK: ApiConfig = {
+  baseUrl: '',
+  apiKey: '',
+  modelName: '',
+  privateAiImageGeneration: {
+    enabled: false,
+    baseUrl: '',
+    apiKey: '',
+    model: '',
+    dailyMaxPerConversation: 8,
+    size: '1024x1024',
+  },
+};
+
+/** 旧版「独立视觉」字段，不再使用；读写 localStorage 时都去掉，避免残留 */
+function scrubLegacyVisionApiConfigFields(obj: Record<string, unknown>): void {
+  delete obj.visionModelName;
+  delete obj.visionBaseUrl;
+  delete obj.visionApiKey;
+}
+
+function loadApiConfigFromStorage(): ApiConfig {
+  const saved = localStorage.getItem('apiConfig');
+  if (!saved) return API_CONFIG_FALLBACK;
+  try {
+    const parsed = JSON.parse(saved) as Record<string, unknown>;
+    if (!parsed || typeof parsed !== 'object') return API_CONFIG_FALLBACK;
+    scrubLegacyVisionApiConfigFields(parsed);
+    return parsed as unknown as ApiConfig;
+  } catch (error) {
+    console.warn('Failed to parse apiConfig, using fallback.', error);
+    return API_CONFIG_FALLBACK;
+  }
+}
+
 function isScreenValue(value: string): value is Screen {
   return SCREEN_VALUES.has(value as Screen);
 }
@@ -153,24 +188,7 @@ function App() {
   const [currentScreen, setCurrentScreen] = useState<Screen>('home');
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [currentConversationId, setCurrentConversationId] = useState<string | null>(null);
-  const [apiConfig, setApiConfig] = useState<ApiConfig>(() => {
-    return safeLoadFromLocalStorage('apiConfig', {
-      baseUrl: '',
-      apiKey: '',
-      modelName: '',
-      visionModelName: '',
-      visionBaseUrl: '',
-      visionApiKey: '',
-      privateAiImageGeneration: {
-        enabled: false,
-        baseUrl: '',
-        apiKey: '',
-        model: '',
-        dailyMaxPerConversation: 8,
-        size: '1024x1024',
-      },
-    });
-  });
+  const [apiConfig, setApiConfig] = useState<ApiConfig>(() => loadApiConfigFromStorage());
   const [userProfile, setUserProfile] = useState<UserProfile>(() => {
     return safeLoadFromLocalStorage('userProfile', { username: '123', bio: '分享生活，记录美好', status: '在线' });
   });
@@ -629,7 +647,9 @@ function App() {
   }, [conversations, apiConfig]);
 
   useEffect(() => {
-    localStorage.setItem('apiConfig', JSON.stringify(apiConfig));
+    const payload = { ...apiConfig } as Record<string, unknown>;
+    scrubLegacyVisionApiConfigFields(payload);
+    localStorage.setItem('apiConfig', JSON.stringify(payload));
   }, [apiConfig]);
 
   useEffect(() => {
@@ -662,18 +682,11 @@ function App() {
     return () => clearTimeout(timeoutId);
   }, [moments]);
 
-  // 🤖 头像视觉：仅在「缺解析或与当前头像 URL 不一致」时补跑；与设置里视觉线路一致；失败退避 + 全局限流
+  // 🤖 头像视觉：仅在「缺解析或与当前头像 URL 不一致」时补跑；与主模型 + 主接口一致；失败退避 + 全局限流
   useEffect(() => {
     if (!apiConfig.baseUrl || !apiConfig.apiKey || !apiConfig.modelName) return;
 
-    const fp = [
-      apiConfig.baseUrl,
-      apiConfig.apiKey,
-      apiConfig.modelName,
-      apiConfig.visionModelName || '',
-      apiConfig.visionBaseUrl || '',
-      apiConfig.visionApiKey || '',
-    ].join('\u0001');
+    const fp = [apiConfig.baseUrl, apiConfig.apiKey, apiConfig.modelName].join('\u0001');
     if (fp !== avatarVisionApiFingerprintRef.current) {
       avatarVisionApiFingerprintRef.current = fp;
       avatarVisionFailUntilRef.current.clear();

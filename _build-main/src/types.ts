@@ -21,11 +21,6 @@ export interface ApiConfig {
   baseUrl: string;
   apiKey: string;
   modelName: string;
-  // 可选：视觉（图片）模型；仅在配置后才允许发送 image_url 多模态请求
-  visionModelName?: string;
-  // 可选：视觉线路（与主聊天可不同网关/不同 Key）；保存时见设置页，勿在未勾选时清空已填 URL/Key
-  visionBaseUrl?: string;
-  visionApiKey?: string;
   /** 私聊真实配图（OpenAI 兼容 /v1/images/generations） */
   privateAiImageGeneration?: PrivateAiImageGenerationConfig;
   // 语音转文字配置
@@ -321,7 +316,7 @@ export interface CharacterSettings {
   disableWorldbook?: boolean; // 是否禁用世界书（默认false）
   // 📮 笔友来源标记
   penPalSourceLetterId?: string; // 如果是从信箱笔友添加的，记录来源信件ID
-  /** 单独配置对话模型（非空则替代全局「模型名称」；视觉模型仍用全局） */
+  /** 单独配置对话模型（非空则替代全局「模型名称」；附图也走该模型） */
   chatModelOverride?: string;
 }
 
