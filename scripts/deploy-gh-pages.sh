@@ -5,8 +5,9 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 
-if [[ ! -d "$ROOT/dist" ]]; then
-  echo "dist/ missing. Run: npm run build" >&2
+DIST="$ROOT/_build-main/dist"
+if [[ ! -d "$DIST" ]]; then
+  echo "_build-main/dist missing. Run: npm run build" >&2
   exit 1
 fi
 
@@ -16,7 +17,7 @@ if [[ ! -f "$WT/.git" ]]; then
   git worktree add -f "$WT" origin/gh-pages
 fi
 
-rsync -a --filter='protect .git' --delete "$ROOT/dist/" "$WT/"
+rsync -a --filter='protect .git' --delete "$DIST/" "$WT/"
 cd "$WT"
 git add -A
 if git diff --staged --quiet; then
