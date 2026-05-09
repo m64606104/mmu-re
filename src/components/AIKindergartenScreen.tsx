@@ -22,6 +22,7 @@ import { WordCard } from '../utils/wordCardLibrary';
 import { TopicCard, getRandomTopics, getRecommendedTopicDifficulty } from '../utils/topicCardLibrary';
 import { generateRoundCards, generateDailyCards, getNextRound, markWordSelected, updateLastRound, resetDailyPool, DailyCardPool } from '../utils/smartCardGenerator';
 import { getMaxChildren, canCreateNewChild, shouldShowSwitchButton, UpgradeMessages } from '../config/kindergartenConfig';
+import { buildApiUrl } from '../utils/apiHelper';
 
 interface AIKindergartenScreenProps {
   onBack: () => void;
@@ -373,7 +374,7 @@ export default function AIKindergartenScreen({ onBack, onOpenChat, apiConfig }: 
     setIsGenerating(true);
 
     try {
-      const response = await fetch(`${apiConfig.baseUrl}/v1/chat/completions`, {
+      const response = await fetch(buildApiUrl(apiConfig), {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

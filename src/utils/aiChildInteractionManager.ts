@@ -6,6 +6,7 @@
 import { Conversation, ApiConfig } from '../types';
 import { teachWord } from './aiKindergartenManager';
 import { smartLoad, smartSave } from './storage';
+import { buildApiUrl } from './apiHelper';
 
 // AI互动消息
 export interface InteractionMessage {
@@ -77,7 +78,7 @@ export async function generateTeachingConversation(
 
   try {
     // 调用API
-    const response = await fetch(`${apiConfig.baseUrl}/v1/chat/completions`, {
+    const response = await fetch(buildApiUrl(apiConfig), {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -152,7 +153,7 @@ ${topic ? `对话主题：${topic}` : '自由聊天'}
 现在开始生成对话：`;
 
   try {
-    const response = await fetch(`${apiConfig.baseUrl}/v1/chat/completions`, {
+    const response = await fetch(buildApiUrl(apiConfig), {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',

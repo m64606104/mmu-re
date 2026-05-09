@@ -4,6 +4,7 @@
  */
 
 import { ApiConfig } from '../types';
+import { buildApiUrl } from './apiHelper';
 
 export interface NewsArticle {
   id: string;
@@ -100,7 +101,7 @@ async function generateNewsWithAI(
 现在开始生成${count}条${category}新闻：`;
 
   try {
-    const response = await fetch(`${apiConfig.baseUrl}/v1/chat/completions`, {
+    const response = await fetch(buildApiUrl(apiConfig), {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -185,7 +186,7 @@ async function generateArticlesWithAI(
 现在开始生成${count}篇公众号文章：`;
 
   try {
-    const response = await fetch(`${apiConfig.baseUrl}/v1/chat/completions`, {
+    const response = await fetch(buildApiUrl(apiConfig), {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',

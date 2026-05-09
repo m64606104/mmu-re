@@ -1,12 +1,33 @@
+/** 私聊：AI 调用文生图接口发送真实配图（与 [IMG:] 纯描述气泡区分，使用 [生图:] 标记） */
+export interface PrivateAiImageGenerationConfig {
+  /** 总开关；关闭时模型不应走生图协议，且 [生图:] 会从正文剥除 */
+  enabled: boolean;
+  /** 留空则复用主接口 Base URL */
+  baseUrl?: string;
+  /** 留空则复用主接口 API Key */
+  apiKey?: string;
+  /** 生图模型 ID（如 dall-e-3） */
+  model?: string;
+  /**
+   * 每个私聊会话「自然日」内最多成功生成的张数（用户点接受并成功落图后计数）。
+   * 设为 0 表示不限制。
+   */
+  dailyMaxPerConversation: number;
+  /** 如 1024x1024；依网关支持 */
+  size?: string;
+}
+
 export interface ApiConfig {
   baseUrl: string;
   apiKey: string;
   modelName: string;
   // 可选：视觉（图片）模型；仅在配置后才允许发送 image_url 多模态请求
   visionModelName?: string;
-  // 可选：视觉接口单独配置（未填写时默认复用 baseUrl/apiKey）
+  // 可选：视觉线路（与主聊天可不同网关/不同 Key）；保存时见设置页，勿在未勾选时清空已填 URL/Key
   visionBaseUrl?: string;
   visionApiKey?: string;
+  /** 私聊真实配图（OpenAI 兼容 /v1/images/generations） */
+  privateAiImageGeneration?: PrivateAiImageGenerationConfig;
   // 语音转文字配置
   speechToText?: {
     enabled: boolean; // 是否启用语音转文字
@@ -232,9 +253,9 @@ export interface CharacterSettings {
   languageStyle: string;
   languageExample: string;
   memoryEvents: string;
-  // AI主动发消息配置
+  // AI主动发消息配置（新建/预设默认关闭 enabled；睡眠模拟 sleepSimulationEnabled 默认视为开启，见 pendingReply）
   proactiveMessaging?: {
-    enabled: boolean; // 是否启用
+    enabled: boolean; // 是否启用主动发消息（默认 false，用户手动打开）
     minInterval: number; // 最小间隔（分钟）
     maxInterval: number; // 最大间隔（分钟）
     activeHourStart: number; // 活跃时段开始（小时，0-23）
@@ -243,6 +264,8 @@ export interface CharacterSettings {
     autoIntervalByAI?: boolean; // 是否由AI自动控制频率
     relationAware?: boolean; // 是否启用关系阶段感知频控
     wakeSensitivityMode?: 'auto' | 'light' | 'normal' | 'deep'; // 睡眠叫醒阈值策略
+    /** 是否与私聊生活轨迹联动「睡眠中延迟回复」；与主动发消息开关独立；缺省视为开启 */
+    sleepSimulationEnabled?: boolean;
   };
   // 🧠 记忆系统配置
   memoryConfig?: {
@@ -419,7 +442,7 @@ export interface Conversation {
    */
   groupComposerQuietSeconds?: number;
   /**
-   * 群聊自动续聊（默认关闭）。开启后引擎可在无用户发言时自动衔接下一轮；**尚未接线完整逻辑**，仅预留开关与策略常量。
+   * 群聊「自动」衔接（默认关闭）。开启后引擎可在无用户发言时尝试自动接话；**尚未接线完整逻辑**，仅预留开关与策略常量。
    * 上线后须配合 GROUP_AUTO_CHAT_POLICY 做节流，避免挂机刷接口。
    */
   groupAutoChatEnabled?: boolean;
@@ -451,6 +474,23 @@ export const GROUP_AUTO_CHAT_POLICY = {
   maxAutoRoundsPerHour: 12,
 } as const;
 
+/**
+ * 身份卡：可与指定私聊角色关联；关联后该会话内 AI 优先采用此卡信息（缺省字段回退到通用个人资料）。
+ */
+export interface UserIdentityCard {
+  id: string;
+  /** AI 称呼用户用的名字（类似本名） */
+  nickname?: string;
+  /** 网名（对外称呼语境） */
+  onlineName?: string;
+  gender?: string;
+  age?: string;
+  /** 身份信息（自由描述） */
+  identityInfo?: string;
+  /** 关联的私聊会话 ID（每个会话同一时间只属于一张身份卡） */
+  linkedConversationIds: string[];
+}
+
 export interface UserProfile {
   avatar?: string;
   username: string;
@@ -460,11 +500,14 @@ export interface UserProfile {
   status?: string; // 在线状态
   // 个人资料（仅供AI参考，不在普通模式显示）
   personalInfo?: {
-    name?: string; // 真实姓名/昵称
+    name?: string; // 默认称呼（未绑定身份卡或字段留空时使用）
+    onlineName?: string; // 默认网名
     gender?: string; // 性别
     age?: string; // 年龄
-    background?: string; // 身份背景
+    background?: string; // 身份背景 / 通用身份信息
   };
+  /** 额外身份卡（可选）。未关联或非私聊时使用 personalInfo。 */
+  identityCards?: UserIdentityCard[];
 }
 
 export interface MomentPost {

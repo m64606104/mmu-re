@@ -36,7 +36,15 @@ import ChatSearchModal from './ChatSearchModal';
 import { SmartHTMLGenerator } from '../utils/smartHTMLGenerator';
 import { SavedDocument } from '../utils/documentLibrary';
 import { sendMoney, receiveMoney, getBalance, aiPayForUser, refundGift } from '../utils/wallet';
-import { backgroundGenerationService, type GenerationTask } from '../domains/generation';
+import {
+  backgroundGenerationService,
+  type GenerationTask,
+  dispatchGroupChatRound,
+  getLiveConversations,
+  runDetachedGroupChatRound,
+  runGroupMemorySummaryIfDue,
+  setGroupChatRoundScreenHandler,
+} from '../domains/generation';
 import {
   schedulePendingReply,
   onTypingChange,
@@ -45,7 +53,13 @@ import {
   setPendingReplyComposerGate,
   bumpPendingReplyScheduleEpoch,
 } from '../domains/chat';
-import { resolvePrivateChatApiConfig, resolveGroupSummaryApiConfig } from '../utils/chatApiConfig';
+import PrivateAiImageConsentModal from './PrivateAiImageConsentModal';
+import {
+  setPrivateAiImageConsentHandler,
+  type PrivateImageConsentPayload,
+} from '../utils/privateImageConsentBridge';
+import { resolvePrivateChatApiConfig } from '../utils/chatApiConfig';
+import { buildApiUrl } from '../utils/apiHelper';
 import { handleAIGroupRedPacketClaiming } from '../utils/aiGroupRedPacketDecision';
 import { processExpiredRedPacketRefund } from '../utils/groupRedPacket';
 import { calculateDeliveryStatus, formatEstimatedTime, getActiveStageIndex, getRiderInfo } from '../utils/orderDeliverySimulator';
@@ -62,17 +76,18 @@ import MessageSelectionToolbar from './MessageSelectionToolbar';
 import ForwardTargetSelector from './ForwardTargetSelector';
 import { MergedForwardViewer } from './MergedForwardCard';
 import { createSingleForward, createMergedForward, getMessagePreview } from '../utils/messageForward';
-import { 
-  formatMessageForAI, 
+import {
+  formatMessageForAI,
   prepareAssistantSegments,
   orchestrateAssistantSegment,
   validateAssistantOutput,
   buildProtocolRetryInstruction,
   createCommitUserMessageHandlers,
-  commitEditedMessage
+  commitEditedMessage,
+  normalizeLooseAssistantMediaBrackets,
+  materializeAssistantOutboundMessages,
 } from '../domains/chat';
 import { buildUserMessageFromInput, commitUserMessage } from '../domains/chat';
-import { buildMediaChatRequest } from '../domains/chat';
 // 子聊天相关导入
 import ChatExtractPreview from './ChatExtractPreview';
 import {
@@ -91,12 +106,6 @@ import {
   updateSummaryCounter,
   getMemoryBank,
   buildDynamicProfileContext,
-  shouldTriggerGroupMemorySummary,
-  updateGroupSummaryCounter,
-  buildGroupMemorySummaryPrompt,
-  getGroupMemories,
-  addGroupMemory,
-  enqueueMemoryEngineCycle
 } from '../utils/memorySystem';
 // import { detectMemes } from '../utils/memeSystem'; // 已删除热梗系统
 import { messagePerceptionService } from '../utils/messagePerceptionService';
@@ -117,8 +126,11 @@ import { buildStickerPrompt } from '../utils/stickerPrompt';
 import UserStickerPicker from './UserStickerPicker';
 import { StickerItem } from '../types/sticker';
 
-import { showMessageNotification } from './MessageNotification';
-import { MessageActionMenu } from './MessageActionMenu';
+import { MessageActionsSurface } from './MessageActionsSurface';
+import {
+  buildMessageActionItems,
+  type MessageActionId,
+} from '../domains/chat/messageActionsRegistry';
 import { useToast } from './Toast';
 import { useMessageNotification } from '../hooks/useMessageNotification';
 import { buildAvatarIdentityPrompt } from '../utils/avatarVision';
@@ -130,6 +142,81 @@ import {
   isContactAiInvitableToGroup,
 } from '../utils/characterIdentity';
 // import { transcribeAudio, isValidSpeechConfig } from '../utils/speechToText';
+
+/** AI 角色侧发言（数据里 role: 'assistant'，即对话里的 AI）经 expandAssistantInlineMediaForRender 拆条展示时，DOM 行 id 为 `${base}_text_n` / `${base}_media_n`，会话数组里仅存 base id */
+function canonicalMessageIdFromRenderRowId(rowId: string): string {
+  const textMatch = rowId.match(/^(.*)_text_\d+$/);
+  if (textMatch) return textMatch[1];
+  const mediaMatch = rowId.match(/^(.*)_media_\d+$/);
+  if (mediaMatch) return mediaMatch[1];
+  return rowId;
+}
+
+/** 引用条：根据 replyTo.id 定位原消息（兼容拆条后的 _text_n / _media_n id） */
+function findQuotedOriginalMessage(c: Conversation, replyToId: string): Message | undefined {
+  const direct = c.messages.find((m) => m.id === replyToId);
+  if (direct) return direct;
+  const baseId = canonicalMessageIdFromRenderRowId(replyToId);
+  if (baseId !== replyToId) {
+    return c.messages.find((m) => m.id === baseId);
+  }
+  return undefined;
+}
+
+function formatQuotedSendTime(ts: number | undefined): string | null {
+  if (ts == null || Number.isNaN(Number(ts))) return null;
+  return new Date(ts).toLocaleString('zh-CN', {
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+}
+
+/** 气泡内引用条：群聊里 assistant 显示具体 AI，而非群名 */
+function resolveBubbleQuotedAuthorLabel(
+  replyTo: NonNullable<Message['replyTo']>,
+  conversation: Conversation,
+  conversations: Conversation[],
+): string {
+  if (replyTo.role === 'user') return '我';
+  if (conversation.type === 'private') return conversation.name;
+  const orig = findQuotedOriginalMessage(conversation, replyTo.id);
+  const sid = orig ? (orig as Message & { senderId?: string }).senderId : undefined;
+  if (sid) {
+    const mem = conversations.find((x) => x.id === sid);
+    if (mem?.characterSettings) {
+      const real = getCharacterRealName(mem.characterSettings) || mem.name;
+      const handle = getCharacterOnlineHandle(mem.characterSettings, mem.name);
+      if (handle && handle !== real) return `${real}（@${handle}）`;
+      return real || mem.name || '群友';
+    }
+    return mem?.name || '群友';
+  }
+  return '群友';
+}
+
+/** 输入框上方「引用」预览：quotedMessage 为完整消息，群聊可读 senderId */
+function resolveComposerQuotedAuthorLabel(
+  quoted: Message,
+  conversation: Conversation,
+  conversations: Conversation[],
+): string {
+  if (quoted.role === 'user') return '我';
+  if (conversation.type === 'private') return conversation.name;
+  const sid = (quoted as Message & { senderId?: string }).senderId;
+  if (sid) {
+    const mem = conversations.find((x) => x.id === sid);
+    if (mem?.characterSettings) {
+      const real = getCharacterRealName(mem.characterSettings) || mem.name;
+      const handle = getCharacterOnlineHandle(mem.characterSettings, mem.name);
+      if (handle && handle !== real) return `${real}（@${handle}）`;
+      return real || mem.name || '群友';
+    }
+    return mem?.name || '群友';
+  }
+  return conversation.type === 'group' ? '群友' : conversation.name;
+}
 
 interface ChatScreenProps {
   conversation: Conversation;
@@ -181,12 +268,24 @@ export default function ChatScreen({
   const [currentInput, setCurrentInput] = useState('');
   const [isGenerating, setIsGenerating] = useState(false);
   const [pendingUserMessages, setPendingUserMessages] = useState<string[]>([]); // AI回复时用户发送的消息
+  const pendingUserMessagesRef = useRef(pendingUserMessages);
+  pendingUserMessagesRef.current = pendingUserMessages;
   const [showToolbar, setShowToolbar] = useState(false);
   const [showAdvancedToolbarActions, setShowAdvancedToolbarActions] = useState(false);
   const [showPrivateExtraActions, setShowPrivateExtraActions] = useState(false);
   const [showGroupExtraActions, setShowGroupExtraActions] = useState(false);
-  /** 本轮从点「生成」到首条 AI 气泡出现：显示底部「消息收取中」 */
+  /** 本轮从点「生成」到**首位**成员首条气泡前：仅一次「消息收取中」，用于分摊首段 API 等待感 */
   const [groupRoundReceivingHint, setGroupRoundReceivingHint] = useState(false);
+  /** 仅首位成员的 onAIStart：收取中 → 短延迟 → 输入中；其后成员直接输入中 */
+  const groupGenEpochRef = useRef(0);
+  const groupFirstAiReceiveHandoffPendingRef = useRef(false);
+  const groupReceiveToTypingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const clearGroupReceiveToTypingTimer = useCallback(() => {
+    if (groupReceiveToTypingTimerRef.current) {
+      clearTimeout(groupReceiveToTypingTimerRef.current);
+      groupReceiveToTypingTimerRef.current = null;
+    }
+  }, []);
   const [showMoneyTransferModal, setShowMoneyTransferModal] = useState(false);
   const [showSendDocumentModal, setShowSendDocumentModal] = useState(false);
   const [autoPickDocumentFile, setAutoPickDocumentFile] = useState(false);
@@ -233,9 +332,19 @@ export default function ChatScreen({
   }, [conversation.type, showGroupExtraActions]);
 
   useEffect(() => {
+    groupGenEpochRef.current += 1;
+    groupFirstAiReceiveHandoffPendingRef.current = false;
+    clearGroupReceiveToTypingTimer();
     setGroupRoundReceivingHint(false);
     setShowGroupExtraActions(false);
-  }, [conversation.id]);
+  }, [conversation.id, clearGroupReceiveToTypingTimer]);
+
+  useEffect(
+    () => () => {
+      clearGroupReceiveToTypingTimer();
+    },
+    [clearGroupReceiveToTypingTimer]
+  );
 
   useEffect(() => {
     if (!showAdvancedToolbarActions) return;
@@ -312,6 +421,26 @@ export default function ChatScreen({
   /** 供 initPendingReplyService 调用：延迟回复链路里模型选择 [SKIP] 时的情境提示 */
   const handleAINoReplyRef = useRef<(id: string) => Promise<void>>(async () => {});
 
+  const privateImageConsentResolverRef = useRef<((value: boolean | null) => void) | null>(null);
+  const [privateImageConsentPayload, setPrivateImageConsentPayload] =
+    useState<PrivateImageConsentPayload | null>(null);
+
+  useEffect(() => {
+    setPrivateAiImageConsentHandler(async (payload) => {
+      return await new Promise<boolean | null>((resolve) => {
+        privateImageConsentResolverRef.current = resolve;
+        setPrivateImageConsentPayload(payload);
+      });
+    });
+    return () => {
+      const pending = privateImageConsentResolverRef.current;
+      privateImageConsentResolverRef.current = null;
+      setPrivateImageConsentPayload(null);
+      setPrivateAiImageConsentHandler(null);
+      pending?.(null);
+    };
+  }, []);
+
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const advancedToolbarPanelRef = useRef<HTMLDivElement | null>(null);
@@ -342,8 +471,9 @@ export default function ChatScreen({
   
   // 消息操作相关状态
   const [selectedMessageId, setSelectedMessageId] = useState<string | null>(null);
-  const [menuPosition, setMenuPosition] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
   const [quotedMessage, setQuotedMessage] = useState<Message | null>(null);
+  /** 与延迟回复门闩同步：选了引用即视为「仍在回复语境中」，避免空草稿时误判可开始静音倒计时 */
+  const quotedMessageRef = useRef<Message | null>(null);
   const [messageBeingEdited, setMessageBeingEdited] = useState<Message | null>(null);
   const [isDeleting, setIsDeleting] = useState(false); // 标记是否正在删除消息
   const [isEditing, setIsEditing] = useState(false); // 标记是否正在编辑消息
@@ -385,20 +515,31 @@ export default function ChatScreen({
   useEffect(() => {
     initPendingReplyService(
       onUpdateConversation,
-      (id: string) => conversations.find(c => c.id === id),
+      (id: string) => getLiveConversations().find((c) => c.id === id),
       () => apiConfig,
       () => currentUserProfile || { username: '我', bio: '', personalInfo: {} },
       {
         onGroupChatRound: (conversationId) => {
-          if (conversationId !== conversation.id) return;
-          window.setTimeout(() => void handleGroupChatGenerateRef.current?.(), 80);
+          dispatchGroupChatRound(conversationId);
         },
         onPrivateAiSkippedReply: (conversationId) => {
           void handleAINoReplyRef.current(conversationId);
         },
       }
     );
-  }, [onUpdateConversation, conversations, apiConfig, currentUserProfile, conversation.id]);
+  }, [onUpdateConversation, apiConfig, currentUserProfile, conversation.id]);
+
+  /** 当前屏群聊走完整 UI 生成；其余会话 id 走脱离 UI 的群轮（切页/多会话并行） */
+  useEffect(() => {
+    setGroupChatRoundScreenHandler((cid) => {
+      if (conversation.type === 'group' && cid === conversation.id) {
+        void handleGroupChatGenerateRef.current?.();
+        return;
+      }
+      void runDetachedGroupChatRound(cid);
+    });
+    return () => setGroupChatRoundScreenHandler(null);
+  }, [conversation.id, conversation.type]);
 
   // 🚀 订阅延后回复服务的 typing 状态更新
   useEffect(() => {
@@ -474,7 +615,7 @@ ${recentMessages}
 现在请生成提示：`;
 
       const hintCfg = resolvePrivateChatApiConfig(apiConfig, conversationData);
-      const response = await fetch(`${hintCfg.baseUrl}/v1/chat/completions`, {
+      const response = await fetch(buildApiUrl(hintCfg), {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -583,8 +724,15 @@ ${recentMessages}
   const [shouldScrollToBottom, setShouldScrollToBottom] = useState(true);
   const [isUserScrolling, setIsUserScrolling] = useState(false);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
+  /** 滚动处理内读最新窗口/条数，避免因 state 变化重绑 listener 而 clear 掉 load-more 的 timeout */
+  const messageWindowRef = useRef(messageWindow);
+  messageWindowRef.current = messageWindow;
+  const conversationMessagesLengthRef = useRef(conversation.messages.length);
+  conversationMessagesLengthRef.current = conversation.messages.length;
+  const isLoadingMoreRef = useRef(false);
   const lastMessageCountRef = useRef(0);
-  const lastMemoryEngineCountRef = useRef(0);
+  /** 检测会话切换（仅消息条数变化无法区分「同条数不同会话」） */
+  const lastConversationIdRef = useRef<string | null>(null);
   
   // 🚚 配送状态刷新触发器（每30秒更新一次）
   const [deliveryRefreshTrigger, setDeliveryRefreshTrigger] = useState(0);
@@ -613,109 +761,137 @@ ${recentMessages}
   const scrollTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const loadMoreTopTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const loadMoreBottomTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  
-  // 滚动加载更多消息
-  const handleScroll = useCallback(() => {
-    const container = messagesContainerRef.current;
-    if (!container || isLoadingMore) return;
-    
-    // 标记用户正在滚动
-    setIsUserScrolling(true);
-    
-    // 检查是否应该自动滚动到底部（用户在底部附近）
-    setShouldScrollToBottom(isAtBottom());
-    
-    // 清除之前的定时器
-    if (scrollTimeoutRef.current) {
-      clearTimeout(scrollTimeoutRef.current);
-    }
-    
-    // 延迟重置滚动状态，让"返回底部"按钮有时间显示
-    scrollTimeoutRef.current = setTimeout(() => {
-      setIsUserScrolling(false);
-    }, 2000); // 2秒后重置
-    
-    // 🔼 向上滚动：加载更早的消息
-    if (container.scrollTop < 100 && messageWindow.startIndex > 0) {
-      setIsLoadingMore(true);
-      if (loadMoreTopTimeoutRef.current) {
-        clearTimeout(loadMoreTopTimeoutRef.current);
-      }
-      
-      loadMoreTopTimeoutRef.current = setTimeout(() => {
-        const loadMore = 30;
-        const newStartIndex = Math.max(0, messageWindow.startIndex - loadMore);
-        const addedMessages = messageWindow.startIndex - newStartIndex;
-        const prevScrollHeight = container.scrollHeight;
-        
-        setMessageWindow(prev => ({
-          startIndex: newStartIndex,
-          size: prev.size + addedMessages
-        }));
-        setIsLoadingMore(false);
-        
-        // 保持滚动位置，避免跳动
-        requestAnimationFrame(() => {
-          if (container) {
-            const newScrollHeight = container.scrollHeight;
-            container.scrollTop = newScrollHeight - prevScrollHeight;
-          }
-        });
-        loadMoreTopTimeoutRef.current = null;
-      }, 300);
-    }
-    
-    // 🔽 向下滚动：加载更新的消息（如果不在末尾）
-    const maxScrollTop = container.scrollHeight - container.clientHeight;
-    const isNearBottom = container.scrollTop > maxScrollTop - 100;
-    const windowEndIndex = messageWindow.startIndex + messageWindow.size;
-    
-    if (isNearBottom && windowEndIndex < conversation.messages.length) {
-      setIsLoadingMore(true);
-      if (loadMoreBottomTimeoutRef.current) {
-        clearTimeout(loadMoreBottomTimeoutRef.current);
-      }
-      
-      loadMoreBottomTimeoutRef.current = setTimeout(() => {
-        const loadMore = 30;
-        const maxSize = conversation.messages.length - messageWindow.startIndex;
-        const newSize = Math.min(messageWindow.size + loadMore, maxSize);
-        
-        setMessageWindow(prev => ({
-          ...prev,
-          size: newSize
-        }));
-        setIsLoadingMore(false);
-        loadMoreBottomTimeoutRef.current = null;
-      }, 300);
-    }
-  }, [messageWindow, conversation.messages.length, isLoadingMore, isAtBottom]);
-  
-  // 监听滚动事件
+
+  useEffect(() => {
+    isLoadingMoreRef.current = isLoadingMore;
+  }, [isLoadingMore]);
+
+  // 滚动加载更多：监听器仅随会话切换重绑，避免 isLoadingMore/messageWindow 变化时卸载并 cancel 未执行的 load-more
   useEffect(() => {
     const container = messagesContainerRef.current;
-    if (container) {
-      container.addEventListener('scroll', handleScroll);
-      return () => {
-        container.removeEventListener('scroll', handleScroll);
-        // 清理滚动定时器
-        if (scrollTimeoutRef.current) {
-          clearTimeout(scrollTimeoutRef.current);
-        }
+    if (!container) return;
+
+    const onScroll = () => {
+      const c = messagesContainerRef.current;
+      if (!c || isLoadingMoreRef.current) return;
+
+      setIsUserScrolling(true);
+      setShouldScrollToBottom(isAtBottom());
+
+      if (scrollTimeoutRef.current) {
+        clearTimeout(scrollTimeoutRef.current);
+      }
+      scrollTimeoutRef.current = setTimeout(() => {
+        setIsUserScrolling(false);
+      }, 2000);
+
+      const mw = messageWindowRef.current;
+      const total = conversationMessagesLengthRef.current;
+
+      if (c.scrollTop < 100 && mw.startIndex > 0) {
         if (loadMoreTopTimeoutRef.current) {
           clearTimeout(loadMoreTopTimeoutRef.current);
         }
         if (loadMoreBottomTimeoutRef.current) {
           clearTimeout(loadMoreBottomTimeoutRef.current);
+          loadMoreBottomTimeoutRef.current = null;
         }
-      };
-    }
-  }, [handleScroll]);
+        const prevScrollHeight = c.scrollHeight;
+        isLoadingMoreRef.current = true;
+        setIsLoadingMore(true);
+        loadMoreTopTimeoutRef.current = setTimeout(() => {
+          loadMoreTopTimeoutRef.current = null;
+          setMessageWindow((prev) => {
+            const loadMore = 30;
+            const newStartIndex = Math.max(0, prev.startIndex - loadMore);
+            const addedMessages = prev.startIndex - newStartIndex;
+            if (addedMessages === 0) return prev;
+            return {
+              startIndex: newStartIndex,
+              size: prev.size + addedMessages,
+            };
+          });
+          isLoadingMoreRef.current = false;
+          setIsLoadingMore(false);
+          requestAnimationFrame(() => {
+            const el = messagesContainerRef.current;
+            if (el) {
+              el.scrollTop = el.scrollHeight - prevScrollHeight;
+            }
+          });
+        }, 300);
+        return;
+      }
+
+      const maxScrollTop = c.scrollHeight - c.clientHeight;
+      const isNearBottom = c.scrollTop > maxScrollTop - 100;
+      const windowEndIndex = mw.startIndex + mw.size;
+      if (isNearBottom && windowEndIndex < total) {
+        if (loadMoreBottomTimeoutRef.current) {
+          clearTimeout(loadMoreBottomTimeoutRef.current);
+        }
+        if (loadMoreTopTimeoutRef.current) {
+          clearTimeout(loadMoreTopTimeoutRef.current);
+          loadMoreTopTimeoutRef.current = null;
+        }
+        isLoadingMoreRef.current = true;
+        setIsLoadingMore(true);
+        loadMoreBottomTimeoutRef.current = setTimeout(() => {
+          loadMoreBottomTimeoutRef.current = null;
+          setMessageWindow((prev) => {
+            const loadMore = 30;
+            const maxSize = conversationMessagesLengthRef.current - prev.startIndex;
+            const newSize = Math.min(prev.size + loadMore, maxSize);
+            if (newSize === prev.size) return prev;
+            return { ...prev, size: newSize };
+          });
+          isLoadingMoreRef.current = false;
+          setIsLoadingMore(false);
+        }, 300);
+      }
+    };
+
+    container.addEventListener('scroll', onScroll, { passive: true });
+    return () => {
+      container.removeEventListener('scroll', onScroll);
+      if (scrollTimeoutRef.current) {
+        clearTimeout(scrollTimeoutRef.current);
+      }
+      if (loadMoreTopTimeoutRef.current) {
+        clearTimeout(loadMoreTopTimeoutRef.current);
+        loadMoreTopTimeoutRef.current = null;
+      }
+      if (loadMoreBottomTimeoutRef.current) {
+        clearTimeout(loadMoreBottomTimeoutRef.current);
+        loadMoreBottomTimeoutRef.current = null;
+      }
+      isLoadingMoreRef.current = false;
+    };
+  }, [conversation.id, isAtBottom]);
   
   // 处理新消息和状态重置
   useEffect(() => {
     const currentMessageCount = conversation.messages.length;
     const prevMessageCount = lastMessageCountRef.current;
+
+    const prevConvId = lastConversationIdRef.current;
+    lastConversationIdRef.current = conversation.id;
+    const switchedConversation = prevConvId !== null && prevConvId !== conversation.id;
+
+    if (switchedConversation) {
+      console.log('🔄 切换会话(id)，重置消息窗口与加载状态');
+      const initialSize = 50;
+      setMessageWindow({
+        startIndex: Math.max(0, currentMessageCount - initialSize),
+        size: Math.min(initialSize, currentMessageCount),
+      });
+      setShouldScrollToBottom(true);
+      setIsUserScrolling(false);
+      setIsLoadingMore(false);
+      lastMessageCountRef.current = currentMessageCount;
+      setTimeout(() => smartScrollToBottom(), 100);
+      return;
+    }
     
     // 1️⃣ 切换对话时：重置状态并滚动到底部
     if (prevMessageCount === 0 || currentMessageCount < prevMessageCount) {
@@ -734,20 +910,23 @@ ${recentMessages}
     else if (currentMessageCount > prevMessageCount) {
       console.log('📨 检测到新消息，智能处理滚动');
       
-      // 如果用户在底部附近，自动调整窗口显示新消息
-      if (shouldScrollToBottom) {
+      const last = conversation.messages[currentMessageCount - 1];
+      const userOutgoing =
+        last?.role === 'user' &&
+        !(last as Message & { groupAiOnlyTrigger?: boolean }).groupAiOnlyTrigger;
+
+      // 自己刚发出的气泡：即使此前不在底部，也应扩窗露出尾巴（避免「等到 AI 回复才一起出现」的错觉）
+      if (shouldScrollToBottom || userOutgoing) {
         setMessageWindow(prev => {
           const windowEndIndex = prev.startIndex + prev.size;
           const isShowingLatest = windowEndIndex >= prevMessageCount;
           
           if (isShowingLatest) {
-            // 扩展窗口以包含新消息
             return {
               startIndex: prev.startIndex,
               size: prev.size + (currentMessageCount - prevMessageCount)
             };
           } else {
-            // 保持窗口大小，但移动到最新位置
             return {
               startIndex: Math.max(0, currentMessageCount - prev.size),
               size: Math.min(prev.size, currentMessageCount)
@@ -756,26 +935,13 @@ ${recentMessages}
         });
         setTimeout(() => smartScrollToBottom(true), 100);
       }
-      // 如果用户在查看历史消息，不自动滚动，保持当前窗口
     }
     
     // 更新消息数量记录
     lastMessageCountRef.current = currentMessageCount;
   }, [conversation.messages.length, conversation.id, shouldScrollToBottom, smartScrollToBottom]);
 
-  // 切换对话时 React 会复用同一 ChatScreen 实例；必须重置水位线，否则会沿用上一会话的条数，
-  // 导致新会话「条数 <= ref」永远不触发记忆引擎（用户已超 50 条也看不到总结/画像）。
-  useEffect(() => {
-    lastMemoryEngineCountRef.current = 0;
-  }, [conversation.id]);
-
-  useEffect(() => {
-    if (conversation.type !== 'private') return;
-    if (!conversation.enabledFeatures?.includes('memory-system')) return;
-    if (conversation.messages.length <= lastMemoryEngineCountRef.current) return;
-    lastMemoryEngineCountRef.current = conversation.messages.length;
-    enqueueMemoryEngineCycle(conversation, effectivePrivateApiConfig);
-  }, [conversation, effectivePrivateApiConfig]);
+  /** 记忆引擎仅在 pendingReplyService（AI 回复完成后）排队，避免与用户消息各跑一次造成双倍并发 */
 
   const inputComposerFocusedRef = useRef(false);
   /** 中文等 IME 组字过程中，受控 value 往往尚未更新，须单独视为「占线」避免过早触发私聊回复 */
@@ -813,16 +979,21 @@ ${recentMessages}
   useEffect(() => {
     setPendingReplyComposerGate((convId) => {
       if (convId !== conversation.id) return false;
-      // 私聊 / 群聊：有草稿、或 IME 正在组字，均视为占线（组字时 React value 可能仍为空）
+      // 私聊 / 群聊：有草稿、IME 组字、或已选引用尚未发出，均视为占线（避免「只选了引用还没打字」就开始静音倒计时）
       return (
-        currentInputDraftRef.current.trim().length > 0 || inputComposerComposingRef.current
+        currentInputDraftRef.current.trim().length > 0 ||
+        inputComposerComposingRef.current ||
+        Boolean(quotedMessageRef.current)
       );
     });
     return () => setPendingReplyComposerGate(undefined);
   }, [conversation.id, conversation.type]);
 
   const handleGroupChatGenerateRef = useRef<(() => Promise<void>) | null>(null);
-  
+  /** 群聊异步生成期间始终读最新 messages，避免闭包过期导致合并错乱 / 双轮并行 */
+  const conversationRef = useRef(conversation);
+  conversationRef.current = conversation;
+
   // 初始滚动到底部，显示最新消息
   useEffect(() => {
     const container = messagesContainerRef.current;
@@ -942,7 +1113,7 @@ ${recentMessages}
     setSpeechRecognitionSupported(!!SpeechRecognition);
   }, []);
   
-  // 旧的消息操作状态已移除，使用新的实现（selectedMessageId, menuPosition等）
+  // 消息操作菜单：selectedMessageId + DOM 锚点由 MessageActionsSurface 内按 messageId 解析
   
   // 获取用户资料
   const getUserProfile = () => {
@@ -971,33 +1142,41 @@ ${recentMessages}
     container.scrollTop = container.scrollHeight;
   };
 
-  // 消息点击处理 - 显示胶囊菜单
-  const handleMessageClick = (messageId: string, event: React.MouseEvent) => {
-    const target = event.target as HTMLElement;
-    if (target.closest('.message-action-btn') || target.closest('audio') || target.closest('video')) {
-      return;
-    }
-    
-    // 获取点击位置，显示菜单
-    const rect = (event.currentTarget as HTMLElement).getBoundingClientRect();
-    const x = rect.left + rect.width / 2;
-    const y = rect.top;
-    
+  /** 打开气泡操作菜单（锚点由 MessageActionsSurface 通过 Floating UI 绑定到气泡 DOM） */
+  const openMessageActionMenu = useCallback((messageId: string) => {
     setSelectedMessageId(messageId);
-    setMenuPosition({ x, y });
+  }, []);
+
+  const shouldIgnoreMessageMenuTarget = (target: HTMLElement) =>
+    Boolean(
+      target.closest('.message-action-btn') ||
+        target.closest('audio') ||
+        target.closest('video') ||
+        target.closest('[data-chat-group-avatar]') ||
+        target.closest('a[href]') ||
+        target.closest('input') ||
+        target.closest('textarea') ||
+        target.closest('select')
+    );
+
+  // 消息点击处理 - 显示胶囊菜单（多选逻辑在行上单独分支，避免引用尚未定义的 toggle）
+  const handleMessageRowClick = (messageId: string, event: React.MouseEvent<HTMLElement>) => {
+    const target = event.target as HTMLElement;
+    if (shouldIgnoreMessageMenuTarget(target)) return;
+    openMessageActionMenu(messageId);
   };
 
-  // 关闭菜单
-  const handleCloseMenu = () => {
+  const handleCloseMenu = useCallback(() => {
     setSelectedMessageId(null);
-  };
+  }, []);
 
   // 删除消息
   const handleDeleteMessage = () => {
     if (!selectedMessageId) return;
-    
+    const canonicalId = canonicalMessageIdFromRenderRowId(selectedMessageId);
+
     setIsDeleting(true); // 标记正在删除
-    const updatedMessages = conversation.messages.filter(m => m.id !== selectedMessageId);
+    const updatedMessages = conversation.messages.filter(m => m.id !== canonicalId);
     onUpdateConversation(conversation.id, { messages: updatedMessages });
     bumpPendingReplyScheduleEpoch(conversation.id);
     setSelectedMessageId(null);
@@ -1009,8 +1188,9 @@ ${recentMessages}
   // 编辑消息（所有消息都可编辑）
   const handleEditMessage = () => {
     if (!selectedMessageId) return;
-    
-    const message = conversation.messages.find(m => m.id === selectedMessageId);
+    const canonicalId = canonicalMessageIdFromRenderRowId(selectedMessageId);
+
+    const message = conversation.messages.find(m => m.id === canonicalId);
     if (!message) return;
     
     setMessageBeingEdited(message);
@@ -1026,11 +1206,13 @@ ${recentMessages}
   // 引用消息
   const handleQuoteMessage = () => {
     if (!selectedMessageId) return;
-    
-    const message = conversation.messages.find(m => m.id === selectedMessageId);
+    const canonicalId = canonicalMessageIdFromRenderRowId(selectedMessageId);
+
+    const message = conversation.messages.find(m => m.id === canonicalId);
     if (!message) return;
     
     setQuotedMessage(message);
+    quotedMessageRef.current = message;
     setSelectedMessageId(null);
     
     // 聚焦输入框
@@ -1042,6 +1224,7 @@ ${recentMessages}
   // 取消引用
   const handleCancelQuote = () => {
     setQuotedMessage(null);
+    quotedMessageRef.current = null;
     inputRef.current?.focus();
   };
 
@@ -1058,16 +1241,15 @@ ${recentMessages}
   // 进入多选模式
   const handleEnterMultiSelect = () => {
     setIsMultiSelectMode(true);
-    setSelectedMessages([selectedMessageId!]); // 把当前选中的消息加入多选
+    setSelectedMessages([canonicalMessageIdFromRenderRowId(selectedMessageId!)]); // 会话内真实 id
     setSelectedMessageId(null);
   };
 
-  // 切换消息选中状态
+  // 切换消息选中状态（必须用会话内真实 id：拆条渲染行 id 为 base_text_n / base_media_n）
   const toggleMessageSelection = (messageId: string) => {
-    setSelectedMessages(prev => 
-      prev.includes(messageId)
-        ? prev.filter(id => id !== messageId)
-        : [...prev, messageId]
+    const canonical = canonicalMessageIdFromRenderRowId(messageId);
+    setSelectedMessages((prev) =>
+      prev.includes(canonical) ? prev.filter((id) => id !== canonical) : [...prev, canonical],
     );
   };
 
@@ -1224,13 +1406,57 @@ ${recentMessages}
   // 📤 从长按菜单转发单条消息
   const handleForwardSingleMessage = () => {
     if (!selectedMessageId) return;
-    
-    const message = conversation.messages.find(m => m.id === selectedMessageId);
+    const canonicalId = canonicalMessageIdFromRenderRowId(selectedMessageId);
+
+    const message = conversation.messages.find(m => m.id === canonicalId);
     if (!message) return;
     
     setForwardingMessages([message]);
     setShowForwardSelector(true);
     setSelectedMessageId(null);
+  };
+
+  const selectedMessageForMenu = useMemo(() => {
+    if (!selectedMessageId) return undefined;
+    const canonicalId = canonicalMessageIdFromRenderRowId(selectedMessageId);
+    return conversation.messages.find((m) => m.id === canonicalId);
+  }, [selectedMessageId, conversation.messages]);
+
+  const messageMenuItems = useMemo(
+    () =>
+      buildMessageActionItems(selectedMessageForMenu, {
+        showForward: Boolean(conversations && conversations.length > 0),
+      }),
+    [selectedMessageForMenu, conversations]
+  );
+
+  useEffect(() => {
+    if (!selectedMessageId) return;
+    if (messageMenuItems.length === 0) {
+      setSelectedMessageId(null);
+    }
+  }, [selectedMessageId, messageMenuItems.length]);
+
+  const handleMessageMenuAction = (id: MessageActionId) => {
+    switch (id) {
+      case 'quote':
+        handleQuoteMessage();
+        break;
+      case 'forward':
+        handleForwardSingleMessage();
+        break;
+      case 'edit':
+        handleEditMessage();
+        break;
+      case 'multiSelect':
+        handleEnterMultiSelect();
+        break;
+      case 'delete':
+        handleDeleteMessage();
+        break;
+      default:
+        break;
+    }
   };
 
   // 旧的消息操作函数已删除，使用新实现
@@ -1529,7 +1755,7 @@ ${buildAvatarIdentityPrompt(characterInfo)}
         })),
       ];
       
-      const response = await fetch(`${effectivePrivateApiConfig.baseUrl}/v1/chat/completions`, {
+      const response = await fetch(buildApiUrl(effectivePrivateApiConfig), {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -1638,6 +1864,7 @@ ${buildAvatarIdentityPrompt(characterInfo)}
     currentInputDraftRef.current = '';
     if (options?.clearQuotedMessage) {
       setQuotedMessage(null);
+      quotedMessageRef.current = null;
     }
     resetInputHeight();
     if (options?.focusInput) {
@@ -1671,7 +1898,7 @@ ${buildAvatarIdentityPrompt(characterInfo)}
       return [message];
     }
 
-    const source = message.content;
+    const source = normalizeLooseAssistantMediaBrackets(message.content);
     const mediaTokenRegex = /\[(图片|IMG|IMAGE|视频|VIDEO|语音|VOICE|表情包|STICKER)[:：]([^\]]+)\]/gi;
     const expandedMessages: Message[] = [];
     let lastIndex = 0;
@@ -1766,6 +1993,8 @@ ${buildAvatarIdentityPrompt(characterInfo)}
       onUpdateConversation,
       ...commitHandlers,
     });
+    // 发送后强制跟随底部：否则向上翻过历史时 messageWindow 可能裁掉尾巴，用户误以为要等 AI 才显示自己的气泡
+    setShouldScrollToBottom(true);
   }, [conversation, isGenerating, onUpdateConversation]);
 
   // 从首页 oop 条形输入框跳转过来时，自动把消息发送出去
@@ -1820,6 +2049,7 @@ ${buildAvatarIdentityPrompt(characterInfo)}
     const bufferSeconds =
       conversation.type === 'group' ? (msgToStore.groupAiOnlyTrigger ? 0 : 1) : 0;
     schedulePendingReply(conversation.id, bufferSeconds);
+    setShouldScrollToBottom(true);
   }, [conversation, isGenerating, onUpdateConversation]);
 
   const commitOutgoingUserMessagesBatch = useCallback((newMessages: Message[]) => {
@@ -1874,6 +2104,7 @@ ${buildAvatarIdentityPrompt(characterInfo)}
     const bufferSeconds =
       conversation.type === 'group' ? (allEmptyAiOnly ? 0 : 1) : 0;
     schedulePendingReply(conversation.id, bufferSeconds);
+    setShouldScrollToBottom(true);
   }, [conversation, isGenerating, onUpdateConversation]);
 
   // 从首页 oop 输入框携带“文字+附件草稿”跳转时，组合发送
@@ -3055,9 +3286,10 @@ ${buildAvatarIdentityPrompt(characterInfo)}
   // 处理消息回应 (Reaction)
   const handleReactMessage = (emoji: string) => {
     if (!selectedMessageId) return;
-    
+    const canonicalId = canonicalMessageIdFromRenderRowId(selectedMessageId);
+
     const updatedMessages = conversation.messages.map(msg => {
-      if (msg.id === selectedMessageId) {
+      if (msg.id === canonicalId) {
         const currentReactions = msg.reactions || [];
         // 检查是否已经有该用户的该表情
         const existingIndex = currentReactions.findIndex(r => r.from === 'user' && r.type === emoji);
@@ -3155,20 +3387,30 @@ ${buildAvatarIdentityPrompt(characterInfo)}
           console.warn('AI私聊回复为空');
           return;
         }
-        
-        // 创建私聊消息
-        const privateMessage: Message = {
-          id: Date.now().toString() + '_private_' + Math.random(),
-          role: 'assistant',
-          content: aiReply.trim(),
-          timestamp: Date.now(),
-        };
-        
-        // 更新私聊会话
-        const updatedPrivateMessages = [...privateConversation.messages, privateMessage];
+
+        const characterProfileText = [
+          privateConversation.characterSettings?.personality,
+          privateConversation.characterSettings?.languageStyle,
+          privateConversation.characterSettings?.systemPrompt,
+        ]
+          .filter(Boolean)
+          .join('\n');
+
+        const outbound = await materializeAssistantOutboundMessages({
+          raw: aiReply.trim(),
+          conversationId: privateConversation.id,
+          splitOptions: {
+            preference: privateConversation.replySplitPreference ?? 'smart',
+            conversationType: 'private',
+            maxBubbles: 4,
+            characterProfileText,
+          },
+        });
+
+        const updatedPrivateMessages = [...privateConversation.messages, ...outbound];
         onUpdateConversation(privateConversation.id, {
           messages: updatedPrivateMessages,
-          lastMessageTime: Date.now()
+          lastMessageTime: Date.now(),
         });
         
         console.log(`✅ AI ${aiId} 已发送承诺的私聊消息: ${aiReply.substring(0, 50)}...`);
@@ -3186,33 +3428,52 @@ ${buildAvatarIdentityPrompt(characterInfo)}
 
   // 群聊生成函数
   const handleGroupChatGenerate = async () => {
+    const convId = conversationRef.current.id;
+    const existing = backgroundGenerationService.getTask(convId);
+    if (existing?.status === 'generating') {
+      return;
+    }
+
     // 🚀 启动后台生成任务
-    backgroundGenerationService.startGeneration(conversation.id);
+    backgroundGenerationService.startGeneration(convId);
+    groupGenEpochRef.current += 1;
+    clearGroupReceiveToTypingTimer();
+    groupFirstAiReceiveHandoffPendingRef.current = true;
     setIsGenerating(true);
     setShowSendingHint(true);
+    setCurrentTypingAI(null);
     setGroupRoundReceivingHint(true);
 
     try {
+      const allLive = getLiveConversations();
+      const liveGroup = allLive.find((c) => c.id === convId && c.type === 'group');
+      if (!liveGroup) {
+        console.warn('群聊生成：未在全局状态中找到该群会话', convId);
+        setIsGenerating(false);
+        setShowSendingHint(false);
+        setGroupRoundReceivingHint(false);
+        backgroundGenerationService.failGeneration(convId, '未找到群会话');
+        return;
+      }
+
       // 使用ref来追踪最新的消息列表
-      let currentMessages = [...conversation.messages];
-      let rollingMemberIds = [...(conversation.members || [])];
+      let currentMessages = [...liveGroup.messages];
+      let rollingMemberIds = [...(liveGroup.members || [])];
 
       // 📸 创建消息ID快照（用于检测用户在生成期间发送的新消息）
-      const messageIdsSnapshot = new Set(
-        conversation.messages.map(m => m.id)
-      );
+      const messageIdsSnapshot = new Set(liveGroup.messages.map((m) => m.id));
       
       console.log('📸 创建消息快照:', {
-        快照时刻消息数: conversation.messages.length,
-        最后一条消息: conversation.messages[conversation.messages.length - 1]?.content?.substring(0, 20) || 'N/A'
+        快照时刻消息数: liveGroup.messages.length,
+        最后一条消息: liveGroup.messages[liveGroup.messages.length - 1]?.content?.substring(0, 20) || 'N/A'
       });
       
       // 调用群聊服务
       // 无人回复检查已在 onAllComplete 回调中处理，避免误报
       await generateGroupChatReplies(
-        conversation,
+        liveGroup,
         apiConfig,
-        conversations,
+        allLive,
         {
           onGroupChatProcessing: () => {
             // 🚀 全局处理开始
@@ -3225,23 +3486,57 @@ ${buildAvatarIdentityPrompt(characterInfo)}
             console.log(`🤖 ${aiName} 开始回复`);
             setShowSendingHint(false);
             setIsGroupProcessing(false);
-            setGroupRoundReceivingHint(false);
-
-            // 获取AI头像
-            const aiMember = conversations.find(c => c.id === aiId);
-            setCurrentTypingAI({
-              id: aiId,
-              name: aiName,
-              avatar: aiMember?.characterSettings?.avatar || aiMember?.avatar
-            });
+            const aiMember = getLiveConversations().find((c) => c.id === aiId);
+            const avatar = aiMember?.characterSettings?.avatar || aiMember?.avatar;
+            if (groupFirstAiReceiveHandoffPendingRef.current) {
+              const epoch = groupGenEpochRef.current;
+              clearGroupReceiveToTypingTimer();
+              setCurrentTypingAI(null);
+              const delayMs = 520 + Math.floor(Math.random() * 380);
+              groupReceiveToTypingTimerRef.current = setTimeout(() => {
+                groupReceiveToTypingTimerRef.current = null;
+                if (epoch !== groupGenEpochRef.current) return;
+                if (!groupFirstAiReceiveHandoffPendingRef.current) return;
+                groupFirstAiReceiveHandoffPendingRef.current = false;
+                setGroupRoundReceivingHint(false);
+                setCurrentTypingAI({
+                  id: aiId,
+                  name: aiName,
+                  avatar,
+                });
+              }, delayMs);
+            } else {
+              clearGroupReceiveToTypingTimer();
+              setCurrentTypingAI({
+                id: aiId,
+                name: aiName,
+                avatar,
+              });
+            }
           },
           
           onAITyping: (aiId) => {
-            // 保持打字动画显示
             console.log(`⌨️ ${aiId} 正在输入...`);
+          },
+
+          onGroupBubbleTyping: (aiId) => {
+            clearGroupReceiveToTypingTimer();
+            groupFirstAiReceiveHandoffPendingRef.current = false;
+            setGroupRoundReceivingHint(false);
+            const aiMember = getLiveConversations().find((c) => c.id === aiId);
+            setCurrentTypingAI({
+              id: aiId,
+              name:
+                (aiMember?.characterSettings &&
+                  getCharacterRealName(aiMember.characterSettings)) ||
+                aiMember?.name ||
+                '群友',
+              avatar: aiMember?.characterSettings?.avatar || aiMember?.avatar,
+            });
           },
           
           onAIMessage: (_aiId, message) => {
+            setCurrentTypingAI(null);
             // 🐛 修复方案3的bug：正确处理消息合并
             
             let outMsg = message;
@@ -3249,14 +3544,14 @@ ${buildAvatarIdentityPrompt(characterInfo)}
             const prependMembership: Message[] = [];
             let patchName: string | undefined;
             let membershipChanged = false;
-            if (conversation.type === 'group' && typeof outMsg.content === 'string') {
+            if (liveGroup.type === 'group' && typeof outMsg.content === 'string') {
               const gn = stripGroupNameChangeMarkers(outMsg.content);
               outMsg = { ...outMsg, content: gn.text };
               if (gn.newName) {
                 const safe = gn.newName.replace(/[\r\n]/g, '').trim().slice(0, 32);
                 if (safe) {
                   patchName = safe;
-                  const member = conversations.find((c) => c.id === _aiId);
+                  const member = getLiveConversations().find((c) => c.id === _aiId);
                   const who =
                     getCharacterRealName(member?.characterSettings) || member?.name || '群成员';
                   prependRename.push({
@@ -3274,7 +3569,7 @@ ${buildAvatarIdentityPrompt(characterInfo)}
               if (lv.wantsLeave && rollingMemberIds.includes(_aiId) && rollingMemberIds.length > 1) {
                 rollingMemberIds = rollingMemberIds.filter((id) => id !== _aiId);
                 membershipChanged = true;
-                const member = conversations.find((c) => c.id === _aiId);
+                const member = getLiveConversations().find((c) => c.id === _aiId);
                 const who =
                   getCharacterRealName(member?.characterSettings) || member?.name || '群成员';
                 prependMembership.push({
@@ -3286,11 +3581,11 @@ ${buildAvatarIdentityPrompt(characterInfo)}
               }
 
               for (const invId of lv.inviteIds) {
-                const target = conversations.find((c) => c.id === invId);
+                const target = getLiveConversations().find((c) => c.id === invId);
                 if (!isContactAiInvitableToGroup(target, new Set(rollingMemberIds))) continue;
                 rollingMemberIds = [...new Set([...rollingMemberIds, invId])];
                 membershipChanged = true;
-                const inviter = conversations.find((c) => c.id === _aiId);
+                const inviter = getLiveConversations().find((c) => c.id === _aiId);
                 const inviterWho =
                   getCharacterRealName(inviter?.characterSettings) || inviter?.name || '群成员';
                 const inviteeWho =
@@ -3322,13 +3617,13 @@ ${buildAvatarIdentityPrompt(characterInfo)}
             if (outMsg.role === 'assistant' && outMsg.content && currentUserProfile) {
               groupToPrivateMemoryService.shouldCreateBridge(
                 outMsg,
-                conversation.id,
+                convId,
                 currentUserProfile.username,
-                conversations
+                getLiveConversations()
               );
               
               // 🎯 检测AI承诺私聊发送内容，主动发送私聊消息
-              maybeSendAutoPrivateDM(_aiId, outMsg, conversation.id);
+              maybeSendAutoPrivateDM(_aiId, outMsg, convId);
             }
             
             // 🎁 检测AI发送的群红包，触发其他AI自动领取
@@ -3346,7 +3641,7 @@ ${buildAvatarIdentityPrompt(characterInfo)}
                     // ✅ 回调：更新本地 currentMessages 并触发更新
                     console.log(`🎁 [回调] 添加红包领取消息: ${claimMessage.content}`);
                     currentMessages = [...currentMessages, claimMessage];
-                    onUpdateConversation(conversation.id, {
+                    onUpdateConversation(convId, {
                       messages: currentMessages,
                       lastMessageTime: Date.now()
                     });
@@ -3355,8 +3650,10 @@ ${buildAvatarIdentityPrompt(characterInfo)}
               }, Math.random() * 4000 + 1000);
             }
             
-            // 2️⃣ 提取用户在生成期间发送的新消息
-            const currentConversationMessages = conversation.messages;
+            // 2️⃣ 提取用户在生成期间发送的新消息（必须用 ref，闭包里的 conversation 会过期）
+            const currentConversationMessages =
+              getLiveConversations().find((c) => c.id === convId)?.messages ??
+              conversationRef.current.messages;
             const userNewMessages = currentConversationMessages.filter(m => {
               const isNewUser = !messageIdsSnapshot.has(m.id) && m.role === 'user';
               const notInCurrent = !currentMessages.some(cm => cm.id === m.id);
@@ -3373,7 +3670,7 @@ ${buildAvatarIdentityPrompt(characterInfo)}
             console.log(`📦 消息合并: 快照+AI=${currentMessages.length}, 用户新增=${userNewMessages.length}, 总计=${mergedMessages.length}`);
             
             // 4️⃣ 更新对话
-            onUpdateConversation(conversation.id, {
+            onUpdateConversation(convId, {
               messages: mergedMessages,
               lastMessageTime: Date.now(),
               ...(patchName ? { name: patchName } : {}),
@@ -3382,7 +3679,7 @@ ${buildAvatarIdentityPrompt(characterInfo)}
           },
 
           onCharacterOnlineHandleChange: (aiId, handle) => {
-            const member = conversations.find((c) => c.id === aiId);
+            const member = getLiveConversations().find((c) => c.id === aiId);
             if (!member?.characterSettings || !handle.trim()) return;
             onUpdateConversation(aiId, {
               characterSettings: {
@@ -3394,23 +3691,34 @@ ${buildAvatarIdentityPrompt(characterInfo)}
           
           onAIComplete: (aiId, messages) => {
             console.log(`✅ ${aiId} 完成回复，共${messages.length}条消息`);
-            // 🎯 不清除打字动画，让下一个AI的onAIStart自动覆盖
-            // 这样AI之间的衔接更流畅，用户始终看到"正在输入..."
-            // 只在onAllComplete时才清除
+            groupFirstAiReceiveHandoffPendingRef.current = false;
+            clearGroupReceiveToTypingTimer();
+            setCurrentTypingAI(null);
+            // 若该成员全程无可见气泡（未触发 onGroupBubbleTyping），在此收起「收取中」
+            setGroupRoundReceivingHint(false);
           },
           
           onAIError: (aiId, error) => {
             console.error(`❌ ${aiId} 回复出错:`, error);
-            // 显示错误提示（可选）
+            groupFirstAiReceiveHandoffPendingRef.current = false;
+            clearGroupReceiveToTypingTimer();
+            setCurrentTypingAI(null);
+            setGroupRoundReceivingHint(false);
           },
           
           onAllComplete: (replies) => {
             console.log('🎉 所有AI完成回复');
+            groupFirstAiReceiveHandoffPendingRef.current = false;
+            clearGroupReceiveToTypingTimer();
             
-            // 🔍 检测用户在生成期间发送的新消息
-            const userNewMessages = conversation.messages.filter(m => 
-              !messageIdsSnapshot.has(m.id) &&  // 不在快照中
-              m.role === 'user'                  // 是用户消息
+            // 🔍 检测用户在生成期间发送的新消息（必须用 ref，闭包里的 conversation 会过期）
+            const userNewMessages = (
+              getLiveConversations().find((c) => c.id === convId)?.messages ??
+              conversationRef.current.messages
+            ).filter(
+              (m) =>
+                !messageIdsSnapshot.has(m.id) && // 不在快照中
+                m.role === 'user' // 是用户消息
             );
             
             if (userNewMessages.length > 0) {
@@ -3441,48 +3749,52 @@ ${buildAvatarIdentityPrompt(characterInfo)}
             setGroupRoundReceivingHint(false);
             
             // 🚀 通知后台服务生成完成
-            backgroundGenerationService.completeGeneration(conversation.id, finalMessages);
+            backgroundGenerationService.completeGeneration(convId, finalMessages);
 
-            if (conversation.groupIcebreakerPending) {
-              onUpdateConversation(conversation.id, { groupIcebreakerPending: false });
+            const liveAfter = getLiveConversations().find((c) => c.id === convId);
+            if (liveAfter?.groupIcebreakerPending) {
+              onUpdateConversation(convId, { groupIcebreakerPending: false });
             }
             
             // 🧠 群聊记忆总结（后台处理）
-            if (conversation.type === 'group' && conversation.members) {
-              setTimeout(() => {
-                performGroupMemorySummary(finalMessages).catch(err => {
+            if (liveGroup.members && liveGroup.members.length > 0) {
+              queueMicrotask(() => {
+                void runGroupMemorySummaryIfDue(convId, finalMessages, apiConfig).catch((err) => {
                   console.error('群聊记忆总结失败:', err);
                 });
-              }, 1000); // 延迟1秒后执行，避免阻塞
+              });
             }
             
             // 📝 处理用户新消息（标记为待处理，触发下一轮回复）
             if (userNewMessages.length > 0) {
               console.log('📝 用户新消息将在下一轮处理');
-              
-              // 合并到待处理队列（包含旧的和新的）
-              const allPendingIds = [
-                ...pendingUserMessages,
-                ...userNewMessages.map(m => m.id)
-              ];
-              setPendingUserMessages(allPendingIds);
-              
-              // 延迟触发新一轮生成，让用户看清楚上一轮已完成
-              setTimeout(() => {
+
+              setPendingUserMessages((prev) => [
+                ...new Set([...prev, ...userNewMessages.map((m) => m.id)]),
+              ]);
+
+              // 作废可能即将触发的 onGroupChatRound（安静窗口刚好结束会与下面 setTimeout 叠成双开）
+              bumpPendingReplyScheduleEpoch(convId);
+
+              queueMicrotask(() => {
                 console.log('🔄 触发新一轮AI回复，处理用户新消息');
-                handleGroupChatGenerate();
-              }, 1000);
+                dispatchGroupChatRound(convId);
+              });
               return; // 不显示无人回应提示
             }
-            
-            // 检查旧的待处理消息（兼容性）
-            if (pendingUserMessages.length > 0) {
-              console.log(`📬 检测到${pendingUserMessages.length}条旧的待处理用户消息，触发新一轮生成`);
+
+            // 检查旧的待处理消息（兼容性；用 ref 避免闭包读到过期的 pending 列表）
+            if (pendingUserMessagesRef.current.length > 0) {
+              console.log(
+                `📬 检测到${pendingUserMessagesRef.current.length}条旧的待处理用户消息，触发新一轮生成`,
+              );
               setPendingUserMessages([]); // 清空待处理队列
-              
-              setTimeout(() => {
-                handleGroupChatGenerate();
-              }, 1000);
+
+              bumpPendingReplyScheduleEpoch(convId);
+
+              queueMicrotask(() => {
+                dispatchGroupChatRound(convId);
+              });
               return;
             }
           }
@@ -3495,13 +3807,15 @@ ${buildAvatarIdentityPrompt(characterInfo)}
     } catch (error: any) {
       console.error('群聊生成失败:', error);
       alert('群聊生成失败: ' + error.message);
+      groupFirstAiReceiveHandoffPendingRef.current = false;
+      clearGroupReceiveToTypingTimer();
       setIsGenerating(false);
       setCurrentTypingAI(null);
       setShowSendingHint(false);
       setGroupRoundReceivingHint(false);
       
       // 🚀 通知后台服务生成失败
-      backgroundGenerationService.failGeneration(conversation.id, error.message || '未知错误');
+      backgroundGenerationService.failGeneration(convId, error.message || '未知错误');
     }
   };
 
@@ -3509,107 +3823,6 @@ ${buildAvatarIdentityPrompt(characterInfo)}
 
   // 旧的同步代码已被删除，现在使用后台任务
   
-  // 🧠 执行群聊记忆总结
-  const performGroupMemorySummary = async (currentMessages: Message[]) => {
-    try {
-      // 检查是否需要总结
-      if (!shouldTriggerGroupMemorySummary(conversation.id, currentMessages.length)) {
-        console.log('🧠 群聊消息数未达到总结阈值，跳过');
-        return;
-      }
-      
-      console.log('🧠 开始群聊记忆总结...');
-      
-      // 获取群成员名称
-      const groupMembers = conversation.members
-        ?.map(mid => {
-          const member = conversations.find(c => c.id === mid);
-          return member?.characterSettings?.nickname || member?.name || '未知';
-        }) || [];
-      
-      // 获取当前AI成员（可能有多个）
-      const aiMember = conversation.members
-        ?.map(mid => conversations.find(c => c.id === mid))
-        .find(c => c && c.type === 'private');
-      
-      if (!aiMember) {
-        console.error('未找到AI成员');
-        return;
-      }
-      
-      const aiName = aiMember.characterSettings?.nickname || aiMember.name;
-      const groupMemories = getGroupMemories(aiMember.id, conversation.id);
-      
-      // 构建群聊记忆总结提示词
-      const summaryPrompt = buildGroupMemorySummaryPrompt(
-        conversation.name,
-        aiName,
-        currentMessages,
-        groupMembers,
-        groupMemories
-      );
-      
-      const groupSummaryCfg = resolveGroupSummaryApiConfig(apiConfig, conversation);
-      const response = await fetch(`${groupSummaryCfg.baseUrl}/v1/chat/completions`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${groupSummaryCfg.apiKey}`,
-        },
-        body: JSON.stringify({
-          model: groupSummaryCfg.modelName,
-          messages: [
-            { role: 'user', content: summaryPrompt }
-          ],
-          temperature: 0.3,
-        })
-      });
-      
-      if (!response.ok) {
-        const errorInfo = await getErrorFromResponse(response);
-        console.error('群聊记忆总结失败:', formatErrorMessage(errorInfo));
-        return;
-      }
-      
-      const data = await response.json();
-      const summaryResponse = data.choices?.[0]?.message?.content;
-      
-      if (!summaryResponse) {
-        console.error('未收到有效的群聊记忆总结');
-        return;
-      }
-      
-      // 解析总结结果
-      const memories = parseMemorySummaryResponse(summaryResponse);
-      
-      if (memories.length > 0) {
-        console.log(`🧠 群聊提取到 ${memories.length} 条新记忆`);
-        
-        // 添加到群聊记忆库
-        memories.forEach((mem: { content: string; importance: 'low' | 'medium' | 'high'; category?: string }) => {
-          addGroupMemory(
-            aiMember.id,
-            conversation.id,
-            conversation.name,
-            mem.content,
-            mem.category || '群聊话题',
-            mem.importance
-          );
-        });
-        
-        console.log(`✅ 已保存 ${memories.length} 条群聊记忆`);
-      } else {
-        console.log('🧠 本次群聊没有值得记忆的新信息');
-      }
-      
-      // 更新群聊总结计数器
-      updateGroupSummaryCounter(aiMember.id, currentMessages.length);
-      
-    } catch (error) {
-      console.error('群聊记忆总结失败:', error);
-    }
-  };
-
   // 🧠 执行记忆总结
   const performMemorySummary = async (currentMessages: Message[]) => {
     try {
@@ -3617,7 +3830,7 @@ ${buildAvatarIdentityPrompt(characterInfo)}
       const memoryBank = await getMemoryBank(conversation.id);
       const summaryPrompt = buildMemorySummaryPrompt(currentMessages, memoryBank.memories);
       
-      const response = await fetch(`${effectivePrivateApiConfig.baseUrl}/v1/chat/completions`, {
+      const response = await fetch(buildApiUrl(effectivePrivateApiConfig), {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -3899,6 +4112,7 @@ ${buildAvatarIdentityPrompt(characterInfo)}
               </svg>
             </button>
           )}
+
         </div>
       </div>
 
@@ -3909,25 +4123,6 @@ ${buildAvatarIdentityPrompt(characterInfo)}
         className="relative flex-1 min-h-0 overflow-y-auto overflow-x-hidden touch-pan-y p-4 md:px-6 md:py-4 space-y-3"
         style={{ paddingBottom: '24px' }}
       >
-        {conversation.type === 'group' && (
-          <button
-            type="button"
-            title={conversation.groupAutoChatEnabled ? '自动续聊已开（实验）' : '自动续聊已关'}
-            onClick={() =>
-              onUpdateConversation(conversation.id, {
-                groupAutoChatEnabled: !conversation.groupAutoChatEnabled,
-              })
-            }
-            className={`absolute top-2 right-3 z-[5] flex items-center gap-1 rounded-full border px-2.5 py-1 text-[11px] font-medium shadow-sm transition-colors ${
-              conversation.groupAutoChatEnabled
-                ? 'border-amber-300 bg-amber-50 text-amber-900'
-                : 'border-zinc-200 bg-white/90 text-zinc-600'
-            }`}
-          >
-            <Repeat className="w-3.5 h-3.5 flex-shrink-0" />
-            <span>{conversation.groupAutoChatEnabled ? '续聊开' : '续聊'}</span>
-          </button>
-        )}
         {/* 🚀 滚动加载：顶部加载指示器 */}
         {isLoadingMore && (
           <div className="flex justify-center py-4">
@@ -3974,6 +4169,16 @@ ${buildAvatarIdentityPrompt(characterInfo)}
           const htmlTagCount = (message.content && message.content.match(/<[^>]+>/g) || []).length;
           const hasStructuralTags = message.content && ['<div', '<style', '<span', '<table', '<ul', '<ol'].some(tag => message.content.includes(tag));
           const isHTMLContent = hasHTMLTags && (htmlTagCount >= 3 || hasStructuralTags);
+
+          const quotedOriginalMsg = message.replyTo
+            ? findQuotedOriginalMessage(conversation, message.replyTo.id)
+            : undefined;
+          const quotedAuthorLabel = message.replyTo
+            ? resolveBubbleQuotedAuthorLabel(message.replyTo, conversation, conversations)
+            : '';
+          const quotedSendTimeStr = message.replyTo
+            ? formatQuotedSendTime(quotedOriginalMsg?.timestamp)
+            : null;
           
           return (
             <div key={message.id} className="md:max-w-[820px] md:mx-auto">
@@ -4010,7 +4215,18 @@ ${buildAvatarIdentityPrompt(characterInfo)}
                   )}
                 </>
               ) : (
-              <div id={`message-${message.id}`} className={`message-bubble flex gap-2 items-end transition-colors ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+              <div
+                id={`message-${message.id}`}
+                data-chat-message-row
+                className={`chat-message-row flex gap-2 items-end transition-colors touch-manipulation ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}
+                onClick={(e) => {
+                  if (isMultiSelectMode) {
+                    toggleMessageSelection(message.id);
+                    return;
+                  }
+                  handleMessageRowClick(message.id, e);
+                }}
+              >
                 {message.role === 'assistant' && (
                   <div className={`flex flex-col flex-shrink-0 ${conversation.type === 'group' ? 'items-center w-[52px] md:w-11' : ''}`}>
                     {conversation.type === 'group' && (message as any).senderId && (
@@ -4035,7 +4251,11 @@ ${buildAvatarIdentityPrompt(characterInfo)}
                         })()}
                       </div>
                     )}
-                    <div className="relative">
+                    <div
+                      className="relative"
+                      {...(conversation.type === 'group' ? { 'data-chat-group-avatar': '' as const } : {})}
+                      onClick={conversation.type === 'group' ? (e) => e.stopPropagation() : undefined}
+                    >
                       {/* 群聊：显示发送者的头像 */}
                       {conversation.type === 'group' ? (
                         (message as any).senderAvatar ? (
@@ -4086,7 +4306,9 @@ ${buildAvatarIdentityPrompt(characterInfo)}
                   {isMultiSelectMode && (
                     <input
                       type="checkbox"
-                      checked={selectedMessages.includes(message.id)}
+                      checked={selectedMessages.includes(
+                        canonicalMessageIdFromRenderRowId(message.id),
+                      )}
                       onChange={() => toggleMessageSelection(message.id)}
                       className="absolute -left-8 top-1/2 -translate-y-1/2 w-5 h-5 rounded border-2 border-gray-300 cursor-pointer"
                       onClick={(e) => e.stopPropagation()}
@@ -4098,22 +4320,21 @@ ${buildAvatarIdentityPrompt(characterInfo)}
                     <div className="mb-1.5 bg-gray-50 rounded-lg p-2 border border-gray-200">
                       <div className="text-xs text-gray-500 flex items-start gap-1">
                         <div className="w-0.5 h-full bg-blue-400 mr-1 rounded"></div>
-                        <div className="flex-1">
-                          <div className="font-medium text-gray-700">{message.replyTo.role === 'user' ? '我' : conversation.name}</div>
-                          <div className="line-clamp-2 text-gray-600">{message.replyTo.content}</div>
+                        <div className="flex-1 min-w-0">
+                          <div className="font-medium text-gray-700 flex flex-wrap items-baseline gap-x-2 gap-y-0">
+                            <span>{quotedAuthorLabel}</span>
+                            {quotedSendTimeStr ? (
+                              <span className="text-[10px] font-normal text-gray-400">{quotedSendTimeStr}</span>
+                            ) : null}
+                          </div>
+                          <div className="line-clamp-3 text-gray-600 break-words mt-0.5">{message.replyTo.content}</div>
                         </div>
                       </div>
                     </div>
                   )}
                   
                   <div
-                    onClick={(e) => {
-                      if (isMultiSelectMode) {
-                        toggleMessageSelection(message.id);
-                      } else {
-                        handleMessageClick(message.id, e);
-                      }
-                    }}
+                    data-chat-message-bubble
                     className={`message-bubble ${message.role === 'user' ? 'user' : 'ai'} rounded-2xl shadow-sm cursor-pointer ${
                       isHTMLContent 
                         ? 'bg-transparent border-0 shadow-none p-0 overflow-visible' 
@@ -4123,17 +4344,26 @@ ${buildAvatarIdentityPrompt(characterInfo)}
                           ? 'bg-white text-gray-900 border border-gray-200'
                           : 'bg-white text-gray-900 border border-gray-200'
                     } ${message.mediaType || message.moneyTransfer || isHTMLContent ? 'p-0' : message.replyTo ? 'pb-2.5' : 'px-4 py-2.5'} ${
-                      isMultiSelectMode && selectedMessages.includes(message.id) ? 'ring-2 ring-purple-500' : ''
+                      isMultiSelectMode &&
+                      selectedMessages.includes(canonicalMessageIdFromRenderRowId(message.id))
+                        ? 'ring-2 ring-purple-500'
+                        : ''
                     }`}
                   >
                     {/* 引用消息显示（只在非特殊消息时显示在这里） */}
                     {message.replyTo && !message.moneyTransfer && !message.document && !message.order && !isHTMLContent && (
                       <div className="pt-3">
-                        {/* 被引用的原消息 */}
-                        <div className="px-4 text-sm text-gray-600 leading-relaxed mb-2.5">
-                          {message.replyTo.content}
+                        <div className="px-4 mb-2.5">
+                          <div className="text-xs text-gray-500 flex flex-wrap items-baseline gap-x-2 gap-y-0 mb-1">
+                            <span className="font-medium text-gray-700">{quotedAuthorLabel}</span>
+                            {quotedSendTimeStr ? (
+                              <span className="text-[10px] text-gray-400">{quotedSendTimeStr}</span>
+                            ) : null}
+                          </div>
+                          <div className="text-sm text-gray-600 leading-relaxed line-clamp-4 break-words">
+                            {message.replyTo.content}
+                          </div>
                         </div>
-                        {/* 分隔线 */}
                         <div className="border-b border-gray-200 mb-2.5"></div>
                       </div>
                     )}
@@ -4932,7 +5162,7 @@ ${buildAvatarIdentityPrompt(characterInfo)}
                 {/* 语音转文字内容已移动到气泡容器内部渲染，避免位置偏移问题 */}
                 
                 {message.role === 'user' && (
-                  <div className="relative flex-shrink-0">
+                  <div className="relative flex-shrink-0" onClick={(e) => e.stopPropagation()}>
                     {userProfile.avatar ? (
                       <div className="w-11 h-11 rounded-full overflow-hidden border-2 border-white shadow-md">
                         <img src={userProfile.avatar} alt="用户头像" className="w-full h-full object-cover" />
@@ -4950,20 +5180,20 @@ ${buildAvatarIdentityPrompt(characterInfo)}
               </div>
               )}
               
-              {/* 旧的操作栏已移除，使用新的MessageActionMenu */}
+              {/* 操作菜单见 MessageActionsSurface（Floating UI 锚点浮层） */}
             </div>
           );
         });
         })()}
 
-        {conversation.type === 'group' && groupRoundReceivingHint && (
-          <div className="flex justify-center my-3">
-            <div className="inline-flex items-center gap-2 rounded-full bg-zinc-100/95 border border-zinc-200/80 px-4 py-2 text-xs text-zinc-600 shadow-sm">
-              <div className="flex gap-1">
+        {conversation.type === 'group' && groupRoundReceivingHint && !isMultiSelectMode && (
+          <div className="flex justify-center w-full py-2">
+            <div className="inline-flex items-center gap-2 rounded-full border border-zinc-200/80 bg-white/90 px-3 py-1.5 text-[11px] text-zinc-600 shadow-sm">
+              <span className="flex gap-0.5">
                 <span className="w-1.5 h-1.5 rounded-full bg-zinc-400 animate-bounce" style={{ animationDelay: '0ms' }} />
                 <span className="w-1.5 h-1.5 rounded-full bg-zinc-400 animate-bounce" style={{ animationDelay: '150ms' }} />
                 <span className="w-1.5 h-1.5 rounded-full bg-zinc-400 animate-bounce" style={{ animationDelay: '300ms' }} />
-              </div>
+              </span>
               <span>消息收取中</span>
             </div>
           </div>
@@ -5001,8 +5231,8 @@ ${buildAvatarIdentityPrompt(characterInfo)}
           </div>
         )}
 
-        {/* 群聊打字动画 */}
-        {currentTypingAI && conversation.type === 'group' && (
+        {/* 群聊打字动画（与「消息收取中」互斥先后显示，不同时出现） */}
+        {!groupRoundReceivingHint && currentTypingAI && conversation.type === 'group' && (
           <div className="flex gap-2 items-end justify-start">
             <div className="relative flex-shrink-0">
               {currentTypingAI.avatar ? (
@@ -5066,6 +5296,33 @@ ${buildAvatarIdentityPrompt(characterInfo)}
         )}
       </div>
 
+      {/* 群聊「自动衔接」：夹在消息区与输入栏之间，不在顶栏、不在输入框内 */}
+      {conversation.type === 'group' && !isMultiSelectMode && (
+        <div className="shrink-0 flex justify-end px-4 md:px-6 py-2 bg-white/95 md:bg-white/85 border-t border-gray-100 md:border-zinc-100">
+          <button
+            type="button"
+            title={
+              conversation.groupAutoChatEnabled
+                ? '自动衔接已开（实验）：无用户发言时由引擎尝试接话'
+                : '自动衔接已关'
+            }
+            onClick={() =>
+              onUpdateConversation(conversation.id, {
+                groupAutoChatEnabled: !conversation.groupAutoChatEnabled,
+              })
+            }
+            className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-[11px] font-medium transition-colors ${
+              conversation.groupAutoChatEnabled
+                ? 'border-amber-300 bg-amber-50 text-amber-900 hover:bg-amber-100'
+                : 'border-zinc-200 bg-white text-zinc-600 hover:bg-zinc-50'
+            }`}
+          >
+            <Repeat className="w-3.5 h-3.5 shrink-0" aria-hidden />
+            <span>自动</span>
+          </button>
+        </div>
+      )}
+
       {/* Input area - in normal page flow */}
       <div
         data-ui="chat-input-area"
@@ -5100,11 +5357,18 @@ ${buildAvatarIdentityPrompt(characterInfo)}
         {quotedMessage && (
           <div className="px-3 pt-2 pb-1 bg-gray-50 border-t border-gray-200">
             <div className="flex items-center justify-between bg-blue-50 rounded-lg px-3 py-2 border-l-3 border-blue-500">
-              <div className="flex-1 mr-2">
-                <div className="text-xs text-blue-600 font-medium mb-1">
-                  引用 {quotedMessage.role === 'user' ? '我' : conversation.name}
+              <div className="flex-1 mr-2 min-w-0">
+                <div className="text-xs text-blue-600 font-medium mb-1 flex flex-wrap items-baseline gap-x-2 gap-y-0">
+                  <span>
+                    引用 {resolveComposerQuotedAuthorLabel(quotedMessage, conversation, conversations)}
+                  </span>
+                  {formatQuotedSendTime(quotedMessage.timestamp) ? (
+                    <span className="text-[10px] font-normal text-blue-400/90">
+                      {formatQuotedSendTime(quotedMessage.timestamp)}
+                    </span>
+                  ) : null}
                 </div>
-                <div className="text-sm text-gray-700 truncate">
+                <div className="text-sm text-gray-700 line-clamp-3 break-words">
                   {quotedMessage.content}
                 </div>
               </div>
@@ -5722,15 +5986,11 @@ ${buildAvatarIdentityPrompt(characterInfo)}
       </div>
     )}
 
-    {/* 消息操作菜单 */}
-    <MessageActionMenu
-      isVisible={selectedMessageId !== null}
-      position={menuPosition}
-      onQuote={handleQuoteMessage}
-      onEdit={handleEditMessage}
-      onDelete={handleDeleteMessage}
-      onMultiSelect={handleEnterMultiSelect}
-      onForward={handleForwardSingleMessage}
+    <MessageActionsSurface
+      open={selectedMessageId !== null && messageMenuItems.length > 0}
+      messageId={selectedMessageId}
+      items={messageMenuItems}
+      onAction={handleMessageMenuAction}
       onReact={handleReactMessage}
       onClose={handleCloseMenu}
     />
@@ -6191,6 +6451,23 @@ ${buildAvatarIdentityPrompt(characterInfo)}
         characterName={conversation.characterSettings?.nickname || conversation.name}
       />
     )}
+
+    <PrivateAiImageConsentModal
+      open={Boolean(privateImageConsentPayload)}
+      payload={privateImageConsentPayload}
+      onAccept={() => {
+        const r = privateImageConsentResolverRef.current;
+        privateImageConsentResolverRef.current = null;
+        setPrivateImageConsentPayload(null);
+        r?.(true);
+      }}
+      onReject={() => {
+        const r = privateImageConsentResolverRef.current;
+        privateImageConsentResolverRef.current = null;
+        setPrivateImageConsentPayload(null);
+        r?.(false);
+      }}
+    />
 
     {/* 💬 子聊天窗口 */}
     {activeSubChatId && (

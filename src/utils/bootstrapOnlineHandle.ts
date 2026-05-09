@@ -39,32 +39,37 @@ export async function generateInitialOnlineHandle(
 人设摘要：${persona || '（无）'}`;
 
   const apiUrl = buildApiUrl(apiConfig);
-  const res = await fetch(apiUrl, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${apiConfig.apiKey}`,
-      'X-Momoyu-Source': 'bootstrapOnlineHandle',
-    },
-    body: JSON.stringify({
-      model: effective.modelName,
-      messages: [
-        { role: 'system', content: system },
-        { role: 'user', content: '请给出网名（一行）。' },
-      ],
-      temperature: 0.88,
-      max_tokens: 64,
-    }),
-  });
+  try {
+    const res = await fetch(apiUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${apiConfig.apiKey}`,
+        'X-Momoyu-Source': 'bootstrapOnlineHandle',
+      },
+      body: JSON.stringify({
+        model: effective.modelName,
+        messages: [
+          { role: 'system', content: system },
+          { role: 'user', content: '请给出网名（一行）。' },
+        ],
+        temperature: 0.88,
+        max_tokens: 64,
+      }),
+    });
 
-  if (!res.ok) {
-    const err = await getErrorFromResponse(res);
-    console.warn('[bootstrapOnlineHandle]', err.title, err.message);
+    if (!res.ok) {
+      const err = await getErrorFromResponse(res);
+      console.warn('[bootstrapOnlineHandle]', err.title, err.message);
+      return null;
+    }
+
+    const data = await res.json();
+    const line = sanitizeOneLine(data.choices?.[0]?.message?.content ?? '');
+    if (!line || line.length < 2) return null;
+    return line;
+  } catch (e) {
+    console.warn('[bootstrapOnlineHandle] 网络请求失败（可稍后在设置中检查 API / 代理）:', e);
     return null;
   }
-
-  const data = await res.json();
-  const line = sanitizeOneLine(data.choices?.[0]?.message?.content ?? '');
-  if (!line || line.length < 2) return null;
-  return line;
 }

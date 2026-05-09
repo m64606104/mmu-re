@@ -6,6 +6,7 @@
 import { Message, ApiConfig, Conversation, GroupRedPacketInfo } from '../types';
 import { getGroupMemories } from './memorySystem';
 import { resolveGroupParticipantApiConfig } from './chatApiConfig';
+import { buildApiUrl } from './apiHelper';
 
 /**
  * 构建AI红包决策提示词
@@ -154,11 +155,11 @@ export async function aiDecideToClaimRedPacket(
     const chatCfg = resolveGroupParticipantApiConfig(apiConfig, groupConversation, aiConversation);
 
     // 调用AI API获取决策
-    const response = await fetch(`${apiConfig.baseUrl}/v1/chat/completions`, {
+    const response = await fetch(buildApiUrl(chatCfg), {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${apiConfig.apiKey}`
+        'Authorization': `Bearer ${chatCfg.apiKey}`
       },
       body: JSON.stringify({
         model: chatCfg.modelName,

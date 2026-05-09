@@ -5,7 +5,7 @@
 
 import { useEffect, useRef } from 'react';
 import { Message, Conversation } from '../types';
-import { sendChatNotification, sendGroupChatNotification, requestNotificationPermission, shouldSendNotification } from '../utils/notificationService';
+import { sendChatNotification, sendGroupChatNotification, requestNotificationPermission, shouldSendNotification, formatChatMessagePreviewForNotification } from '../utils/notificationService';
 import { getSafeAvatar } from '../utils/avatarHelper';
 
 interface UseMessageNotificationOptions {
@@ -72,7 +72,7 @@ function handleNewAIMessage(
   }
 
   // 获取消息预览
-  const preview = getMessagePreview(message);
+  const preview = formatChatMessagePreviewForNotification(message);
   
   // 获取发送者信息
   const senderName = conversation.characterSettings?.nickname || conversation.name;
@@ -96,69 +96,4 @@ function handleNewAIMessage(
       conversation.id
     );
   }
-}
-
-/**
- * 获取消息预览文本
- */
-function getMessagePreview(message: Message): string {
-  // 如果有媒体类型，返回类型描述
-  if (message.mediaType) {
-    const typeMap: Record<string, string> = {
-      image: '[图片]',
-      video: '[视频]',
-      voice: '[语音]',
-      sticker: '[表情包]',
-      document: '[文档]'
-    };
-    return typeMap[message.mediaType] || '[消息]';
-  }
-
-  // 如果有网易云音乐信息
-  if (message.neteaseMusicInfo) {
-    return `[音乐] ${message.neteaseMusicInfo.title}`;
-  }
-
-  // 如果有转账信息
-  if (message.moneyTransfer) {
-    const transfer = message.moneyTransfer;
-    if (transfer.type === 'redPacket' || transfer.type === 'groupRedPacket') {
-      return transfer.status === 'received' ? '[收到红包]' : '[红包]';
-    } else if (transfer.type === 'transfer') {
-      return '[转账]';
-    }
-  }
-
-  // 如果有订单信息
-  if (message.order) {
-    return '[礼物订单]';
-  }
-
-  // 如果有社交分享
-  if (message.socialFeed) {
-    return '[社交分享]';
-  }
-
-  // 如果有链接预览
-  if (message.linkPreview) {
-    return '[链接分享]';
-  }
-
-  // 如果有文档
-  if (message.document) {
-    return `[文档] ${message.document.title}`;
-  }
-
-  // 普通文本消息
-  const content = message.content.trim();
-  if (!content) {
-    return '[消息]';
-  }
-
-  // 截取前50个字符作为预览
-  if (content.length > 50) {
-    return content.substring(0, 50) + '...';
-  }
-
-  return content;
 }

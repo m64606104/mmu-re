@@ -5,11 +5,7 @@
 
 import { useEffect, useRef } from 'react';
 import { Conversation, Message, ApiConfig } from '../types';
-import {
-  shouldSendProactiveMessage,
-  sendProactiveMessage,
-  initProactiveMessaging
-} from '../utils/proactiveMessaging';
+import { initProactiveMessaging, runProactiveMessagingSweep } from '../utils/proactiveMessaging';
 
 interface ProactiveMessagingServiceProps {
   conversations: Conversation[];
@@ -63,25 +59,12 @@ export default function ProactiveMessagingService({
         try {
           const currentConversations = conversationsRef.current;
           const currentApiConfig = apiConfigRef.current;
-          
-          for (const conversation of currentConversations) {
-            // 只检查私聊且启用了主动消息的对话
-            if (
-              conversation.type === 'private' &&
-              conversation.characterSettings?.proactiveMessaging?.enabled &&
-              shouldSendProactiveMessage(conversation)
-            ) {
-              await sendProactiveMessage(
-                conversation,
-                currentApiConfig,
-                onNewMessageRef.current,
-                onUpdateSettingsRef.current
-              );
-              
-              // 每次发送后等待1秒，避免同时发送多条消息
-              await new Promise(resolve => setTimeout(resolve, 1000));
-            }
-          }
+          await runProactiveMessagingSweep(
+            currentConversations,
+            currentApiConfig,
+            onNewMessageRef.current,
+            onUpdateSettingsRef.current
+          );
         } catch (error) {
           console.error('主动消息检查出错:', error);
         } finally {

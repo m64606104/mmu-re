@@ -6,9 +6,10 @@
 import { Conversation, Message, ApiConfig } from '../types';
 import { isToolInteractionCharacter } from './characterInteractionMode';
 import { getMemoryBank } from './memorySystem';
-import { cleanAIMessage, splitMessages } from './messageFormatter';
+import { materializeAssistantOutboundMessages } from '../domains/chat/materializeAssistantOutboundMessages';
 import { MEDIA_DECISION_GUIDANCE } from './mediaDecisionPrompt';
 import { getCachedData, load, save, setCachedData, smartLoad } from './storage';
+import { buildApiUrl } from './apiHelper';
 
 const STORAGE_KEY = 'proactive_messaging_state';
 const USER_RECENT_ACTIVE_MS = 15 * 60 * 1000; // 用户15分钟内活跃则跳过
@@ -178,19 +179,90 @@ export const shouldSendProactiveMessage = (conversation: Conversation): boolean 
   return true;
 };
 
+/** 按会话 id 稳定的 0～spanHours 小时打散量，避免多会话在同一时刻「一起到点」 */
+function conversationSchedulingSpreadMs(conversationId: string, spanHours: number): number {
+  let h = 2166136261 >>> 0;
+  for (let i = 0; i < conversationId.length; i++) {
+    h ^= conversationId.charCodeAt(i);
+    h = Math.imul(h, 16777619) >>> 0;
+  }
+  const span = Math.max(1, spanHours) * 60 * 60 * 1000;
+  return h % span;
+}
+
 /**
- * 生成下次检查时间（AI自动频控）
+ * 生成下次检查时间（AI自动频控 + 按会话稳定错峰）
  */
-const generateNextCheckTime = (
+function generateNextCheckTime(
   relationStage: RelationStage,
-  lifeState: any | null
-): number => {
+  lifeState: any | null,
+  conversationId: string
+): number {
   const { minMinutes, maxMinutes } = buildAutoIntervalRange({ relationStage, lifeState });
   const randomInterval = Math.floor(
     Math.random() * (maxMinutes - minMinutes + 1) + minMinutes
   );
-  return Date.now() + randomInterval * 60 * 1000;
-};
+  const spreadMs = conversationSchedulingSpreadMs(conversationId, 3);
+  return Date.now() + randomInterval * 60 * 1000 + spreadMs;
+}
+
+/** 本轮全局调度未抽中时顺延，避免下一个周期再次扎堆抢闸 */
+function deferProactiveCheck(conversationId: string, minMinutes: number, maxMinutes: number): void {
+  const lo = Math.min(minMinutes, maxMinutes);
+  const hi = Math.max(minMinutes, maxMinutes);
+  const mins = lo + Math.floor(Math.random() * (hi - lo + 1));
+  saveState(conversationId, Date.now() + mins * 60 * 1000);
+}
+
+function shuffleArray<T>(items: T[]): T[] {
+  const arr = [...items];
+  for (let i = arr.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [arr[i], arr[j]] = [arr[j], arr[i]];
+  }
+  return arr;
+}
+
+/** 单次全局 tick 内最多触发的主动会话数（随机 1～3，兼顾自然感与吞吐） */
+const MAX_PROACTIVE_SENDS_PER_GLOBAL_TICK = 3;
+
+/**
+ * 处理一轮主动消息调度：从「已到点」的会话中随机抽少量发送，其余顺延错开。
+ */
+export async function runProactiveMessagingSweep(
+  conversations: Conversation[],
+  apiConfig: ApiConfig,
+  onNewMessage: (conversationId: string, message: Message) => void,
+  onUpdateSettings: (conversationId: string, lastMessageTime: number) => void
+): Promise<void> {
+  const eligible = conversations.filter(
+    (c) =>
+      c.type === 'private' &&
+      c.characterSettings?.proactiveMessaging?.enabled &&
+      shouldSendProactiveMessage(c)
+  );
+  if (eligible.length === 0) return;
+
+  const shuffled = shuffleArray(eligible);
+  const randCap =
+    1 + Math.floor(Math.random() * Math.min(MAX_PROACTIVE_SENDS_PER_GLOBAL_TICK, eligible.length));
+  const cap = Math.min(eligible.length, randCap);
+  const selected = shuffled.slice(0, cap);
+  const deferred = shuffled.slice(cap);
+
+  for (const conv of deferred) {
+    deferProactiveCheck(conv.id, 18, 72);
+  }
+
+  for (let i = 0; i < selected.length; i++) {
+    const conv = selected[i];
+    await sendProactiveMessage(conv, apiConfig, onNewMessage, onUpdateSettings);
+    if (i < selected.length - 1) {
+      const gapMs = 8000 + Math.floor(Math.random() * 52_000);
+      await new Promise((r) => setTimeout(r, gapMs));
+    }
+  }
+}
 
 /**
  * 生成AI主动消息的prompt
@@ -387,6 +459,11 @@ const buildProactiveMessagePrompt = (conversation: Conversation, starter: string
 
 ${MEDIA_DECISION_GUIDANCE}
 
+【多媒体格式（与正常聊天一致）】
+- 「假装发图/视频」请用 **[图片:画面描述]**、**[视频:画面描述]**（须带冒号）；也可用 **[图片1] 描述** 等多图写法。
+- 需要拆成多条气泡时，在段落之间输出 **[NEXT]**。
+- 若要真实像素配图请用 **[生图:…]**（会走用户确认；主动消息里若写出也会被剥除正文标记，本轮不会自动调用生图接口）。
+
 【最近对话】
 ${context || '（无）'}
 
@@ -455,7 +532,7 @@ export const sendProactiveMessage = async (
     const decisionPrompt = buildProactiveDecisionPrompt(conversation);
     
     // 第1段：是否发送判定（短输出，避免被截断）
-    const apiUrl = `${apiConfig.baseUrl}/v1/chat/completions`;
+    const apiUrl = buildApiUrl(apiConfig);
     const decisionMessages = [{ role: 'user', content: decisionPrompt }];
     const decisionRes = await fetch(apiUrl, {
       method: 'POST',
@@ -481,7 +558,7 @@ export const sendProactiveMessage = async (
     const decisionRaw = String(decisionData.choices?.[0]?.message?.content || '').trim();
     const decision = parseProactiveDecision(decisionRaw);
     if (!decision || !decision.shouldSend) {
-      const nextCheckTime = generateNextCheckTime(relationStage, lifeState);
+      const nextCheckTime = generateNextCheckTime(relationStage, lifeState, conversation.id);
       saveState(conversation.id, nextCheckTime);
       console.log(`ℹ️ ${conversation.name} 本轮主动消息跳过: ${decision?.reason || 'decision-skip'}`);
       return;
@@ -548,30 +625,27 @@ export const sendProactiveMessage = async (
       }
     }
     
-    // 清洗并拆分为多条单条气泡
-    const cleaned = cleanAIMessage(aiMessage);
-    const parts = splitMessages(cleaned, {
-      preference: conversation.replySplitPreference ?? 'smart',
-      conversationType: conversation.type,
-      maxBubbles: 3,
-      characterProfileText: [
-        conversation.characterSettings?.personality,
-        conversation.characterSettings?.languageStyle,
-        conversation.characterSettings?.systemPrompt,
-      ]
-        .filter(Boolean)
-        .join('\n'),
+    // 与延迟回复对齐：协议规范化 + [NEXT] 拆条 + 表情包解析入库（图片/视频协议留在正文，由聊天页渲染时展开）
+    const characterProfileText = [
+      conversation.characterSettings?.personality,
+      conversation.characterSettings?.languageStyle,
+      conversation.characterSettings?.systemPrompt,
+    ]
+      .filter(Boolean)
+      .join('\n');
+
+    const outboundMessages = await materializeAssistantOutboundMessages({
+      raw: aiMessage,
+      conversationId: conversation.id,
+      splitOptions: {
+        preference: conversation.replySplitPreference ?? 'smart',
+        conversationType: conversation.type,
+        maxBubbles: 4,
+        characterProfileText,
+      },
     });
-    const finalParts = parts.length > 0 ? parts : [cleaned];
-    
-    const baseTime = Date.now();
-    finalParts.forEach((content, idx) => {
-      const newMessage: Message = {
-        id: `msg_${baseTime + idx}_${Math.random().toString(36).substr(2, 9)}`,
-        role: 'assistant',
-        content: content,
-        timestamp: baseTime + idx,
-      };
+
+    outboundMessages.forEach((newMessage) => {
       onNewMessage(conversation.id, newMessage);
     });
     
@@ -580,7 +654,7 @@ export const sendProactiveMessage = async (
     onUpdateSettings(conversation.id, now);
     
     // 计算下次检查时间
-    const nextCheckTime = generateNextCheckTime(relationStage, lifeState);
+    const nextCheckTime = generateNextCheckTime(relationStage, lifeState, conversation.id);
     saveState(conversation.id, nextCheckTime);
     
     console.log(`✅ ${conversation.name} 主动消息已发送，下次检查时间: ${new Date(nextCheckTime).toLocaleString()} · reason=${decision.reason || 'n/a'}`);
@@ -613,9 +687,8 @@ export const initProactiveMessaging = (conversation: Conversation): void => {
   const existing = states.find(s => s.conversationId === conversation.id);
   
   if (!existing) {
-    // 设置初始检查时间（AI自动频控）
     const relationStage = inferRelationStage(conversation);
-    const nextCheckTime = generateNextCheckTime(relationStage, null);
+    const nextCheckTime = generateNextCheckTime(relationStage, null, conversation.id);
     saveState(conversation.id, nextCheckTime);
   }
 };

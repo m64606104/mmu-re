@@ -13,7 +13,7 @@ type ProcessAssistantSpecialContentOptions = {
 
 type ProcessAssistantSpecialContentResult = {
   content: string;
-  replyToInfo?: { content: string; role: 'user' | 'assistant' };
+  replyToInfo?: { id: string; content: string; role: 'user' | 'assistant' };
   extraMessages: Message[];
   logs: string[];
   blockedByCooldown: Array<'redPacket' | 'transfer' | 'gift'>;
@@ -30,7 +30,7 @@ export async function processAssistantSpecialContent(
   const blockedByCooldown: Array<'redPacket' | 'transfer' | 'gift'> = [];
   const extraMessages: Message[] = [];
   let content = options.content;
-  let replyToInfo: { content: string; role: 'user' | 'assistant' } | undefined;
+  let replyToInfo: { id: string; content: string; role: 'user' | 'assistant' } | undefined;
   let hasAvatarChange = false;
   let hasRestoreAvatar = false;
 

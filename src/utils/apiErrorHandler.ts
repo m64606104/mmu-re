@@ -164,7 +164,18 @@ export const getApiErrorInfo = (statusCode: number, errorMessage?: string): ApiE
         suggestion: '可能是网络问题或API服务器负载过高。建议：\n• 检查您的网络连接\n• 稍后重试\n• 开启"自定义上下文数量"减少请求大小',
         icon: '⏳'
       };
-    
+
+    /** App 内 fetch 补丁：chat/completions 连续失败后短时间熔断，避免对故障接口刷屏（非上游返回） */
+    case 599:
+      return {
+        title: '客户端请求保护（熔断）',
+        message:
+          '短时间内同一来源连续多次收到服务端错误，应用已暂停该来源的 chat/completions 请求。',
+        suggestion:
+          '请刷新页面（会重置熔断）或等待约 30 分钟。生成网名等其它请求若仍正常，说明 API 部分可用，故障多与自动回复这条链路此前的连续失败有关。',
+        icon: '🧯',
+      };
+
     default:
       // 通用错误
       if (statusCode >= 500) {

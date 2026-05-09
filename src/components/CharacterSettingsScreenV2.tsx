@@ -23,6 +23,7 @@ import { enqueueMemoryEngineIfBacklogAfterSave } from '../utils/memorySystem';
 import { resolvePrivateChatApiConfig } from '../utils/chatApiConfig';
 import ChatModelOverridePicker from './ChatModelOverridePicker';
 import { getCharacterOnlineHandle } from '../utils/characterIdentity';
+import { exportCharacterStickerBundle } from '../utils/characterMigrationStickers';
 
 type Props = {
   conversation: Conversation;
@@ -108,12 +109,16 @@ export default function CharacterSettingsScreenV2(props: Props) {
   const [disableWorldbook, setDisableWorldbook] = useState(cs.disableWorldbook ?? false);
   const [chatModelOverride, setChatModelOverride] = useState(cs.chatModelOverride ?? '');
 
-  // 主动消息默认开启（若用户从未配置过）
-  const [proactiveEnabled, setProactiveEnabled] = useState(cs.proactiveMessaging?.enabled ?? true);
+  // 未持久化 enabled 时视为关，与调度层 `?.enabled` 一致
+  const [proactiveEnabled, setProactiveEnabled] = useState(cs.proactiveMessaging?.enabled ?? false);
   const [activeHourStart, setActiveHourStart] = useState(clampHour(cs.proactiveMessaging?.activeHourStart ?? 8));
   const [activeHourEnd, setActiveHourEnd] = useState(clampHour(cs.proactiveMessaging?.activeHourEnd ?? 23));
   const [wakeSensitivityMode, setWakeSensitivityMode] = useState<'auto' | 'light' | 'normal' | 'deep'>(
     cs.proactiveMessaging?.wakeSensitivityMode || 'auto'
+  );
+  /** 睡眠与生活轨迹中的「睡眠中延迟回复」；与主动发消息独立 */
+  const [sleepSimulationEnabled, setSleepSimulationEnabled] = useState(
+    cs.proactiveMessaging?.sleepSimulationEnabled !== false
   );
 
   const [privateComposerQuietSeconds, setPrivateComposerQuietSeconds] = useState(
@@ -154,10 +159,11 @@ export default function CharacterSettingsScreenV2(props: Props) {
     setMomentsMemoryEnabled(cs.momentsMemoryConfig?.enabled ?? true);
     setDisableWorldbook(cs.disableWorldbook ?? false);
     setChatModelOverride(cs.chatModelOverride ?? '');
-    setProactiveEnabled(cs.proactiveMessaging?.enabled ?? true);
+    setProactiveEnabled(cs.proactiveMessaging?.enabled ?? false);
     setActiveHourStart(clampHour(cs.proactiveMessaging?.activeHourStart ?? 8));
     setActiveHourEnd(clampHour(cs.proactiveMessaging?.activeHourEnd ?? 23));
     setWakeSensitivityMode(cs.proactiveMessaging?.wakeSensitivityMode || 'auto');
+    setSleepSimulationEnabled(cs.proactiveMessaging?.sleepSimulationEnabled !== false);
     setPrivateComposerQuietSeconds(
       clampPrivateQuietSec(conversation.privateComposerQuietSeconds ?? DEFAULT_PRIVATE_COMPOSER_QUIET_SECONDS)
     );
@@ -187,6 +193,7 @@ export default function CharacterSettingsScreenV2(props: Props) {
     const isTool = interactionMode === 'tool';
     const effectiveMomentsMemory = isTool ? false : momentsMemoryEnabled;
     const effectiveProactive = isTool ? false : proactiveEnabled;
+    const effectiveSleepSim = isTool ? false : sleepSimulationEnabled;
 
     const nextCharacterSettings = {
       ...(conversation.characterSettings || ({} as any)),
@@ -206,6 +213,7 @@ export default function CharacterSettingsScreenV2(props: Props) {
       proactiveMessaging: {
         ...(conversation.characterSettings?.proactiveMessaging || ({} as any)),
         enabled: effectiveProactive,
+        sleepSimulationEnabled: effectiveSleepSim,
         activeHourStart,
         activeHourEnd,
         autoIntervalByAI: true,
@@ -371,6 +379,8 @@ export default function CharacterSettingsScreenV2(props: Props) {
       const allDocuments = ((await smartLoad('document_library')) as any[]) || [];
       const characterDocuments = allDocuments.filter((doc: any) => doc.conversationId === conversation.id);
 
+      const stickerBundle = await exportCharacterStickerBundle(conversation.id);
+
       const stats = {
         messagesCount: conversation.messages.length,
         memoriesCount: memoryBank?.memories?.length || 0,
@@ -380,10 +390,12 @@ export default function CharacterSettingsScreenV2(props: Props) {
         relationshipsCount: characterRelationships.length,
         hasFinanceData: !!finance,
         hasAIStatus: !!conversation.aiStatus,
+        wechatStickerCount: stickerBundle.wechatSimulatorCharacterStickers.length,
+        easyChatStickerCount: stickerBundle.easyChatCharacterStickers.length,
       };
 
       const exportData = {
-        version: '2.0',
+        version: '2.1',
         exportTime: new Date().toISOString(),
         character: {
           id: conversation.id,
@@ -398,6 +410,7 @@ export default function CharacterSettingsScreenV2(props: Props) {
           members: conversation.members,
           aiStatus: conversation.aiStatus,
           privateComposerQuietSeconds: conversation.privateComposerQuietSeconds,
+          replySplitPreference: conversation.replySplitPreference,
         },
         memoryBank,
         moments,
@@ -405,6 +418,8 @@ export default function CharacterSettingsScreenV2(props: Props) {
         relationships: characterRelationships,
         documents: characterDocuments,
         messages: includeMessages ? conversation.messages : [],
+        /** 主聊天表情库 + EasyChat 角色表情（与全量备份侧车无关，仅角色包） */
+        stickersMigration: stickerBundle,
         stats,
       };
 
@@ -420,10 +435,13 @@ export default function CharacterSettingsScreenV2(props: Props) {
       URL.revokeObjectURL(url);
 
       alert(
-        `✅ 已导出\n\n` +
-          `• 记忆：${stats.memoriesCount} 条\n` +
-          `• 朋友圈：${stats.momentsCount} 条\n` +
+        `✅ 已导出（v2.1）\n\n` +
+          `• 记忆库：${stats.memoriesCount} 条\n` +
+          `• 资料/知识库：在角色设置内（characterSettings）\n` +
           `• 文档库：${stats.documentsCount} 份\n` +
+          `• 表情包（主聊天库）：${stats.wechatStickerCount} 个\n` +
+          `• 表情包（EasyChat 库）：${stats.easyChatStickerCount} 个\n` +
+          `• 朋友圈：${stats.momentsCount} 条\n` +
           `• 关系：${stats.relationshipsCount} 个\n` +
           `• 聊天记录：${includeMessages ? `${stats.messagesCount} 条` : '未包含'}`
       );
@@ -746,30 +764,48 @@ export default function CharacterSettingsScreenV2(props: Props) {
 
           {/* proactive */}
           <div className={`bg-white rounded-3xl p-4 shadow-sm border border-gray-100 ${editStep === 'advanced' ? '' : 'hidden'}`}>
-            <div className="text-sm font-semibold text-gray-900 mb-3">主动消息与睡眠联动</div>
+            <div className="text-sm font-semibold text-gray-900 mb-3">主动消息与睡眠</div>
             {interactionMode === 'tool' ? (
               <p className="text-xs text-gray-500 leading-relaxed">
-                工具型角色不使用主动消息、睡眠与生活轨迹模拟；切换为「陪伴型」后可在此配置。
+                工具型角色不使用主动消息，也不参与睡眠与生活轨迹中的「睡眠中延迟回复」；切换为「陪伴型」后可分别配置。
               </p>
             ) : (
               <>
-                <div className="py-3 flex items-center justify-between">
-                  <div className="text-sm text-gray-700">AI 主动发消息</div>
-                  <button type="button" onClick={() => setProactiveEnabled(!proactiveEnabled)} className={`w-11 h-6 rounded-full relative ${proactiveEnabled ? 'bg-gray-900' : 'bg-gray-300'}`}>
+                <div className="py-3 flex items-center justify-between gap-3 border-b border-gray-100">
+                  <div>
+                    <div className="text-sm text-gray-700">AI 主动发消息</div>
+                    <div className="mt-0.5 text-[11px] text-gray-500">
+                      默认关闭以省接口消耗；开启后后台随机错峰（每轮约 1～3 个角色会尝试），与睡眠开关无关
+                    </div>
+                  </div>
+                  <button type="button" onClick={() => setProactiveEnabled(!proactiveEnabled)} className={`shrink-0 w-11 h-6 rounded-full relative ${proactiveEnabled ? 'bg-gray-900' : 'bg-gray-300'}`}>
                     <div className={`absolute top-1 left-1 w-4 h-4 bg-white rounded-full transition-transform ${proactiveEnabled ? 'translate-x-5' : ''}`} />
                   </button>
                 </div>
+                <div className="py-3 flex items-center justify-between gap-3">
+                  <div>
+                    <div className="text-sm text-gray-700">睡眠中延迟回复</div>
+                    <div className="mt-0.5 text-[11px] text-gray-500">与生活轨迹联动；关掉则不再按「睡眠叫醒」拖慢首条回复</div>
+                  </div>
+                  <button type="button" onClick={() => setSleepSimulationEnabled(!sleepSimulationEnabled)} className={`shrink-0 w-11 h-6 rounded-full relative ${sleepSimulationEnabled ? 'bg-gray-900' : 'bg-gray-300'}`}>
+                    <div className={`absolute top-1 left-1 w-4 h-4 bg-white rounded-full transition-transform ${sleepSimulationEnabled ? 'translate-x-5' : ''}`} />
+                  </button>
+                </div>
                 {proactiveEnabled ? (
-                  <div className="mt-3 space-y-3">
+                  <div className="mt-3 space-y-3 pt-1 border-t border-gray-100">
                     <div className="flex items-center justify-between gap-3">
-                      <div className="text-xs text-gray-500">活跃时段</div>
+                      <div className="text-xs text-gray-500">主动消息 · 活跃时段</div>
                       <div className="flex items-center gap-2">
                         <input value={activeHourStart} onChange={(e) => setActiveHourStart(clampHour(Number(e.target.value)))} inputMode="numeric" className="w-16 text-center rounded-xl border border-gray-200 px-2 py-2 text-sm" />
                         <div className="text-gray-400">-</div>
                         <input value={activeHourEnd} onChange={(e) => setActiveHourEnd(clampHour(Number(e.target.value)))} inputMode="numeric" className="w-16 text-center rounded-xl border border-gray-200 px-2 py-2 text-sm" />
                       </div>
                     </div>
-                    <div className="text-xs text-gray-500">叫醒阈值</div>
+                  </div>
+                ) : null}
+                {sleepSimulationEnabled ? (
+                  <div className="mt-3 space-y-3 pt-1 border-t border-gray-100">
+                    <div className="text-xs text-gray-500">睡眠 · 叫醒阈值</div>
                     <div className="grid grid-cols-4 gap-2">
                       {[
                         { id: 'auto', label: '自动' },

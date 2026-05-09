@@ -3,7 +3,7 @@
  * 支持用户保存和管理多个API配置方案
  */
 
-import { getCachedData, save, setCachedData } from './storage';
+import { getCachedData, load, save, setCachedData } from './storage';
 
 export interface APIPreset {
   id: string;
@@ -44,7 +44,7 @@ export class APIPresetsManager {
   }
 
   /**
-   * 从localStorage加载预设数据
+   * 从内存缓存同步快照（IndexedDB 数据由 `initializeCache` / `hydrateFromDisk` 预载）
    */
   private loadFromStorage(): void {
     try {
@@ -57,6 +57,26 @@ export class APIPresetsManager {
       console.error('加载API预设失败:', error);
       this.presets = [];
       this.currentPresetId = null;
+    }
+  }
+
+  /**
+   * 从持久化存储异步拉取（解决刷新后内存未预载时 `getPresets` 为空的问题）
+   */
+  async hydrateFromDisk(): Promise<void> {
+    try {
+      const data = (await load(STORAGE_KEY)) as APIPresetsData | undefined;
+      if (data && typeof data === 'object') {
+        this.presets = Array.isArray(data.presets) ? data.presets : [];
+        this.currentPresetId =
+          typeof data.currentPresetId === 'string' && data.currentPresetId ? data.currentPresetId : null;
+        setCachedData(STORAGE_KEY, {
+          presets: this.presets,
+          currentPresetId: this.currentPresetId || undefined,
+        });
+      }
+    } catch (error) {
+      console.warn('[apiPresets] hydrateFromDisk 失败:', error);
     }
   }
 

@@ -1,4 +1,5 @@
 import type { ApiConfig, CharacterSettings } from '../types';
+import { resolveVisionImageChatEndpoint } from '../domains/vision/completionRouting';
 
 export interface AvatarVisionProfile {
   summary: string;
@@ -44,25 +45,24 @@ export async function analyzeAvatarWithVisionModel(
   avatarUrl: string,
   apiConfig: ApiConfig
 ): Promise<AvatarVisionProfile | null> {
-  const visionModel = String(apiConfig.visionModelName || '').trim();
-  const visionBaseUrl = String(apiConfig.visionBaseUrl || apiConfig.baseUrl || '').trim();
-  const visionApiKey = String(apiConfig.visionApiKey || apiConfig.apiKey || '').trim();
-  if (!avatarUrl || !visionBaseUrl || !visionApiKey || !visionModel) return null;
+  if (!avatarUrl) return null;
+  const routing = resolveVisionImageChatEndpoint(apiConfig);
+  if (!routing?.apiUrl) return null;
 
   const prompt =
     '你是头像视觉解析器。请识别这张头像并输出JSON，不要输出其他文字。' +
     '字段: summary(简体中文一句话,<=40字), appearanceTags(数组), styleTags(数组), detectedNameText(可空字符串)。';
 
   try {
-    const resp = await fetch(`${visionBaseUrl}/v1/chat/completions`, {
+    const resp = await fetch(routing.apiUrl, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        Authorization: `Bearer ${visionApiKey}`,
+        Authorization: `Bearer ${routing.bearerToken}`,
         'X-Momoyu-Source': 'avatarVision:auto',
       },
       body: JSON.stringify({
-        model: visionModel,
+        model: routing.model,
         messages: [
           {
             role: 'user',
@@ -94,7 +94,7 @@ export async function analyzeAvatarWithVisionModel(
       detectedNameText: String(parsed.detectedNameText || '').trim() || undefined,
       avatarSource: avatarUrl,
       analyzedAt: Date.now(),
-      sourceModel: visionModel,
+      sourceModel: routing.model,
     };
   } catch {
     return null;

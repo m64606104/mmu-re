@@ -11,6 +11,30 @@ export const stripDisplayControlTags = (message: string): string => {
     .trim();
 };
 
+/**
+ * 弱模型常模仿上下文里的「〈消息ID:…〉」，或误用角括号写「〈STICKER:…〉」（协议要求方括号）。
+ * 在拆条 / 解析表情包之前调用；不会移除合法的 [引用消息:id]。
+ */
+export function normalizeAssistantProtocolLeaks(raw: string): string {
+  if (!raw || typeof raw !== 'string') return '';
+  let s = raw;
+  // 伪造的消息 ID 行（含模型多加的空格「消息 ID」）
+  s = s.replace(/〈\s*消息\s*ID\s*[:：]\s*[^〉\r\n]+〉/gi, '');
+  s = s.replace(/〈\s*消息ID\s*[:：]\s*[^〉\r\n]+〉/gi, '');
+  s = s.replace(/<\s*消息\s*ID\s*[:：]\s*[^>\r\n]+>/gi, '');
+  s = s.replace(/<\s*消息ID\s*[:：]\s*[^>\r\n]+>/gi, '');
+  // 角括号表情包 → 标准方括号，供 extractStickerTokens / parseAssistantMediaFromText
+  s = s.replace(
+    /〈\s*(表情包|STICKER|系统表情|EMOJI|emoji)\s*[:：]\s*([^〉]+)〉/gi,
+    '[$1:$2]'
+  );
+  s = s.replace(
+    /<\s*(表情包|STICKER|系统表情|EMOJI|emoji)\s*[:：]\s*([^>]+)>/gi,
+    '[$1:$2]'
+  );
+  return s.replace(/[ \t]{2,}/g, ' ').replace(/\n{3,}/g, '\n\n').trim();
+}
+
 export const normalizeMessagePreviewText = (raw: string): string => {
   if (!raw) return '暂无消息';
 
@@ -18,6 +42,7 @@ export const normalizeMessagePreviewText = (raw: string): string => {
     .replace(/\[(?:STICKER|表情包)[:：][^\]]+\]/gi, '[表情]')
     .replace(/\[(?:系统表情|EMOJI|emoji)[:：][^\]]+\]/gi, '[表情]')
     .replace(/\[(?:IMAGE|IMG|图片)[:：][^\]]+\]/gi, '[图片]')
+    .replace(/\[(?:生图|AI图|AI配图)[:：][^\]]+\]/gi, '[配图]')
     .replace(/\[(?:VIDEO|视频)[:：][^\]]+\]/gi, '[视频]')
     .replace(/\[(?:VOICE|语音)[:：][^\]]+\]/gi, '[语音]');
 
@@ -37,7 +62,7 @@ export const normalizeMessagePreviewText = (raw: string): string => {
 export const cleanAIMessage = (message: string): string => {
   if (!message) return '';
   
-  let cleaned = message;
+  let cleaned = normalizeAssistantProtocolLeaks(message);
   
   // 1. 移除Markdown加粗标记 **文字**，但保留内容
   cleaned = cleaned.replace(/\*\*([^*]+)\*\*/g, '$1');
@@ -49,6 +74,8 @@ export const cleanAIMessage = (message: string): string => {
   cleaned = cleaned.replace(/^\s*[\*\-]\s+/gm, '');
   
   // 3. 移除引用标记和引用链接
+  // AI 尾部机器指令 [引用消息:id]（与改网名同类；若未被上游剥除则在此兜底）
+  cleaned = cleaned.replace(/\[(?:引用消息|引用)[:：][^\]\s]+\]/g, '');
   // 移除 [1][2] 这种引用标记
   cleaned = cleaned.replace(/\[\d+\]/g, '');
   // 移除 [citation:3] / [CITATION: 6] 这类学术风格引用标记

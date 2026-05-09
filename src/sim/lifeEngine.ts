@@ -1,8 +1,9 @@
 import type { ApiConfig, Conversation } from '../types';
+import { buildApiUrl } from '../utils/apiHelper';
 import { isToolInteractionCharacter } from '../utils/characterInteractionMode';
 import { addAIEvent, updateDynamicProfiles, getMemoryBank } from '../utils/memorySystem';
 import type { LifeSimModelOutput } from './types';
-import { applyDeltas, ensureDayTheme, loadLifeSimState, upsertLifeSimState } from './storage';
+import { applyDeltas, ensureDayTheme, loadLifeSimState, loadLifeSimStates, upsertLifeSimState } from './storage';
 import { getShanghaiParts } from './time';
 
 function utc8Parts(ts: number) {
@@ -18,7 +19,7 @@ function clampInt(n: any, min: number, max: number, fallback: number) {
 async function askJson(apiConfig: ApiConfig, prompt: string): Promise<any | null> {
   if (!apiConfig.baseUrl || !apiConfig.apiKey || !apiConfig.modelName) return null;
   try {
-    const res = await fetch(`${apiConfig.baseUrl}/v1/chat/completions`, {
+    const res = await fetch(buildApiUrl(apiConfig), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiConfig.apiKey}` },
       body: JSON.stringify({
@@ -511,12 +512,111 @@ function recentEventsToText(conversationId: string) {
   return events.map((e) => `- (${e.day})[${e.status}] ${e.title}：${e.description}`).join('\n');
 }
 
-function shouldTick(now: number, lastTickAt: number, force?: boolean): boolean {
+const LIFE_SIM_API_COOLDOWN_MS = 3 * 60 * 1000; // 同一角色两次 LLM 尝试至少间隔（与全局批次间隔配合）
+const LIFE_SIM_BATCH_GAP_MS = 600; // 同一批次内角色之间的间隔
+
+/** 全局：两次「生活模拟批次」至少间隔（焦点/定时器共用，避免一直写） */
+const LIFE_SIM_GLOBAL_MIN_GAP_MS = 20 * 60 * 1000;
+const LIFE_SIM_GLOBAL_LAST_BATCH_KEY = 'momoyu_life_sim_last_global_batch_at';
+
+function readLastGlobalLifeSimBatchAt(): number {
+  try {
+    return Math.max(0, Number(localStorage.getItem(LIFE_SIM_GLOBAL_LAST_BATCH_KEY) || '0'));
+  } catch {
+    return 0;
+  }
+}
+
+function writeLastGlobalLifeSimBatchAt(ts: number): void {
+  try {
+    localStorage.setItem(LIFE_SIM_GLOBAL_LAST_BATCH_KEY, String(ts));
+  } catch {
+    /* ignore */
+  }
+}
+
+const MS_HOUR = 60 * 60 * 1000;
+
+/**
+ * 滚动 24h 内用户发言条数 + 历史最后一条用户消息时间。
+ * 档位只看「最近一天」体量（与用户体感一致）；24h 内 0 条但历史上说过话单独处理。
+ */
+function resolveChatActivity(conv: Conversation, now: number): {
+  tier: number;
+  intervalMs: number;
+  userMsgs24h: number;
+  lastUserMsgAt: number;
+} {
+  const msgs = conv.messages || [];
+  const cutoff24 = now - 24 * 60 * 60 * 1000;
+  let userMsgs24h = 0;
+  let lastUserMsgAt = 0;
+  for (let i = 0; i < msgs.length; i++) {
+    const m = msgs[i];
+    if (m?.role !== 'user') continue;
+    const t = Number(m?.timestamp || 0);
+    if (t > lastUserMsgAt) lastUserMsgAt = t;
+    if (t >= cutoff24) userMsgs24h++;
+  }
+
+  if (lastUserMsgAt <= 0) {
+    return { tier: 7, intervalMs: 12 * MS_HOUR, userMsgs24h: 0, lastUserMsgAt: 0 };
+  }
+
+  // tier 越小越优先占批次；interval 越短生活模拟越勤
+  // ≥100 超级活跃 · ≥70 很活跃 · ≥50 活跃 · ≥30 一般 · 13–29 偏低 · 1–12 冷 · 24h 内 0 条但有过发言 → 休眠向
+  if (userMsgs24h >= 100) {
+    return { tier: 0, intervalMs: Math.round(1.5 * MS_HOUR), userMsgs24h, lastUserMsgAt };
+  }
+  if (userMsgs24h >= 70) {
+    return { tier: 1, intervalMs: 2 * MS_HOUR, userMsgs24h, lastUserMsgAt };
+  }
+  if (userMsgs24h >= 50) {
+    return { tier: 2, intervalMs: Math.round(2.5 * MS_HOUR), userMsgs24h, lastUserMsgAt };
+  }
+  if (userMsgs24h >= 30) {
+    return { tier: 3, intervalMs: 3 * MS_HOUR, userMsgs24h, lastUserMsgAt };
+  }
+  if (userMsgs24h >= 13) {
+    return { tier: 4, intervalMs: 4 * MS_HOUR, userMsgs24h, lastUserMsgAt };
+  }
+  if (userMsgs24h >= 1) {
+    return { tier: 5, intervalMs: 6 * MS_HOUR, userMsgs24h, lastUserMsgAt };
+  }
+
+  return { tier: 6, intervalMs: 10 * MS_HOUR, userMsgs24h: 0, lastUserMsgAt };
+}
+
+function getLifeSimBackgroundIntervalMs(conv: Conversation, now: number): number {
+  return resolveChatActivity(conv, now).intervalMs;
+}
+
+/** 批次内选人排序：数字越小越优先（超级活跃先占名额） */
+function getChatActivityBatchPriority(conv: Conversation, now: number): number {
+  return resolveChatActivity(conv, now).tier;
+}
+
+/** 定时器用：下一次后台批次延迟，毫秒（20～60 分钟） */
+export function nextLifeSimPeriodicDelayMs(): number {
+  const min = 20 * 60 * 1000;
+  const max = 60 * 60 * 1000;
+  return min + Math.floor(Math.random() * (max - min + 1));
+}
+
+function shouldTick(
+  now: number,
+  lastTickAt: number,
+  lastAttemptAt: number | undefined,
+  conversation: Conversation,
+  force?: boolean
+): boolean {
   if (force) return true;
+  // 刚尝试过（含失败）：短时间内不要再请求，否则 429 后 lastTickAt 仍为 0 会疯狂重试
+  if (lastAttemptAt && now - lastAttemptAt < LIFE_SIM_API_COOLDOWN_MS) return false;
   if (!lastTickAt) return true;
   const dt = now - lastTickAt;
-  // Base: every ~4 hours. If user hasn't opened in days, we still do one catch-up tick.
-  return dt >= 4 * 60 * 60 * 1000;
+  const intervalMs = getLifeSimBackgroundIntervalMs(conversation, now);
+  return dt >= intervalMs;
 }
 
 export async function runLifeSimTick(
@@ -544,7 +644,11 @@ export async function runLifeSimTick(
       .slice(0, 10),
   } as any;
 
-  if (!shouldTick(now, state.lastTickAt, options?.force)) return;
+  if (!shouldTick(now, state.lastTickAt, state.lastSimApiAttemptAt, conversation, options?.force)) return;
+
+  // 先记下尝试时间并落盘，避免并行/连续焦点导致同一角色短时多次打接口
+  state = { ...state, lastSimApiAttemptAt: now };
+  await upsertLifeSimState(state);
 
   const stateText = stateToText(conversation, state);
   const recentEventsText = recentEventsToText(conversation.id);
@@ -583,7 +687,7 @@ export async function runLifeSimTick(
   const parsed = (await (async () => {
     if (!apiConfig.baseUrl || !apiConfig.apiKey || !apiConfig.modelName) return null;
     try {
-      const res = await fetch(`${apiConfig.baseUrl}/v1/chat/completions`, {
+      const res = await fetch(buildApiUrl(apiConfig), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiConfig.apiKey}` },
         body: JSON.stringify({
@@ -678,6 +782,7 @@ export async function runLifeSimTick(
     goals: nextGoals,
     aftereffects: (state as any).aftereffects || [],
     narrativeThreads: nextNarrativeThreads,
+    lastSimApiAttemptAt: now,
   });
 
   events.forEach((e: any) => {
@@ -748,15 +853,55 @@ export function enqueueLifeSimTick(conversation: Conversation, apiConfig: ApiCon
 }
 
 export function enqueueLifeSimForAll(conversations: Conversation[], apiConfig: ApiConfig): void {
-  conversations
-    .filter(
-      (c) =>
-        c.type === 'private' &&
-        Boolean(c.characterSettings) &&
-        !isToolInteractionCharacter(c.characterSettings) &&
-        !(c as any).isBlocked
-    )
-    .forEach((c) => enqueueLifeSimTick(c, apiConfig));
+  const now = Date.now();
+  const lastBatch = readLastGlobalLifeSimBatchAt();
+  if (lastBatch > 0 && now - lastBatch < LIFE_SIM_GLOBAL_MIN_GAP_MS) {
+    return;
+  }
+
+  const targets = conversations.filter(
+    (c) =>
+      c.type === 'private' &&
+      Boolean(c.characterSettings) &&
+      !isToolInteractionCharacter(c.characterSettings) &&
+      !(c as any).isBlocked
+  );
+  if (targets.length === 0) return;
+
+  writeLastGlobalLifeSimBatchAt(now);
+
+  void (async () => {
+    const statesMap = await loadLifeSimStates();
+    const scored = targets.map((c) => {
+      const st = statesMap[c.id];
+      const lastTickAt = Number(st?.lastTickAt ?? 0);
+      const lastAttemptAt = st?.lastSimApiAttemptAt;
+      const due = shouldTick(now, lastTickAt, lastAttemptAt, c, false);
+      const overdue =
+        lastTickAt > 0 ? now - lastTickAt : Number.MAX_SAFE_INTEGER;
+      const batchPri = getChatActivityBatchPriority(c, now);
+      return { c, due, overdue, batchPri };
+    });
+
+    const dueSorted = scored
+      .filter((x) => x.due)
+      .sort((a, b) => {
+        if (a.batchPri !== b.batchPri) return a.batchPri - b.batchPri;
+        return b.overdue - a.overdue;
+      });
+
+    const pickCount = Math.min(targets.length, 3 + Math.floor(Math.random() * 2));
+    const picked = dueSorted.slice(0, pickCount).map((x) => x.c);
+
+    for (const c of picked) {
+      try {
+        await runLifeSimTick(c, apiConfig);
+      } catch (e) {
+        console.error('[life-sim] tick失败:', e);
+      }
+      await new Promise((r) => setTimeout(r, LIFE_SIM_BATCH_GAP_MS));
+    }
+  })();
 }
 
 export async function forceTickAll(conversations: Conversation[], apiConfig: ApiConfig): Promise<void> {

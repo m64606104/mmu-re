@@ -19,6 +19,8 @@ import { generateFriendCode } from './friendCodeSystem';
 import { updateLetterMemoryFromLetter } from './letterMemorySystem';
 import { getRandomForceGetMessage } from './friendCodeMessages';
 import { detectAgeFromBottleContent } from './bottleAgeDetector';
+import type { ApiConfig } from '../types';
+import { buildApiUrl } from './apiHelper';
 
 // 📮 预设AI角色池 - 用户可主动选择的固定角色
 export const PRESET_AI_POOL: BottleAI[] = [
@@ -1527,7 +1529,7 @@ ${motivationGuide}
 开始写信：`;
 
   // 调用API
-  const response = await fetch(`${apiConfig.baseUrl}/v1/chat/completions`, {
+  const response = await fetch(buildApiUrl(apiConfig as ApiConfig), {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -2868,7 +2870,7 @@ export async function generateSelfIntroByAI(rolePrompt: string, apiConfig: any):
 ✅ "慢热型，需要时间打开心扉，喜欢安静地写诗"
 `;
 
-    const response = await fetch(`${apiConfig.baseUrl}/v1/chat/completions`, {
+    const response = await fetch(buildApiUrl(apiConfig as ApiConfig), {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',

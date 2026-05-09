@@ -11,6 +11,7 @@ import { Conversation, MomentPost, ApiConfig } from '../types';
 import TrendingContentGenerator from './trendingContentGenerator';
 import { SimplifiedMomentsGenerator } from './simplifiedMomentsGenerator';
 import { getCachedData, load, save, setCachedData, smartLoad } from './storage';
+import { buildApiUrl } from './apiHelper';
 
 /**
  * 智能朋友圈生成器
@@ -439,7 +440,7 @@ ${post.imageDescriptions ? `配图：${post.imageDescriptions.join('、')}` : ''
 }`;
 
     try {
-      const response = await fetch(`${apiConfig.baseUrl}/v1/chat/completions`, {
+      const response = await fetch(buildApiUrl(apiConfig), {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

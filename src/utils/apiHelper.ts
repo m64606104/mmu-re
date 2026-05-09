@@ -1,4 +1,12 @@
 import { ApiConfig } from '../types';
+import { resolveTextChatModelAvoidingVisionOnlyModelClash } from './textChatModelGuard';
+
+/** 合并路径里多余的连续 `/`（不破坏 `https://` 协议部分） */
+export function normalizeOpenAiCompatibleBaseUrl(url: string): string {
+  const t = url.trim();
+  if (!t) return t;
+  return t.replace(/([^:]\/)\/+/g, '$1');
+}
 
 /**
  * 智能构建API完整URL
@@ -12,6 +20,8 @@ export function buildApiUrl(apiConfig: ApiConfig): string {
     console.error('❌ API baseUrl未配置');
     return '';
   }
+
+  baseUrl = normalizeOpenAiCompatibleBaseUrl(baseUrl);
   
   // 如果已经包含完整的 /chat/completions 路径，直接返回
   if (baseUrl.includes('/chat/completions')) {
@@ -59,8 +69,12 @@ export async function callChatCompletionApi(
     throw new Error('API Key未配置，请先在设置中配置');
   }
   
+  const model = resolveTextChatModelAvoidingVisionOnlyModelClash(
+    apiConfig,
+    String(apiConfig.modelName || '').trim()
+  );
   const requestBody = {
-    model: apiConfig.modelName || 'gpt-3.5-turbo',
+    model: model || 'gpt-3.5-turbo',
     messages,
     temperature: options?.temperature ?? 0.7,
     max_tokens: options?.max_tokens ?? 2000,

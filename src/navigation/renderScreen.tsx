@@ -211,6 +211,7 @@ export function renderScreen(params: RenderScreenParams) {
           onBack={goBack}
           momentsCount={moments.length}
           contactsCount={conversations.filter(c => c.type === 'private').length}
+          conversations={conversations}
         />
       );
     case 'settings':

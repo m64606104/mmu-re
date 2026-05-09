@@ -30,9 +30,11 @@ export default function APIPresetsModal({
   });
 
   useEffect(() => {
-    if (isOpen) {
+    if (!isOpen) return;
+    void (async () => {
+      await apiPresetsManager.hydrateFromDisk();
       loadPresets();
-    }
+    })();
   }, [isOpen]);
 
   const loadPresets = () => {

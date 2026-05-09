@@ -1,4 +1,5 @@
 import type { Message } from '../../types';
+import { normalizeAssistantProtocolLeaks } from '../../utils/messageFormatter';
 import { isSingleEmojiText, resolveSystemEmoji } from '../../utils/systemEmoji';
 
 export type ParsedAssistantMediaItem = {
@@ -7,6 +8,74 @@ export type ParsedAssistantMediaItem = {
   imageUrl?: string;
   stickerKind?: 'custom' | 'systemEmoji';
 };
+
+/**
+ * 将无冒号的「[图片] 描述…」「[视频] 描述…」规范为 [图片:…] / [视频:…]。
+ * 与 [图片:…] 标准写法并存；不会改写 [生图:…]（无「图片]」紧跟冒号外的无冒号片段）。
+ * 可选前缀 [发送了图片] 与群聊解析一致。
+ */
+export function normalizeLooseAssistantImageBrackets(text: string): string {
+  let s = text;
+  // 「自然交互」编号图：[图片1:…] / 【图片2：…】/ 【图片3】描述… — expandAssistantInlineMedia 只认 [图片:payload]，故先收口
+  s = s.replace(/【\s*(?:发送了)?\s*图片\s*(\d+)\s*[:：]\s*([^】]+)\s*】/g, '[图片:（图$1）$2]');
+  s = s.replace(
+    /【\s*(?:发送了)?\s*图片\s*(\d+)\s*】(?!\s*[:：])\s*([^【]*)/g,
+    (_full, num: string, desc: string) => {
+      const n = String(num || '').trim();
+      const d = String(desc || '').trim();
+      const prefix = n ? `（图${n}）` : '';
+      return `[图片:${prefix}${d || '（分享了一张图）'}]`;
+    }
+  );
+  s = s.replace(
+    /\[(?:发送了)?(?:图片|IMG|IMAGE)(\d+)\s*[:：]\s*([^\]]+)\]/gi,
+    '[图片:（图$1）$2]'
+  );
+  // 全角书名号（部分模型输出）：先规范为标准半角协议，便于下游唯一正则解析
+  s = s.replace(/【\s*(?:发送了)?\s*图片\s*[:：]\s*([^】]+)\s*】/g, '[图片:$1]');
+  s = s.replace(
+    /【\s*(?:发送了)?\s*图片\s*】(?!\s*[:：])\s*([^【]*)/g,
+    (_full, desc: string) => {
+      const d = String(desc || '').trim();
+      return `[图片:${d || '（分享了一张图）'}]`;
+    }
+  );
+  s = s.replace(
+    /\[(?:发送了)?(?:图片|IMG|IMAGE)(\d*)\](?!\s*[:：])\s*([^[]*)/gi,
+    (_full, num: string, desc: string) => {
+      const n = String(num || '').trim();
+      const d = String(desc || '').trim();
+      const prefix = n ? `（图${n}）` : '';
+      const body = d || '（分享了一张图）';
+      return `[图片:${prefix}${body}]`;
+    }
+  );
+  return s;
+}
+
+export function normalizeLooseAssistantVideoBrackets(text: string): string {
+  let s = text;
+  s = s.replace(/【\s*(?:发送了)?\s*视频\s*[:：]\s*([^】]+)\s*】/g, '[视频:$1]');
+  s = s.replace(
+    /【\s*(?:发送了)?\s*视频\s*】(?!\s*[:：])\s*([^【]*)/g,
+    (_full, desc: string) => {
+      const d = String(desc || '').trim();
+      return `[视频:${d || '（分享了一段视频）'}]`;
+    }
+  );
+  s = s.replace(
+    /\[(?:发送了)?(?:视频|VIDEO)\](?!\s*[:：])\s*([^[]*)/gi,
+    (_full, desc: string) => {
+      const d = String(desc || '').trim();
+      return `[视频:${d || '（分享了一段视频）'}]`;
+    }
+  );
+  return s;
+}
+
+export function normalizeLooseAssistantMediaBrackets(text: string): string {
+  return normalizeLooseAssistantVideoBrackets(normalizeLooseAssistantImageBrackets(text));
+}
 
 type BuildAssistantMediaMessagesOptions = {
   baseId: string;
@@ -20,7 +89,7 @@ type BuildAssistantTextMessageOptions = {
   baseId: string;
   textContent: string;
   timestamp: number;
-  replyToInfo?: { content: string; role: 'user' | 'assistant' };
+  replyToInfo?: { id: string; content: string; role: 'user' | 'assistant' };
 };
 
 type ParseAssistantMediaFromTextOptions = {
@@ -173,7 +242,7 @@ export function buildAssistantTextMessage(options: BuildAssistantTextMessageOpti
 
   if (replyToInfo) {
     message.replyTo = {
-      id: '',
+      id: replyToInfo.id,
       content: replyToInfo.content,
       role: replyToInfo.role,
     };
@@ -188,7 +257,7 @@ export async function parseAssistantMediaFromText(options: ParseAssistantMediaFr
 }> {
   const { text, conversationId, resolveStickerImage } = options;
   const mediaItems: ParsedAssistantMediaItem[] = [];
-  let cleanContent = text;
+  let cleanContent = normalizeLooseAssistantMediaBrackets(normalizeAssistantProtocolLeaks(text));
 
   const imageMatches = cleanContent.matchAll(/\[(?:图片|IMG|IMAGE)[:：]([^\]]+)\]/gi);
   for (const match of imageMatches) {

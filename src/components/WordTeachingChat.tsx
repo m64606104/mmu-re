@@ -7,6 +7,7 @@ import { useState, useEffect, useRef } from 'react';
 import { X, Send } from 'lucide-react';
 import { Conversation, ApiConfig } from '../types';
 import { WordCard } from '../utils/wordCardLibrary';
+import { buildApiUrl } from '../utils/apiHelper';
 
 interface WordTeachingChatProps {
   word: WordCard;
@@ -154,7 +155,7 @@ export default function WordTeachingChat({
     const systemPrompt = buildTeachingSystemPrompt();
     const conversationHistory = buildConversationHistory(currentDialogue);
 
-    const response = await fetch(`${apiConfig.baseUrl}/v1/chat/completions`, {
+    const response = await fetch(buildApiUrl(apiConfig), {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',

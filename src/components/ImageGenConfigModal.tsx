@@ -36,11 +36,15 @@ export default function ImageGenConfigModal({
       setApiKey(initialConfig.apiKey);
       setSelectedModel(initialConfig.model || '');
     }
-    
-    // 加载可用预设
-    const presets = apiPresetsManager.getPresets();
-    setAvailablePresets(presets);
   }, [initialConfig]);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    void (async () => {
+      await apiPresetsManager.hydrateFromDisk();
+      setAvailablePresets(apiPresetsManager.getPresets());
+    })();
+  }, [isOpen]);
 
   // 选择预设
   const handleSelectPreset = (preset: APIPreset) => {
@@ -315,9 +319,9 @@ export default function ImageGenConfigModal({
         isOpen={showPresetsModal}
         onClose={() => {
           setShowPresetsModal(false);
-          // 重新加载预设列表
-          const presets = apiPresetsManager.getPresets();
-          setAvailablePresets(presets);
+          void apiPresetsManager.hydrateFromDisk().then(() => {
+            setAvailablePresets(apiPresetsManager.getPresets());
+          });
         }}
         onSelectPreset={handleSelectPreset}
       />

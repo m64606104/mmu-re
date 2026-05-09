@@ -1,6 +1,7 @@
 // 表情包管理界面 — UI 参考：浅色网格底、线框卡片、标签下划线（表情管理 / 作品页风格）
 
 import { useState, useEffect, useRef, useCallback } from 'react';
+import { toast } from 'sonner';
 import {
   ChevronLeft,
   Plus,
@@ -11,6 +12,9 @@ import {
   Smile,
   User,
   Bot,
+  Download,
+  Upload,
+  Archive,
 } from 'lucide-react';
 import { Conversation } from '../types';
 import { StickerItem, StickerScope } from '../types/sticker';
@@ -24,6 +28,12 @@ import {
   deleteSticker,
   imageToBase64,
 } from '../utils/stickerStorage';
+import {
+  exportMomoyuStickerPackToFile,
+  formatStickerPackSummary,
+  importMomoyuStickerPack,
+  isMomoyuStickerPack,
+} from '../utils/stickerPackBackup';
 
 interface StickerManagementScreenProps {
   onBack: () => void;
@@ -76,6 +86,10 @@ export default function StickerManagementScreen({ onBack, conversations }: Stick
   const [editingSticker, setEditingSticker] = useState<StickerItem | null>(null);
   const [loading, setLoading] = useState(false);
   const [summaryCounts, setSummaryCounts] = useState({ mine: 0, public: 0 });
+  const stickerPackImportRef = useRef<HTMLInputElement>(null);
+  const [replaceMainStickers, setReplaceMainStickers] = useState(false);
+  const [replaceEasyStickers, setReplaceEasyStickers] = useState(false);
+  const [showStickerBackupPanel, setShowStickerBackupPanel] = useState(false);
 
   const privateConversations = conversations.filter(c => c.type === 'private');
 
@@ -102,6 +116,15 @@ export default function StickerManagementScreen({ onBack, conversations }: Stick
     void loadStickers();
   }, [activeTab, selectedCharacter]);
 
+  useEffect(() => {
+    if (!showStickerBackupPanel) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setShowStickerBackupPanel(false);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [showStickerBackupPanel]);
+
   const loadStickers = async () => {
     setLoading(true);
     try {
@@ -119,6 +142,58 @@ export default function StickerManagementScreen({ onBack, conversations }: Stick
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleExportStickerPack = async () => {
+    try {
+      const pack = await exportMomoyuStickerPackToFile();
+      alert(`✅ 表情包已导出\n\n${formatStickerPackSummary(pack)}`);
+    } catch (error) {
+      console.error('表情包导出失败:', error);
+      alert('❌ 表情包导出失败：' + (error instanceof Error ? error.message : String(error)));
+    }
+  };
+
+  const handleImportStickerPack = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const inputEl = e.target;
+    const reader = new FileReader();
+    reader.onload = async (event) => {
+      try {
+        const parsed = JSON.parse(event.target?.result as string);
+        if (!isMomoyuStickerPack(parsed)) {
+          alert('❌ 不是表情包专用备份（需 format 为 momoyu-sticker-pack-v1）。');
+          return;
+        }
+        const sum = formatStickerPackSummary(parsed);
+        let msg = `📥 导入表情包\n\n${sum}\n\n`;
+        if (!replaceMainStickers && !replaceEasyStickers) {
+          msg += '将以「合并」写入：同 id 覆盖，其余保留。\n';
+        } else {
+          if (replaceMainStickers) msg += '• 主聊天表情：先清空相关表再写入包内数据。\n';
+          else msg += '• 主聊天表情：合并。\n';
+          if (replaceEasyStickers) msg += '• EasyChat 表情：先清空再写入。\n';
+          else msg += '• EasyChat 表情：合并。\n';
+        }
+        msg += '\n确定继续？';
+        if (!window.confirm(msg)) return;
+        await importMomoyuStickerPack(parsed, {
+          replaceMainChatStickers: replaceMainStickers,
+          replaceEasyChatStickers: replaceEasyStickers,
+        });
+        toast.success('表情包导入完成');
+        setShowStickerBackupPanel(false);
+        await loadStickers();
+        await refreshSummaryCounts();
+      } catch (err) {
+        console.error(err);
+        alert('❌ 表情包导入失败：' + (err instanceof Error ? err.message : String(err)));
+      } finally {
+        inputEl.value = '';
+      }
+    };
+    reader.readAsText(file);
   };
 
   const filteredStickers = stickers.filter(sticker => {
@@ -222,18 +297,29 @@ export default function StickerManagementScreen({ onBack, conversations }: Stick
               <ChevronLeft className="w-5 h-5 md:w-4 md:h-4" strokeWidth={2} />
               <span className="hidden md:inline text-sm font-semibold">返回</span>
             </button>
-            <h1 className="flex-1 text-center md:text-left text-[15px] md:text-lg font-bold tracking-wide text-zinc-900 truncate">
+            <h1 className="flex-1 text-center md:text-left text-[15px] md:text-lg font-bold tracking-wide text-zinc-900 truncate px-1">
               表情包管理
             </h1>
-            <button
-              type="button"
-              onClick={openAdd}
-              className="shrink-0 flex items-center gap-2 px-3 md:px-4 h-10 rounded-full border-2 border-zinc-900 bg-zinc-900 text-white hover:bg-zinc-800 active:scale-95 transition-all shadow-[2px_2px_0_0_rgba(24,24,27,0.15)] text-sm font-bold"
-              aria-label="添加"
-            >
-              <Plus className="w-5 h-5 md:w-[18px] md:h-[18px]" strokeWidth={2.5} />
-              <span className="hidden md:inline">添加表情</span>
-            </button>
+            <div className="flex items-center gap-1.5 shrink-0">
+              <button
+                type="button"
+                onClick={() => setShowStickerBackupPanel(true)}
+                className="shrink-0 w-10 h-10 flex items-center justify-center rounded-full border-2 border-zinc-900/18 bg-white text-zinc-800 hover:bg-zinc-50 hover:border-zinc-900/28 active:scale-95 transition-all"
+                aria-label="表情包备份：导出或导入 JSON"
+                title="表情包备份（JSON）"
+              >
+                <Archive className="w-[18px] h-[18px]" strokeWidth={2.25} />
+              </button>
+              <button
+                type="button"
+                onClick={openAdd}
+                className="shrink-0 flex items-center gap-2 px-3 md:px-4 h-10 rounded-full border-2 border-zinc-900 bg-zinc-900 text-white hover:bg-zinc-800 active:scale-95 transition-all shadow-[2px_2px_0_0_rgba(24,24,27,0.15)] text-sm font-bold"
+                aria-label="添加"
+              >
+                <Plus className="w-5 h-5 md:w-[18px] md:h-[18px]" strokeWidth={2.5} />
+                <span className="hidden md:inline">添加表情</span>
+              </button>
+            </div>
           </div>
 
           {/* 移动端：底栏 Tab */}
@@ -426,6 +512,92 @@ export default function StickerManagementScreen({ onBack, conversations }: Stick
         )}
           </div>
         </div>
+
+        {showStickerBackupPanel && (
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="sticker-backup-title"
+            className="fixed inset-0 z-[60] flex items-end justify-center sm:items-center bg-zinc-950/45 px-0 sm:p-4"
+            onClick={e => {
+              if (e.target === e.currentTarget) setShowStickerBackupPanel(false);
+            }}
+          >
+            <div
+              className="w-full sm:max-w-md rounded-t-[22px] sm:rounded-2xl border-2 border-zinc-900/90 bg-[#fafaf8] shadow-[6px_8px_0_0_rgba(24,24,27,0.08)] max-h-[min(88dvh,560px)] overflow-hidden flex flex-col"
+              onClick={e => e.stopPropagation()}
+            >
+              <div className="flex-shrink-0 px-4 py-3 flex items-center justify-between border-b-2 border-zinc-900/90 bg-white">
+                <div className="flex items-center gap-2 min-w-0">
+                  <Archive className="w-5 h-5 text-zinc-700 shrink-0" strokeWidth={2.25} />
+                  <h2 id="sticker-backup-title" className="text-[15px] font-bold text-zinc-900 truncate">
+                    表情包备份
+                  </h2>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowStickerBackupPanel(false)}
+                  className="w-9 h-9 rounded-full border border-zinc-900/20 text-zinc-600 hover:bg-zinc-100 text-lg leading-none font-light shrink-0"
+                  aria-label="关闭"
+                >
+                  ×
+                </button>
+              </div>
+              <div className="flex-1 min-h-0 overflow-y-auto p-4 space-y-4" style={GRID_PAPER_BG}>
+                <p className="text-[12px] text-zinc-600 leading-relaxed">
+                  导出或导入 <span className="font-semibold text-zinc-800">momoyu-sticker-pack-v1</span>
+                  ，包含主聊天公共、全部角色专属、用户专属以及 EasyChat；导入默认合并，可按需勾选替换。
+                </p>
+                <div className="flex flex-col sm:flex-row gap-2">
+                  <button
+                    type="button"
+                    onClick={() => void handleExportStickerPack()}
+                    className="inline-flex flex-1 items-center justify-center gap-2 rounded-xl border-2 border-zinc-900 bg-zinc-900 py-3 px-3 text-xs font-bold text-white hover:bg-zinc-800 active:scale-[0.99] transition-all"
+                  >
+                    <Download className="w-4 h-4 shrink-0" strokeWidth={2.5} />
+                    导出 JSON
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => stickerPackImportRef.current?.click()}
+                    className="inline-flex flex-1 items-center justify-center gap-2 rounded-xl border-2 border-zinc-900/25 bg-white py-3 px-3 text-xs font-bold text-zinc-900 hover:bg-zinc-50 active:scale-[0.99] transition-all"
+                  >
+                    <Upload className="w-4 h-4 shrink-0" strokeWidth={2.5} />
+                    导入 JSON
+                  </button>
+                </div>
+                <div className="space-y-2 text-[11px] text-zinc-600">
+                  <label className="flex cursor-pointer items-start gap-2 rounded-xl border border-zinc-900/10 bg-white px-3 py-2.5">
+                    <input
+                      type="checkbox"
+                      className="mt-0.5 h-3.5 w-3.5 shrink-0 rounded border-zinc-300"
+                      checked={replaceMainStickers}
+                      onChange={ev => setReplaceMainStickers(ev.target.checked)}
+                    />
+                    <span>导入时<strong className="text-zinc-800">替换</strong>主聊天表情（先清空再写入）</span>
+                  </label>
+                  <label className="flex cursor-pointer items-start gap-2 rounded-xl border border-zinc-900/10 bg-white px-3 py-2.5">
+                    <input
+                      type="checkbox"
+                      className="mt-0.5 h-3.5 w-3.5 shrink-0 rounded border-zinc-300"
+                      checked={replaceEasyStickers}
+                      onChange={ev => setReplaceEasyStickers(ev.target.checked)}
+                    />
+                    <span>导入时<strong className="text-zinc-800">替换</strong> EasyChat 表情</span>
+                  </label>
+                </div>
+              </div>
+              <input
+                ref={stickerPackImportRef}
+                type="file"
+                accept=".json,application/json"
+                onChange={handleImportStickerPack}
+                className="hidden"
+                aria-hidden={true}
+              />
+            </div>
+          </div>
+        )}
 
         {showAddModal && (
           <AddStickerModal

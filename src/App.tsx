@@ -1,14 +1,24 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { Screen, Conversation, ApiConfig, UserProfile, MomentPost, Message, ThemeSettings, ShopType } from './types';
 import type { CharacterSettings } from './types';
-import MessageNotification from './components/MessageNotification';
+import MessageNotification, { showMessageNotification } from './components/MessageNotification';
 import { renderScreen } from './navigation/renderScreen';
 import { getDefaultScreenForApp, isAppPageValue } from './navigation/appEntry';
 import type { AppPage } from './navigation/appEntry';
 import { buildRouteHash, normalizeNavigationTarget, supportsConversationContext } from './navigation/navigationPolicy';
 import { RuntimeServices } from './services/RuntimeServices';
-import { load, save, initializeCache, cleanupLegacyLargeLocalStorage } from './domains/storage';
-import { backgroundGenerationService } from './domains/generation';
+import {
+  load,
+  save,
+  initializeCache,
+  cleanupLegacyLargeLocalStorage,
+  isBulkStorageRestoreInProgress,
+} from './domains/storage';
+import {
+  backgroundGenerationService,
+  bindLiveConversations,
+  bindDetachedGroupGenerationDeps,
+} from './domains/generation';
 import { initializeLetters, initializeLetterTimers } from './domains/letters';
 import { isCloudSyncEnabled } from './services/supabaseClient';
 import { markCloudSyncSuccess } from './services/supabaseClient';
@@ -43,6 +53,27 @@ import {
 import { Letter } from './types/letter';
 import { generateInitialOnlineHandle } from './utils/bootstrapOnlineHandle';
 import { stashSettingsOpenIntent } from './utils/settingsNavigationIntent';
+import { buildPresetConversation, maybeApplyConversationPresetUiMigration } from './utils/conversationPresetNormalize';
+import { GlobalQuickBackupFab } from './components/GlobalQuickBackupFab';
+import { importCharacterStickerBundle } from './utils/characterMigrationStickers';
+import { Toaster } from 'sonner';
+import {
+  formatChatMessagePreviewForNotification,
+  sendChatNotification,
+  sendGroupChatNotification,
+  shouldSendNotification,
+} from './utils/notificationService';
+import { getSafeAvatar } from './utils/avatarHelper';
+import { getCharacterRealName } from './utils/characterIdentity';
+
+function resolveGroupAssistantSenderLabel(message: Message, allConversations: Conversation[]): string {
+  const withSender = message as Message & { senderId?: string; senderName?: string };
+  if (withSender.senderName?.trim()) return withSender.senderName.trim();
+  const sid = withSender.senderId;
+  if (!sid) return '群友';
+  const mem = allConversations.find((c) => c.id === sid);
+  return getCharacterRealName(mem?.characterSettings) || mem?.name || '群友';
+}
 
 function safeLoadFromLocalStorage<T>(key: string, fallback: T): T {
   const saved = localStorage.getItem(key);
@@ -109,209 +140,18 @@ function buildPersistableConversations(
   });
 }
 
-function assetUrl(relativePath: string): string {
-  // Use relative paths so GitHub Pages subpaths work.
-  // e.g. "avatars/aa.png" resolves to "/mmu-re/avatars/aa.png" on Pages.
-  const normalizedPath = relativePath.startsWith('/') ? relativePath.slice(1) : relativePath;
-  return normalizedPath;
-}
-
-function buildPresetConversation(kind: 'aa' | 'worker' | 'oo1', now = Date.now()): Conversation {
-  if (kind === 'aa') {
-    return {
-      id: 'preset-aa',
-      type: 'private',
-      name: 'aa',
-      avatar: assetUrl('avatars/aa-default.png'),
-      messages: [],
-      characterSettings: {
-        avatar: assetUrl('avatars/aa-default.png'),
-        realName: 'aa',
-        nickname: 'aa',
-        username: 'aa不是研究生',
-        systemPrompt: '你叫aa，女生，是我的网友，和我关系很好，在上海读研。',
-        personality: '喜欢网上冲浪、刷小红书、分享生活',
-        languageStyle: '偶尔会使用网络用语，语气轻松活泼',
-        languageExample: '哈哈哈太好笑了吧！今天又在小红书上刷到好多有趣的东西～',
-        memoryEvents: '',
-        disableWorldbook: true,
-      },
-      enabledFeatures: ['memory-system'],
-      lastMessageTime: now,
-      unreadCount: 0,
-    };
-  }
-  if (kind === 'worker') {
-    return {
-      id: 'preset-worker',
-      type: 'private',
-      name: '测',
-      avatar: assetUrl('avatars/ce-default.png'),
-      messages: [],
-      characterSettings: {
-        avatar: assetUrl('avatars/ce-default.png'),
-        realName: '测',
-        nickname: '测',
-        username: '只要涨薪不要996',
-        systemPrompt: '你是一个上班族，26岁，男，在公司做总裁助理。',
-        personality: '',
-        languageStyle: '',
-        languageExample: '',
-        memoryEvents: '',
-        disableWorldbook: true,
-      },
-      enabledFeatures: ['memory-system'],
-      lastMessageTime: now,
-      unreadCount: 0,
-    };
-  }
-  return {
-    id: 'preset-oo1',
-    type: 'private',
-    name: 'oo1',
-    avatar: assetUrl('avatars/oo1.png'),
-    messages: [],
-    characterSettings: {
-      avatar: assetUrl('avatars/oo1.png'),
-      realName: 'oo1',
-      nickname: 'oo1',
-      username: '',
-      interactionMode: 'tool',
-      systemPrompt:
-        '你是 oo1，一个对标 ChatGPT/Gemini 的通用智能助手。\n目标：帮助用户把事情做成。\n\n回答偏好：先给结论，再给可执行步骤；必要时给方案对比与推荐。\n表达：简洁、自然、不过度客套；不自我设限。\n\n文档/文件：当用户发送文档时，系统会把可读正文附在消息里（“内容：”之后）。你应直接阅读并处理；不要说“看不到附件/打不开文件/请复制粘贴”。',
-      personality: '',
-      languageStyle: '简洁、自然、可执行',
-      languageExample: '',
-      memoryEvents: '',
-      disableWorldbook: true,
-      proactiveMessaging: {
-        enabled: false,
-        minInterval: 30,
-        maxInterval: 180,
-        activeHourStart: 8,
-        activeHourEnd: 23,
-        autoIntervalByAI: true,
-        relationAware: true,
-        wakeSensitivityMode: 'auto',
-      },
-    },
-    enabledFeatures: ['memory-system'],
-    lastMessageTime: now,
-    unreadCount: 0,
-  };
-}
-
-function normalizePresetAaAvatar(conversations: Conversation[]): Conversation[] {
-  const OO1_DEFAULT_PROMPT_V1 =
-    '你是 oo1，一个对标 ChatGPT / Gemini 的通用智能助手。你擅长通用问答、写作、分析、规划和代码协助，回答要清晰、直接、可执行。';
-
-  const OO1_DEFAULT_PROMPT_V2 = [
-    '你是 oo1，一个对标 ChatGPT/Gemini 的通用智能助手。',
-    '目标：帮助用户把事情做成。',
-    '',
-    '回答偏好：先给结论，再给可执行步骤；必要时给方案对比与推荐。',
-    '表达：简洁、自然、不过度客套；不自我设限。',
-    '',
-    '文档/文件：当用户发送文档时，系统会把可读正文附在消息里（“内容：”之后）。你应直接阅读并处理；不要说“看不到附件/打不开文件/请复制粘贴”。',
-  ].join('\n');
-
-  const normalizePath = (p: string) => (p.startsWith('/') ? p.slice(1) : p).trim();
-
-  /** 预设角色：用户若在聊天里换过头像（常见为 data:/blob:/外链图），载入时不要用内置默认头像覆盖 */
-  function shouldPreserveCustomPresetAvatar(candidate: string | undefined): boolean {
-    if (!candidate) return false;
-    if (/^(data:|blob:)/i.test(candidate)) return true;
-    const s = normalizePath(candidate.toLowerCase());
-    if (/^https?:\/\//i.test(candidate)) {
-      const isEmbeddedPack =
-        s.includes('aa-default') ||
-        s.includes('ce-default') ||
-        /\boo1\.png\b/i.test(candidate);
-      return !isEmbeddedPack;
-    }
-    const isBundledFile =
-      s.includes('aa-default') ||
-      s.includes('ce-default') ||
-      /\bavatars\/([^/]+\/)?oo1\.png\b/i.test(s) ||
-      s.endsWith('avatars/oo1.png');
-    return !isBundledFile && s.length > 0;
-  }
-
-  const normalized = conversations.map((conv) => {
-    const isPresetAa = conv.id.startsWith('preset-aa') || conv.name === 'aa';
-    const isPresetWorker = conv.id.startsWith('preset-worker') || conv.name === '测';
-    const isPresetOo1 = conv.id === 'preset-oo1' || conv.name === 'oo1';
-    if (!isPresetAa && !isPresetWorker && !isPresetOo1) return conv;
-    const avatarPath = isPresetAa
-      ? assetUrl('avatars/aa-default.png')
-      : isPresetWorker
-        ? assetUrl('avatars/ce-default.png')
-        : assetUrl('avatars/oo1.png');
-
-    const currentAvatar = conv.characterSettings?.avatar || conv.avatar;
-    const useBundledAvatar = !shouldPreserveCustomPresetAvatar(currentAvatar);
-    const nextAvatar = useBundledAvatar ? avatarPath : (currentAvatar as string);
-
-    const nextCharacterSettings = conv.characterSettings
-      ? {
-          ...conv.characterSettings,
-          avatar: nextAvatar,
-          ...(isPresetOo1
-            ? {
-                interactionMode: 'tool' as const,
-                ...(conv.characterSettings.username === 'Your Personal AI'
-                  ? { username: '' }
-                  : {}),
-                proactiveMessaging: {
-                  ...(conv.characterSettings.proactiveMessaging || {}),
-                  enabled: false,
-                  minInterval: conv.characterSettings.proactiveMessaging?.minInterval || 30,
-                  maxInterval: conv.characterSettings.proactiveMessaging?.maxInterval || 180,
-                  activeHourStart: conv.characterSettings.proactiveMessaging?.activeHourStart ?? 8,
-                  activeHourEnd: conv.characterSettings.proactiveMessaging?.activeHourEnd ?? 23,
-                  autoIntervalByAI: conv.characterSettings.proactiveMessaging?.autoIntervalByAI ?? true,
-                  relationAware: conv.characterSettings.proactiveMessaging?.relationAware ?? true,
-                  wakeSensitivityMode: conv.characterSettings.proactiveMessaging?.wakeSensitivityMode || 'auto',
-                },
-              }
-            : {}),
-          ...(isPresetOo1 && conv.characterSettings.systemPrompt === OO1_DEFAULT_PROMPT_V1
-            ? {
-                systemPrompt: OO1_DEFAULT_PROMPT_V2,
-                personality: '',
-                languageExample: '',
-                languageStyle: '简洁、自然、可执行',
-              }
-            : {}),
-        }
-      : conv.characterSettings;
-    return {
-      ...conv,
-      avatar: nextAvatar,
-      characterSettings: nextCharacterSettings,
-    };
-  });
-
-  const now = Date.now();
-  const hasAa = normalized.some((conv) => conv.id.startsWith('preset-aa') || conv.name === 'aa');
-  const hasWorker = normalized.some((conv) => conv.id.startsWith('preset-worker') || conv.name === '测');
-  const hasOo1 = normalized.some((conv) => conv.id === 'preset-oo1' || conv.name === 'oo1');
-
-  const ensured: Conversation[] = [...normalized];
-  if (!hasOo1) ensured.unshift(buildPresetConversation('oo1', now));
-  if (!hasAa) ensured.push(buildPresetConversation('aa', now));
-  if (!hasWorker) ensured.push(buildPresetConversation('worker', now));
-  return ensured;
-}
-
 function App() {
   const routeSyncRef = useRef(false);
   const navigationStackRef = useRef<Array<{ screen: Screen; conversationId: string | null }>>([]);
   const cloudSyncMessageCountRef = useRef<Record<string, number>>({});
   const avatarVisionInFlightRef = useRef<Set<string>>(new Set());
-  const avatarVisionCooldownRef = useRef<Map<string, number>>(new Map());
+  /** 解析失败后的退避截止时间（按会话）；成功或 API 指纹变化时清除 */
+  const avatarVisionFailUntilRef = useRef<Map<string, number>>(new Map());
+  const avatarVisionApiFingerprintRef = useRef<string>('');
+  /** 必须为 true 后才允许防抖写入 conversations：否则首屏占位会话会在 hydrate 完成前覆盖 IndexedDB 真数据 */
+  const conversationsHydrationCompleteRef = useRef(false);
   const [currentScreen, setCurrentScreen] = useState<Screen>('home');
-  const [conversations, setConversations] = useState<Conversation[]>(() => normalizePresetAaAvatar([]));
+  const [conversations, setConversations] = useState<Conversation[]>([]);
   const [currentConversationId, setCurrentConversationId] = useState<string | null>(null);
   const [apiConfig, setApiConfig] = useState<ApiConfig>(() => {
     return safeLoadFromLocalStorage('apiConfig', {
@@ -321,6 +161,14 @@ function App() {
       visionModelName: '',
       visionBaseUrl: '',
       visionApiKey: '',
+      privateAiImageGeneration: {
+        enabled: false,
+        baseUrl: '',
+        apiKey: '',
+        model: '',
+        dailyMaxPerConversation: 8,
+        size: '1024x1024',
+      },
     });
   });
   const [userProfile, setUserProfile] = useState<UserProfile>(() => {
@@ -364,6 +212,7 @@ function App() {
     const fuseCooldownMs = 30 * 60 * 1000;
     const failureHistory = new Map<string, number[]>();
     const fuseUntil = new Map<string, number>();
+    const fuseBlockLogLast = new Map<string, number>();
 
     const readSourceHeader = (init?: RequestInit): string => {
       const h = init?.headers as any;
@@ -391,6 +240,24 @@ function App() {
       }
     };
 
+    /** 模型名/Key 等配置问题不应触发熔断，否则会误伤头像视觉、记忆等其它来源 */
+    const serverErrorShouldTripFuse = async (res: Response): Promise<boolean> => {
+      if (res.status < 500) return false;
+      try {
+        const t = await res.clone().text();
+        if (
+          /"code"\s*:\s*"model_not_found"|model_not_found|"code"\s*:\s*"invalid_model"|invalid_model|无可用渠道|incorrect api key|invalid_api_key|authentication_error|insufficient_quota|user_not_found|billing_not_active/i.test(
+            t
+          )
+        ) {
+          return false;
+        }
+      } catch {
+        /* ignore */
+      }
+      return true;
+    };
+
     window.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
       try {
         const url = typeof input === 'string' ? input : (input as any)?.url;
@@ -408,6 +275,10 @@ function App() {
           const s = stack.toLowerCase();
           if (s.includes('proactivemessaging')) return 'proactiveMessaging';
           if (s.includes('pendingreplyservice')) return 'pendingReplyService';
+          if (s.includes('groupchatservice')) return 'groupChatService';
+          if (s.includes('rungroupmemorysummaryifdue') || s.includes('groupmemorysummary'))
+            return 'groupMemorySummary';
+          if (s.includes('avatarvision')) return 'avatarVision';
           if (s.includes('avatchangedecision') || s.includes('avatarchangedecision')) return 'avatarChangeDecision';
           if (s.includes('lifeengine')) return 'lifeEngine';
           if (s.includes('memorysystem')) return 'memorySystem';
@@ -418,16 +289,28 @@ function App() {
         const src = guessSource();
         const until = fuseUntil.get(src) || 0;
         if (until > Date.now()) {
-          // 仅控制台提示，不影响用户端 UI
-          console.warn(`🧯 [chat/completions] blocked by fuse from=${src} until=${new Date(until).toLocaleTimeString()}`, url);
+          const logKey = `${src}|${url}`;
+          const lastLog = fuseBlockLogLast.get(logKey) || 0;
+          if (Date.now() - lastLog > 30_000) {
+            fuseBlockLogLast.set(logKey, Date.now());
+            console.warn(
+              `🧯 [chat/completions] blocked by fuse from=${src} until=${new Date(until).toLocaleTimeString()}`,
+              url
+            );
+          }
           return new Response('', { status: 599, statusText: 'Blocked by momoyu fuse' });
         }
 
         const res = await rawFetch(input, init);
-        if (!res.ok) {
+        if (res.ok) {
+          // 成功后清零：避免短暂 503 连击后即便服务恢复仍计满熔断；也能尽快解除待解除的失败计数
+          failureHistory.delete(src);
+          fuseUntil.delete(src);
+        } else {
           // 只在失败时打点，避免刷屏
           console.warn(`🧭 [chat/completions] ${res.status} from=${src}`, url);
-          if (res.status >= 500) {
+          // 599 为本端熔断占位响应，不计入上游失败次数
+          if (res.status >= 500 && res.status !== 599 && (await serverErrorShouldTripFuse(res))) {
             noteFailure(src);
           }
         }
@@ -455,6 +338,7 @@ function App() {
   // 初始化存储系统和对话数据
   useEffect(() => {
     const loadData = async () => {
+      try {
       // 🧠 先初始化缓存系统（从 IndexedDB 预载热点键到内存，见 utils/storage.ts）
       await initializeCache();
 
@@ -521,7 +405,7 @@ function App() {
                 messages: await supabaseLoadMessages(conv.id, 300),
               }))
             );
-            const normalizedHydrated = normalizePresetAaAvatar(hydrated);
+            const normalizedHydrated = maybeApplyConversationPresetUiMigration(hydrated);
             loadedConversations = normalizedHydrated;
             setConversations(normalizedHydrated);
             cloudSyncMessageCountRef.current = buildMessageCountSnapshot(normalizedHydrated);
@@ -536,7 +420,7 @@ function App() {
       if (loadedConversations.length === 0) {
         const saved = await load('conversations');
         if (saved) {
-          loadedConversations = normalizePresetAaAvatar(saved);
+          loadedConversations = maybeApplyConversationPresetUiMigration(saved);
           setConversations(loadedConversations);
           if (cloudEnabled) {
             // 首次迁移：将本地历史同步到云端（幂等）
@@ -566,12 +450,14 @@ function App() {
             buildPresetConversation('worker'),
             buildPresetConversation('oo1'),
           ];
-          const normalizedPresetContacts = normalizePresetAaAvatar(presetContacts);
+          const normalizedPresetContacts = maybeApplyConversationPresetUiMigration(presetContacts);
           loadedConversations = normalizedPresetContacts;
           setConversations(normalizedPresetContacts);
           cloudSyncMessageCountRef.current = buildMessageCountSnapshot(normalizedPresetContacts);
         }
       }
+
+      conversationsHydrationCompleteRef.current = true;
 
       try {
         const { pruneOrphanMemoryBanks } = await import('./utils/memorySystem');
@@ -599,6 +485,13 @@ function App() {
 
       // 已移除：AI财务系统（批量激活/自动收入/自动支出）
       // 其他升级/修复任务仍会在应用启动后正常运行（在对应模块内部按需触发）。
+      } catch (e) {
+        console.error('❌ 启动数据加载异常（会话列表可能未就绪）:', e);
+      } finally {
+        if (!conversationsHydrationCompleteRef.current) {
+          conversationsHydrationCompleteRef.current = true;
+        }
+      }
     };
     
     loadData();
@@ -657,17 +550,10 @@ function App() {
       backgroundGenerationService.registerMessageUpdateCallback(
         conv.id,
         (conversationId: string, newMessages: Message[]) => {
-          // 更新对话消息
-          setConversations(prev => prev.map(c => {
-            if (c.id === conversationId) {
-              return {
-                ...c,
-                messages: newMessages,
-                lastMessageTime: Date.now(),
-              };
-            }
-            return c;
-          }));
+          updateConversationRef.current(conversationId, {
+            messages: newMessages,
+            lastMessageTime: Date.now(),
+          });
         }
       );
     });
@@ -684,6 +570,8 @@ function App() {
   useEffect(() => {
     // 🚀 防抖后写入 IndexedDB（会话等大数据不经 localStorage）
     const timeoutId = setTimeout(async () => {
+      if (!conversationsHydrationCompleteRef.current) return;
+      if (isBulkStorageRestoreInProgress()) return;
       if (conversations.length > 0) {
         if (isCloudSyncEnabled()) {
           // 异步同步到云端：先会话，再做消息增量同步
@@ -729,7 +617,11 @@ function App() {
           isCloudSyncEnabled(),
           cloudSyncMessageCountRef.current
         );
-        await save('conversations', persistableConversations);
+        try {
+          await save('conversations', persistableConversations);
+        } catch (e) {
+          console.error('❌ 会话落盘失败（已跳过本次写入，IndexedDB 仍保留上次成功数据）:', e);
+        }
       }
     }, 300); // 300ms防抖，合并连续的更新
     
@@ -763,43 +655,56 @@ function App() {
   useEffect(() => {
     // 🚀 性能优化：朋友圈数据也使用防抖保存
     const timeoutId = setTimeout(() => {
+      if (isBulkStorageRestoreInProgress()) return;
       void smartSave('moments', moments);
     }, 500); // 500ms防抖，朋友圈更新频率较低
     
     return () => clearTimeout(timeoutId);
   }, [moments]);
 
-  // 🤖 头像视觉理解自动补全：新建/导入/预设角色只要缺少解析结果，就自动尝试一次
+  // 🤖 头像视觉：仅在「缺解析或与当前头像 URL 不一致」时补跑；与设置里视觉线路一致；失败退避 + 全局限流
   useEffect(() => {
     if (!apiConfig.baseUrl || !apiConfig.apiKey || !apiConfig.modelName) return;
+
+    const fp = [
+      apiConfig.baseUrl,
+      apiConfig.apiKey,
+      apiConfig.modelName,
+      apiConfig.visionModelName || '',
+      apiConfig.visionBaseUrl || '',
+      apiConfig.visionApiKey || '',
+    ].join('\u0001');
+    if (fp !== avatarVisionApiFingerprintRef.current) {
+      avatarVisionApiFingerprintRef.current = fp;
+      avatarVisionFailUntilRef.current.clear();
+    }
+
+    const now = Date.now();
+
     const candidates = conversations.filter((conv) => {
       if (conv.type !== 'private') return false;
       const avatarUrl = conv.characterSettings?.avatar || conv.avatar;
       if (!avatarUrl) return false;
       if (!shouldReanalyzeAvatar(avatarUrl, conv.characterSettings)) return false;
       if (avatarVisionInFlightRef.current.has(conv.id)) return false;
-      const until = avatarVisionCooldownRef.current.get(conv.id) || 0;
-      if (until > Date.now()) return false;
+      const failUntil = avatarVisionFailUntilRef.current.get(conv.id) || 0;
+      if (failUntil > now) return false;
       return true;
     });
     if (candidates.length === 0) return;
 
-    // 只处理 1 个，避免 dev 下 StrictMode/批量候选导致刷屏
     const conv = candidates[0];
     avatarVisionInFlightRef.current.add(conv.id);
-    // 在真正发请求前就先进入冷却窗口：避免 effect 触发两次造成重复请求
-    avatarVisionCooldownRef.current.set(conv.id, Date.now() + 60 * 60 * 1000);
     void (async () => {
       try {
         const avatarUrl = conv.characterSettings?.avatar || conv.avatar;
         if (!avatarUrl) return;
         const profile = await analyzeAvatarWithVisionModel(avatarUrl, apiConfig);
         if (!profile) {
-          // 视觉解析失败（常见于不支持 image_url 的后端）：保持冷却，避免持续刷 500
+          avatarVisionFailUntilRef.current.set(conv.id, Date.now() + 10 * 60 * 1000);
           return;
         }
-        // 成功才解除冷却
-        avatarVisionCooldownRef.current.delete(conv.id);
+        avatarVisionFailUntilRef.current.delete(conv.id);
         setConversations((prev) =>
           prev.map((item) => {
             if (item.id !== conv.id || !item.characterSettings) return item;
@@ -947,12 +852,97 @@ function App() {
     setCurrentScreen('home');
   }, []);
 
-  // 更新对话
-  const updateConversation = useCallback((id: string, updates: Partial<Conversation>) => {
-    setConversations(prev => prev.map(conv => 
-      conv.id === id ? { ...conv, ...updates } : conv
-    ));
-  }, []);
+  // 更新对话（含：后台生成完成时未读 + 应用内/系统消息提示）
+  const updateConversation = useCallback(
+    (id: string, updates: Partial<Conversation>) => {
+      setConversations((prev) => {
+        return prev.map((conv) => {
+          if (conv.id !== id) {
+            return conv;
+          }
+
+          if (updates.messages === undefined) {
+            return { ...conv, ...updates };
+          }
+
+          const prevMsgs = conv.messages || [];
+          const nextMsgs = updates.messages;
+          const prevIds = new Set(prevMsgs.map((m) => m.id));
+          const added = nextMsgs.filter((m) => !prevIds.has(m.id));
+
+          const isViewingThisChat =
+            currentScreen === 'chat' && currentConversationId === id;
+
+          const isBlocked = Boolean(conv.isBlocked);
+          const assistantAdded = added.filter(
+            (m) => m.role === 'assistant' && !(m as Message & { isBlockedMessage?: boolean }).isBlockedMessage
+          );
+
+          let nextUnread = conv.unreadCount ?? 0;
+          if (isViewingThisChat) {
+            nextUnread = 0;
+          } else if (!isBlocked && assistantAdded.length > 0) {
+            nextUnread = nextUnread + assistantAdded.length;
+          }
+
+          if (!isViewingThisChat && !isBlocked && assistantAdded.length > 0) {
+            const convSnapshot = conv;
+            queueMicrotask(() => {
+              try {
+                showMessageNotification(id, assistantAdded);
+                if (shouldSendNotification()) {
+                  const last = assistantAdded[assistantAdded.length - 1];
+                  const preview = formatChatMessagePreviewForNotification(last);
+                  if (convSnapshot.type === 'private') {
+                    const name =
+                      convSnapshot.characterSettings?.nickname || convSnapshot.name;
+                    sendChatNotification(
+                      name,
+                      preview,
+                      getSafeAvatar(
+                        convSnapshot.characterSettings?.avatar || convSnapshot.avatar
+                      ),
+                      id
+                    );
+                  } else if (convSnapshot.type === 'group') {
+                    const senderName = resolveGroupAssistantSenderLabel(last, conversationsRef.current);
+                    sendGroupChatNotification(convSnapshot.name, senderName, preview, id);
+                  }
+                }
+              } catch (e) {
+                console.warn('新消息通知失败（已忽略）:', e);
+              }
+            });
+          }
+
+          return {
+            ...conv,
+            ...updates,
+            messages: nextMsgs,
+            unreadCount: nextUnread,
+            lastMessageTime: updates.lastMessageTime ?? Date.now(),
+          };
+        });
+      });
+    },
+    [currentScreen, currentConversationId]
+  );
+
+  const conversationsRef = useRef(conversations);
+  conversationsRef.current = conversations;
+  const apiConfigRef = useRef(apiConfig);
+  apiConfigRef.current = apiConfig;
+  const userProfileRef = useRef(userProfile);
+  userProfileRef.current = userProfile;
+  const updateConversationRef = useRef(updateConversation);
+  updateConversationRef.current = updateConversation;
+
+  bindLiveConversations(() => conversationsRef.current);
+  bindDetachedGroupGenerationDeps({
+    updateConversation: (id, u) => updateConversationRef.current(id, u),
+    getApiConfig: () => apiConfigRef.current,
+    getUserProfile: () => userProfileRef.current,
+  });
 
   // 删除对话
   const deleteConversation = useCallback((id: string) => {
@@ -1026,7 +1016,9 @@ function App() {
         isMuted: data.character?.isMuted || false,
         // 保留AI状态信息
         aiStatus: data.character?.aiStatus,
-        replySplitPreference: data.character?.replySplitPreference || 'smart',
+        replySplitPreference: ['smart', 'single', 'split'].includes(data.character?.replySplitPreference)
+          ? data.character.replySplitPreference
+          : 'smart',
         ...(typeof data.character?.privateComposerQuietSeconds === 'number'
           ? { privateComposerQuietSeconds: data.character.privateComposerQuietSeconds }
           : {}),
@@ -1103,12 +1095,23 @@ function App() {
         await smartSave('document_library', allDocuments);
         console.log('✅ 文档库导入成功，文档数量:', updatedDocuments.length);
       }
+
+      // 🧩 角色专属表情包（WeChatSimulator characterStickers + EasyChatDB）
+      const stickerStats = await importCharacterStickerBundle(newConversationId, data.stickersMigration);
+      if (stickerStats.wechatCount + stickerStats.easyChatCount > 0) {
+        console.log(
+          `✅ 表情包导入：主聊天库 ${stickerStats.wechatCount}、EasyChat ${stickerStats.easyChatCount}`
+        );
+      }
       
       // 添加对话到列表
       setConversations(prev => [...prev, newConversation]);
       console.log('✅ 对话添加成功');
       
       // 📊 统计导入信息
+      const stickerWechat = data.stickersMigration?.wechatSimulatorCharacterStickers?.length ?? 0;
+      const stickerEasy = data.stickersMigration?.easyChatCharacterStickers?.length ?? 0;
+
       const importStats = {
         character: data.character?.name || '未知角色',
         messages: data.messages?.length || 0,
@@ -1120,6 +1123,9 @@ function App() {
         hasFinance: !!data.finance,
         hasAIStatus: !!data.character?.aiStatus,
         version: data.version || '1.0',
+        stickersWechatImported: stickerStats.wechatCount,
+        stickersEasyImported: stickerStats.easyChatCount,
+        stickersInFile: stickerWechat + stickerEasy,
       };
       
       // 显示详细导入结果
@@ -1127,16 +1133,21 @@ function App() {
         `👤 角色：${importStats.character}\n` +
         `📄 数据版本：${importStats.version}\n\n` +
         `📊 导入内容：\n` +
-        `• 角色设置：完整\n` +
-        `• 知识库：${importStats.knowledgeBase} 份\n` +
+        `• 角色设置：完整（含知识库条目标注在「知识库」计数）\n` +
+        `• 知识库（设置内）：${importStats.knowledgeBase} 条\n` +
         `• 文档库：${importStats.documents} 份\n` +
         `• 记忆库：${importStats.memories} 条\n` +
         `• 朋友圈：${importStats.moments} 条\n` +
         `• 关系网络：${importStats.relationships} 个\n` +
+        `• 表情包：主聊天库已写入 ${importStats.stickersWechatImported}、EasyChat ${importStats.stickersEasyImported}` +
+        (importStats.stickersInFile > 0
+          ? `（包内共 ${stickerWechat + stickerEasy} 条）\n`
+          : '\n') +
         `• AI状态：${importStats.hasAIStatus ? '已恢复' : '无'}\n` +
         `• 财务数据：${importStats.hasFinance ? '已恢复' : '无'}\n` +
         `• 消息记录：${importStats.messages} 条\n\n` +
-        `🎉 所有数据已完整导入！`;
+        `说明：v2.0 及更早包无独立表情段；全量站点备份请用设置中的「导出全部数据」。\n` +
+        `🎉 数据已按当前包内容导入。`;
       
       alert(successMessage);
       
@@ -1259,9 +1270,22 @@ function App() {
                 autoIntervalByAI: true,
                 relationAware: true,
                 wakeSensitivityMode: 'auto' as const,
+                sleepSimulationEnabled: false,
               },
             }
-          : {}),
+          : {
+              proactiveMessaging: {
+                enabled: false,
+                minInterval: 30,
+                maxInterval: 180,
+                activeHourStart: 8,
+                activeHourEnd: 23,
+                autoIntervalByAI: true,
+                relationAware: true,
+                wakeSensitivityMode: 'auto' as const,
+                sleepSimulationEnabled: true,
+              },
+            }),
       },
       enabledFeatures: ['memory-system'], // 默认启用记忆系统
       lastMessageTime: Date.now(),
@@ -1420,7 +1444,8 @@ function App() {
         className={`w-full flex items-start justify-center fixed inset-0 overflow-hidden ${
           fullscreenMode 
             ? 'bg-white pt-0' 
-            : 'bg-slate-100 pt-[10.5px] md:pt-[14px]'
+            : /* 手机全宽不要顶部留白条（原先 slate 底 + pt 会像一条灰绿边）；桌面保留灰台面 */
+              'bg-white pt-0 md:bg-slate-100 md:pt-[14px]'
         }`}
         style={{ height: '100dvh' }}
       >
@@ -1458,7 +1483,10 @@ function App() {
         </div>
 
       </div>
-      
+
+      <GlobalQuickBackupFab />
+      <Toaster position="top-center" theme="light" richColors closeButton />
+
       <RuntimeServices
         conversations={conversations}
         apiConfig={apiConfig}

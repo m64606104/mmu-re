@@ -16,6 +16,15 @@ import { subChatPurposeDetector } from '../utils/subChatPurposeDetector';
 import { MEDIA_DECISION_GUIDANCE } from '../utils/mediaDecisionPrompt';
 import { getNoActionRoleplayPrompt } from '../utils/chatStylePrompt';
 import type { MusicInfo } from '../utils/musicService';
+import {
+  appendImageRecognitionRules,
+  buildImageUrlParts,
+  collectImageUrlsFromMessages,
+  openAiMessagesUseVisionPayload,
+  resolveOpenAiCompatibleCompletionRouting,
+  userMessageHasImagePayload,
+  type OpenAiCompatibleCompletionRouting,
+} from '../domains/vision';
 
 interface SubChatWindowProps {
   subChat: SubChat;
@@ -87,6 +96,13 @@ const SubChatWindow: React.FC<SubChatWindowProps> = ({
   const [shouldScrollToBottom, setShouldScrollToBottom] = useState(true);
   const [isUserScrolling, setIsUserScrolling] = useState(false);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
+  const messageWindowRef = useRef(messageWindow);
+  messageWindowRef.current = messageWindow;
+  const subChatMessagesLengthRef = useRef(subChat.messages.length);
+  subChatMessagesLengthRef.current = subChat.messages.length;
+  const isLoadingMoreRef = useRef(false);
+  const loadMoreTopTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const loadMoreBottomTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastMessageCountRef = useRef(0);
   const scrollTimeoutRef = useRef<NodeJS.Timeout>();
   
@@ -165,88 +181,112 @@ const SubChatWindow: React.FC<SubChatWindowProps> = ({
     }
   }, []);
   
-  // 滚动加载更多消息
-  const handleScroll = useCallback(() => {
-    const container = messagesContainerRef.current;
-    if (!container || isLoadingMore) return;
-    
-    // 标记用户正在滚动
-    setIsUserScrolling(true);
-    
-    // 检查是否应该自动滚动到底部（用户在底部附近）
-    setShouldScrollToBottom(isAtBottom());
-    
-    // 清除之前的定时器
-    if (scrollTimeoutRef.current) {
-      clearTimeout(scrollTimeoutRef.current);
-    }
-    
-    // 延迟重置滚动状态
-    scrollTimeoutRef.current = setTimeout(() => {
-      setIsUserScrolling(false);
-    }, 1500); // 1.5秒后重置（子聊天响应更快）
-    
-    // 🔼 向上滚动：加载更早的消息
-    if (container.scrollTop < 50 && messageWindow.startIndex > 0) {
-      setIsLoadingMore(true);
-      
-      setTimeout(() => {
-        const loadMore = 20; // 子聊天每次加载20条
-        const newStartIndex = Math.max(0, messageWindow.startIndex - loadMore);
-        const addedMessages = messageWindow.startIndex - newStartIndex;
-        const prevScrollHeight = container.scrollHeight;
-        
-        setMessageWindow(prev => ({
-          startIndex: newStartIndex,
-          size: prev.size + addedMessages
-        }));
-        setIsLoadingMore(false);
-        
-        // 保持滚动位置，避免跳动
-        requestAnimationFrame(() => {
-          if (container) {
-            const newScrollHeight = container.scrollHeight;
-            container.scrollTop = newScrollHeight - prevScrollHeight;
-          }
-        });
-      }, 200); // 子聊天加载更快
-    }
-    
-    // 🔽 向下滚动：加载更新的消息（如果不在末尾）
-    const maxScrollTop = container.scrollHeight - container.clientHeight;
-    const isNearBottom = container.scrollTop > maxScrollTop - 50;
-    const windowEndIndex = messageWindow.startIndex + messageWindow.size;
-    
-    if (isNearBottom && windowEndIndex < subChat.messages.length) {
-      setIsLoadingMore(true);
-      
-      setTimeout(() => {
-        const loadMore = 20;
-        const maxSize = subChat.messages.length - messageWindow.startIndex;
-        const newSize = Math.min(messageWindow.size + loadMore, maxSize);
-        
-        setMessageWindow(prev => ({
-          ...prev,
-          size: newSize
-        }));
-        setIsLoadingMore(false);
-      }, 200);
-    }
-  }, [messageWindow, subChat.messages.length, isLoadingMore, isAtBottom]);
-  
-  // 监听滚动事件
+  useEffect(() => {
+    isLoadingMoreRef.current = isLoadingMore;
+  }, [isLoadingMore]);
+
+  // 与主聊天一致：稳定 scroll 监听，避免 isLoadingMore 触发重绑而 cancel 未执行的加载
   useEffect(() => {
     const container = messagesContainerRef.current;
-    if (container) {
-      container.addEventListener('scroll', handleScroll);
-      return () => {
-        container.removeEventListener('scroll', handleScroll);
-        if (scrollTimeoutRef.current) {
-          clearTimeout(scrollTimeoutRef.current);
+    if (!container) return;
+
+    const onScroll = () => {
+      const c = messagesContainerRef.current;
+      if (!c || isLoadingMoreRef.current) return;
+
+      setIsUserScrolling(true);
+      setShouldScrollToBottom(isAtBottom());
+
+      if (scrollTimeoutRef.current) {
+        clearTimeout(scrollTimeoutRef.current);
+      }
+      scrollTimeoutRef.current = setTimeout(() => {
+        setIsUserScrolling(false);
+      }, 1500);
+
+      const mw = messageWindowRef.current;
+      const total = subChatMessagesLengthRef.current;
+
+      if (c.scrollTop < 50 && mw.startIndex > 0) {
+        if (loadMoreTopTimeoutRef.current) {
+          clearTimeout(loadMoreTopTimeoutRef.current);
         }
-      };
-    }
-  }, [handleScroll]);
+        if (loadMoreBottomTimeoutRef.current) {
+          clearTimeout(loadMoreBottomTimeoutRef.current);
+          loadMoreBottomTimeoutRef.current = null;
+        }
+        const prevScrollHeight = c.scrollHeight;
+        isLoadingMoreRef.current = true;
+        setIsLoadingMore(true);
+        loadMoreTopTimeoutRef.current = setTimeout(() => {
+          loadMoreTopTimeoutRef.current = null;
+          setMessageWindow((prev) => {
+            const loadMore = 20;
+            const newStartIndex = Math.max(0, prev.startIndex - loadMore);
+            const addedMessages = prev.startIndex - newStartIndex;
+            if (addedMessages === 0) return prev;
+            return {
+              startIndex: newStartIndex,
+              size: prev.size + addedMessages,
+            };
+          });
+          isLoadingMoreRef.current = false;
+          setIsLoadingMore(false);
+          requestAnimationFrame(() => {
+            const el = messagesContainerRef.current;
+            if (el) {
+              el.scrollTop = el.scrollHeight - prevScrollHeight;
+            }
+          });
+        }, 200);
+        return;
+      }
+
+      const maxScrollTop = c.scrollHeight - c.clientHeight;
+      const isNearBottom = c.scrollTop > maxScrollTop - 50;
+      const windowEndIndex = mw.startIndex + mw.size;
+      if (isNearBottom && windowEndIndex < total) {
+        if (loadMoreBottomTimeoutRef.current) {
+          clearTimeout(loadMoreBottomTimeoutRef.current);
+        }
+        if (loadMoreTopTimeoutRef.current) {
+          clearTimeout(loadMoreTopTimeoutRef.current);
+          loadMoreTopTimeoutRef.current = null;
+        }
+        isLoadingMoreRef.current = true;
+        setIsLoadingMore(true);
+        loadMoreBottomTimeoutRef.current = setTimeout(() => {
+          loadMoreBottomTimeoutRef.current = null;
+          setMessageWindow((prev) => {
+            const loadMore = 20;
+            const maxSize = subChatMessagesLengthRef.current - prev.startIndex;
+            const newSize = Math.min(prev.size + loadMore, maxSize);
+            if (newSize === prev.size) return prev;
+            return { ...prev, size: newSize };
+          });
+          isLoadingMoreRef.current = false;
+          setIsLoadingMore(false);
+        }, 200);
+      }
+    };
+
+    container.addEventListener('scroll', onScroll, { passive: true });
+    return () => {
+      container.removeEventListener('scroll', onScroll);
+      if (scrollTimeoutRef.current) {
+        clearTimeout(scrollTimeoutRef.current);
+      }
+      if (loadMoreTopTimeoutRef.current) {
+        clearTimeout(loadMoreTopTimeoutRef.current);
+        loadMoreTopTimeoutRef.current = null;
+      }
+      if (loadMoreBottomTimeoutRef.current) {
+        clearTimeout(loadMoreBottomTimeoutRef.current);
+        loadMoreBottomTimeoutRef.current = null;
+      }
+      isLoadingMoreRef.current = false;
+    };
+  }, [subChat.id, isAtBottom]);
   
   // 处理新消息和状态重置
   useEffect(() => {
@@ -652,7 +692,7 @@ ${otherSubChatsContext}
       }
       
       // 2. 检查多媒体消息类型
-      const hasImage = unhandledUserMessages.some((m: Message) => m.mediaType === 'image' && m.mediaUrl);
+      const hasImage = unhandledUserMessages.some((m: Message) => userMessageHasImagePayload(m));
       // const hasVideo = unhandledUserMessages.some((m: Message) => m.mediaType === 'video' && m.mediaDescription);
       // const hasVoice = unhandledUserMessages.some((m: Message) => m.mediaType === 'voice' && m.mediaDescription);
       
@@ -715,61 +755,61 @@ ${MEDIA_DECISION_GUIDANCE}
       // 4. 构建API请求
       let messages: any[];
       let requestBody: any;
+      let completionRouting: OpenAiCompatibleCompletionRouting =
+        resolveOpenAiCompatibleCompletionRouting(apiConfig, {
+          requestContainsImageUrl: false,
+          textChatModel: apiConfig.modelName,
+        });
 
       if (hasImage) {
-        // 图片识别逻辑
-        const imageMessages = unhandledUserMessages.filter((m: Message) => m.mediaType === 'image' && m.mediaUrl);
+        const imageMessages = unhandledUserMessages.filter((m: Message) =>
+          userMessageHasImagePayload(m)
+        );
         const textMessages = unhandledUserMessages.filter((m: Message) => !m.mediaType);
-        
+
         const recentMessages = subChat.messages.slice(-5);
         const historyMessages = recentMessages
           .filter((m: Message) => !unhandledUserMessages.includes(m))
           .map((m: Message) => ({
             role: m.role,
-            content: formatHistoryMessageContent(m)
+            content: formatHistoryMessageContent(m),
           }));
 
-        const contentParts: any[] = [];
-        
-        // 添加所有图片
-        imageMessages.forEach((imgMsg: Message) => {
-          contentParts.push({
-            type: 'image_url',
-            image_url: {
-              url: imgMsg.mediaUrl
-            }
-          });
-        });
-        
-        // 添加文字消息
-        const combinedText = textMessages.map((m: Message) => m.content).filter(Boolean).join('\n');
-        if (combinedText) {
-          contentParts.push({
-            type: 'text',
-            text: combinedText
-          });
-        } else {
-          const imageCount = imageMessages.length;
-          const defaultText = imageCount > 1 ? `看这${imageCount}张图` : '看这张图';
-          contentParts.push({
-            type: 'text',
-            text: defaultText
-          });
+        const imageUrls = collectImageUrlsFromMessages(imageMessages);
+        const contentParts: Array<{ type: string; text?: string; image_url?: { url: string; detail?: string } }> =
+          [];
+        if (imageUrls.length > 0) {
+          contentParts.push(...buildImageUrlParts(imageUrls));
         }
+        const combinedText = textMessages.map((m: Message) => m.content).filter(Boolean).join('\n');
+        const defaultCaption = imageUrls.length > 1 ? `看这${imageUrls.length}张图` : '看这张图';
+        contentParts.push({
+          type: 'text',
+          text: combinedText || defaultCaption,
+        });
 
         messages = [
-          { role: 'system', content: systemPrompt + '\n\n【图片识别规则】：\n- 只描述你在图片中实际看到的内容\n- 禁止编造、猜测图片中不存在的元素\n- 像朋友间日常聊天一样回复，不要太正式' },
-          ...historyMessages,
           {
-            role: 'user',
-            content: contentParts
-          }
+            role: 'system',
+            content: appendImageRecognitionRules(systemPrompt),
+          },
+          ...historyMessages,
+          { role: 'user', content: contentParts },
         ];
 
+        const hasVisionPayload = openAiMessagesUseVisionPayload(
+          messages as Array<{ role: string; content?: unknown }>
+        );
+        completionRouting = resolveOpenAiCompatibleCompletionRouting(apiConfig, {
+          requestContainsImageUrl: hasVisionPayload,
+          textChatModel: apiConfig.modelName,
+        });
+
         requestBody = {
-          model: apiConfig.modelName,
+          model: completionRouting.model,
           messages,
-          temperature: 0.4
+          temperature: 0.4,
+          max_tokens: 2000,
         };
       } else {
         // 纯文字消息处理
@@ -789,7 +829,7 @@ ${MEDIA_DECISION_GUIDANCE}
         ];
 
         requestBody = {
-          model: apiConfig.modelName,
+          model: completionRouting.model,
           messages,
           temperature: 0.8,
           max_tokens: 4000
@@ -798,13 +838,13 @@ ${MEDIA_DECISION_GUIDANCE}
 
       // 5. 发送API请求
       console.log('📡 发送API请求...');
-      const response = await fetch(`${apiConfig.baseUrl}/v1/chat/completions`, {
+      const response = await fetch(completionRouting.apiUrl, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${apiConfig.apiKey}`,
+          Authorization: `Bearer ${completionRouting.bearerToken}`,
         },
-        body: JSON.stringify(requestBody)
+        body: JSON.stringify(requestBody),
       });
 
       if (!response.ok) {

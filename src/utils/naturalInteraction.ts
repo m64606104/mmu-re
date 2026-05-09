@@ -1,4 +1,5 @@
 import { Conversation, ApiConfig } from '../types';
+import { buildApiUrl } from './apiHelper';
 
 // 检测是否在自然对话中提及朋友圈
 export const detectMomentMention = (message: string): {
@@ -110,7 +111,7 @@ export const generateImageDescriptions = async (
 只返回图片描述，每行一张。`;
 
   try {
-    const response = await fetch(`${apiConfig.baseUrl}/v1/chat/completions`, {
+    const response = await fetch(buildApiUrl(apiConfig), {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -231,7 +232,7 @@ export const generateMomentWithPhotos = async (
 只返回朋友圈文字，不要其他说明。`;
 
   try {
-    const response = await fetch(`${apiConfig.baseUrl}/v1/chat/completions`, {
+    const response = await fetch(buildApiUrl(apiConfig), {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',

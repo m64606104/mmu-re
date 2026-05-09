@@ -35,6 +35,7 @@ export function buildProtocolRetryInstruction(): string {
     '- [视频:描述] / [VID:描述]',
     '- [语音:内容,时长X秒] / [VOICE:内容:秒数]',
     '- [系统表情:关键词或emoji] / [EMOJI:关键词或emoji]',
+    '- [引用消息:消息ID]（须与上文〈消息ID:…〉一致；尾部静默，会剥掉）',
   ].join('\n');
 }
 

@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
-import { ChevronLeft, ChevronRight, Check, Loader2, Download, Upload, Database, User, Palette, Cloud, HardDrive, Shield } from 'lucide-react';
+import { toast } from 'sonner';
+import { ChevronLeft, ChevronRight, Check, Loader2, Download, Upload, Database, User, Palette, Cloud, HardDrive, Shield, X } from 'lucide-react';
 import { ApiConfig } from '../types';
 import {
   smartLoad,
@@ -9,16 +10,18 @@ import {
   getStorageStatus,
   migrateData,
   clearAllData,
-  dumpIndexedDBData,
   resolveStorageLayer,
+  setBulkStorageRestoreInProgress,
 } from '../utils/storage';
-import {
-  dumpSidecarIndexedDatabases,
-  restoreSidecarIndexedDatabases,
-  summarizeSidecarForExport,
-  SIDECAR_INDEXED_FIELD,
-} from '../utils/fullBackupSidecars';
+import { restoreSidecarIndexedDatabases, SIDECAR_INDEXED_FIELD } from '../utils/fullBackupSidecars';
 import { apiPresetsManager, APIPreset } from '../utils/apiPresetsManager';
+import {
+  listApiEndpointPairHistory,
+  addApiEndpointPairSnapshot,
+  removeApiEndpointPair,
+  formatApiEndpointPairLabel,
+  type ApiEndpointPairEntry,
+} from '../utils/apiEndpointHistory';
 import APIPresetsModal from './APIPresetsModal';
 import {
   getCloudSyncRuntimeState,
@@ -41,7 +44,15 @@ import {
   supabaseUpsertConversation,
 } from '../services/supabaseData';
 import { fetchOpenAiCompatibleModelIds } from '../utils/openaiCompatibleModels';
+import { buildApiUrl } from '../utils/apiHelper';
+import { filterLikelyChatModels } from '../utils/modelVisionClassifier';
 import { consumeSettingsOpenIntent } from '../utils/settingsNavigationIntent';
+import { exportFullMomoyuBackup, formatFullExportSuccessAlert } from '../utils/fullMomoyuExport';
+import {
+  readQuickBackupFabVisible,
+  writeQuickBackupFabVisible,
+  QUICK_BACKUP_FAB_VISIBILITY_EVENT,
+} from '../utils/quickBackupFabVisibility';
 
 interface SettingsScreenProps {
   apiConfig: ApiConfig;
@@ -49,6 +60,8 @@ interface SettingsScreenProps {
   onBack: () => void;
   fullscreenMode: boolean;
   onToggleFullscreen: (enabled: boolean) => void;
+  /** 进入「我的资料」编辑（与资料页「编辑资料」入口一致） */
+  onOpenEditProfile?: () => void;
 }
 
 const AVATAR_BADGES = ['🎵', '🎮', '🎧', '🎨', '🎬', '📷', '⚡', '🔥', '💫', '✨', '🌟', '💎'];
@@ -66,7 +79,14 @@ function getCloudBindingKey(url: string, uid: string): string {
   return `${CLOUD_SYNC_BINDING_PREFIX}${encodeURIComponent(url)}:${uid}`;
 }
 
-export default function SettingsScreen({ apiConfig, onUpdateConfig, onBack, fullscreenMode, onToggleFullscreen }: SettingsScreenProps) {
+export default function SettingsScreen({
+  apiConfig,
+  onUpdateConfig,
+  onBack,
+  fullscreenMode,
+  onToggleFullscreen,
+  onOpenEditProfile,
+}: SettingsScreenProps) {
   const [baseUrl, setBaseUrl] = useState(apiConfig.baseUrl);
   const [apiKey, setApiKey] = useState(apiConfig.apiKey);
   const [modelName, setModelName] = useState(apiConfig.modelName);
@@ -86,6 +106,7 @@ export default function SettingsScreen({ apiConfig, onUpdateConfig, onBack, full
   const [visionTestMessage, setVisionTestMessage] = useState('');
   const [apiPresets, setApiPresets] = useState<APIPreset[]>([]);
   const [showApiPresetsModal, setShowApiPresetsModal] = useState(false);
+  const [apiPairHistory, setApiPairHistory] = useState<ApiEndpointPairEntry[]>([]);
   const [selectedBadge, setSelectedBadge] = useState('🎵');
   const importInputRef = useRef<HTMLInputElement>(null);
   /** 点开模型下拉自动拉取时的节流，避免连续打开菜单刷接口 */
@@ -122,17 +143,49 @@ export default function SettingsScreen({ apiConfig, onUpdateConfig, onBack, full
   /** 从聊天入口因未配置 API 跳转而来时展示 */
   const [entryIntentBanner, setEntryIntentBanner] = useState<string | null>(null);
 
+  const [quickBackupFabOn, setQuickBackupFabOn] = useState(readQuickBackupFabVisible);
+  useEffect(() => {
+    const onVis = () => setQuickBackupFabOn(readQuickBackupFabVisible());
+    window.addEventListener(QUICK_BACKUP_FAB_VISIBILITY_EVENT, onVis);
+    return () => window.removeEventListener(QUICK_BACKUP_FAB_VISIBILITY_EVENT, onVis);
+  }, []);
+
   // 语音转文字配置
   const [sttEnabled] = useState(apiConfig.speechToText?.enabled || false);
   const [sttApiUrl] = useState(apiConfig.speechToText?.apiUrl || '');
   const [sttApiKey] = useState(apiConfig.speechToText?.apiKey || '');
   const [sttModel] = useState(apiConfig.speechToText?.model || 'glm-4-flash');
 
-  // 初始化API预设列表
+  const [pigEnabled, setPigEnabled] = useState(apiConfig.privateAiImageGeneration?.enabled ?? false);
+  const [pigBaseUrl, setPigBaseUrl] = useState(apiConfig.privateAiImageGeneration?.baseUrl || '');
+  const [pigApiKey, setPigApiKey] = useState(apiConfig.privateAiImageGeneration?.apiKey || '');
+  const [pigModel, setPigModel] = useState(apiConfig.privateAiImageGeneration?.model || '');
+  const [pigDailyMax, setPigDailyMax] = useState(
+    apiConfig.privateAiImageGeneration?.dailyMaxPerConversation ?? 8,
+  );
+  const [pigSize, setPigSize] = useState(apiConfig.privateAiImageGeneration?.size || '1024x1024');
+  const [pigAvailableModels, setPigAvailableModels] = useState<string[]>([]);
+  const [pigModelsLoading, setPigModelsLoading] = useState(false);
+  const [pigModelsHint, setPigModelsHint] = useState('');
+
+  // 预载 API 预设（IndexedDB）与成套最近接口（localStorage）
   useEffect(() => {
-    const presets = apiPresetsManager.getPresets();
-    setApiPresets(presets);
+    void (async () => {
+      await apiPresetsManager.hydrateFromDisk();
+      setApiPresets(apiPresetsManager.getPresets());
+      setApiPairHistory(listApiEndpointPairHistory());
+    })();
   }, []);
+
+  useEffect(() => {
+    const p = apiConfig.privateAiImageGeneration;
+    setPigEnabled(p?.enabled ?? false);
+    setPigBaseUrl(p?.baseUrl || '');
+    setPigApiKey(p?.apiKey || '');
+    setPigModel(p?.model || '');
+    setPigDailyMax(p?.dailyMaxPerConversation ?? 8);
+    setPigSize(p?.size || '1024x1024');
+  }, [apiConfig]);
 
   // 从「未配置 API 却进入聊天」跳转来时：定位到对应分区并展示说明
   useEffect(() => {
@@ -485,6 +538,12 @@ export default function SettingsScreen({ apiConfig, onUpdateConfig, onBack, full
             <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
               <h3 className="text-lg font-semibold text-slate-900">接口配置</h3>
               <p className="mt-1 text-sm text-slate-500">配置聊天接口地址、密钥和模型名称。</p>
+              <p className="mt-2 text-[11px] text-slate-600 leading-relaxed bg-slate-50 border border-slate-100 rounded-lg px-2.5 py-2">
+                <span className="font-medium text-slate-700">浏览器里打开的站点（如 GitHub Pages）：</span>
+                聊天会跨域请求你填的域名（<span className="font-mono">POST …/chat/completions</span>）。若网关未对<strong>当前页面的来源（Origin）</strong>返回允许的 CORS 响应，Safari/WebKit 控制台会报 “Fetch … due to access control checks”。拉取{' '}
+                <span className="font-mono">GET /v1/models</span> 与发消息的 POST 在网关上策略可能不同，因此会出现「模型列表能拉、正式聊天全失败」。这与视觉是否独立、模型 ID 是否正确<strong>无直接关系</strong>，需在 api520、土豆等侧为站点来源配置 CORS，或使用同源反向代理、桌面封装、本机{' '}
+                <span className="font-mono">npm run dev</span> 等不受该限制的环境。
+              </p>
               <div className="mt-5 space-y-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">Base URL</label>
@@ -493,6 +552,7 @@ export default function SettingsScreen({ apiConfig, onUpdateConfig, onBack, full
                     value={baseUrl}
                     onChange={(e) => setBaseUrl(e.target.value)}
                     placeholder="https://api520.pro"
+                    autoComplete="off"
                     className="w-full px-3 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
                   />
                 </div>
@@ -503,6 +563,7 @@ export default function SettingsScreen({ apiConfig, onUpdateConfig, onBack, full
                     value={apiKey}
                     onChange={(e) => setApiKey(e.target.value)}
                     placeholder="sk-..."
+                    autoComplete="new-password"
                     className="w-full px-3 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
                   />
                 </div>
@@ -514,6 +575,7 @@ export default function SettingsScreen({ apiConfig, onUpdateConfig, onBack, full
                         value={modelName}
                         onMouseDown={requestPullModelsFromDropdown}
                         onChange={(e) => setModelName(e.target.value)}
+                        autoComplete="off"
                         className="flex-1 min-w-0 px-3 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all bg-white font-mono text-sm"
                       >
                         {availableModels.map(model => (
@@ -527,6 +589,7 @@ export default function SettingsScreen({ apiConfig, onUpdateConfig, onBack, full
                         onFocus={requestPullModelsFromDropdown}
                         onChange={(e) => setModelName(e.target.value)}
                         placeholder="gpt-3.5-turbo"
+                        autoComplete="off"
                         className="flex-1 min-w-0 px-3 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all font-mono text-sm"
                       />
                     )}
@@ -549,13 +612,49 @@ export default function SettingsScreen({ apiConfig, onUpdateConfig, onBack, full
                     </button>
                   </div>
                   <p className="mt-1.5 text-xs text-slate-500">
-                    从接口刷新文本与视觉模型列表；也可手动填写模型 ID。点开模型或视觉下拉时会自动拉取一次（约 {Math.round(DROPDOWN_PULL_MIN_INTERVAL_MS / 1000)} 秒内不重复请求）。
+                    从接口刷新：下列表均为网关返回的对话模型（已过滤 embedding 等）。下方「专属视觉模型」与角色设置里单独指定对话模型的用意类似——可选，用来降本或换模型；不填也会正常识图（带图请求用当前对话模型）。点开下拉会自动拉取一次（约 {Math.round(DROPDOWN_PULL_MIN_INTERVAL_MS / 1000)} 秒内不重复）。
                   </p>
+                </div>
+                <div className="rounded-xl border border-slate-200 bg-slate-50/90 p-3">
+                  <div className="text-xs font-medium text-slate-800 mb-1">最近一套接口（URL + Key + 模型）</div>
+                  <p className="text-[11px] text-slate-500 mb-2 leading-relaxed">
+                    每次在本页点「保存配置」会记入此处；点标签整包填入三项（与浏览器分列自动填充不同）。多套命名方案请用下方「管理预设」添加并保存。
+                  </p>
+                  {apiPairHistory.length === 0 ? (
+                    <p className="text-xs text-slate-400">暂无记录，保存成功后会出现在这里。</p>
+                  ) : (
+                    <div className="flex flex-wrap gap-2">
+                      {apiPairHistory.map((entry) => (
+                        <div
+                          key={entry.id}
+                          className="inline-flex items-center gap-0.5 rounded-lg border border-slate-200 bg-white shadow-sm"
+                        >
+                          <button
+                            type="button"
+                            onClick={() => applyApiPairFromHistory(entry)}
+                            className="max-w-[min(100%,240px)] truncate px-2 py-1.5 text-left text-[11px] font-mono text-slate-700 hover:bg-blue-50 hover:text-blue-700 rounded-l-lg"
+                            title={`${entry.baseUrl}\n模型：${entry.modelName}`}
+                          >
+                            {formatApiEndpointPairLabel(entry)}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleRemoveApiPairEntry(entry.id)}
+                            className="shrink-0 p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-r-lg"
+                            title="从最近列表移除"
+                            aria-label="移除"
+                          >
+                            <X className="w-3.5 h-3.5" aria-hidden />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
                 <div>
                   <div className="flex items-center justify-between gap-2 mb-2">
                     <label className="text-sm font-medium text-gray-700">
-                      视觉模型（可选）
+                      专属视觉模型（可选）
                     </label>
                     <button
                       type="button"
@@ -575,7 +674,7 @@ export default function SettingsScreen({ apiConfig, onUpdateConfig, onBack, full
                       onChange={(e) => setVisionModelName(e.target.value)}
                       className="w-full px-3 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all bg-white"
                     >
-                      <option value="">请选择视觉模型</option>
+                      <option value="">默认：与对话模型相同（可识图）</option>
                       {availableVisionModels.map((model) => (
                         <option key={model} value={model}>{model}</option>
                       ))}
@@ -586,17 +685,21 @@ export default function SettingsScreen({ apiConfig, onUpdateConfig, onBack, full
                       value={visionModelName}
                       onFocus={requestPullModelsFromDropdown}
                       onChange={(e) => setVisionModelName(e.target.value)}
-                      placeholder="例如：gpt-4o-mini / qwen-vl-max ..."
+                      placeholder="可选：如更便宜的 VL；留空则用对话模型识图"
                       className="w-full px-3 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
                     />
                   )}
-                  <div className="mt-2 text-xs text-slate-500">
-                    仅在填写后，才会把图片以 <span className="font-mono">image_url</span> 发送给后端；不填则图片会按“文字描述”模式处理，避免接口 500。
+                  <div className="mt-2 text-xs text-slate-500 leading-relaxed">
+                    与角色里「单独指定模型」同理：可选，用来降本或换模型。留空时带图仍用当前对话模型识图，照样发图。若填写此处，默认仍走主接口同一 URL/Key，仅请求体里的 <span className="font-mono">model</span> 换成你填的 ID（例如更便宜的 VL）。勾选「识图走独立接口」并填写 Base URL / Key 后，识图才改走别家或另一条线路。「测试视觉」用于验证你填的模型是否接收附图。
                   </div>
+                  <p className="mt-2 text-[11px] text-amber-800/90 leading-relaxed rounded-lg border border-amber-200 bg-amber-50/90 px-2.5 py-2">
+                    <span className="font-medium text-amber-900">带图变慢说明：</span>
+                    本仓库私聊会把<strong>真实图片</strong>放进模型请求（多模态），数据量比旧版 momoyu-demo（只发一句「用户发了一张图」占位）大很多；填了专属视觉模型时整条请求还会走 VL。相机大图、长边截图会更慢，属正常现象。
+                  </p>
                 </div>
                 <div className="rounded-xl border border-slate-200 p-3 bg-slate-50">
                   <label className="flex items-center justify-between text-sm font-medium text-slate-700">
-                    <span>视觉接口使用独立 URL / Key</span>
+                    <span>识图走独立接口（别家 URL / Key）</span>
                     <input
                       type="checkbox"
                       checked={useSeparateVisionApi}
@@ -619,8 +722,118 @@ export default function SettingsScreen({ apiConfig, onUpdateConfig, onBack, full
                         placeholder="视觉 API Key"
                         className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-white"
                       />
+                      <p className="text-[11px] text-slate-600 leading-relaxed">
+                        独立视觉 Base 与主接口一样走浏览器跨域规则；若聊天被 CORS 拦截，见本卡上方「浏览器里打开的站点」说明。
+                      </p>
                     </div>
                   ) : null}
+                </div>
+
+                <div className="rounded-xl border border-violet-200 bg-violet-50/50 p-4 space-y-3">
+                  <div className="flex items-center justify-between gap-2">
+                    <label className="text-sm font-medium text-slate-800">私聊 AI 真实配图（文生图）</label>
+                    <input
+                      type="checkbox"
+                      checked={pigEnabled}
+                      onChange={(e) => setPigEnabled(e.target.checked)}
+                    />
+                  </div>
+                  <p className="text-xs text-slate-600 leading-relaxed">
+                    开启后，陪伴型私聊里模型可用 <span className="font-mono">[生图:描述]</span> 请求发真实生成图；会先弹出「隔空投送」式确认，拒绝则不调用生图接口。生图 Base / Key 留空时与主接口相同，拉取模型列表也会走主 URL。
+                  </p>
+                  <div>
+                    <label className="block text-xs font-medium text-slate-600 mb-1">生图 Base URL（可选）</label>
+                    <input
+                      type="text"
+                      value={pigBaseUrl}
+                      onChange={(e) => setPigBaseUrl(e.target.value)}
+                      placeholder="留空则与主接口相同"
+                      className="w-full px-3 py-2 border border-violet-200 rounded-lg bg-white text-sm"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-slate-600 mb-1">生图 API Key（可选）</label>
+                    <input
+                      type="password"
+                      value={pigApiKey}
+                      onChange={(e) => setPigApiKey(e.target.value)}
+                      placeholder="留空则与主 Key 相同"
+                      autoComplete="new-password"
+                      className="w-full px-3 py-2 border border-violet-200 rounded-lg bg-white text-sm"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-slate-600 mb-1">生图模型 ID</label>
+                    {pigAvailableModels.length > 0 ? (
+                      <select
+                        value={
+                          pigModel.trim()
+                            ? pigModel
+                            : pigAvailableModels[0] || ''
+                        }
+                        onChange={(e) => setPigModel(e.target.value)}
+                        className="w-full px-3 py-2 border border-violet-200 rounded-lg bg-white text-sm font-mono"
+                      >
+                        {pigModel.trim() && !pigAvailableModels.includes(pigModel) ? (
+                          <option value={pigModel}>{pigModel}（手填）</option>
+                        ) : null}
+                        {pigAvailableModels.map((m) => (
+                          <option key={m} value={m}>
+                            {m}
+                          </option>
+                        ))}
+                      </select>
+                    ) : (
+                      <input
+                        type="text"
+                        value={pigModel}
+                        onChange={(e) => setPigModel(e.target.value)}
+                        placeholder="可手填，或点下面按钮从接口拉列表"
+                        className="w-full px-3 py-2 border border-violet-200 rounded-lg bg-white text-sm font-mono"
+                      />
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => void pullPigModels()}
+                      disabled={pigModelsLoading}
+                      className="mt-2 w-full inline-flex items-center justify-center gap-2 rounded-lg border border-violet-400 bg-violet-100/80 py-2.5 text-sm font-medium text-violet-900 hover:bg-violet-200/80 disabled:opacity-50"
+                    >
+                      {pigModelsLoading ? (
+                        <>
+                          <Loader2 className="w-4 h-4 animate-spin" aria-hidden />
+                          正在拉取生图模型…
+                        </>
+                      ) : (
+                        '拉取生图模型列表（生图 URL/Key 留空则用主接口）'
+                      )}
+                    </button>
+                    {pigModelsHint ? (
+                      <p className="mt-1.5 text-[11px] text-slate-600 leading-snug">{pigModelsHint}</p>
+                    ) : null}
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <label className="block text-xs font-medium text-slate-600 mb-1">每会话每日上限（张）</label>
+                      <input
+                        type="number"
+                        min={0}
+                        value={pigDailyMax}
+                        onChange={(e) => setPigDailyMax(Number(e.target.value))}
+                        className="w-full px-3 py-2 border border-violet-200 rounded-lg bg-white text-sm"
+                      />
+                      <p className="mt-0.5 text-[10px] text-slate-500">0 表示不限制</p>
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-slate-600 mb-1">尺寸</label>
+                      <input
+                        type="text"
+                        value={pigSize}
+                        onChange={(e) => setPigSize(e.target.value)}
+                        placeholder="1024x1024"
+                        className="w-full px-3 py-2 border border-violet-200 rounded-lg bg-white text-sm font-mono"
+                      />
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>
@@ -630,7 +843,9 @@ export default function SettingsScreen({ apiConfig, onUpdateConfig, onBack, full
                 <div className="flex items-center justify-between mb-3">
                   <div>
                     <h3 className="text-lg font-semibold text-slate-900">API 预设方案</h3>
-                    <p className="mt-1 text-sm text-slate-500">常用接口方案可以保存在这里快速切换。</p>
+                    <p className="mt-1 text-sm text-slate-500">
+                      常用接口可保存多套命名方案，一键切换。须点「管理预设」→「添加方案」并保存后才会写入本机；刷新后仍会保留。
+                    </p>
                   </div>
                   <button
                     onClick={() => setShowApiPresetsModal(true)}
@@ -652,7 +867,9 @@ export default function SettingsScreen({ apiConfig, onUpdateConfig, onBack, full
                     ))}
                   </div>
                 ) : (
-                  <div className="rounded-2xl bg-slate-50 p-4 text-sm text-slate-500">还没有预设，点击右上角添加即可。</div>
+                  <div className="rounded-2xl bg-slate-50 p-4 text-sm text-slate-500">
+                    还没有预设：点右上角「管理预设」添加名称、URL、Key 与模型后保存。仅填写上面主表单不会出现在此列表。
+                  </div>
                 )}
               </div>
 
@@ -1047,6 +1264,24 @@ export default function SettingsScreen({ apiConfig, onUpdateConfig, onBack, full
                 onChange={handleImportAllData}
                 className="hidden"
               />
+              <label className="mt-4 flex cursor-pointer items-start gap-3 rounded-2xl border border-slate-100 bg-slate-50/90 p-3 text-sm text-slate-700">
+                <input
+                  type="checkbox"
+                  className="mt-0.5 h-4 w-4 shrink-0 rounded border-slate-300"
+                  checked={quickBackupFabOn}
+                  onChange={(e) => {
+                    const on = e.target.checked;
+                    setQuickBackupFabOn(on);
+                    writeQuickBackupFabVisible(on);
+                  }}
+                />
+                <span>
+                  <span className="font-medium text-slate-800">显示全局快捷备份球</span>
+                  <span className="mt-0.5 block text-xs text-slate-500 leading-relaxed">
+                    默认开启。关闭后右下角半透明导出按钮会隐藏；可随时在此重新打开。
+                  </span>
+                </span>
+              </label>
             </div>
             <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
               <h3 className="text-lg font-semibold text-slate-900">换浏览器 / 整机迁移</h3>
@@ -1078,6 +1313,7 @@ export default function SettingsScreen({ apiConfig, onUpdateConfig, onBack, full
               <input
                 value={baseUrl}
                 onChange={(e) => setBaseUrl(e.target.value)}
+                autoComplete="off"
                 className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm bg-white"
               />
             </div>
@@ -1087,6 +1323,7 @@ export default function SettingsScreen({ apiConfig, onUpdateConfig, onBack, full
                 type="password"
                 value={apiKey}
                 onChange={(e) => setApiKey(e.target.value)}
+                autoComplete="new-password"
                 className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm bg-white"
               />
             </div>
@@ -1098,6 +1335,7 @@ export default function SettingsScreen({ apiConfig, onUpdateConfig, onBack, full
                     value={modelName}
                     onMouseDown={requestPullModelsFromDropdown}
                     onChange={(e) => setModelName(e.target.value)}
+                    autoComplete="off"
                     className="flex-1 min-w-0 rounded-xl border border-slate-200 px-3 py-2 text-sm bg-white font-mono"
                   >
                     {availableModels.map((model) => (
@@ -1109,6 +1347,7 @@ export default function SettingsScreen({ apiConfig, onUpdateConfig, onBack, full
                     value={modelName}
                     onFocus={requestPullModelsFromDropdown}
                     onChange={(e) => setModelName(e.target.value)}
+                    autoComplete="off"
                     className="flex-1 min-w-0 rounded-xl border border-slate-200 px-3 py-2 text-sm bg-white font-mono"
                   />
                 )}
@@ -1122,13 +1361,49 @@ export default function SettingsScreen({ apiConfig, onUpdateConfig, onBack, full
                 </button>
               </div>
               <div className="mt-1 text-[11px] text-slate-500">
-                点开模型/视觉下拉也会自动拉取（约 {Math.round(DROPDOWN_PULL_MIN_INTERVAL_MS / 1000)} 秒内不重复）
+                下列表为对话模型（已过滤 embedding）。专属视觉模型可不填——不填也会识图（用当前对话模型）；填了多为换便宜 VL。点开下拉会自动拉取（约 {Math.round(DROPDOWN_PULL_MIN_INTERVAL_MS / 1000)} 秒内不重复）。
               </div>
+            </div>
+
+            <div className="px-4 py-3 border-b border-slate-100 bg-slate-50/80">
+              <div className="text-xs font-medium text-slate-800 mb-1">最近一套接口</div>
+              <p className="text-[11px] text-slate-500 mb-2 leading-relaxed">
+                保存配置后会出现；点整包填入 URL、Key、模型。
+              </p>
+              {apiPairHistory.length === 0 ? (
+                <p className="text-[11px] text-slate-400">暂无</p>
+              ) : (
+                <div className="flex flex-wrap gap-2">
+                  {apiPairHistory.map((entry) => (
+                    <div
+                      key={entry.id}
+                      className="inline-flex items-center gap-0.5 rounded-lg border border-slate-200 bg-white text-[11px]"
+                    >
+                      <button
+                        type="button"
+                        onClick={() => applyApiPairFromHistory(entry)}
+                        className="max-w-[200px] truncate px-2 py-1.5 text-left font-mono text-slate-700"
+                        title={entry.baseUrl}
+                      >
+                        {formatApiEndpointPairLabel(entry)}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleRemoveApiPairEntry(entry.id)}
+                        className="shrink-0 p-1 text-slate-400 hover:text-red-600"
+                        aria-label="移除"
+                      >
+                        <X className="w-3.5 h-3.5" aria-hidden />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
 
             <div className="px-4 py-3 border-b border-slate-100">
               <div className="flex items-center justify-between gap-2 mb-1">
-                <div className="text-xs text-slate-500">视觉模型（可选）</div>
+                <div className="text-xs text-slate-500">专属视觉模型（可选）</div>
                 <button
                   type="button"
                   onClick={testVisionSupport}
@@ -1146,7 +1421,7 @@ export default function SettingsScreen({ apiConfig, onUpdateConfig, onBack, full
                   onChange={(e) => setVisionModelName(e.target.value)}
                   className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm bg-white"
                 >
-                  <option value="">请选择视觉模型</option>
+                  <option value="">默认：与对话模型相同（可识图）</option>
                   {availableVisionModels.map((model) => (
                     <option key={model} value={model}>{model}</option>
                   ))}
@@ -1157,17 +1432,20 @@ export default function SettingsScreen({ apiConfig, onUpdateConfig, onBack, full
                   onFocus={requestPullModelsFromDropdown}
                   onChange={(e) => setVisionModelName(e.target.value)}
                   className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm bg-white"
-                  placeholder="不填则不发送图片"
+                  placeholder="可选 VL；留空则用对话模型识图"
                 />
               )}
               <div className="mt-2 text-[11px] text-slate-500">
-                仅填写后才会发送图片（避免不支持 vision 的后端 500）。
+                与角色里单独指定模型一样，方便降本。不填也会识图；填则只换识图用的 model；勾选「独立接口」才换别家 URL。
               </div>
+              <p className="mt-2 text-[10px] text-amber-900/90 leading-relaxed rounded-lg border border-amber-200 bg-amber-50/90 px-2 py-1.5">
+                带图回复：本版会把<strong>真实图片</strong>发给模型，比旧 demo 纯文字占位慢；大图更明显。
+              </p>
             </div>
 
             <div className="px-4 py-3 border-b border-slate-100">
               <div className="flex items-center justify-between">
-                <div className="text-xs text-slate-500">视觉独立接口</div>
+                <div className="text-xs text-slate-500">识图独立接口</div>
                 <input
                   type="checkbox"
                   checked={useSeparateVisionApi}
@@ -1191,6 +1469,92 @@ export default function SettingsScreen({ apiConfig, onUpdateConfig, onBack, full
                   />
                 </div>
               ) : null}
+            </div>
+
+            <div className="px-4 py-3 border-b border-slate-100 bg-violet-50/40 space-y-2">
+              <div className="flex items-center justify-between">
+                <div className="text-xs font-medium text-slate-800">私聊 AI 真实配图</div>
+                <input
+                  type="checkbox"
+                  checked={pigEnabled}
+                  onChange={(e) => setPigEnabled(e.target.checked)}
+                />
+              </div>
+              <p className="text-[11px] text-slate-600 leading-relaxed">
+                模型用 <span className="font-mono">[生图:…]</span> 请求发真图时会先弹窗确认。生图 URL/Key 可留空复用主接口；点下面按钮拉模型列表。
+              </p>
+              <input
+                value={pigBaseUrl}
+                onChange={(e) => setPigBaseUrl(e.target.value)}
+                className="w-full rounded-xl border border-violet-200 px-3 py-2 text-sm bg-white"
+                placeholder="生图 Base URL（可选）"
+              />
+              <input
+                type="password"
+                value={pigApiKey}
+                onChange={(e) => setPigApiKey(e.target.value)}
+                className="w-full rounded-xl border border-violet-200 px-3 py-2 text-sm bg-white"
+                placeholder="生图 API Key（可选）"
+                autoComplete="new-password"
+              />
+              {pigAvailableModels.length > 0 ? (
+                <select
+                  value={pigModel.trim() ? pigModel : pigAvailableModels[0] || ''}
+                  onChange={(e) => setPigModel(e.target.value)}
+                  className="w-full rounded-xl border border-violet-200 px-3 py-2 text-sm bg-white font-mono"
+                >
+                  {pigModel.trim() && !pigAvailableModels.includes(pigModel) ? (
+                    <option value={pigModel}>{pigModel}（手填）</option>
+                  ) : null}
+                  {pigAvailableModels.map((m) => (
+                    <option key={m} value={m}>
+                      {m}
+                    </option>
+                  ))}
+                </select>
+              ) : (
+                <input
+                  value={pigModel}
+                  onChange={(e) => setPigModel(e.target.value)}
+                  className="w-full rounded-xl border border-violet-200 px-3 py-2 text-sm bg-white font-mono"
+                  placeholder="生图模型，可手填或拉列表"
+                />
+              )}
+              <button
+                type="button"
+                onClick={() => void pullPigModels()}
+                disabled={pigModelsLoading}
+                className="w-full rounded-xl border border-violet-400 bg-violet-100/90 py-2.5 text-sm font-medium text-violet-900 disabled:opacity-50"
+              >
+                {pigModelsLoading ? (
+                  <span className="inline-flex items-center justify-center gap-2">
+                    <Loader2 className="w-4 h-4 animate-spin" aria-hidden />
+                    正在拉取…
+                  </span>
+                ) : (
+                  '拉取生图模型列表（留空则用主接口）'
+                )}
+              </button>
+              {pigModelsHint ? (
+                <p className="text-[10px] text-slate-600 leading-snug">{pigModelsHint}</p>
+              ) : null}
+              <div className="flex gap-2">
+                <input
+                  type="number"
+                  min={0}
+                  value={pigDailyMax}
+                  onChange={(e) => setPigDailyMax(Number(e.target.value))}
+                  className="flex-1 min-w-0 rounded-xl border border-violet-200 px-3 py-2 text-sm bg-white"
+                  placeholder="每日上限"
+                />
+                <input
+                  value={pigSize}
+                  onChange={(e) => setPigSize(e.target.value)}
+                  className="flex-1 min-w-0 rounded-xl border border-violet-200 px-3 py-2 text-sm bg-white font-mono"
+                  placeholder="1024x1024"
+                />
+              </div>
+              <p className="text-[10px] text-slate-500">每日上限 0 = 不限制（张 / 会话 / 自然日）</p>
             </div>
 
             <div className="px-4 py-3 border-b border-slate-100">
@@ -1401,6 +1765,22 @@ export default function SettingsScreen({ apiConfig, onUpdateConfig, onBack, full
               </div>
               <input ref={importInputRef} type="file" accept=".json" onChange={handleImportAllData} className="hidden" />
             </div>
+            <label className="flex cursor-pointer items-start gap-3 border-b border-slate-100 px-4 py-3 text-sm text-slate-700">
+              <input
+                type="checkbox"
+                className="mt-0.5 h-4 w-4 shrink-0 rounded border-slate-300"
+                checked={quickBackupFabOn}
+                onChange={(e) => {
+                  const on = e.target.checked;
+                  setQuickBackupFabOn(on);
+                  writeQuickBackupFabVisible(on);
+                }}
+              />
+              <span className="text-xs leading-relaxed">
+                <span className="font-medium text-slate-800">全局快捷备份球</span>
+                <span className="mt-0.5 block text-slate-500">默认开启；关闭后右下角导出按钮隐藏。</span>
+              </span>
+            </label>
             <div className="px-4 py-3 bg-amber-50">
               <div className="text-xs text-amber-800 leading-relaxed space-y-1">
                 <div><span className="font-semibold">换浏览器：</span>旧机点导出 → 把 JSON 拷到新浏览器 → 新机点导入。</div>
@@ -1484,7 +1864,7 @@ export default function SettingsScreen({ apiConfig, onUpdateConfig, onBack, full
 
     try {
       const models = await fetchOpenAiCompatibleModelIds(baseUrl.trim(), apiKey.trim());
-      setAvailableModels(models);
+      setAvailableModels(filterLikelyChatModels(models));
       setTestResult('success');
       setTextTestMessage(`文本连接正常，已拉取 ${models.length} 个模型。`);
       
@@ -1518,62 +1898,116 @@ export default function SettingsScreen({ apiConfig, onUpdateConfig, onBack, full
       return;
     }
     if (useSeparateVisionApi && (!visionBaseUrl.trim() || !visionApiKey.trim())) {
-      if (!opts?.silent) alert('你已开启视觉独立接口，请填写视觉 Base URL 和视觉 API Key');
+      if (!opts?.silent) alert('你已开启识图独立接口，请填写 Base URL 与 API Key');
       return;
     }
 
     setTesting(true);
-    setVisionTesting(true);
     setTestResult(null);
     setVisionTestResult(null);
     setTextTestMessage('');
     setVisionTestMessage('');
     try {
-      const textModels = await fetchOpenAiCompatibleModelIds(baseUrl.trim(), apiKey.trim());
+      const textModelsRaw = await fetchOpenAiCompatibleModelIds(baseUrl.trim(), apiKey.trim());
+      const textModels = filterLikelyChatModels(textModelsRaw);
       setAvailableModels(textModels);
       if (textModels.length > 0 && !modelName) {
         setModelName(textModels[0]);
       }
       setTestResult('success');
-      setTextTestMessage(`文本模型拉取成功：${textModels.length} 个。`);
+      const skippedNonChat = textModelsRaw.length - textModels.length;
+      setTextTestMessage(
+        skippedNonChat > 0
+          ? `文本对话模型 ${textModels.length} 个（已从列表剔除 ${skippedNonChat} 个 embedding 等非对话模型）。`
+          : `文本模型拉取成功：${textModels.length} 个。`
+      );
 
       const { resolvedUrl, resolvedKey } = resolveVisionEndpoint();
-      const visionModels = await fetchOpenAiCompatibleModelIds(resolvedUrl, resolvedKey);
-      setAvailableVisionModels(visionModels);
-      if (visionModels.length > 0 && !visionModelName) {
-        setVisionModelName(visionModels[0]);
+      let visionChatModels: string[];
+      if (useSeparateVisionApi) {
+        const visionModelsRaw = await fetchOpenAiCompatibleModelIds(resolvedUrl, resolvedKey);
+        visionChatModels = filterLikelyChatModels(visionModelsRaw);
+      } else {
+        visionChatModels = textModels;
       }
-      setVisionTestResult('success');
-      setVisionTestMessage(`视觉模型拉取成功：${visionModels.length} 个。`);
+      setAvailableVisionModels(visionChatModels);
+      setVisionTestResult(null);
+      setVisionTestMessage(
+        visionChatModels.length > 0
+          ? `专属视觉模型下拉已加载 ${visionChatModels.length} 个模型（可不选——不选则用对话模型识图）。若要单独指定 VL，请任选或手填 ID，并可点「测试视觉」。`
+          : '未拿到列表时可手动填写专属视觉模型 ID；不填亦可用对话模型识图。需要时点「测试视觉」。'
+      );
+
       if (!opts?.silent) {
-        alert(`模型拉取成功：文本 ${textModels.length} 个，视觉 ${visionModels.length} 个`);
+        alert(
+          '拉取完成：专属视觉模型为可选项（与角色单独指定模型同理，便于降本）。不填也会正常识图；填了再点「测试视觉」可验证该模型是否接收附图。'
+        );
       }
     } catch (error) {
       console.error('拉取模型失败:', error);
       setTestResult('error');
       setVisionTestResult('error');
       setTextTestMessage('模型拉取失败，请检查文本接口配置。');
-      setVisionTestMessage('模型拉取失败，请检查视觉接口配置。');
+      setVisionTestMessage('模型拉取失败，请检查识图独立接口或主接口配置。');
       if (!opts?.silent) {
         alert('拉取模型失败，请检查 URL / Key 是否正确');
       }
     } finally {
       setTesting(false);
-      setVisionTesting(false);
     }
   };
 
   pullModelsForTextAndVisionRef.current = pullModelsForTextAndVision;
 
+  /** 生图模型列表：生图 URL/Key 留空时使用主接口 Base URL / API Key */
+  const pullPigModels = async (opts?: { silent?: boolean }) => {
+    const resolvedUrl = (pigBaseUrl || '').trim() || (baseUrl || '').trim();
+    const resolvedKey = (pigApiKey || '').trim() || (apiKey || '').trim();
+    if (!resolvedUrl || !resolvedKey) {
+      if (!opts?.silent) {
+        alert('请先填写主接口的 Base URL 与 API Key，或填写生图专用 URL / Key');
+      }
+      return;
+    }
+    setPigModelsLoading(true);
+    setPigModelsHint('');
+    try {
+      const raw = await fetchOpenAiCompatibleModelIds(resolvedUrl, resolvedKey);
+      setPigAvailableModels(raw);
+      setPigModel((prev) => {
+        if (prev && raw.includes(prev)) return prev;
+        if (prev && prev.trim() && !raw.includes(prev)) return prev;
+        return raw[0] || '';
+      });
+      setPigModelsHint(
+        raw.length > 0
+          ? `已拉取 ${raw.length} 个模型（网关返回全量，可选手填的生图模型 ID）。`
+          : '列表为空，请继续手填生图模型 ID。',
+      );
+      if (!opts?.silent && raw.length > 0) {
+        alert(`生图模型列表已更新：${raw.length} 个`);
+      }
+    } catch (e) {
+      console.error('生图模型拉取失败:', e);
+      const msg = e instanceof Error ? e.message : '拉取失败';
+      setPigModelsHint(`拉取失败：${msg}`);
+      if (!opts?.silent) {
+        alert(`生图模型拉取失败：${msg}`);
+      }
+    } finally {
+      setPigModelsLoading(false);
+    }
+  };
+
   const testVisionSupport = async () => {
     const model = visionModelName.trim();
     if (!model) {
-      alert('请先选择或填写视觉模型');
+      alert('「测试视觉」需要先填写或选择上方的专属视觉模型 ID。日常识图可以不填此处，带图时会用当前对话模型。');
       return;
     }
     const { resolvedUrl, resolvedKey, usingSeparate } = resolveVisionEndpoint();
     if (!resolvedUrl || !resolvedKey) {
-      alert(usingSeparate ? '请先填写视觉接口 URL / Key' : '请先填写主接口 URL / Key');
+      alert(usingSeparate ? '请先填写识图独立接口的 URL / Key' : '请先填写主接口 URL / Key');
       return;
     }
 
@@ -1584,7 +2018,7 @@ export default function SettingsScreen({ apiConfig, onUpdateConfig, onBack, full
     setVisionTestResult(null);
     setVisionTestMessage('');
     try {
-      const response = await fetch(`${resolvedUrl}/v1/chat/completions`, {
+      const response = await fetch(buildApiUrl({ baseUrl: resolvedUrl, apiKey: resolvedKey, modelName: model }), {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -1635,6 +2069,24 @@ export default function SettingsScreen({ apiConfig, onUpdateConfig, onBack, full
     }
   };
 
+  const applyApiPairFromHistory = (entry: ApiEndpointPairEntry) => {
+    setBaseUrl(entry.baseUrl);
+    setApiKey(entry.apiKey);
+    setModelName(entry.modelName);
+    setAvailableModels((prev) => (prev.includes(entry.modelName) ? prev : [...prev, entry.modelName]));
+    addApiEndpointPairSnapshot({
+      baseUrl: entry.baseUrl,
+      apiKey: entry.apiKey,
+      modelName: entry.modelName,
+    });
+    setApiPairHistory(listApiEndpointPairHistory());
+  };
+
+  const handleRemoveApiPairEntry = (id: string) => {
+    removeApiEndpointPair(id);
+    setApiPairHistory(listApiEndpointPairHistory());
+  };
+
   const handleSave = () => {
     if (!baseUrl || !apiKey || !modelName) {
       alert('请完成所有配置项');
@@ -1647,146 +2099,90 @@ export default function SettingsScreen({ apiConfig, onUpdateConfig, onBack, full
       return;
     }
 
-    if (useSeparateVisionApi && (!visionBaseUrl.trim() || !visionApiKey.trim())) {
-      alert('你已开启视觉独立接口，请填写视觉 Base URL 与视觉 API Key');
+    const visionBaseTrim = visionBaseUrl.trim();
+    const visionKeyTrim = visionApiKey.trim();
+
+    if (useSeparateVisionApi && (!visionBaseTrim || !visionKeyTrim)) {
+      alert('你已开启识图独立接口，请同时填写「识图 Base URL」与「识图 API Key」');
+      return;
+    }
+    if ((visionBaseTrim || visionKeyTrim) && !(visionBaseTrim && visionKeyTrim)) {
+      alert('识图独立线路需**同时**填写 Base URL 与 API Key；若只使用主接口 + 下方「视觉模型 ID」，请两项都留空。');
       return;
     }
 
-    onUpdateConfig({ 
-      baseUrl, 
-      apiKey, 
+    onUpdateConfig({
+      ...apiConfig,
+      baseUrl,
+      apiKey,
       modelName,
       visionModelName: visionModelName.trim(),
-      visionBaseUrl: useSeparateVisionApi ? visionBaseUrl.trim() : '',
-      visionApiKey: useSeparateVisionApi ? visionApiKey.trim() : '',
-      speechToText: sttEnabled ? {
-        enabled: true,
-        apiUrl: sttApiUrl,
-        apiKey: sttApiKey,
-        model: sttModel
-      } : {
-        enabled: false
-      }
+      // 与「勾选单独接口」解耦：只要两项都填了就持久化，避免未勾选时保存把独立网关清空导致仍用 vision 模型名打到主站
+      visionBaseUrl: visionBaseTrim,
+      visionApiKey: visionKeyTrim,
+      privateAiImageGeneration: {
+        enabled: pigEnabled,
+        baseUrl: pigBaseUrl.trim(),
+        apiKey: pigApiKey.trim(),
+        model: pigModel.trim(),
+        dailyMaxPerConversation: Math.max(0, Math.floor(Number(pigDailyMax)) || 0),
+        size: (pigSize || '').trim() || '1024x1024',
+      },
+      speechToText: sttEnabled
+        ? {
+            enabled: true,
+            apiUrl: sttApiUrl,
+            apiKey: sttApiKey,
+            model: sttModel,
+          }
+        : {
+            enabled: false,
+          },
     });
+    addApiEndpointPairSnapshot({ baseUrl, apiKey, modelName });
+    setApiPairHistory(listApiEndpointPairHistory());
+    if (visionBaseTrim && visionKeyTrim) {
+      setUseSeparateVisionApi(true);
+    }
     alert('配置已保存');
   };
 
-  // 应用选中的API预设（仅填充字段，不自动保存）
+  // 应用选中的 API 预设：同步到表单并立即写入全局 apiConfig（与设置页「保存」一致，聊天立刻走新 Base URL）
   const handleApplyApiPreset = (preset: APIPreset) => {
     if (!preset) return;
-    setBaseUrl(preset.apiUrl || '');
-    setApiKey(preset.apiKey || '');
-    setModelName(preset.model || '');
+    const nextBase = (preset.apiUrl || '').trim();
+    const nextKey = preset.apiKey || '';
+    const nextModel = (preset.model || '').trim();
+    setBaseUrl(nextBase);
+    setApiKey(nextKey);
+    setModelName(nextModel);
     setVisionModelName('');
     setVisionBaseUrl('');
     setVisionApiKey('');
     setUseSeparateVisionApi(false);
-    // 记录当前预设，便于在预设管理弹窗中高亮
     apiPresetsManager.switchToPreset(preset.id);
+
+    onUpdateConfig({
+      ...apiConfig,
+      baseUrl: nextBase,
+      apiKey: nextKey,
+      modelName: nextModel,
+      visionModelName: '',
+      visionBaseUrl: '',
+      visionApiKey: '',
+    });
+    if (nextBase && nextKey && nextModel) {
+      addApiEndpointPairSnapshot({ baseUrl: nextBase, apiKey: nextKey, modelName: nextModel });
+      setApiPairHistory(listApiEndpointPairHistory());
+    }
   };
 
   // 导出全部数据
   const handleExportAllData = async () => {
     try {
       console.log('🔄 开始导出全部数据...');
-      const allData: { [key: string]: any } = {};
-
-      const localStorageKeys: string[] = [];
-      for (let i = 0; i < localStorage.length; i++) {
-        const key = localStorage.key(i);
-        if (!key) continue;
-        localStorageKeys.push(key);
-        const value = localStorage.getItem(key);
-        if (value == null) continue;
-        try {
-          allData[key] = JSON.parse(value);
-        } catch {
-          allData[key] = value;
-        }
-      }
-
-      const indexedDBData = await dumpIndexedDBData();
-      const indexedDBKeys = Object.keys(indexedDBData);
-      Object.assign(allData, indexedDBData);
-
-      const sidecarIndexedD = await dumpSidecarIndexedDatabases();
-      const sidecarSummaryLine = summarizeSidecarForExport(sidecarIndexedD);
-
-      const conversations = Array.isArray(allData.conversations) ? allData.conversations : [];
-      const memoryBanks = Array.isArray(allData.chat_memory_banks) ? allData.chat_memory_banks : [];
-      const relationships = Array.isArray(allData.relationships) ? allData.relationships : [];
-      const docs = Array.isArray(allData.document_library)
-        ? allData.document_library
-        : Array.isArray(allData.documents)
-          ? allData.documents
-          : [];
-
-      let momentsCount = 0;
-      Object.entries(allData).forEach(([key, value]) => {
-        if (key === 'moments' && Array.isArray(value)) {
-          momentsCount += value.length;
-          return;
-        }
-        if (key.startsWith('moments_') && value && typeof value === 'object') {
-          momentsCount += Array.isArray((value as any).posts) ? (value as any).posts.length : 0;
-        }
-      });
-
-      const stats = {
-        conversations: conversations.length,
-        messages: conversations.reduce((sum: number, conv: any) => sum + (conv.messages?.length || 0), 0),
-        moments: momentsCount,
-        contacts: Array.isArray(allData.contacts) ? allData.contacts.length : 0,
-        documents: docs.length,
-        memories: memoryBanks.reduce((sum: number, bank: any) => sum + (bank.memories?.length || 0), 0),
-        images: ['landscapeImage', 'bannerImage'].filter((k) => !!allData[k]).length,
-        profiles: conversations.filter((c: any) => c?.characterSettings).length,
-        relationships: relationships.length,
-      };
-
-      const exportData = {
-        format: 'momoyu-backup-v3',
-        exportDate: new Date().toISOString(),
-        appVersion: '3.0.0',
-        dataType: 'full-backup',
-        storageType: 'full-snapshot-v3',
-        localStorageKeys,
-        indexedDBKeys,
-        stats: stats,
-        [SIDECAR_INDEXED_FIELD]: sidecarIndexedD,
-        data: allData
-      };
-
-      // 创建并下载文件
-      const dataStr = JSON.stringify(exportData, null, 2);
-      const dataBlob = new Blob([dataStr], { type: 'application/json' });
-      const url = URL.createObjectURL(dataBlob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = `momoyu_全数据备份_${new Date().toLocaleDateString().replace(/\//g, '-')}.json`;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      URL.revokeObjectURL(url);
-      
-      // 显示详细的导出信息
-      const message = `✅ 全部数据已导出！\n\n` +
-        `📊 包含内容：\n` +
-        `• 对话记录: ${stats.conversations} 个（${stats.messages} 条消息）\n` +
-        `• AI角色: ${stats.profiles} 个\n` +
-        `• 联系人: ${stats.contacts} 个\n` +
-        `• 朋友圈: ${stats.moments} 条\n` +
-        `• 文档库: ${stats.documents} 份\n` +
-        `• 记忆库: ${stats.memories} 条\n` +
-        `• 关系网络: ${stats.relationships} 条\n` +
-        `• 背景图片: ${stats.images} 张\n` +
-        `• 其他设置和数据\n` +
-        (sidecarSummaryLine ? `${sidecarSummaryLine}\n` : '') +
-        `\n💾 文件已保存到下载文件夹\n` +
-        `换浏览器：把该 JSON 拷到新浏览器，在同一页面点「导入全部数据」即可整包恢复。\n` +
-        `（含主库存与表情包等独立库，尽量不丢本地数据。）`;
-      
-      alert(message);
+      const { stats, sidecarSummaryLine } = await exportFullMomoyuBackup();
+      alert(formatFullExportSuccessAlert(stats, sidecarSummaryLine));
       console.log('✅ 数据导出完成');
     } catch (error) {
       console.error('❌ 导出失败:', error);
@@ -1903,6 +2299,9 @@ export default function SettingsScreen({ apiConfig, onUpdateConfig, onBack, full
         if (!window.confirm(confirmMsg)) {
           return;
         }
+
+        // 阻止 App 内防抖写入 conversations / moments 覆盖刚导入的分片或清空后的存储
+        setBulkStorageRestoreInProgress(true);
 
         // 全量清空，避免残留
         await clearAllData();
@@ -2051,16 +2450,29 @@ export default function SettingsScreen({ apiConfig, onUpdateConfig, onBack, full
           `💾 当前存储状态:\n` +
           `• 已用: ${((quota.quota - quota.available + finalDataMB * 1024 * 1024) / 1024 / 1024).toFixed(1)}MB\n` +
           `• 总计: ${(quota.quota / 1024 / 1024).toFixed(1)}MB\n\n` +
-          `页面将刷新以应用更改。`;
-        
-        alert(successMsg);
-        
-        // 刷新页面
-        setTimeout(() => {
+          `页面将自动刷新以应用更改。`;
+        console.log(successMsg);
+
+        const toastSummary = [
+          `已恢复 ${importedCount} 项`,
+          conversationsRestored ? '对话已写入本地' : null,
+          quota.isMobile ? '移动设备分批模式' : null,
+        ]
+          .filter(Boolean)
+          .join(' · ');
+
+        toast.success('全量导入完成', {
+          description: `${toastSummary}。界面仍显示旧数据是正常的——即将自动刷新页面以载入备份，请勿关闭标签页。`,
+          duration: 6000,
+        });
+
+        // 非阻塞提示后立即刷新，避免用户未点掉 alert 导致误以为未生效
+        window.setTimeout(() => {
           window.location.reload();
-        }, 1000);
+        }, 500);
         
       } catch (error) {
+        setBulkStorageRestoreInProgress(false);
         console.error('导入失败:', error);
         const detail = error instanceof Error ? error.message : String(error);
         alert(`导入失败：${detail || '文件格式错误或数据损坏'}`);
@@ -2114,7 +2526,7 @@ export default function SettingsScreen({ apiConfig, onUpdateConfig, onBack, full
       <div className="flex-1 min-h-0 bg-slate-100/70 p-4 lg:p-8 xl:overflow-hidden">
         <div className="mx-auto h-full min-h-0 w-full max-w-[1600px]">
           <div className="hidden h-full xl:flex xl:flex-col xl:gap-6">
-            <div className="rounded-3xl border border-slate-200 bg-white px-6 py-5 shadow-sm">
+                <div className="rounded-3xl border border-slate-200 bg-white px-6 py-5 shadow-sm">
               <div className="flex items-end justify-between gap-4">
           <div>
                   <h2 className="text-2xl font-semibold text-slate-900">桌面设置中心</h2>
@@ -2130,6 +2542,17 @@ export default function SettingsScreen({ apiConfig, onUpdateConfig, onBack, full
               </div>
               </div>
           </div>
+              {onOpenEditProfile ? (
+                <div className="mt-4 border-t border-slate-100 pt-4">
+                  <button
+                    type="button"
+                    onClick={() => onOpenEditProfile()}
+                    className="w-full max-w-md rounded-xl border border-slate-200 bg-white py-3 text-center text-sm font-medium text-slate-900 shadow-sm hover:bg-slate-50"
+                  >
+                    编辑资料
+                  </button>
+                </div>
+              ) : null}
             </div>
 
             <div className="grid min-h-0 flex-1 gap-6 xl:grid-cols-12">
@@ -2220,6 +2643,16 @@ export default function SettingsScreen({ apiConfig, onUpdateConfig, onBack, full
             </div>
                 </section>
 
+                {onOpenEditProfile ? (
+                  <button
+                    type="button"
+                    onClick={() => onOpenEditProfile()}
+                    className="w-full py-3 rounded-xl bg-white border border-slate-200 text-slate-900 text-sm font-medium shadow-sm"
+                  >
+                    编辑资料
+                  </button>
+                ) : null}
+
                 <section className="rounded-3xl border border-slate-200 bg-white p-3 shadow-sm">
                   <div className="divide-y divide-slate-100">
                     <button type="button" onClick={() => { setActiveSection('api-config'); setIsMobileSectionOpen(true); }} className="w-full py-3 px-2 flex items-center justify-between">
@@ -2266,7 +2699,9 @@ export default function SettingsScreen({ apiConfig, onUpdateConfig, onBack, full
         isOpen={showApiPresetsModal}
         onClose={() => {
           setShowApiPresetsModal(false);
-          setApiPresets(apiPresetsManager.getPresets());
+          void apiPresetsManager.hydrateFromDisk().then(() => {
+            setApiPresets(apiPresetsManager.getPresets());
+          });
         }}
         onSelectPreset={handleApplyApiPreset}
       />

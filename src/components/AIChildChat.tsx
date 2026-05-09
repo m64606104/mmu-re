@@ -10,6 +10,7 @@ import { smartLoad, smartSave } from '../utils/storage';
 import { recordWordLearning } from '../utils/aiMemorySystem';
 import { getAIChild } from '../utils/aiKindergartenManager';
 import { splitMessages } from '../utils/messageFormatter';
+import { buildApiUrl } from '../utils/apiHelper';
 
 interface AIChildChatProps {
   childId: string;
@@ -107,7 +108,7 @@ export default function AIChildChat({ childId, onBack, apiConfig }: AIChildChatP
       const systemPrompt = buildChildSystemPrompt(child);
       const conversationHistory = [...messages, userMessage].slice(-10); // 最近10条
 
-      const response = await fetch(`${apiConfig.baseUrl}/v1/chat/completions`, {
+      const response = await fetch(buildApiUrl(apiConfig), {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

@@ -73,6 +73,8 @@ export interface LifeNarrativeThread {
 export interface AILifeSimState {
   conversationId: string;
   lastTickAt: number;
+  /** 上一次调用生活模拟 LLM 的时间（含失败）；用于冷却，避免 429 后每次聚焦又并发打满接口 */
+  lastSimApiAttemptAt?: number;
   lastDay: string; // UTC+8 day key
   theme: LifeTheme;
   energy: number; // 0-100

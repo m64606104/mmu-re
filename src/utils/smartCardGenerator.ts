@@ -6,6 +6,7 @@
 import { WordCard, getAllWordCards } from './wordCardLibrary';
 import { ApiConfig } from '../types';
 import { smartLoad, smartSave } from './storage';
+import { buildApiUrl } from './apiHelper';
 
 export interface DailyCardPool {
   date: string;
@@ -112,7 +113,7 @@ async function generate4Cards(
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 20000);
       
-      const response = await fetch(`${apiConfig.baseUrl}/v1/chat/completions`, {
+      const response = await fetch(buildApiUrl(apiConfig), {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

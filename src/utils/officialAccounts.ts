@@ -5,6 +5,7 @@
 
 import { OfficialAccountSettings, OfficialArticle, ApiConfig } from '../types';
 import { getCachedData, load, save, setCachedData } from './storage';
+import { buildApiUrl } from './apiHelper';
 
 const OFFICIAL_ACCOUNTS_KEY = 'official_accounts';
 
@@ -173,7 +174,7 @@ export const generateArticleContent = async (
   try {
     const prompt = getArticlePrompt(account);
     
-    const response = await fetch(`${apiConfig.baseUrl}/v1/chat/completions`, {
+    const response = await fetch(buildApiUrl(apiConfig), {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',

@@ -1,4 +1,6 @@
 import type { ApiConfig } from '../types';
+import { resolveVisionImageChatEndpoint } from '../domains/vision/completionRouting';
+import { buildApiUrl } from './apiHelper';
 
 export interface AvatarCandidateImage {
   url: string;
@@ -53,7 +55,7 @@ export async function detectAvatarChangeIntentByAI(params: {
       `${recentContextText ? `最近上下文：\n${recentContextText}\n` : ''}` +
       `请只输出 JSON：{"isAvatarChangeRequest":boolean,"confidence":0-1,"reason":"简短理由"}。`;
 
-    const resp = await fetch(`${apiConfig.baseUrl}/v1/chat/completions`, {
+    const resp = await fetch(buildApiUrl(apiConfig), {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -119,7 +121,7 @@ export async function generateAvatarChangeReplyByAI(params: {
       `用户原话：${requestText}\n` +
       `${decisionLine}\n` +
       `要求：口语化、像真人聊天、1-2句、不要解释规则、不要输出JSON。`;
-    const resp = await fetch(`${apiConfig.baseUrl}/v1/chat/completions`, {
+    const resp = await fetch(buildApiUrl(apiConfig), {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -151,10 +153,8 @@ export async function decideAvatarChangeByAI(params: {
   memoryContextText?: string;
 }): Promise<AvatarChangeDecision | null> {
   const { apiConfig, characterName, requestText, images, characterProfileText, memoryContextText } = params;
-  const visionModel = String(apiConfig.visionModelName || '').trim();
-  const visionBaseUrl = String(apiConfig.visionBaseUrl || apiConfig.baseUrl || '').trim();
-  const visionApiKey = String(apiConfig.visionApiKey || apiConfig.apiKey || '').trim();
-  if (!visionBaseUrl || !visionApiKey || !visionModel) return null;
+  const routing = resolveVisionImageChatEndpoint(apiConfig);
+  if (!routing?.apiUrl) return null;
   if (images.length === 0) {
     return {
       approved: false,
@@ -188,15 +188,15 @@ export async function decideAvatarChangeByAI(params: {
   });
 
   try {
-    const resp = await fetch(`${visionBaseUrl}/v1/chat/completions`, {
+    const resp = await fetch(routing.apiUrl, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        Authorization: `Bearer ${visionApiKey}`,
+        Authorization: `Bearer ${routing.bearerToken}`,
         'X-Momoyu-Source': 'avatarChangeDecision:multimodal',
       },
       body: JSON.stringify({
-        model: visionModel,
+        model: routing.model,
         messages: [{ role: 'user', content: contentParts }],
         temperature: 0.5,
         max_tokens: 300,

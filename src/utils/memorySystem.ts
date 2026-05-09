@@ -6,6 +6,7 @@
 import { AIEvent, ApiConfig, Conversation, MemoryBank, MemoryDiaryEntry, MemoryEntry, Message } from '../types';
 import { save, load } from './storage';
 import { getCharacterOnlineHandle, getCharacterRealName } from './characterIdentity';
+import { buildApiUrl } from './apiHelper';
 
 // 重新导出类型以便其他组件使用
 export type { MemoryEntry, MemoryDiaryEntry };
@@ -73,6 +74,9 @@ let memoryBanksCache: MemoryBank[] | null = null;
 /**
  * 异步获取所有记忆库（推荐）
  */
+/** 与 App 内置三条预设私聊 id 一致；若会话列表「恰好只剩这三条」但记忆库仍指向其它会话，多半是异常回退，禁止整库 prune。 */
+const FACTORY_PRESET_CONVERSATION_IDS = new Set(['preset-aa', 'preset-worker', 'preset-oo1']);
+
 /**
  * 删除当前会话列表中已不存在的记忆库条目（IndexedDB `chat_memory_banks`），避免会话丢失后残留。
  */
@@ -81,6 +85,22 @@ export const pruneOrphanMemoryBanks = async (
 ): Promise<number> => {
   const allowed = new Set(validConversationIds);
   const banks = await getAllMemoryBanks();
+
+  const onlyThreeFactoryPresets =
+    allowed.size === 3 &&
+    [...allowed].every((id) => FACTORY_PRESET_CONVERSATION_IDS.has(String(id)));
+
+  if (onlyThreeFactoryPresets && banks.length > 0) {
+    const orphanBanks = banks.filter((b) => !allowed.has(b.conversationId));
+    if (orphanBanks.length > 0) {
+      console.warn(
+        '[memory] 已跳过 pruneOrphanMemoryBanks：当前会话 id 仅为内置 preset-aa / preset-worker / preset-oo1，但 chat_memory_banks 中仍有其它 conversationId。' +
+          '这通常表示会话列表曾被异常覆盖；若继续 prune 会误删全部自定义会话记忆。请先从备份恢复 conversations 后再手动整理记忆库。',
+      );
+      return 0;
+    }
+  }
+
   const kept = banks.filter((b) => allowed.has(b.conversationId));
   const removed = banks.length - kept.length;
   if (removed <= 0) return 0;
@@ -416,17 +436,45 @@ function dayPartOf(ts: number): 'morning' | 'noon' | 'evening' {
   return 'evening';
 }
 
+/** 去掉模型常见的 markdown 代码块围栏，便于解析 JSON（含「只开了 ```json 未闭合」的截断输出） */
+function stripModelJsonFences(raw: string): string {
+  let s = raw.trim();
+  const closed = /^```(?:json)?\s*\r?\n?([\s\S]*?)\r?\n?```/im.exec(s);
+  if (closed) return closed[1].trim();
+  if (/^```(?:json)?\s*/im.test(s)) {
+    s = s.replace(/^```(?:json)?\s*/im, '').replace(/\s*```\s*$/i, '');
+  }
+  return s.trim();
+}
+
+function parseJsonFromModelText(text: string): any | null {
+  const cleaned = stripModelJsonFences(String(text || ''));
+  try {
+    return JSON.parse(cleaned);
+  } catch {
+    const start = cleaned.indexOf('{');
+    const end = cleaned.lastIndexOf('}');
+    if (start < 0 || end <= start) return null;
+    try {
+      return JSON.parse(cleaned.slice(start, end + 1));
+    } catch {
+      return null;
+    }
+  }
+}
+
 async function askJson(apiConfig: ApiConfig, prompt: string): Promise<any | null> {
   if (!apiConfig.baseUrl || !apiConfig.apiKey || !apiConfig.modelName) {
     console.warn('[memory-engine] 缺少 API 配置（baseUrl / apiKey / modelName），跳过本次调用');
     return null;
   }
   try {
-    const res = await fetch(`${apiConfig.baseUrl}/v1/chat/completions`, {
+    const res = await fetch(buildApiUrl(apiConfig), {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         Authorization: `Bearer ${apiConfig.apiKey}`,
+        'X-Momoyu-Source': 'memorySystem:askJson',
       },
       body: JSON.stringify({
         model: apiConfig.modelName,
@@ -442,12 +490,12 @@ async function askJson(apiConfig: ApiConfig, prompt: string): Promise<any | null
     }
     const data = await res.json();
     const text = String(data?.choices?.[0]?.message?.content || '');
-    const match = text.match(/\{[\s\S]*\}/);
-    if (!match) {
-      console.warn('[memory-engine] 模型返回中未找到 JSON 对象', text.slice(0, 160));
+    const parsed = parseJsonFromModelText(text);
+    if (!parsed) {
+      console.warn('[memory-engine] 模型返回中未找到有效 JSON', text.slice(0, 200));
       return null;
     }
-    return JSON.parse(match[0]);
+    return parsed;
   } catch (e) {
     console.warn('[memory-engine] askJson 异常', e);
     return null;

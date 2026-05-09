@@ -1,5 +1,6 @@
 import { ApiConfig, Conversation, MomentPost } from '../types';
 import { getCachedData, load, save, setCachedData } from './storage';
+import { buildApiUrl } from './apiHelper';
 
 // AI自动发朋友圈配置
 export interface AIMomentsConfig {
@@ -120,7 +121,7 @@ export const generateAIMomentContent = async (
   const prompt = generateMomentPrompt(conversation, recentMessages);
 
   try {
-    const response = await fetch(`${apiConfig.baseUrl}/v1/chat/completions`, {
+    const response = await fetch(buildApiUrl(apiConfig), {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -184,7 +185,7 @@ export const generateAIComment = async (
 只返回评论内容，不要其他说明。`;
 
   try {
-    const response = await fetch(`${apiConfig.baseUrl}/v1/chat/completions`, {
+    const response = await fetch(buildApiUrl(apiConfig), {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',

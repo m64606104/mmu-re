@@ -35,6 +35,7 @@ const LOCAL_STORAGE_KEYS = [
   'userSettings',        // 群聊等功能的UI偏好（小配置）
   'musixmatch_api_key',  // 歌词服务密钥（小配置）
   'energy_saving_config', // 节能模式配置（小配置）
+  'api_endpoint_pair_history', // 主接口「URL+Key+模型」成套最近记录（一键切换）
 ];
 
 // 🔵 IndexedDB 专用键（所有大数据）
@@ -139,6 +140,20 @@ const STORE_NAME = 'appData';
 // 🧠 内存缓存系统
 let memoryCache = new Map<string, any>();
 let cacheInitialized = false;
+
+/**
+ * 全量导入 / clearAllData 恢复期间为 true：阻止 App 内防抖 `save('conversations')` / `smartSave('moments')`
+ * 用旧 React 状态覆盖刚写入的 IndexedDB（尤其 saveBatch 分片尚未合并主键时）。
+ */
+let bulkStorageRestoreInProgress = false;
+
+export function setBulkStorageRestoreInProgress(active: boolean): void {
+  bulkStorageRestoreInProgress = active;
+}
+
+export function isBulkStorageRestoreInProgress(): boolean {
+  return bulkStorageRestoreInProgress;
+}
 
 /**
  * 打开 IndexedDB（优化版）
@@ -338,6 +353,37 @@ const conversationsPersistMatches = (written: unknown, readBack: unknown): boole
   return true;
 };
 
+const PRESET_SEED_CONVERSATION_IDS = new Set(['preset-aa', 'preset-worker', 'preset-oo1']);
+
+/** 与「首次空库植入」形状一致：恰好三条内置私聊且均无消息 */
+function isThreeEmptyPresetSeed(next: unknown): boolean {
+  if (!Array.isArray(next) || next.length !== 3) return false;
+  for (const c of next) {
+    const row = c as { id?: string; messages?: unknown[] };
+    if (typeof row.id !== 'string' || !PRESET_SEED_CONVERSATION_IDS.has(row.id)) return false;
+    if (Array.isArray(row.messages) && row.messages.length > 0) return false;
+  }
+  return true;
+}
+
+/**
+ * 防止启动竞态等：禁止用「仅三条空内置预设」覆盖磁盘上更丰富的会话列表。
+ * 若用户本来就只有这三条（或更少），不拦截。
+ */
+function shouldRefuseSuspiciousConversationOverwrite(next: unknown, prev: unknown): boolean {
+  if (!isThreeEmptyPresetSeed(next)) return false;
+  if (!Array.isArray(prev) || prev.length === 0) return false;
+  const prevWasOnlyBuiltin =
+    prev.length <= 3 &&
+    prev.every(
+      (c) =>
+        typeof (c as { id?: string }).id === 'string' &&
+        PRESET_SEED_CONVERSATION_IDS.has((c as { id: string }).id)
+    );
+  if (prevWasOnlyBuiltin) return false;
+  return true;
+}
+
 /** 非 conversations 键：用 JSON 快照比对写回（与 save 内嵌校验互补） */
 const idbSnapshotMatches = (written: unknown, readBack: unknown, key: string): boolean => {
   if (key === 'conversations') {
@@ -394,7 +440,7 @@ export const initializeCache = async (): Promise<void> => {
     console.log('🧠 初始化内存缓存...');
     
     // 从IndexedDB预载热点数据（常用的大数据）
-    const hotKeys = ['conversations', 'moments', 'chat_memory_banks', 'slow_letters'];
+    const hotKeys = ['conversations', 'moments', 'chat_memory_banks', 'slow_letters', 'api_presets_data'];
     await Promise.all(hotKeys.map(async (key) => {
       try {
         // load() 命中时会写入 memoryCache（含分片拼回路径）
@@ -417,6 +463,16 @@ export const save = async (key: string, data: any): Promise<void> => {
   if (shouldUseLocalStorage(key)) {
     saveToLocal(key, data);
   } else {
+    if (key === 'conversations') {
+      const prev = await readIndexedDBValueUncached(key).catch(() => undefined);
+      if (shouldRefuseSuspiciousConversationOverwrite(data, prev)) {
+        const err = new Error(
+          '[storage] 拒绝写入 conversations：疑似占位数据会覆盖更完整的历史；请刷新页面。'
+        );
+        console.error(err.message, { diskConversationCount: Array.isArray(prev) ? prev.length : prev });
+        throw err;
+      }
+    }
     await saveToIndexedDB(key, data);
   }
 };
@@ -983,6 +1039,13 @@ if (typeof window !== 'undefined') {
   window.saveBatch = saveBatch;
   // @ts-ignore
   window.loadBatch = loadBatch;
+
+  /** 会话恢复：随 storage 模块加载即挂载（不依赖 main/App 顺序），避免控制台里 undefined */
+  const w = window as unknown as Record<string, unknown>;
+  w.__momoyu_scanConversationBackups = () =>
+    import('./conversationsRecovery').then((m) => m.scanConversationBackups());
+  w.__momoyu_restoreConversationsFromLocalStorage = (opts?: unknown) =>
+    import('./conversationsRecovery').then((m) => m.restoreConversationsFromLocalStorage(opts as any));
   
-  console.log('🔧 存储API已暴露到全局（开发模式）');
+  console.log('🔧 存储API已暴露到全局（开发模式）；会话恢复: await __momoyu_scanConversationBackups()');
 }

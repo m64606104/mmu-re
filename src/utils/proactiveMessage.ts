@@ -1,5 +1,6 @@
 import { Conversation, ApiConfig, Message } from '../types';
 import { getCharacterRealName } from './characterIdentity';
+import { buildApiUrl } from './apiHelper';
 
 // AI主动消息配置
 export interface ProactiveMessageConfig {
@@ -11,7 +12,7 @@ export interface ProactiveMessageConfig {
 
 // 默认配置
 export const DEFAULT_PROACTIVE_CONFIG: ProactiveMessageConfig = {
-  enabled: true,
+  enabled: false,
   minInterval: 30,
   maxInterval: 180,
   triggerProbability: 0.7,
@@ -64,7 +65,7 @@ export const generateProactiveMessage = async (
   const prompt = generateProactivePrompt(conversation);
 
   try {
-    const response = await fetch(`${apiConfig.baseUrl}/v1/chat/completions`, {
+    const response = await fetch(buildApiUrl(apiConfig), {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',

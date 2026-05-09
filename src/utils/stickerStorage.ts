@@ -31,7 +31,7 @@ let legacyMigrationInProgress = false;
  *   - 角色表情包：sticker_pack_{characterId}
  * - 新结构：IndexedDB commonStickers / characterStickers
  */
-const migrateLegacyStickersIfNeeded = async (): Promise<void> => {
+export const migrateLegacyStickersIfNeeded = async (): Promise<void> => {
   // 非浏览器环境（例如SSR）直接跳过
   if (typeof window === 'undefined' || !('localStorage' in window)) return;
 

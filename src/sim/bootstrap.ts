@@ -1,5 +1,5 @@
 import type { ApiConfig, Conversation } from '../types';
-import { enqueueLifeSimForAll } from './lifeEngine';
+import { enqueueLifeSimForAll, nextLifeSimPeriodicDelayMs } from './lifeEngine';
 import { cleanupLifeSimStates } from './storage';
 
 type GetConversations = () => Conversation[];
@@ -38,14 +38,23 @@ export function startLifeSimBootstrap(params: { getConversations: GetConversatio
   window.addEventListener('focus', onFocus);
   document.addEventListener('visibilitychange', onVis);
 
-  // Lightweight periodic run while app stays open (won't do anything if not due)
-  const timer = window.setInterval(() => safeRun(getConversations, getApiConfig), 10 * 60 * 1000);
+  // 随机 20～60 分钟再触发一批（enqueue 内部另有「全局最少 20 分钟」门槛）
+  let periodicTimer: number | null = null;
+  const schedulePeriodic = () => {
+    if (periodicTimer != null) window.clearTimeout(periodicTimer);
+    periodicTimer = window.setTimeout(() => {
+      periodicTimer = null;
+      safeRun(getConversations, getApiConfig);
+      schedulePeriodic();
+    }, nextLifeSimPeriodicDelayMs());
+  };
+  schedulePeriodic();
 
   // Cleanup on unload
   window.addEventListener('beforeunload', () => {
     window.removeEventListener('focus', onFocus);
     document.removeEventListener('visibilitychange', onVis);
-    clearInterval(timer);
+    if (periodicTimer != null) window.clearTimeout(periodicTimer);
   });
 }
 

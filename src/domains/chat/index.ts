@@ -28,4 +28,11 @@ export * from './assistantSpecialPipeline';
 export * from './assistantMessageCommitter';
 export * from './assistantReplyOrchestrator';
 export * from './outputProtocol';
+export * from './quoteMarker';
+export * from './extractAssistantStickerTokens';
+export * from './assistantOutboundPlainText';
+export * from './materializeAssistantOutboundMessages';
+
+/** 附图 / image_url 多模态（私聊、群聊、子聊天共用） */
+export * from '../vision';
 

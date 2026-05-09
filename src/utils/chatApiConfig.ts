@@ -1,4 +1,5 @@
 import type { ApiConfig, Conversation } from '../types';
+import { resolveTextChatModelAvoidingVisionOnlyModelClash } from './textChatModelGuard';
 
 /**
  * 私聊：优先角色「单独配置模型」，否则全局。
@@ -6,8 +7,10 @@ import type { ApiConfig, Conversation } from '../types';
  */
 export function resolvePrivateChatApiConfig(apiConfig: ApiConfig, conversation: Conversation): ApiConfig {
   const o = conversation.characterSettings?.chatModelOverride?.trim();
-  if (!o) return apiConfig;
-  return { ...apiConfig, modelName: o };
+  const base = (o || apiConfig.modelName || '').trim();
+  const modelName = resolveTextChatModelAvoidingVisionOnlyModelClash(apiConfig, base);
+  if (!o && modelName === String(apiConfig.modelName || '').trim()) return apiConfig;
+  return { ...apiConfig, modelName };
 }
 
 /**
@@ -22,15 +25,18 @@ export function resolveGroupParticipantApiConfig(
   aiMember: Conversation
 ): ApiConfig {
   const groupO = groupConversation.groupChatModelOverride?.trim();
-  if (groupO) return { ...apiConfig, modelName: groupO };
   const charO = aiMember.characterSettings?.chatModelOverride?.trim();
-  if (charO) return { ...apiConfig, modelName: charO };
-  return apiConfig;
+  const base = (groupO || charO || apiConfig.modelName || '').trim();
+  const modelName = resolveTextChatModelAvoidingVisionOnlyModelClash(apiConfig, base);
+  if (!groupO && !charO && modelName === String(apiConfig.modelName || '').trim()) return apiConfig;
+  return { ...apiConfig, modelName };
 }
 
 /** 群聊记忆总结等后台任务：只用群级单独模型（若有），否则全局 */
 export function resolveGroupSummaryApiConfig(apiConfig: ApiConfig, groupConversation: Conversation): ApiConfig {
   const groupO = groupConversation.groupChatModelOverride?.trim();
-  if (!groupO) return apiConfig;
-  return { ...apiConfig, modelName: groupO };
+  const base = (groupO || apiConfig.modelName || '').trim();
+  const modelName = resolveTextChatModelAvoidingVisionOnlyModelClash(apiConfig, base);
+  if (!groupO && modelName === String(apiConfig.modelName || '').trim()) return apiConfig;
+  return { ...apiConfig, modelName };
 }

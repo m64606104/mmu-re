@@ -1,5 +1,6 @@
 import { ApiConfig } from '../types';
 import { getCachedData, load, save, setCachedData } from './storage';
+import { buildApiUrl } from './apiHelper';
 
 // 热梗数据库
 export interface Meme {
@@ -78,7 +79,7 @@ export const generateAIMemeResponse = async (
 5. 1-2句话即可`;
 
   try {
-    const response = await fetch(`${apiConfig.baseUrl}/v1/chat/completions`, {
+    const response = await fetch(buildApiUrl(apiConfig), {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',

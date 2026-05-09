@@ -4,6 +4,7 @@
  */
 
 import { ApiConfig } from '../types';
+import { buildApiUrl } from './apiHelper';
 
 /**
  * 分析关系描述，返回建议的好感度数值（0-100）
@@ -17,7 +18,7 @@ export async function analyzeRelationshipAffection(
   }
 
   try {
-    const response = await fetch(`${apiConfig.baseUrl}/v1/chat/completions`, {
+    const response = await fetch(buildApiUrl(apiConfig), {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',

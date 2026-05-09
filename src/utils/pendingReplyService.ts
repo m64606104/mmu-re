@@ -23,16 +23,23 @@ import {
   DEFAULT_PRIVATE_COMPOSER_QUIET_SECONDS,
   DEFAULT_GROUP_COMPOSER_QUIET_SECONDS,
 } from '../types';
-import { buildApiUrl } from './apiHelper';
+import {
+  buildPrivateUserMultimodalContent,
+  openAiMessagesUseVisionPayload,
+  resolveOpenAiCompatibleCompletionRouting,
+  userMessageHasImagePayload,
+} from '../domains/vision';
 import { resolvePrivateChatApiConfig } from './chatApiConfig';
-import { resolveSystemEmoji, isSingleEmojiText } from './systemEmoji';
+import { resolveEffectivePersonalInfo } from './userIdentityCards';
 import {
   validateAssistantOutput,
   buildProtocolRetryInstruction,
   isValidDocumentJsonOutput,
   buildDocumentJsonRetryInstruction,
 } from '../domains/chat/outputProtocol';
+import { extractAssistantStickerTokensFromText as extractStickerTokens } from '../domains/chat/extractAssistantStickerTokens';
 import { enqueueMemoryEngineCycle, buildMemoryAndIdentityContext } from './memorySystem';
+import { excerptForReplyPreview, resolveQuotedMessageById, stripAiQuoteMarkers } from '../domains/chat/quoteMarker';
 import { splitMessages } from './messageFormatter';
 import { MEDIA_DECISION_GUIDANCE } from './mediaDecisionPrompt';
 import { generateDocxOriginalFile } from './documentFileGenerator';
@@ -41,9 +48,24 @@ import { applyUserChatImpact } from '../sim/storage';
 import { retrieveKnowledgeChunks, retrieveTextChunks } from './knowledgeRetrieval';
 import { smartLoad } from './storage';
 import { getErrorFromResponse } from './apiErrorHandler';
-import { findStickerByDescription } from './stickerMessageParser';
+
+function isTransientClientNetworkError(err: unknown): boolean {
+  const msg = err instanceof Error ? err.message : String(err);
+  return /load failed|failed to fetch|fetch is aborted|network error|network|网络|aborted|timeout|中断|lost connection/i.test(
+    msg
+  );
+}
+import { normalizeAssistantProtocolLeaks } from './messageFormatter';
 import { isToolInteractionCharacter } from './characterInteractionMode';
 import { getCharacterOnlineHandle, getCharacterRealName, stripOnlineHandleChangeMarkers } from './characterIdentity';
+import { extractPrivateAiGenImageDirectives } from './privateAiGenImageMarkers';
+import { normalizeLooseAssistantMediaBrackets } from '../domains/chat/assistantMessageBuilder';
+import {
+  generatePrivateAiImageMediaUrl,
+  resolvePrivateAiImageApiCredentials,
+} from './privateAiImageApi';
+import { getPrivateAiImageDayCount, incrementPrivateAiImageDayCount } from './privateAiImageDayQuota';
+import { requestPrivateAiImageConsent } from './privateImageConsentBridge';
 import {
   buildTimeAwarePrompt,
   formatBubbleTimePrefixForModel,
@@ -199,51 +221,6 @@ async function runPrivateReplySchedule(conversationId: string, isStillCurrent: (
       return;
     }
   }
-}
-
-type ParsedStickerToken = {
-  description: string;
-  stickerKind: 'systemEmoji' | 'custom';
-  imageUrl?: string;
-};
-
-async function extractStickerTokens(
-  raw: string,
-  conversationId: string
-): Promise<{ text: string; stickers: ParsedStickerToken[] }> {
-  if (!raw) return { text: '', stickers: [] };
-
-  let text = raw;
-  const stickers: ParsedStickerToken[] = [];
-  const matches = [...raw.matchAll(/\[(表情包|STICKER|系统表情|EMOJI|emoji)[:：]([^\]]+)\]/gi)];
-  for (const match of matches) {
-    const tag = (match[1] || '').toLowerCase();
-    const payload = (match[2] || '').trim();
-    const isEmojiTag = tag === 'emoji' || tag === '系统表情';
-    const emoji = isEmojiTag ? resolveSystemEmoji(payload) : null;
-    const isEmoji = Boolean(emoji || isSingleEmojiText(payload));
-    if (isEmoji) {
-      // 系统emoji在延迟回复链路也默认内联，避免被强制拆成独立气泡
-      text = text.replace(match[0], emoji || payload);
-      continue;
-    }
-    let imageUrl: string | undefined;
-    try {
-      // 与 momoyu-demo 行为对齐：优先把 [表情包:描述] 映射为真实图片
-      imageUrl = (await findStickerByDescription(payload, conversationId)) || undefined;
-    } catch {
-      imageUrl = undefined;
-    }
-    stickers.push({
-      description: payload,
-      stickerKind: 'custom',
-      imageUrl,
-    });
-    text = text.replace(match[0], ' ');
-  }
-
-  // 仅压缩空格/tab，保留换行语义给 splitMessages 做分条判断
-  return { text: text.replace(/[ \t]{2,}/g, ' ').trim(), stickers };
 }
 
 function stripAvatarActionMarkers(raw: string): {
@@ -489,11 +466,10 @@ function toModelMessageContent(m: Message): string {
       .join('，');
     content = `[用户发送了多媒体消息：${mediaSummary}]`;
   }
-  if (m.replyTo) {
-    const who = m.replyTo.role === 'user' ? '我' : '你';
-    content = `[回复 ${who} 说的"${m.replyTo.content.slice(0, 50)}"]\n${content}`;
+  if (m.replyTo?.id) {
+    content = `〈引用目标:${m.replyTo.id}〉\n${content}`;
   }
-  return content;
+  return `〈消息ID:${m.id}〉\n${content}`;
 }
 
 /**
@@ -524,6 +500,9 @@ function packRecentUserMessagesForModel(contextMessages: Message[], bufferMs: nu
       // gap 为 0 说明无时间信息/同一时间戳，此时也认为是连续短消息
       if (gap !== 0 && gap > bufferMs) break;
 
+      // 含图的消息不能与邻接文字合并，否则会丢掉 mediaUrl，只剩合并字符串，模型看不到图
+      if (userMessageHasImagePayload(prev) || userMessageHasImagePayload(next)) break;
+
       group.push(next);
       j += 1;
     }
@@ -551,6 +530,27 @@ function packRecentUserMessagesForModel(contextMessages: Message[], bufferMs: nu
   return packed;
 }
 
+function indexOfLastAssistant(messages: Message[]): number {
+  for (let i = messages.length - 1; i >= 0; i--) {
+    if (messages[i].role === 'assistant') return i;
+  }
+  return -1;
+}
+
+/**
+ * 仅「上一轮助手回复之后」的用户气泡嵌入真实 image_url；更早的带图气泡走 toModelMessageContent 文本占位。
+ * 否则历史里每张图都会在每次回复里重复塞进请求体，体量过大时网关常见 413 / 503。
+ */
+function privateUserMessageEmbedVisionRaw(conv: Conversation, m: Message): boolean {
+  if (m.role !== 'user') return false;
+  const full = conv.messages;
+  const gi = full.findIndex((x: Message) => x.id === m.id);
+  if (gi < 0) return false;
+  const lastAsst = indexOfLastAssistant(full);
+  if (lastAsst >= 0) return gi > lastAsst;
+  return true;
+}
+
 /* ── 触发回复 ── */
 async function triggerReply(conversationId: string) {
   const conversation = _getConversation(conversationId);
@@ -572,6 +572,7 @@ async function triggerReply(conversationId: string) {
     (pendingReplyGeneration.get(conversationId) || 0) !== epochAtReplyStart;
 
   try {
+    let aiGenPrompts: string[] = [];
     const toolPrivate =
       conversation.type === 'private' && isToolInteractionCharacter(conversation.characterSettings);
 
@@ -586,7 +587,9 @@ async function triggerReply(conversationId: string) {
       wakeMode: 'auto' | 'light' | 'normal' | 'deep';
     } = { wasSleeping: false, wokeUp: false, wakeThreshold: 0, wakeMode: 'auto' };
 
-    if (!toolPrivate) {
+    const sleepSimOn =
+      conversation.characterSettings?.proactiveMessaging?.sleepSimulationEnabled !== false;
+    if (!toolPrivate && sleepSimOn) {
       chatImpact = await applyUserChatImpact({
         conversationId,
         now: Date.now(),
@@ -640,6 +643,20 @@ async function triggerReply(conversationId: string) {
     let systemPrompt = promptBuilt.prompt;
     if (ragDebugEnabled && promptBuilt.debugLines.length > 0) {
       ragDebugLines.push(...promptBuilt.debugLines);
+    }
+
+    if (conversation.type === 'private' && !toolPrivate) {
+      const imgCreds = resolvePrivateAiImageApiCredentials(apiConfig);
+      if (imgCreds.enabled && imgCreds.baseUrl && imgCreds.apiKey && imgCreds.model) {
+        const capHint =
+          imgCreds.dailyMaxPerConversation > 0
+            ? `同一私聊每个自然日最多成功发送 ${imgCreds.dailyMaxPerConversation} 张（超出部分不会再生成）。`
+            : '同一私聊当前未设置每日张数上限。';
+        systemPrompt += `\n\n【真实配图（文生图·高成本）】
+用户侧为「先弹窗确认再调用生图接口」：只有当你确实要发**真实生成**的照片时，请使用 **[生图:画面描述]**（可写多条，每条对应一张）。日常「假装发图」、不涉及真实像素时，请用 **[图片:画面描述]** 或 **[IMG:画面描述]**（务必带冒号）；不要滥用 [生图:]，也不要写无冒号的「[图片]」接正文（易与协议混淆）。
+- ${capHint}
+- 若对方拒绝，图片不会出现；用自然方式带过即可，**不要**提「系统」「接口」「模型」「生图」等技术词。`;
+      }
     }
 
     // 📚 文档库（document_library）检索：把用户上传/保存过的文档按问题检索后注入
@@ -796,7 +813,13 @@ async function triggerReply(conversationId: string) {
 - 对外网名由你自己说了算：和用户聊到改名时，可以打趣、可以推拉；正常商量，你也可以不采纳对方的提议。你自己想换个昵称时，若语境合适可以随口提起，不必强行解释；也可以完全不提，不强制。
 - **静默改名**：若你只想更新资料/名片里的网名、**不想在字面上向任何人交代**，可以**仅输出** \`[改网名:新网名]\`（整条只有这一句也可以）；该片段会像 \`[换头像]\` 一样从气泡里剥掉，对方看不到，相当于只在后台改名。也可以照常先聊天，再在**本条整条回复的最末尾**紧贴接上同一标记。
 - 网名长度约 2～24 字。**禁止**提到「隐藏标记」「协议」「系统更新」「按格式输出」等破坏沉浸的说法。
-- 没有真想改网名时：**不要**输出 \`[改网名:…]\`。`;
+- 没有真想改网名时：**不要**输出 \`[改网名:…]\`。
+
+【引用回复（与换头像、改网名同类·尾部机器指令）】
+- 每条历史消息前带有 \`〈消息ID:…〉\`；若用户消息还带 \`〈引用目标:…〉\`，表示对方在引用该 id 的上文。
+- 当你本条气泡要对应**某一条具体历史消息**做引用回复时，在本条回复**最末尾**（可单独成段）追加：\`[引用消息:消息ID]\`
+- **消息ID**必须与上文 \`〈消息ID:…〉\` **逐字符一致**，禁止臆造；该标记会从气泡里剥掉，用户看不到。
+- **不要**再使用「回复我说的」之类话术当机器指令；不要复述 \`〈…〉\` 行。`;
     }
 
     // 陪伴型私聊：注入完整时间感知（与 ChatScreen 主链路一致），避免跨日仍当「同一晚」、隔数日仍追问「去上班了吗」等
@@ -826,18 +849,36 @@ async function triggerReply(conversationId: string) {
     const maxTokens = requireDocumentJson ? 8000 : 2000;
     const messages = [
       { role: 'system', content: systemPrompt },
-      ...contextMessages.map(m => {
-        let content = toModelMessageContent(m);
+      ...contextMessages.map((m) => {
         if (conversation.type === 'private' && m.role === 'user') {
+          const visionParts = privateUserMessageEmbedVisionRaw(conversation, m)
+            ? buildPrivateUserMultimodalContent(m)
+            : null;
+          if (visionParts) {
+            const textIdx = visionParts.findIndex((p: any) => p.type === 'text');
+            if (textIdx >= 0) {
+              const tp = visionParts[textIdx] as { type: string; text: string };
+              tp.text = formatBubbleTimePrefixForModel(m.timestamp) + tp.text;
+            }
+            return { role: 'user' as const, content: visionParts };
+          }
+          let content = toModelMessageContent(m);
           content = formatBubbleTimePrefixForModel(m.timestamp) + content;
+          return { role: m.role, content };
         }
-        return { role: m.role, content };
+        return { role: m.role, content: toModelMessageContent(m) };
       }),
     ];
 
+    const requestContainsImageUrl = openAiMessagesUseVisionPayload(messages);
+    const routing = resolveOpenAiCompatibleCompletionRouting(apiConfig, {
+      requestContainsImageUrl,
+      textChatModel: effectiveApiConfig.modelName,
+    });
+
     const replyTemperature = toolPrivate ? 0.4 : 0.7;
 
-    const apiUrl = buildApiUrl(apiConfig);
+    const apiUrl = routing.apiUrl;
     if (isReplyStale()) {
       notifyTyping(conversationId, false);
       return;
@@ -846,13 +887,13 @@ async function triggerReply(conversationId: string) {
 
     const res = await fetch(apiUrl, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${apiConfig.apiKey}`,
-        'X-Momoyu-Source': 'pendingReplyService:reply',
-      },
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${routing.bearerToken}`,
+          'X-Momoyu-Source': 'pendingReplyService:reply',
+        },
       body: JSON.stringify({
-        model: effectiveApiConfig.modelName,
+        model: routing.model,
         messages,
         temperature: replyTemperature,
         max_tokens: maxTokens,
@@ -878,11 +919,11 @@ async function triggerReply(conversationId: string) {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          Authorization: `Bearer ${apiConfig.apiKey}`,
+          Authorization: `Bearer ${routing.bearerToken}`,
           'X-Momoyu-Source': 'pendingReplyService:protocol-retry',
         },
         body: JSON.stringify({
-          model: effectiveApiConfig.modelName,
+          model: routing.model,
           messages: [...messages, { role: 'system', content: buildProtocolRetryInstruction() }],
           temperature: replyTemperature,
           max_tokens: maxTokens,
@@ -901,11 +942,11 @@ async function triggerReply(conversationId: string) {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          Authorization: `Bearer ${apiConfig.apiKey}`,
+          Authorization: `Bearer ${routing.bearerToken}`,
           'X-Momoyu-Source': 'pendingReplyService:doc-retry',
         },
         body: JSON.stringify({
-          model: effectiveApiConfig.modelName,
+          model: routing.model,
           messages: [...messages, { role: 'system', content: buildDocumentJsonRetryInstruction() }],
           temperature: 0.3,
           max_tokens: 9000,
@@ -939,11 +980,11 @@ async function triggerReply(conversationId: string) {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          Authorization: `Bearer ${apiConfig.apiKey}`,
+          Authorization: `Bearer ${routing.bearerToken}`,
           'X-Momoyu-Source': 'pendingReplyService:tool-skip-retry',
         },
         body: JSON.stringify({
-          model: effectiveApiConfig.modelName,
+          model: routing.model,
           messages: [
             ...messages,
             { role: 'assistant', content: trimmedOut || '(模型未输出正文)' },
@@ -1035,6 +1076,24 @@ async function triggerReply(conversationId: string) {
     aiContent = handleAction.text;
     const newOnlineHandle = handleAction.newHandle;
 
+    const quoteStrip = stripAiQuoteMarkers(aiContent);
+    aiContent = normalizeLooseAssistantMediaBrackets(normalizeAssistantProtocolLeaks(quoteStrip.text));
+    const genExtract = extractPrivateAiGenImageDirectives(aiContent);
+    aiContent = genExtract.text;
+    aiGenPrompts = genExtract.prompts;
+    const quoteTarget =
+      quoteStrip.lastQuotedId && conversation.messages?.length
+        ? resolveQuotedMessageById(conversation.messages, quoteStrip.lastQuotedId)
+        : undefined;
+    const replyToForFirstBubble =
+      quoteTarget && (quoteTarget.role === 'user' || quoteTarget.role === 'assistant')
+        ? {
+            id: quoteTarget.id,
+            content: excerptForReplyPreview(quoteTarget),
+            role: quoteTarget.role,
+          }
+        : undefined;
+
     const parts = splitMessages(aiContent, {
       preference: conversation.replySplitPreference ?? 'smart',
       conversationType: conversation.type,
@@ -1064,12 +1123,14 @@ async function triggerReply(conversationId: string) {
       const nowTs = Date.now();
       const parsed = await extractStickerTokens(parts[i], conversationId);
       const nextMessages: Message[] = [];
+      const rt = i === 0 ? replyToForFirstBubble : undefined;
       if (parsed.text) {
         nextMessages.push({
           id: `ai_${nowTs}_${i}_${Math.random()}`,
           role: 'assistant',
           content: parsed.text,
           timestamp: nowTs,
+          ...(rt ? { replyTo: rt } : {}),
         });
       }
       parsed.stickers.forEach((sticker, idx) => {
@@ -1083,6 +1144,7 @@ async function triggerReply(conversationId: string) {
           stickerKind: sticker.stickerKind,
           mediaUrl: sticker.imageUrl,
           isMediaDescriptionOnly: !sticker.imageUrl,
+          ...(rt && nextMessages.length === 0 && idx === 0 ? { replyTo: rt } : {}),
         });
       });
       if (nextMessages.length === 0) {
@@ -1091,11 +1153,130 @@ async function triggerReply(conversationId: string) {
           role: 'assistant',
           content: parts[i],
           timestamp: nowTs,
+          ...(rt ? { replyTo: rt } : {}),
         });
       }
 
       currentMsgs = [...currentMsgs, ...nextMessages];
       _updateConversation(conversationId, { messages: currentMsgs, lastMessageTime: Date.now() });
+    }
+
+    if (
+      conversation.type === 'private' &&
+      !toolPrivate &&
+      aiGenPrompts.length > 0
+    ) {
+      const imgCreds = resolvePrivateAiImageApiCredentials(apiConfig);
+      if (imgCreds.enabled && imgCreds.baseUrl && imgCreds.apiKey && imgCreds.model) {
+        const cap = imgCreds.dailyMaxPerConversation;
+        const used = getPrivateAiImageDayCount(conversationId);
+        const remaining = cap > 0 ? Math.max(0, cap - used) : aiGenPrompts.length;
+        if (remaining <= 0) {
+          const capFresh = _getConversation(conversationId);
+          if (capFresh) {
+            _updateConversation(conversationId, {
+              messages: [
+                ...capFresh.messages,
+                {
+                  id: `sys_img_cap_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+                  role: 'system',
+                  content: '今日该私聊的 AI 配图额度已用完，对方想分享的画面未生成。',
+                  timestamp: Date.now(),
+                },
+              ],
+              lastMessageTime: Date.now(),
+            });
+          }
+        } else {
+          const toAsk = aiGenPrompts.slice(0, remaining);
+          const nameForUi =
+            conversation.characterSettings?.nickname?.trim() ||
+            conversation.characterSettings?.realName?.trim() ||
+            conversation.name ||
+            '对方';
+          const consent = await requestPrivateAiImageConsent({
+            conversationId,
+            characterDisplayName: nameForUi,
+            imageCount: toAsk.length,
+          });
+          if (consent === true && !isReplyStale()) {
+            notifyTyping(conversationId, true);
+            let successCount = 0;
+            for (let gi = 0; gi < toAsk.length; gi++) {
+              if (isReplyStale()) break;
+              try {
+                const mediaUrl = await generatePrivateAiImageMediaUrl({
+                  baseUrl: imgCreds.baseUrl,
+                  apiKey: imgCreds.apiKey,
+                  model: imgCreds.model,
+                  prompt: toAsk[gi],
+                  size: imgCreds.size,
+                });
+                if (isReplyStale()) break;
+                const genFresh = _getConversation(conversationId);
+                if (!genFresh) break;
+                const imgMsg: Message = {
+                  id: `ai_genimg_${Date.now()}_${gi}_${Math.random().toString(36).slice(2, 8)}`,
+                  role: 'assistant',
+                  content: '[图片]',
+                  timestamp: Date.now(),
+                  mediaType: 'image',
+                  mediaDescription: toAsk[gi],
+                  mediaUrl,
+                  isMediaDescriptionOnly: false,
+                };
+                _updateConversation(conversationId, {
+                  messages: [...genFresh.messages, imgMsg],
+                  lastMessageTime: Date.now(),
+                });
+                successCount += 1;
+              } catch (e) {
+                console.warn('[pendingReply] 私聊生图失败:', e);
+                const errFresh = _getConversation(conversationId);
+                if (errFresh) {
+                  _updateConversation(conversationId, {
+                    messages: [
+                      ...errFresh.messages,
+                      {
+                        id: `sys_img_err_${Date.now()}_${gi}`,
+                        role: 'system',
+                        content: `配图生成失败：${e instanceof Error ? e.message : '未知错误'}`,
+                        timestamp: Date.now(),
+                      },
+                    ],
+                    lastMessageTime: Date.now(),
+                  });
+                }
+              }
+            }
+            if (successCount > 0) {
+              incrementPrivateAiImageDayCount(conversationId, successCount);
+            }
+            notifyTyping(conversationId, false);
+          } else if (consent === false && !isReplyStale()) {
+            // 拒绝生图：不调用接口，回退为与 [IMG:] 一致的「仅描述」图片气泡，聊天不断档
+            for (let fi = 0; fi < toAsk.length; fi++) {
+              if (isReplyStale()) break;
+              if (fi > 0) await sleep(320 + Math.floor(Math.random() * 420));
+              const fb = _getConversation(conversationId);
+              if (!fb) break;
+              const descMsg: Message = {
+                id: `ai_genimg_desc_${Date.now()}_${fi}_${Math.random().toString(36).slice(2, 8)}`,
+                role: 'assistant',
+                content: '[图片]',
+                timestamp: Date.now(),
+                mediaType: 'image',
+                mediaDescription: toAsk[fi],
+                isMediaDescriptionOnly: true,
+              };
+              _updateConversation(conversationId, {
+                messages: [...fb.messages, descMsg],
+                lastMessageTime: Date.now(),
+              });
+            }
+          }
+        }
+      }
     }
 
     // 先结束“正在输入”、让文字气泡提交到屏幕；头像更新放到下一帧，避免和大段消息渲染挤在同一帧变慢
@@ -1176,7 +1357,11 @@ async function triggerReply(conversationId: string) {
       setTimeout(applyDeferredPrivateSideEffects, 0);
     }
   } catch (err: unknown) {
-    console.error('[pendingReply] AI回复失败:', err);
+    if (isTransientClientNetworkError(err)) {
+      console.warn('[pendingReply] AI回复失败（网络/连接）:', err);
+    } else {
+      console.error('[pendingReply] AI回复失败:', err);
+    }
     const freshConv = _getConversation(conversationId);
     if (freshConv) {
       _updateConversation(conversationId, {
@@ -1279,13 +1464,14 @@ function buildSystemPrompt(
   if (cs.languageExample) prompt += `\n语言示例：${cs.languageExample}`;
   if (cs.memoryEvents) prompt += `\n记忆事件：${cs.memoryEvents}`;
 
-  const info = userProfile.personalInfo;
+  const info = resolveEffectivePersonalInfo(userProfile, conversation);
   if (info) {
     const parts: string[] = [];
     if (info.name) parts.push(`称呼：${info.name}`);
+    if (info.onlineName) parts.push(`网名：${info.onlineName}`);
     if (info.gender) parts.push(`性别：${info.gender}`);
     if (info.age) parts.push(`年龄：${info.age}`);
-    if (info.background) parts.push(`背景：${info.background}`);
+    if (info.background) parts.push(`身份信息：${info.background}`);
     if (parts.length > 0) prompt += `\n\n【对话用户信息】：${parts.join('、')}`;
   }
 
@@ -1415,6 +1601,10 @@ RULE-7 对外网名（少用）：在**整条回复最末尾**接 [改网名:新
   与换头像一样是尾部机器指令，会从气泡里剥掉。可先正常聊天再接标记；也可以**整条仅有该标记**表示静默改名（对方看不到标记）。
   ✅ "哈哈哈哈太土了吧行行行那就这个我认了[改网名:咸鱼翻面中]"
   ✅ 静默改名仅更新名片时："[改网名:月下咸鱼]"
+
+RULE-8 引用回复（少用）：在**整条回复最末尾**接 [引用消息:消息ID]
+  消息ID 必须与上文每条消息前的〈消息ID:…〉完全一致（逐字符复制）；会从气泡里剥掉，用于界面引用条。
+  ✅ "我也觉得那句离谱[引用消息:1735123456789_abc]"
 
 以上标记可自由组合：
 ✅ "今天去爬山了[IMG:山顶风景] 累死 [STICKER:瘫倒的猫]"`;

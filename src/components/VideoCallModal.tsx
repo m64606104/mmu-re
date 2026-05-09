@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { Phone, PhoneOff, Volume2, VolumeX, Mic, MicOff, Video, VideoOff, MessageCircle, Minimize2, Maximize2, Send, X } from 'lucide-react';
 import { Conversation, Message, ApiConfig, CallLog, UserProfile } from '../types';
+import { buildApiUrl } from '../utils/apiHelper';
 
 interface VideoCallModalProps {
   isOpen: boolean;
@@ -187,7 +188,7 @@ export default function VideoCallModal({
         { role: 'user', content: newMessage.content }
       ];
 
-      const response = await fetch(`${apiConfig.baseUrl}/chat/completions`, {
+      const response = await fetch(buildApiUrl(apiConfig), {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -311,7 +312,7 @@ export default function VideoCallModal({
       ];
 
       // 调用 API
-      const response = await fetch(`${apiConfig.baseUrl}/v1/chat/completions`, {
+      const response = await fetch(buildApiUrl(apiConfig), {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

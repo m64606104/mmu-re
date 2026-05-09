@@ -1,6 +1,7 @@
 import type { Message } from '../../types';
+import { excerptForReplyPreview, resolveQuotedMessageById, stripAiQuoteMarkers } from './quoteMarker';
 
-type ReplyToInfo = { content: string; role: 'user' | 'assistant' };
+export type ReplyToInfo = { id: string; content: string; role: 'user' | 'assistant' };
 
 type ParseSpecialMarkersOptions = {
   content: string;
@@ -86,16 +87,20 @@ export function parseSpecialMarkers(options: ParseSpecialMarkersOptions): ParseS
   }
 
   let replyToInfo: ReplyToInfo | undefined;
-  const replyMatch = content.match(/\[回复\s+(我|你)\s+说的"([^"]+)"\]/);
-  if (replyMatch) {
-    const quotedRole = replyMatch[1];
-    const quotedContent = replyMatch[2];
-    content = content.replace(replyMatch[0], '').trim();
-    replyToInfo = {
-      content: quotedContent,
-      role: quotedRole === '我' ? 'user' : 'assistant',
-    };
-    logs.push(`💬 AI引用消息: ${quotedRole}说的"${quotedContent}"`);
+  const quoteStrip = stripAiQuoteMarkers(content);
+  content = quoteStrip.text;
+  if (quoteStrip.lastQuotedId) {
+    const target = resolveQuotedMessageById(recentMessages, quoteStrip.lastQuotedId);
+    if (target && (target.role === 'user' || target.role === 'assistant')) {
+      replyToInfo = {
+        id: target.id,
+        content: excerptForReplyPreview(target),
+        role: target.role,
+      };
+      logs.push(`💬 AI引用消息: id=${target.id}`);
+    } else {
+      logs.push(`⚠️ AI引用消息: 未找到 id=${quoteStrip.lastQuotedId}`);
+    }
   }
 
   const moneyResponseMatch = content.match(/\[(接收|退回)(红包|转账):([^\]]*)\]/);

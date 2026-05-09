@@ -8,6 +8,7 @@ import { ArrowLeft, Send, Edit2, Trash2 } from 'lucide-react';
 import { Conversation, ApiConfig } from '../types';
 import { TopicCard } from '../utils/topicCardLibrary';
 import { teachWord } from '../utils/aiKindergartenManager';
+import { buildApiUrl } from '../utils/apiHelper';
 
 interface TopicDiscussionScreenProps {
   child: Conversation;
@@ -106,7 +107,7 @@ export default function TopicDiscussionScreen({
       const systemPrompt = buildSystemPrompt(child, topic);
 
       // 调用AI
-      const response = await fetch(`${apiConfig.baseUrl}/v1/chat/completions`, {
+      const response = await fetch(buildApiUrl(apiConfig), {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

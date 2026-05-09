@@ -3,6 +3,10 @@
  * 提供系统通知和应用内通知的统一接口
  */
 
+import type { Message } from '../types';
+
+let loggedBrowserNoNotification = false;
+
 export interface NotificationOptions {
   title: string;
   body: string;
@@ -18,7 +22,10 @@ export interface NotificationOptions {
  */
 export async function requestNotificationPermission(): Promise<boolean> {
   if (!('Notification' in window)) {
-    console.warn('浏览器不支持通知');
+    if (!loggedBrowserNoNotification) {
+      loggedBrowserNoNotification = true;
+      console.warn('浏览器不支持系统通知（后续不再重复提示）');
+    }
     return false;
   }
 
@@ -45,7 +52,10 @@ export async function requestNotificationPermission(): Promise<boolean> {
  */
 export function sendSystemNotification(options: NotificationOptions): Notification | null {
   if (!('Notification' in window)) {
-    console.warn('浏览器不支持通知');
+    if (!loggedBrowserNoNotification) {
+      loggedBrowserNoNotification = true;
+      console.warn('浏览器不支持系统通知（后续不再重复提示）');
+    }
     return null;
   }
 
@@ -76,6 +86,54 @@ export function sendSystemNotification(options: NotificationOptions): Notificati
     console.error('发送系统通知失败:', error);
     return null;
   }
+}
+
+/**
+ * 与 useMessageNotification 一致：用于系统通知 / 未读摘要的预览文案
+ */
+export function formatChatMessagePreviewForNotification(message: Message): string {
+  if (message.mediaType) {
+    const typeMap: Record<string, string> = {
+      image: '[图片]',
+      video: '[视频]',
+      voice: '[语音]',
+      sticker: '[表情包]',
+      document: '[文档]',
+    };
+    return typeMap[message.mediaType] || '[消息]';
+  }
+  if (message.neteaseMusicInfo) {
+    return `[音乐] ${message.neteaseMusicInfo.title}`;
+  }
+  if (message.moneyTransfer) {
+    const transfer = message.moneyTransfer;
+    if (transfer.type === 'redPacket' || transfer.type === 'groupRedPacket') {
+      return transfer.status === 'received' ? '[收到红包]' : '[红包]';
+    }
+    if (transfer.type === 'transfer') {
+      return '[转账]';
+    }
+  }
+  if (message.order) {
+    return '[礼物订单]';
+  }
+  if (message.socialFeed) {
+    return '[社交分享]';
+  }
+  if (message.linkPreview) {
+    return '[链接分享]';
+  }
+  if (message.document) {
+    return `[文档] ${message.document.title}`;
+  }
+  const content = (message.content || '').trim();
+  if (!content) {
+    return '[消息]';
+  }
+  if (content.length > 50) {
+    return `${content.substring(0, 50)}...`;
+  }
+  return content;
 }
 
 /**

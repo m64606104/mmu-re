@@ -18,6 +18,7 @@ import {
   loadMomentsVisibilityGroups,
 } from './momentsVisibility';
 import { isToolInteractionCharacter } from './characterInteractionMode';
+import { buildApiUrl } from './apiHelper';
 
 const MOMENTS_STORAGE_KEY = 'moments_data';
 
@@ -610,7 +611,7 @@ export const generateAIMoment = async (
     const { prompt, expectedFormat } = await SmartMomentsGenerator.buildDiversePrompt(conversation, new Date());
     
     // 调用API
-    const response = await fetch(`${apiConfig.baseUrl}/v1/chat/completions`, {
+    const response = await fetch(buildApiUrl(apiConfig), {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -1337,7 +1338,7 @@ ${post.imageDescriptions ? `配图：${post.imageDescriptions.join('、')}` : ''
     }
 
     // 调用API让AI做决策
-    const decisionResponse = await fetch(`${apiConfig.baseUrl}/v1/chat/completions`, {
+    const decisionResponse = await fetch(buildApiUrl(apiConfig), {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -1771,7 +1772,7 @@ B 回复 A: xx公园～
 
 注意：如果要回复特定评论，replyToCommentId填写评论序号（如"1"、"2"），系统会自动转换。`;
 
-    const response = await fetch(`${apiConfig.baseUrl}/v1/chat/completions`, {
+    const response = await fetch(buildApiUrl(apiConfig), {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -1943,7 +1944,7 @@ ${post.imageDescriptions ? `配图: ${post.imageDescriptions.join('、')}` : ''}
 `;
 
     // 调用API获取批量决策
-    const response = await fetch(`${apiConfig.baseUrl}/v1/chat/completions`, {
+    const response = await fetch(buildApiUrl(apiConfig), {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',

@@ -14,5 +14,7 @@ export {
   smartLoad,
   smartSave,
   smartRemove,
+  setBulkStorageRestoreInProgress,
+  isBulkStorageRestoreInProgress,
 } from '../../utils/storage';
 

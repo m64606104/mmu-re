@@ -8,7 +8,7 @@ type CommitAssistantMessagesOptions = {
   mediaItems: ParsedAssistantMediaItem[];
   finalContent: string;
   cleanContent: string;
-  replyToInfo?: { content: string; role: 'user' | 'assistant' };
+  replyToInfo?: { id: string; content: string; role: 'user' | 'assistant' };
   extraMessages: Message[];
   calculateVoiceDuration: (text: string) => number;
   log?: (line: string) => void;

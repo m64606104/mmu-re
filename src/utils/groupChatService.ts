@@ -14,6 +14,49 @@ import {
   getCharacterRealName,
   stripOnlineHandleChangeMarkers,
 } from './characterIdentity';
+import { buildMemoryAndIdentityContext } from './memorySystem';
+import { excerptForReplyPreview, resolveQuotedMessageById, stripAiQuoteMarkers } from '../domains/chat/quoteMarker';
+import {
+  appendGroupImageContextHint,
+  buildGroupUserMultimodalContent,
+  collectImageUrlsFromMessage,
+  openAiMessagesUseVisionPayload,
+  resolveOpenAiCompatibleCompletionRouting,
+} from '../domains/vision';
+import { normalizeLooseAssistantMediaBrackets } from '../domains/chat/assistantMessageBuilder';
+
+/** 群聊单成员 completions：无超时则上游挂起时 UI 会永久停在「输入中」 */
+const GROUP_CHAT_COMPLETION_TIMEOUT_MS = 180_000;
+
+/**
+ * 仅最近 N 条时间线条目（含占位/系统位）允许带真实 image_url 多模态。
+ * 否则长群 + 历史任意一张图会让整条请求走「视觉专线 + 视觉模型」，体量与耗时暴涨，常见 Load failed / 中断。
+ * 更早的带图消息回落为纯文本（formatMessageForAI 中的图片占位描述）。
+ * N 过小会显得「模型从不看图」——尤其是「全部上下文」下附图若在深度历史中；108 条约为中等平衡。
+ */
+const GROUP_VISION_MULTIMODAL_TAIL_SLOTS = 108;
+
+function mergeChatCompletionHeaders(init: RequestInit | undefined, momoyuSource: string): Headers {
+  const h = new Headers(init?.headers as HeadersInit | undefined);
+  if (!h.get('X-Momoyu-Source')) {
+    h.set('X-Momoyu-Source', momoyuSource);
+  }
+  return h;
+}
+
+function fetchChatCompletionWithTimeout(
+  url: string,
+  init: RequestInit,
+  timeoutMs: number,
+  momoyuSource = 'groupChatService:completion'
+): Promise<Response> {
+  const controller = new AbortController();
+  const tid = globalThis.setTimeout(() => controller.abort(), timeoutMs);
+  const headers = mergeChatCompletionHeaders(init, momoyuSource);
+  return fetch(url, { ...init, headers, signal: controller.signal }).finally(() => {
+    globalThis.clearTimeout(tid);
+  });
+}
 
 /**
  * 群聊里「人类用户」的网名 / @ 名：与「用户资料」里的 **username** 一致（即界面上的用户名）。
@@ -92,11 +135,28 @@ export interface GroupAIReply {
   error?: string; // 错误信息
 }
 
+/** 让浏览器打一帧，避免 React 把「输入中」与下一条气泡合并到同一帧 */
+function yieldOneAnimationFrame(): Promise<void> {
+  return new Promise((resolve) => {
+    requestAnimationFrame(() => resolve());
+  });
+}
+
+/** 同一位 AI 多条气泡之间：略作间隔（约 0.14～0.26s），略增可读性，远短于旧版按字数等待 */
+function yieldInterBubblePause(): Promise<void> {
+  const ms = 140 + Math.floor(Math.random() * 120);
+  return new Promise((resolve) => {
+    globalThis.setTimeout(resolve, ms);
+  });
+}
+
 // 群聊生成回调
 export interface GroupChatCallback {
   onGroupChatProcessing?: () => void; // 群聊处理开始（整体）
   onAIStart?: (aiId: string, aiName: string) => void; // AI开始回复
   onAITyping?: (aiId: string) => void; // AI正在打字
+  /** 每条可见气泡露出前调用；随后约一帧 + 短间隔再 onAIMessage */
+  onGroupBubbleTyping?: (aiId: string) => void;
   onAIMessage?: (aiId: string, message: Message) => void; // AI发送单条消息
   onAIComplete?: (aiId: string, messages: Message[]) => void; // AI完成回复
   onAIError?: (aiId: string, error: string) => void; // AI回复出错
@@ -112,8 +172,15 @@ function formatMessageForAI(msg: Message): string {
   let content = msg.content || '';
   
   // 处理媒体描述 (移除硬编码的"用户"前缀，因为外层会添加具体昵称)
-  if (msg.mediaType === 'image' && msg.mediaDescription) {
-    content += ` [发送了图片：${msg.mediaDescription}]`;
+  if (msg.mediaType === 'image') {
+    const desc = (msg.mediaDescription || '').trim();
+    if (desc) {
+      content += ` [发送了图片：${desc}]`;
+    } else if (collectImageUrlsFromMessage(msg).length > 0) {
+      content += ' [发送了图片（本条在时间线中较早：请求里未附带原图像素，仅有文字占位；若要细辨认请近期再发一次图）]';
+    } else {
+      content += ' [发送了图片（无可用图像链接或数据）]';
+    }
   } else if (msg.mediaType === 'video' && msg.mediaDescription) {
     content += ` [发送了视频：${msg.mediaDescription}]`;
   } else if (msg.mediaType === 'voice' && msg.mediaDescription) {
@@ -274,7 +341,8 @@ function buildGroupChatSystemPrompt(
 【群聊环境】：
 - 本群名称：「${groupName}」
 - 你是本群成员之一。当前群里除你之外还有：${membersList}（其中「${userName}」是人类用户：把你拉进群的人也在其中；**@Ta 必须用 \`@${userName}\`**，与 Ta 在应用「用户资料」里设置的**用户名（网名）**一致，**禁止**叫「用户」「群主」或泛泛的「你来」类称呼。）
-- 这是**真人式微信群**：每条会标明**是谁说的**；正文前附带与私聊一致的 **\`「今天 HH:mm」\` / \`「M月D日 HH:mm」\`** 发送时刻（仅供你理解时间线）。若还带 **\`（距今…）\`**，表示该条距「现在」已过多久——较早的为**过去语境**，较新的为**当下活跃片段**。你要**严格按时间从早到晚**读下来，不要把很多天混成「同一刻正在聊」，也不要只因「都是晚上」就当同一天。
+- 这是**真人式微信群**：每条会标明**是谁说的**；正文前附带与私聊一致的 **\`「今天 HH:mm」\` / \`「M月D日 HH:mm」\`** 发送时刻（**仅供你理解时间线，不是你的发言模板**）。若还带 **\`（距今…）\`**，表示该条距「现在」已过多久——较早的为**过去语境**，较新的为**当下活跃片段**。你要**严格按时间从早到晚**读下来，不要把很多天混成「同一刻正在聊」，也不要只因「都是晚上」就当同一天。
+- **你输出回复时**：正文**不要**以 \`「今天 HH:mm」\`、\`「M月D日 HH:mm」\` 这类标签开头，也**不要**在句子里机械贴一串时刻；那是系统塞在**历史记录里**给你读时间用的。像真人发微信一样直接说话即可；若要提时间，用**口语化**的表述，不要模仿时间线格式。
 - **「时间线」≠「无时间的连续同一场聊天」**：中间可能隔了几小时、隔夜甚至很多天；要像真人一样感知**时间流逝**与**场景是否已换**。
 - 其他 AI 也是独立的人，会自己决定说不说；你也可以接话、装没看见、只对某一句吐槽、或开新话题
 - 👤 人类用户网名（时间线前缀里也是这个名字）：「${userName}」。口头称呼：若上下文里还不知道对方真名/小名，可直接用此网名，或为 Ta 起一个自然、不含贬义的小名；**不要**叫「用户」「群主」。
@@ -289,6 +357,12 @@ function buildGroupChatSystemPrompt(
 - 群里不止你一个人：**用户发了一句 ≠ 一定在对你说**；也可能是对全群、或在跟别的成员一来一回。**不要**未经综合判断就认领「一定在点我」。
 - **同一人名下连续多条气泡**，优先当作**同一个人一口气说的整段话**来理解，不要拆成互不相关的单句再逐条硬接。
 - **不同人交替出现**的几轮来回，当作**同一场对话在流转**来读：先看整场里话题落在谁和谁之间，再决定你要接哪一环；**不要**孤立盯着某一条就下结论。
+
+【读记录】：
+- 每条前的名字表示**谁说的**；顺序与群里一致。请把给你的消息当作**同一段聊天记录**通读后再开口。
+
+【同轮与接力】：
+- 群聊按轮次生成：时间线里可能已有**排在你前面的成员**刚发过的气泡；若同一话头已被接过多遍，不必再人人复读；接得上就接一环，接不上可 **[不回复]**，或轻轻带过 / 岔开。
 
 【谁在跟谁说话 — 必读】：
 - 时间线里若某条前有「（系统标注：…」前缀，那是根据**引用 / @** 做的关系提示，用来避免会错意；**不是**在要求你更重视用户、也不是暗示你必须回用户。
@@ -389,6 +463,12 @@ ${MEDIA_DECISION_GUIDANCE}
 - ❌ 勿在正文开头复述时间线里的「今天 HH:mm」「M月D日 HH:mm」等时刻标签（仅供你理解语境，界面会单独展示时间）
 - ❌ **禁止**在回复里复述、引用或照抄时间线里以「（系统标注：」开头的提示语；那是给你看的内部提示，**不要**写进气泡正文。
 
+【引用回复（尾部机器指令，与改网名同类）】
+- 时间线里每条消息前带有 \`〈消息ID:…〉\`（仅供你定位，**不要**抄进气泡正文）。
+- 当你本条气泡要对应**某一条具体消息**做引用回复展示时，在本条回复**最末尾**追加：\`[引用消息:消息ID]\`
+- **消息ID**必须与该条前的 \`〈消息ID:…〉\` **完全一致**（逐字符复制），禁止臆造；该标记会从气泡里剥掉，群友看不到。
+- 不要用「回复你说的」之类当机器指令；不要复述 \`〈消息ID:…〉\` 行。
+
 ✅ **正确做法**：
 - ✅ 直接用自然的中文回复
 - ✅ 像朋友聊天一样表达
@@ -404,15 +484,29 @@ function parseOneGroupModelChunk(
   segment: string,
   groupMembers: Array<{ id: string; name: string }> | undefined,
   userName: string | undefined,
-  baseTimestamp: number
+  baseTimestamp: number,
+  timelineForQuotes: Message[]
 ): Message[] {
   if (!segment || segment.trim() === '') return [];
 
   const strippedLeak = stripGroupModelInternalAnnotations(segment.trim());
   if (!strippedLeak) return [];
 
-  const sanitized = cleanAIMessage(strippedLeak);
-  const sourceText = sanitized;
+  const quoteStrip = stripAiQuoteMarkers(strippedLeak);
+  const quoteTarget = quoteStrip.lastQuotedId
+    ? resolveQuotedMessageById(timelineForQuotes, quoteStrip.lastQuotedId)
+    : undefined;
+  const replyToPayload =
+    quoteTarget && (quoteTarget.role === 'user' || quoteTarget.role === 'assistant')
+      ? {
+          id: quoteTarget.id,
+          content: excerptForReplyPreview(quoteTarget),
+          role: quoteTarget.role,
+        }
+      : undefined;
+
+  const sanitized = cleanAIMessage(quoteStrip.text);
+  const sourceText = normalizeLooseAssistantMediaBrackets(sanitized);
   if (!sourceText) return [];
   
   // 检测各种媒体类型（修复：正则表达式优化，避免嵌套括号导致匹配失败）
@@ -422,7 +516,9 @@ function parseOneGroupModelChunk(
   const videoMatches = [...sourceText.matchAll(/\[(?:发送了)?视频[:：](.+?)\]/g)];
   // 语音匹配修复：支持 [语音:内容] 和 [语音:内容,时长] 两种格式，且内容中允许包含标点符号
   const voiceMatches = [...sourceText.matchAll(/\[(?:发送了)?语音[:：](.+?)(?:[，,]\s*(?:时长)?(\d+)秒?)?\]/g)];
-  const stickerMatches = [...sourceText.matchAll(/\[(?:发送了)?表情包[:：](.+?)\]/g)];
+  const stickerMatches = [
+    ...sourceText.matchAll(/\[(?:发送了)?(?:表情包|STICKER)[:：](.+?)\]/gi),
+  ];
   // 支持两种格式：
   // 1. 标准格式：[发群红包:类型:金额:数量:留言] 例如 [发群红包:random:10:5:大家抢红包啦]
   // 2. 简化格式：[发群红包:描述] 或 [群红包]
@@ -433,7 +529,7 @@ function parseOneGroupModelChunk(
     .replace(/\[(?:发送了)?图片[:：].+?\]/g, '')
     .replace(/\[(?:发送了)?视频[:：].+?\]/g, '')
     .replace(/\[(?:发送了)?语音[:：].+?\]/g, '')
-    .replace(/\[(?:发送了)?表情包[:：].+?\]/g, '')
+    .replace(/\[(?:发送了)?(?:表情包|STICKER)[:：].+?\]/gi, '')
     .replace(/\[(?:发送了)?(?:发)?群红包(?:[:：].+?)?\]/g, '')
     .trim();
   
@@ -632,13 +728,16 @@ function parseOneGroupModelChunk(
   // 6. 添加纯文本消息（如果有）
   if (cleanText) {
     const contentArray = splitMessages(cleanText);
+    let textPartIdx = 0;
     contentArray.forEach((text) => {
       messages.push({
         id: `${baseTimestamp}_text_${msgIndex++}`,
         role: 'assistant' as const,
         content: text,
         timestamp: baseTimestamp + msgIndex * 100,
+        ...(replyToPayload && textPartIdx === 0 ? { replyTo: replyToPayload } : {}),
       });
+      textPartIdx += 1;
     });
   }
   
@@ -654,8 +753,9 @@ function parseOneGroupModelChunk(
 /** 解析完整模型回复：先按 [NEXT] 分段（须在 cleanAIMessage 之前），再逐段解析 */
 function parseAIResponse(
   content: string,
-  groupMembers?: Array<{ id: string; name: string }>,
-  userName?: string
+  groupMembers: Array<{ id: string; name: string }> | undefined,
+  userName: string | undefined,
+  timelineForQuotes: Message[]
 ): Message[] {
   if (!content || content.trim() === '' || content.includes('[不回复]')) {
     return [];
@@ -664,7 +764,7 @@ function parseAIResponse(
   const rootBase = Date.now();
   const out: Message[] = [];
   segments.forEach((seg, i) => {
-    out.push(...parseOneGroupModelChunk(seg, groupMembers, userName, rootBase + i * 50000));
+    out.push(...parseOneGroupModelChunk(seg, groupMembers, userName, rootBase + i * 50000, timelineForQuotes));
   });
   return out;
 }
@@ -743,6 +843,11 @@ async function generateAIReply(
       aiMember.id
     );
 
+    // 与私聊共用同一 MemoryBank（角色会话 ID = aiMember.id）：动态画像 + 长期记忆条目（含私聊积累与群聊总结写入的 source:group）
+    if (aiMember.enabledFeatures?.includes('memory-system')) {
+      systemPrompt += buildMemoryAndIdentityContext(aiMember.id);
+    }
+
     const peerIdentityLines = members
       .filter((mid) => mid && mid !== aiMember.id)
       .map((mid) => {
@@ -809,17 +914,25 @@ async function generateAIReply(
       recentMessages = groupConversation.messages;
       console.log('📝 群聊上下文：全部消息（未开启自定义上限）');
     }
-    
-    // 🕐 添加时间感知
-    const lastUserMessage = recentMessages
-      .filter(m => m.role === 'user' || (m.role === 'assistant' && !(m as any).senderId))
-      .pop();
-    if (lastUserMessage) {
-      // 🕐 添加时间感知（群聊暂不跟踪AI消息时间）
+
+    const lastTimeline =
+      recentMessages.length > 0 ? recentMessages[recentMessages.length - 1] : undefined;
+
+    if (recentMessages.length > 0) {
+      systemPrompt += `
+
+【聊天记录】
+下文时间线中的多条消息（含发送者前缀与时刻标注）均为你开口之前的群聊记录，按时间从早到晚排列；请把整段当作**同一语境**通读后，再自然决定如何接话或 **[不回复]**。`;
+    }
+
+    // 🕐 时间感知：以窗口内最后一条消息为锚（人类 / AI 一视同仁）
+    if (lastTimeline && lastTimeline.role !== 'system') {
+      const tailContent =
+        typeof lastTimeline.content === 'string' ? lastTimeline.content : '';
       const timeAwarePrompt = buildTimeAwarePrompt(
-        lastUserMessage.timestamp,
-        lastUserMessage.content,
-        undefined, // 群聊暂不跟踪AI消息时间
+        lastTimeline.timestamp,
+        tailContent,
+        undefined,
         undefined,
         undefined
       );
@@ -847,7 +960,7 @@ async function generateAIReply(
     }
 
     // 🧵 互动引导：识别最近的“接力链”，鼓励基于他人回复继续讨论
-    // 查找最近一条“用户相关”的消息位置（用户消息或无 senderId 的 assistant）
+    // 从时间线末尾向前找：最近一条「人类」或「无 senderId 的旧 assistant」作为片段起点，再收集其后带 senderId 的群友 AI
     let lastUserIdx = -1;
     for (let i = recentMessages.length - 1; i >= 0; i--) {
       const m: any = recentMessages[i];
@@ -888,12 +1001,26 @@ async function generateAIReply(
 - 可以选择简短回应（如表情包、"干嘛～"等），避免强行展开话题
 - 也可以不回应，保持自然`;
     }
+
+    const groupTimelineHasUserImages = recentMessages.some(
+      (m) =>
+        m.role === 'user' &&
+        !(m as Message).groupAiOnlyTrigger &&
+        collectImageUrlsFromMessage(m).length > 0
+    );
+    if (groupTimelineHasUserImages) {
+      systemPrompt = appendGroupImageContextHint(systemPrompt);
+    }
     
     // 1. 格式化最近消息（保留媒体标记；附时间戳与间隔，便于跨日/隔天理解）
     const apiMessages = recentMessages.map((msg, idx) => {
       if (msg.role === 'system') {
         return null; // 跳过系统消息
       }
+
+      /** 距时间线末尾的槽位数；仅尾部允许 image_url，避免全历史触发视觉专线 */
+      const slotsFromTimelineEnd = recentMessages.length - 1 - idx;
+      const allowVisionImagePayload = slotsFromTimelineEnd < GROUP_VISION_MULTIMODAL_TAIL_SLOTS;
 
       const prevInWindow = idx > 0 ? recentMessages[idx - 1] : undefined;
       const gapNote = prependGroupTimeGapNote(prevInWindow, msg);
@@ -941,7 +1068,24 @@ async function generateAIReply(
         allConversations,
         userName
       );
-      const content = gapNote + timePrefix + ageSuffix + threadingPrefix + formatMessageForAI(msg);
+      const innerAnnotationPrefix =
+        gapNote +
+        timePrefix +
+        ageSuffix +
+        `〈消息ID:${msg.id}〉` +
+        threadingPrefix;
+
+      if (
+        allowVisionImagePayload &&
+        msg.role === 'user' &&
+        !(msg as Message).groupAiOnlyTrigger &&
+        collectImageUrlsFromMessage(msg).length > 0
+      ) {
+        const mm = buildGroupUserMultimodalContent(msg, `${senderName}: ${innerAnnotationPrefix}`);
+        if (mm) return { role: 'user' as const, content: mm };
+      }
+
+      const content = innerAnnotationPrefix + formatMessageForAI(msg);
       
       // 🎯 关键修复：自由模式下，清晰标识每个角色的身份
       // 无论是用户还是其他AI，都统一格式为 "名字: 内容"
@@ -977,8 +1121,17 @@ async function generateAIReply(
       ? groupConversation.groupTemperature
       : 0.75;
     const chatCfg = resolveGroupParticipantApiConfig(apiConfig, groupConversation, aiMember);
+    const requestContainsImageUrl = openAiMessagesUseVisionPayload(
+      apiMessages as Array<{ role: string; content?: unknown }>
+    );
+    const routing = resolveOpenAiCompatibleCompletionRouting(apiConfig, {
+      requestContainsImageUrl,
+      textChatModel: chatCfg.modelName,
+    });
+    const completionsUrl = routing.apiUrl;
+    const completionAuthKey = routing.bearerToken;
     const requestBody = {
-      model: chatCfg.modelName,
+      model: routing.model,
       messages: [
         { role: 'system', content: systemPrompt },
         ...apiMessages
@@ -987,14 +1140,18 @@ async function generateAIReply(
       max_tokens: 2000, // 提升限制，避免回复被截断
     };
     
-    const response = await fetch(`${apiConfig.baseUrl}/v1/chat/completions`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${apiConfig.apiKey}`,
+    const response = await fetchChatCompletionWithTimeout(
+      completionsUrl,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${completionAuthKey}`,
+        },
+        body: JSON.stringify(requestBody),
       },
-      body: JSON.stringify(requestBody),
-    });
+      GROUP_CHAT_COMPLETION_TIMEOUT_MS
+    );
     
     if (!response.ok) {
       const errorText = await response.text();
@@ -1021,11 +1178,11 @@ async function generateAIReply(
       })
       .filter(Boolean) as Array<{id: string; name: string}>;
     
-    let messages = parseAIResponse(assistantMessage, groupMembersInfo, userName);
+    let messages = parseAIResponse(assistantMessage, groupMembersInfo, userName, groupConversation.messages);
 
     if (forceNaturalParticipation && messages.length === 0) {
       const retryBody = {
-        model: chatCfg.modelName,
+        model: routing.model,
         messages: [
           {
             role: 'system' as const,
@@ -1036,18 +1193,23 @@ async function generateAIReply(
         temperature: Math.min(0.95, temperature + 0.12),
         max_tokens: 320,
       };
-      const response2 = await fetch(`${apiConfig.baseUrl}/v1/chat/completions`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${apiConfig.apiKey}`,
+      const response2 = await fetchChatCompletionWithTimeout(
+        completionsUrl,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${routing.bearerToken}`,
+          },
+          body: JSON.stringify(retryBody),
         },
-        body: JSON.stringify(retryBody),
-      });
+        GROUP_CHAT_COMPLETION_TIMEOUT_MS,
+        'groupChatService:participationRetry'
+      );
       if (response2.ok) {
         const data2 = await response2.json();
         const t2 = data2.choices?.[0]?.message?.content;
-        messages = parseAIResponse(t2, groupMembersInfo, userName);
+        messages = parseAIResponse(t2, groupMembersInfo, userName, groupConversation.messages);
       }
     }
 
@@ -1065,7 +1227,8 @@ async function generateAIReply(
     
   } catch (error: any) {
     reply.status = 'error';
-    reply.error = error.message || '生成失败';
+    const name = error?.name === 'AbortError' ? '请求超时（上游长时间无响应）' : error?.message;
+    reply.error = name || '生成失败';
     return reply;
   }
 }
@@ -1119,10 +1282,6 @@ async function emitReplyThroughCallbacks(
   aiMember: Conversation,
   callbacks?: GroupChatCallback
 ): Promise<void> {
-  let displayName =
-    getCharacterRealName(aiMember.characterSettings) ||
-    aiMember.name ||
-    getCharacterOnlineHandle(aiMember.characterSettings, aiMember.name);
   if (reply.status === 'error') {
     callbacks?.onAIError?.(reply.aiId, reply.error || '未知错误');
     return;
@@ -1131,8 +1290,6 @@ async function emitReplyThroughCallbacks(
     callbacks?.onAIComplete?.(reply.aiId, []);
     return;
   }
-  // onAIStart / onAITyping 已在 generateGroupChatReplies 内、各成员 API 请求前触发，避免「请求中仍显示上一位头像」
-  await new Promise((r) => setTimeout(r, 400));
   for (let i = 0; i < reply.messages.length; i++) {
     let message = reply.messages[i];
     let silentRenameOnly = false;
@@ -1141,7 +1298,6 @@ async function emitReplyThroughCallbacks(
       const stripped = stripOnlineHandleChangeMarkers(leakClean);
       if (stripped.newHandle) {
         reply.aiName = stripped.newHandle;
-        displayName = stripped.newHandle;
         callbacks?.onCharacterOnlineHandleChange?.(reply.aiId, stripped.newHandle);
         if (!(stripped.text || '').trim()) {
           silentRenameOnly = true;
@@ -1158,10 +1314,10 @@ async function emitReplyThroughCallbacks(
       continue;
     }
     const messageWithSender = attachGroupSender(reply, message);
+    callbacks?.onGroupBubbleTyping?.(reply.aiId);
+    await yieldOneAnimationFrame();
+    await yieldInterBubblePause();
     callbacks?.onAIMessage?.(reply.aiId, messageWithSender);
-    if (i < reply.messages.length - 1) {
-      await new Promise((r) => setTimeout(r, 300));
-    }
   }
   callbacks?.onAIComplete?.(reply.aiId, reply.messages);
 }
@@ -1207,9 +1363,6 @@ export async function generateGroupChatReplies(
 
   for (let idx = 0; idx < selected.length; idx++) {
     const aiMember = selected[idx];
-    if (idx > 0) {
-      await new Promise((r) => setTimeout(r, 300));
-    }
     const apiStartTime = Date.now();
     const coNames = members
       .filter((mid) => mid !== aiMember.id)

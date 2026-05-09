@@ -5,6 +5,7 @@
 
 import { ApiConfig } from '../types';
 import { recordApiCall } from './apiUsageManager';
+import { buildApiUrl } from './apiHelper';
 
 interface BatchDecisionRequest {
   id: string;
@@ -111,7 +112,7 @@ class BatchApiProcessor {
     const apiConfig = this.getApiConfigFromGlobal();
     
     try {
-      const response = await fetch(`${apiConfig.baseUrl}/v1/chat/completions`, {
+      const response = await fetch(buildApiUrl(apiConfig), {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
