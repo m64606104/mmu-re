@@ -436,32 +436,88 @@ function dayPartOf(ts: number): 'morning' | 'noon' | 'evening' {
   return 'evening';
 }
 
-/** 去掉模型常见的 markdown 代码块围栏，便于解析 JSON（含「只开了 ```json 未闭合」的截断输出） */
+/** 去掉模型常见的 markdown 代码块围栏（支持正文前有废话、或仅有开头 fence 无闭合） */
 function stripModelJsonFences(raw: string): string {
-  let s = raw.trim();
+  const s = raw.trim();
+  const anywhere = /```(?:json)?\s*([\s\S]*?)(?:```|$)/i.exec(s);
+  if (anywhere?.[1]) {
+    const inner = anywhere[1].trim();
+    if (inner.includes('{')) return inner;
+  }
   const closed = /^```(?:json)?\s*\r?\n?([\s\S]*?)\r?\n?```/im.exec(s);
   if (closed) return closed[1].trim();
   if (/^```(?:json)?\s*/im.test(s)) {
-    s = s.replace(/^```(?:json)?\s*/im, '').replace(/\s*```\s*$/i, '');
+    return s.replace(/^```(?:json)?\s*/im, '').replace(/\s*```\s*$/i, '').trim();
   }
-  return s.trim();
+  return s;
+}
+
+/** 从首个 { 起按括号深度截取完整对象（忽略字符串内的括号） */
+function extractBalancedJsonObject(s: string): string | null {
+  const start = s.indexOf('{');
+  if (start < 0) return null;
+  let depth = 0;
+  let inString = false;
+  let escape = false;
+  for (let i = start; i < s.length; i++) {
+    const c = s[i];
+    if (escape) {
+      escape = false;
+      continue;
+    }
+    if (c === '\\' && inString) {
+      escape = true;
+      continue;
+    }
+    if (c === '"') {
+      inString = !inString;
+      continue;
+    }
+    if (inString) continue;
+    if (c === '{') depth++;
+    else if (c === '}') {
+      depth--;
+      if (depth === 0) return s.slice(start, i + 1);
+    }
+  }
+  return null;
 }
 
 function parseJsonFromModelText(text: string): any | null {
-  const cleaned = stripModelJsonFences(String(text || ''));
-  try {
-    return JSON.parse(cleaned);
-  } catch {
-    const start = cleaned.indexOf('{');
-    const end = cleaned.lastIndexOf('}');
-    if (start < 0 || end <= start) return null;
+  const raw = String(text || '').trim();
+  if (!raw) return null;
+
+  const attempts = [stripModelJsonFences(raw), raw];
+  for (const chunk of attempts) {
+    const slice = chunk.trim();
+    if (!slice) continue;
     try {
-      return JSON.parse(cleaned.slice(start, end + 1));
+      return JSON.parse(slice);
     } catch {
-      return null;
+      const balanced = extractBalancedJsonObject(slice);
+      if (balanced) {
+        try {
+          return JSON.parse(balanced);
+        } catch {
+          /* fall through */
+        }
+      }
+      const start = slice.indexOf('{');
+      const end = slice.lastIndexOf('}');
+      if (start >= 0 && end > start) {
+        try {
+          return JSON.parse(slice.slice(start, end + 1));
+        } catch {
+          /* fall through */
+        }
+      }
     }
   }
+  return null;
 }
+
+const MEMORY_JSON_SYSTEM =
+  '你只输出一个合法 JSON 对象：从第一个 { 到最后一个匹配的 }，中间不要有 Markdown、不要有 ``` 代码块、不要输出思考过程或中英文草稿。字符串里的换行必须写成 \\n。';
 
 async function askJson(apiConfig: ApiConfig, prompt: string): Promise<any | null> {
   if (!apiConfig.baseUrl || !apiConfig.apiKey || !apiConfig.modelName) {
@@ -478,9 +534,12 @@ async function askJson(apiConfig: ApiConfig, prompt: string): Promise<any | null
       },
       body: JSON.stringify({
         model: apiConfig.modelName,
-        messages: [{ role: 'user', content: prompt }],
+        messages: [
+          { role: 'system', content: MEMORY_JSON_SYSTEM },
+          { role: 'user', content: prompt },
+        ],
         temperature: 0.3,
-        max_tokens: 900,
+        max_tokens: 4096,
       }),
     });
     if (!res.ok) {
@@ -492,7 +551,11 @@ async function askJson(apiConfig: ApiConfig, prompt: string): Promise<any | null
     const text = String(data?.choices?.[0]?.message?.content || '');
     const parsed = parseJsonFromModelText(text);
     if (!parsed) {
-      console.warn('[memory-engine] 模型返回中未找到有效 JSON', text.slice(0, 200));
+      const previewLen = 280;
+      console.warn(
+        `[memory-engine] 模型返回中未找到有效 JSON（全文 ${text.length} 字，日志仅预览前 ${previewLen} 字）`,
+        text.slice(0, previewLen)
+      );
       return null;
     }
     return parsed;
