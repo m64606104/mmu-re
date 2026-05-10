@@ -1,7 +1,8 @@
 import { useState, useEffect, useRef } from 'react';
 import { toast } from 'sonner';
 import { ChevronLeft, ChevronRight, Check, Loader2, Download, Upload, Database, User, Palette, Cloud, HardDrive, Shield, X } from 'lucide-react';
-import { ApiConfig } from '../types';
+import { ApiConfig, type MinimaxTtsRegionPreset } from '../types';
+import { minimaxTtsPresetOrigin, normalizeMinimaxTtsCustomBaseUrl } from '../utils/minimaxTts';
 import {
   smartLoad,
   smartSave,
@@ -153,9 +154,55 @@ export default function SettingsScreen({
     apiConfig.privateAiImageGeneration?.dailyMaxPerConversation ?? 8,
   );
   const [pigSize, setPigSize] = useState(apiConfig.privateAiImageGeneration?.size || '1024x1024');
+  const [ttsRegion, setTtsRegion] = useState<MinimaxTtsRegionPreset>(
+    apiConfig.minimaxTts?.regionPreset ?? 'international',
+  );
+  /** 仅「高级」自定义 API 根；留空则完全由线路决定，不必手填 */
+  const [ttsCustomOrigin, setTtsCustomOrigin] = useState(apiConfig.minimaxTts?.baseUrl || '');
+  const [ttsAdvancedOriginOpen, setTtsAdvancedOriginOpen] = useState(!!(apiConfig.minimaxTts?.baseUrl || '').trim());
+  const [ttsApiKey, setTtsApiKey] = useState(apiConfig.minimaxTts?.apiKey || '');
+  const [ttsGroupId, setTtsGroupId] = useState(apiConfig.minimaxTts?.groupId || '');
+  const [ttsModel, setTtsModel] = useState(apiConfig.minimaxTts?.model || 'speech-2.8-hd');
   const [pigAvailableModels, setPigAvailableModels] = useState<string[]>([]);
   const [pigModelsLoading, setPigModelsLoading] = useState(false);
   const [pigModelsHint, setPigModelsHint] = useState('');
+
+  /** 高级：生活模拟 / 记忆引擎 独立 chat/completions */
+  const [advStatusEnabled, setAdvStatusEnabled] = useState(
+    !!apiConfig.backgroundChatApis?.statusUpdate?.enabled,
+  );
+  const [advStatusBaseUrl, setAdvStatusBaseUrl] = useState(
+    apiConfig.backgroundChatApis?.statusUpdate?.baseUrl || '',
+  );
+  const [advStatusApiKey, setAdvStatusApiKey] = useState(
+    apiConfig.backgroundChatApis?.statusUpdate?.apiKey || '',
+  );
+  const [advStatusModel, setAdvStatusModel] = useState(
+    apiConfig.backgroundChatApis?.statusUpdate?.modelName || '',
+  );
+  const [advStatusTemp, setAdvStatusTemp] = useState(
+    typeof apiConfig.backgroundChatApis?.statusUpdate?.temperature === 'number'
+      ? Number(apiConfig.backgroundChatApis.statusUpdate.temperature)
+      : 0.78,
+  );
+  const [advStatusModels, setAdvStatusModels] = useState<string[]>([]);
+  const [advStatusModelsLoading, setAdvStatusModelsLoading] = useState(false);
+
+  const [advMemEnabled, setAdvMemEnabled] = useState(
+    !!apiConfig.backgroundChatApis?.memorySummary?.enabled,
+  );
+  const [advMemBaseUrl, setAdvMemBaseUrl] = useState(
+    apiConfig.backgroundChatApis?.memorySummary?.baseUrl || '',
+  );
+  const [advMemApiKey, setAdvMemApiKey] = useState(apiConfig.backgroundChatApis?.memorySummary?.apiKey || '');
+  const [advMemModel, setAdvMemModel] = useState(apiConfig.backgroundChatApis?.memorySummary?.modelName || '');
+  const [advMemTemp, setAdvMemTemp] = useState(
+    typeof apiConfig.backgroundChatApis?.memorySummary?.temperature === 'number'
+      ? Number(apiConfig.backgroundChatApis.memorySummary.temperature)
+      : 0.3,
+  );
+  const [advMemModels, setAdvMemModels] = useState<string[]>([]);
+  const [advMemModelsLoading, setAdvMemModelsLoading] = useState(false);
 
   // 预载 API 预设（IndexedDB）与成套最近接口（localStorage）
   useEffect(() => {
@@ -174,6 +221,28 @@ export default function SettingsScreen({
     setPigModel(p?.model || '');
     setPigDailyMax(p?.dailyMaxPerConversation ?? 8);
     setPigSize(p?.size || '1024x1024');
+    const t = apiConfig.minimaxTts;
+    setTtsRegion(t?.regionPreset ?? 'international');
+    const co = t?.baseUrl || '';
+    setTtsCustomOrigin(co);
+    setTtsAdvancedOriginOpen(!!co.trim());
+    setTtsApiKey(t?.apiKey || '');
+    setTtsGroupId(t?.groupId || '');
+    setTtsModel(t?.model || 'speech-2.8-hd');
+
+    const su = apiConfig.backgroundChatApis?.statusUpdate;
+    setAdvStatusEnabled(!!su?.enabled);
+    setAdvStatusBaseUrl(su?.baseUrl || '');
+    setAdvStatusApiKey(su?.apiKey || '');
+    setAdvStatusModel(su?.modelName || '');
+    setAdvStatusTemp(typeof su?.temperature === 'number' ? su.temperature : 0.78);
+
+    const ms = apiConfig.backgroundChatApis?.memorySummary;
+    setAdvMemEnabled(!!ms?.enabled);
+    setAdvMemBaseUrl(ms?.baseUrl || '');
+    setAdvMemApiKey(ms?.apiKey || '');
+    setAdvMemModel(ms?.modelName || '');
+    setAdvMemTemp(typeof ms?.temperature === 'number' ? ms.temperature : 0.3);
   }, [apiConfig]);
 
   // 从「未配置 API 却进入聊天」跳转来时：定位到对应分区并展示说明
@@ -644,6 +713,217 @@ export default function SettingsScreen({
                   私聊会把<strong>真实图片</strong>放进模型请求（多模态），数据量比只发文字占位大；相机大图、长边截图会更慢，属正常现象。请选用<strong>支持多模态</strong>的对话模型。
                 </p>
 
+                <div className="rounded-xl border border-sky-200 bg-sky-50/40 p-4 space-y-4">
+                  <div>
+                    <h3 className="text-sm font-semibold text-slate-900">高级 API 设置</h3>
+                    <p className="mt-1 text-xs text-slate-600 leading-relaxed">
+                      为<strong> AI 生活模拟</strong>与<strong>记忆引擎 / 群记忆总结</strong>单独配置 OpenAI 兼容
+                      <span className="font-mono"> chat/completions</span>
+                      。勾选启用后，Base URL / API Key / 模型可<strong>逐项留空</strong>，留空项与上方主聊天相同；仅填写的项会覆盖。不勾选则整条链路仍走主聊天接口。点「拉取」时若独立区 URL 或 Key 留空，会用主聊天的 Base URL 与 Key 去拉模型列表。
+                    </p>
+                  </div>
+
+                  <div className="rounded-lg border border-sky-100 bg-white/90 p-3 space-y-3">
+                    <label className="flex items-start gap-2 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        className="mt-0.5 h-4 w-4 rounded border-slate-300"
+                        checked={advStatusEnabled}
+                        onChange={(e) => setAdvStatusEnabled(e.target.checked)}
+                      />
+                      <span>
+                        <span className="text-sm font-medium text-slate-800">启用独立的生活模拟 API</span>
+                        <span className="block text-[11px] text-slate-500 mt-0.5">
+                          用于后台「AI 生活模拟」JSON 推进。可与主线路分离；未填的 URL/Key/模型与主聊天一致。温度：仅当勾选且滑块为有效数字时用于请求，否则仍用随机模式默认温。
+                        </span>
+                      </span>
+                    </label>
+                    {advStatusEnabled ? (
+                      <div className="space-y-2 pl-1 border-l-2 border-sky-200 ml-1.5">
+                        <div>
+                          <label className="block text-xs font-medium text-slate-600 mb-1">API 地址（Base URL）</label>
+                          <input
+                            type="text"
+                            value={advStatusBaseUrl}
+                            onChange={(e) => setAdvStatusBaseUrl(e.target.value)}
+                            placeholder="留空同主聊天；仅覆盖时填写"
+                            className="w-full px-3 py-2 border border-slate-200 rounded-lg bg-white text-sm"
+                            autoComplete="off"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-xs font-medium text-slate-600 mb-1">API Key</label>
+                          <input
+                            type="password"
+                            value={advStatusApiKey}
+                            onChange={(e) => setAdvStatusApiKey(e.target.value)}
+                            placeholder="留空同主聊天"
+                            className="w-full px-3 py-2 border border-slate-200 rounded-lg bg-white text-sm"
+                            autoComplete="new-password"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-xs font-medium text-slate-600 mb-1">模型</label>
+                          <div className="flex gap-2">
+                            {advStatusModels.length > 0 ? (
+                              <select
+                                value={advStatusModel}
+                                onChange={(e) => setAdvStatusModel(e.target.value)}
+                                className="flex-1 min-w-0 px-3 py-2 border border-slate-200 rounded-lg bg-white text-sm font-mono"
+                              >
+                                {advStatusModel.trim() && !advStatusModels.includes(advStatusModel) ? (
+                                  <option value={advStatusModel}>{advStatusModel}（手填）</option>
+                                ) : null}
+                                {advStatusModels.map((m) => (
+                                  <option key={m} value={m}>
+                                    {m}
+                                  </option>
+                                ))}
+                              </select>
+                            ) : (
+                              <input
+                                value={advStatusModel}
+                                onChange={(e) => setAdvStatusModel(e.target.value)}
+                                placeholder="留空同主聊天模型"
+                                className="flex-1 min-w-0 px-3 py-2 border border-slate-200 rounded-lg bg-white text-sm font-mono"
+                              />
+                            )}
+                            <button
+                              type="button"
+                              onClick={() => void pullAdvStatusModels()}
+                              disabled={advStatusModelsLoading}
+                              className="shrink-0 px-3 py-2 rounded-lg border border-sky-300 bg-sky-100 text-sm font-medium text-sky-900 hover:bg-sky-200/80 disabled:opacity-50"
+                            >
+                              {advStatusModelsLoading ? (
+                                <Loader2 className="w-4 h-4 animate-spin inline" aria-hidden />
+                              ) : (
+                                '拉取'
+                              )}
+                            </button>
+                          </div>
+                        </div>
+                        <div>
+                          <div className="flex justify-between text-xs text-slate-600 mb-1">
+                            <span>温度</span>
+                            <span className="font-mono tabular-nums">{advStatusTemp.toFixed(2)}</span>
+                          </div>
+                          <input
+                            type="range"
+                            min={0}
+                            max={2}
+                            step={0.02}
+                            value={advStatusTemp}
+                            onChange={(e) => setAdvStatusTemp(Number(e.target.value))}
+                            className="w-full accent-sky-600"
+                          />
+                        </div>
+                      </div>
+                    ) : null}
+                  </div>
+
+                  <div className="rounded-lg border border-sky-100 bg-white/90 p-3 space-y-3">
+                    <label className="flex items-start gap-2 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        className="mt-0.5 h-4 w-4 rounded border-slate-300"
+                        checked={advMemEnabled}
+                        onChange={(e) => setAdvMemEnabled(e.target.checked)}
+                      />
+                      <span>
+                        <span className="text-sm font-medium text-slate-800">启用独立的记忆总结 API</span>
+                        <span className="block text-[11px] text-slate-500 mt-0.5">
+                          用于 memorySystem 内记忆写入与 JSON 总结、以及群聊记忆总结（仍会在之上套用群级单独模型名，若有）。未填的 URL/Key/模型与主聊天一致。温度：勾选且滑块为有效数字时用于 JSON 总结，否则固定 0.3。
+                        </span>
+                      </span>
+                    </label>
+                    {advMemEnabled ? (
+                      <div className="space-y-2 pl-1 border-l-2 border-sky-200 ml-1.5">
+                        <div>
+                          <label className="block text-xs font-medium text-slate-600 mb-1">API 地址（Base URL）</label>
+                          <input
+                            type="text"
+                            value={advMemBaseUrl}
+                            onChange={(e) => setAdvMemBaseUrl(e.target.value)}
+                            placeholder="留空同主聊天；仅覆盖时填写"
+                            className="w-full px-3 py-2 border border-slate-200 rounded-lg bg-white text-sm"
+                            autoComplete="off"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-xs font-medium text-slate-600 mb-1">API Key</label>
+                          <input
+                            type="password"
+                            value={advMemApiKey}
+                            onChange={(e) => setAdvMemApiKey(e.target.value)}
+                            placeholder="留空同主聊天"
+                            className="w-full px-3 py-2 border border-slate-200 rounded-lg bg-white text-sm"
+                            autoComplete="new-password"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-xs font-medium text-slate-600 mb-1">模型</label>
+                          <div className="flex gap-2">
+                            {advMemModels.length > 0 ? (
+                              <select
+                                value={advMemModel}
+                                onChange={(e) => setAdvMemModel(e.target.value)}
+                                className="flex-1 min-w-0 px-3 py-2 border border-slate-200 rounded-lg bg-white text-sm font-mono"
+                              >
+                                {advMemModel.trim() && !advMemModels.includes(advMemModel) ? (
+                                  <option value={advMemModel}>{advMemModel}（手填）</option>
+                                ) : null}
+                                {advMemModels.map((m) => (
+                                  <option key={m} value={m}>
+                                    {m}
+                                  </option>
+                                ))}
+                              </select>
+                            ) : (
+                              <input
+                                value={advMemModel}
+                                onChange={(e) => setAdvMemModel(e.target.value)}
+                                placeholder="留空同主聊天模型"
+                                className="flex-1 min-w-0 px-3 py-2 border border-slate-200 rounded-lg bg-white text-sm font-mono"
+                              />
+                            )}
+                            <button
+                              type="button"
+                              onClick={() => void pullAdvMemModels()}
+                              disabled={advMemModelsLoading}
+                              className="shrink-0 px-3 py-2 rounded-lg border border-sky-300 bg-sky-100 text-sm font-medium text-sky-900 hover:bg-sky-200/80 disabled:opacity-50"
+                            >
+                              {advMemModelsLoading ? (
+                                <Loader2 className="w-4 h-4 animate-spin inline" aria-hidden />
+                              ) : (
+                                '拉取'
+                              )}
+                            </button>
+                          </div>
+                        </div>
+                        <div>
+                          <div className="flex justify-between text-xs text-slate-600 mb-1">
+                            <span>温度</span>
+                            <span className="font-mono tabular-nums">{advMemTemp.toFixed(2)}</span>
+                          </div>
+                          <input
+                            type="range"
+                            min={0}
+                            max={2}
+                            step={0.02}
+                            value={advMemTemp}
+                            onChange={(e) => setAdvMemTemp(Number(e.target.value))}
+                            className="w-full accent-sky-600"
+                          />
+                        </div>
+                      </div>
+                    ) : null}
+                  </div>
+
+                  <p className="text-[11px] text-slate-500 leading-relaxed">
+                    修改后请点本页底部的<strong>保存配置</strong>才会写入本地。
+                  </p>
+                </div>
+
                 <div className="rounded-xl border border-violet-200 bg-violet-50/50 p-4 space-y-3">
                   <div className="flex items-center justify-between gap-2">
                     <label className="text-sm font-medium text-slate-800">私聊 AI 真实配图（文生图）</label>
@@ -748,6 +1028,86 @@ export default function SettingsScreen({
                         className="w-full px-3 py-2 border border-violet-200 rounded-lg bg-white text-sm font-mono"
                       />
                     </div>
+                  </div>
+                </div>
+
+                <div className="rounded-xl border border-teal-200 bg-teal-50/40 p-4 space-y-3">
+                  <div>
+                    <label className="text-sm font-medium text-slate-800">语音合成 · MiniMax（助手语音条）</label>
+                    <p className="mt-1 text-xs text-slate-600 leading-relaxed">
+                      填写并保存<strong>线路 + API Key + Group ID</strong>后即可在聊天中使用；根地址由线路自动对应（见下方灰字）。角色侧音色在<strong>角色设置 → 高级</strong>。若必须走反向代理或官方另有网关，再展开「高级」填写自定义根地址。
+                    </p>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-slate-600 mb-1">线路（自动配置 API 根）</label>
+                    <select
+                      value={ttsRegion}
+                      onChange={(e) => setTtsRegion(e.target.value as MinimaxTtsRegionPreset)}
+                      className="w-full px-3 py-2 border border-teal-200 rounded-lg bg-white text-sm"
+                    >
+                      <option value="international">国际（api.minimax.io）</option>
+                      <option value="china">国内（api.minimaxi.com）</option>
+                    </select>
+                    <p className="mt-1.5 text-[11px] text-slate-500 font-mono break-all">
+                      当前请求根：<span className="text-slate-700">{minimaxTtsPresetOrigin(ttsRegion)}</span>
+                      {(ttsCustomOrigin || '').trim()
+                        ? `（自定义将覆盖：${normalizeMinimaxTtsCustomBaseUrl(ttsCustomOrigin.trim())}）`
+                        : null}
+                    </p>
+                  </div>
+                  <div className="rounded-lg border border-teal-100 bg-white/80">
+                    <button
+                      type="button"
+                      onClick={() => setTtsAdvancedOriginOpen((o) => !o)}
+                      className="w-full px-3 py-2 text-left text-xs font-medium text-teal-900 hover:bg-teal-50/80 rounded-lg"
+                    >
+                      {ttsAdvancedOriginOpen ? '▼ 收起「自定义 API 根」' : '▶ 高级：自定义 API 根（反向代理等）'}
+                    </button>
+                    {ttsAdvancedOriginOpen ? (
+                      <div className="px-3 pb-3 pt-0 space-y-1">
+                        <input
+                          type="text"
+                          value={ttsCustomOrigin}
+                          onChange={(e) => setTtsCustomOrigin(e.target.value)}
+                          placeholder="https://你的代理或官方指定网关"
+                          className="w-full px-3 py-2 border border-teal-200 rounded-lg bg-white text-sm font-mono"
+                        />
+                        <p className="text-[10px] text-slate-500 leading-relaxed">
+                          勿填控制台网页域名（如 platform…）。保存时会规范化为 https。
+                        </p>
+                      </div>
+                    ) : null}
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-slate-600 mb-1">API Key</label>
+                    <input
+                      type="password"
+                      value={ttsApiKey}
+                      onChange={(e) => setTtsApiKey(e.target.value)}
+                      placeholder="Bearer Token"
+                      autoComplete="new-password"
+                      className="w-full px-3 py-2 border border-teal-200 rounded-lg bg-white text-sm"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-slate-600 mb-1">Group ID</label>
+                    <input
+                      type="text"
+                      value={ttsGroupId}
+                      onChange={(e) => setTtsGroupId(e.target.value)}
+                      placeholder="控制台账号下的 GroupId"
+                      className="w-full px-3 py-2 border border-teal-200 rounded-lg bg-white text-sm font-mono"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-slate-600 mb-1">合成模型</label>
+                    <input
+                      type="text"
+                      value={ttsModel}
+                      onChange={(e) => setTtsModel(e.target.value)}
+                      placeholder="speech-2.8-hd"
+                      className="w-full px-3 py-2 border border-teal-200 rounded-lg bg-white text-sm font-mono"
+                    />
                   </div>
                 </div>
               </div>
@@ -1191,7 +1551,7 @@ export default function SettingsScreen({
                 2. 在<strong>新浏览器</strong>打开同一网址，进设置 → 数据备份 →「导入全部数据」，选该 JSON。<br />
                 3. 确认覆盖后等待完成并自动刷新；之后在新浏览器里照常使用即可。<br />
                 <span className="font-semibold mt-3 block">导出里会尽量带上：</span>
-                聊天与角色、联系人、朋友圈、文档、设置与主库存的数据，以及表情包（含通用/角色/用户）、世界书大正文、EasyChat 贴纸等独立库内容，减少换环境丢数据。<br />
+                聊天与角色、联系人、朋友圈、文档、设置与主库存的数据，含<strong>编辑学习 / 语言风格画像</strong>（与其它大数据一样走主库 IndexedDB，整包导出时会一并扫描），以及表情包（含通用/角色/用户）、世界书大正文、EasyChat 贴纸等独立库内容，减少换环境丢数据。<br />
                 <span className="font-semibold mt-3 block">注意：</span>
                 导入会清空并覆盖当前浏览器里的本地数据；建议先导出一份再导入。若你还开了云端同步，云端数据另以账号为准。
               </div>
@@ -1307,6 +1667,119 @@ export default function SettingsScreen({
               </p>
             </div>
 
+            <div className="px-4 py-3 border-b border-slate-100 bg-sky-50/50 space-y-3">
+              <div className="text-xs font-semibold text-slate-900">高级 API</div>
+              <p className="text-[10px] text-slate-600 leading-relaxed">
+                勾选后 URL/Key/模型可逐项留空，留空同主聊天；拉取模型时独立区空则用主接口。
+              </p>
+              <label className="flex items-start gap-2">
+                <input
+                  type="checkbox"
+                  className="mt-0.5 h-4 w-4 rounded border-slate-300"
+                  checked={advStatusEnabled}
+                  onChange={(e) => setAdvStatusEnabled(e.target.checked)}
+                />
+                <span className="text-xs text-slate-800">独立生活模拟</span>
+              </label>
+              {advStatusEnabled ? (
+                <div className="space-y-2">
+                  <input
+                    value={advStatusBaseUrl}
+                    onChange={(e) => setAdvStatusBaseUrl(e.target.value)}
+                    className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm bg-white"
+                    placeholder="Base URL（留空同主）"
+                  />
+                  <input
+                    type="password"
+                    value={advStatusApiKey}
+                    onChange={(e) => setAdvStatusApiKey(e.target.value)}
+                    className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm bg-white"
+                    placeholder="API Key（留空同主）"
+                    autoComplete="new-password"
+                  />
+                  <div className="flex gap-2">
+                    <input
+                      value={advStatusModel}
+                      onChange={(e) => setAdvStatusModel(e.target.value)}
+                      className="flex-1 min-w-0 rounded-xl border border-slate-200 px-3 py-2 text-sm font-mono bg-white"
+                      placeholder="模型（留空同主）"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => void pullAdvStatusModels()}
+                      disabled={advStatusModelsLoading}
+                      className="shrink-0 rounded-xl border border-sky-300 bg-sky-100 px-3 py-2 text-xs font-medium text-sky-900 disabled:opacity-50"
+                    >
+                      {advStatusModelsLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : '拉取'}
+                    </button>
+                  </div>
+                  <input
+                    type="range"
+                    min={0}
+                    max={2}
+                    step={0.02}
+                    value={advStatusTemp}
+                    onChange={(e) => setAdvStatusTemp(Number(e.target.value))}
+                    className="w-full accent-sky-600"
+                  />
+                  <div className="text-[10px] text-slate-500 text-right font-mono">温度 {advStatusTemp.toFixed(2)}</div>
+                </div>
+              ) : null}
+              <label className="flex items-start gap-2 pt-1">
+                <input
+                  type="checkbox"
+                  className="mt-0.5 h-4 w-4 rounded border-slate-300"
+                  checked={advMemEnabled}
+                  onChange={(e) => setAdvMemEnabled(e.target.checked)}
+                />
+                <span className="text-xs text-slate-800">独立记忆总结</span>
+              </label>
+              {advMemEnabled ? (
+                <div className="space-y-2">
+                  <input
+                    value={advMemBaseUrl}
+                    onChange={(e) => setAdvMemBaseUrl(e.target.value)}
+                    className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm bg-white"
+                    placeholder="Base URL（留空同主）"
+                  />
+                  <input
+                    type="password"
+                    value={advMemApiKey}
+                    onChange={(e) => setAdvMemApiKey(e.target.value)}
+                    className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm bg-white"
+                    placeholder="API Key（留空同主）"
+                    autoComplete="new-password"
+                  />
+                  <div className="flex gap-2">
+                    <input
+                      value={advMemModel}
+                      onChange={(e) => setAdvMemModel(e.target.value)}
+                      className="flex-1 min-w-0 rounded-xl border border-slate-200 px-3 py-2 text-sm font-mono bg-white"
+                      placeholder="模型（留空同主）"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => void pullAdvMemModels()}
+                      disabled={advMemModelsLoading}
+                      className="shrink-0 rounded-xl border border-sky-300 bg-sky-100 px-3 py-2 text-xs font-medium text-sky-900 disabled:opacity-50"
+                    >
+                      {advMemModelsLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : '拉取'}
+                    </button>
+                  </div>
+                  <input
+                    type="range"
+                    min={0}
+                    max={2}
+                    step={0.02}
+                    value={advMemTemp}
+                    onChange={(e) => setAdvMemTemp(Number(e.target.value))}
+                    className="w-full accent-sky-600"
+                  />
+                  <div className="text-[10px] text-slate-500 text-right font-mono">温度 {advMemTemp.toFixed(2)}</div>
+                </div>
+              ) : null}
+            </div>
+
             <div className="px-4 py-3 border-b border-slate-100 bg-violet-50/40 space-y-2">
               <div className="flex items-center justify-between">
                 <div className="text-xs font-medium text-slate-800">私聊 AI 真实配图</div>
@@ -1391,6 +1864,59 @@ export default function SettingsScreen({
                 />
               </div>
               <p className="text-[10px] text-slate-500">每日上限 0 = 不限制（张 / 会话 / 自然日）</p>
+            </div>
+
+            <div className="px-4 py-3 border-b border-slate-100 bg-teal-50/50 space-y-2">
+              <div className="text-xs font-medium text-slate-800">语音合成 MiniMax</div>
+              <p className="text-[11px] text-slate-600 leading-relaxed">
+                选线路并填写 Key、Group ID，保存后即可在助手语音消息上合成播放。
+              </p>
+              <select
+                value={ttsRegion}
+                onChange={(e) => setTtsRegion(e.target.value as MinimaxTtsRegionPreset)}
+                className="w-full rounded-xl border border-teal-200 px-3 py-2 text-sm bg-white"
+              >
+                <option value="international">国际 api.minimax.io</option>
+                <option value="china">国内 api.minimaxi.com</option>
+              </select>
+              <p className="text-[10px] text-slate-500 font-mono break-all px-0.5">
+                根：{minimaxTtsPresetOrigin(ttsRegion)}
+              </p>
+              <button
+                type="button"
+                onClick={() => setTtsAdvancedOriginOpen((o) => !o)}
+                className="w-full rounded-xl border border-teal-200 bg-white px-3 py-2 text-xs text-teal-900 text-left"
+              >
+                {ttsAdvancedOriginOpen ? '收起自定义 API 根' : '高级：自定义 API 根'}
+              </button>
+              {ttsAdvancedOriginOpen ? (
+                <input
+                  value={ttsCustomOrigin}
+                  onChange={(e) => setTtsCustomOrigin(e.target.value)}
+                  className="w-full rounded-xl border border-teal-200 px-3 py-2 text-sm bg-white font-mono"
+                  placeholder="https://…"
+                />
+              ) : null}
+              <input
+                type="password"
+                value={ttsApiKey}
+                onChange={(e) => setTtsApiKey(e.target.value)}
+                className="w-full rounded-xl border border-teal-200 px-3 py-2 text-sm bg-white"
+                placeholder="API Key"
+                autoComplete="new-password"
+              />
+              <input
+                value={ttsGroupId}
+                onChange={(e) => setTtsGroupId(e.target.value)}
+                className="w-full rounded-xl border border-teal-200 px-3 py-2 text-sm bg-white font-mono"
+                placeholder="Group ID"
+              />
+              <input
+                value={ttsModel}
+                onChange={(e) => setTtsModel(e.target.value)}
+                className="w-full rounded-xl border border-teal-200 px-3 py-2 text-sm bg-white font-mono"
+                placeholder="模型 speech-2.8-hd"
+              />
             </div>
 
             <div className="px-4 py-3 border-b border-slate-100">
@@ -1783,6 +2309,60 @@ export default function SettingsScreen({
     }
   };
 
+  const pullAdvStatusModels = async (opts?: { silent?: boolean }) => {
+    const u = advStatusBaseUrl.trim() || baseUrl.trim();
+    const k = advStatusApiKey.trim() || apiKey.trim();
+    if (!u || !k) {
+      if (!opts?.silent) alert('请先完成上方主聊天的 Base URL 与 API Key，或在本区填写其中至少一项');
+      return;
+    }
+    setAdvStatusModelsLoading(true);
+    try {
+      const raw = await fetchOpenAiCompatibleModelIds(u, k);
+      const list = filterLikelyChatModels(raw);
+      setAdvStatusModels(list);
+      setAdvStatusModel((prev) => {
+        const p = prev.trim();
+        if (p && list.includes(p)) return p;
+        return list[0] || '';
+      });
+      if (!opts?.silent) {
+        alert(list.length > 0 ? `已拉取 ${list.length} 个对话模型` : '列表为空，请手填模型名');
+      }
+    } catch {
+      if (!opts?.silent) alert('拉取失败，请检查 URL / Key');
+    } finally {
+      setAdvStatusModelsLoading(false);
+    }
+  };
+
+  const pullAdvMemModels = async (opts?: { silent?: boolean }) => {
+    const u = advMemBaseUrl.trim() || baseUrl.trim();
+    const k = advMemApiKey.trim() || apiKey.trim();
+    if (!u || !k) {
+      if (!opts?.silent) alert('请先完成上方主聊天的 Base URL 与 API Key，或在本区填写其中至少一项');
+      return;
+    }
+    setAdvMemModelsLoading(true);
+    try {
+      const raw = await fetchOpenAiCompatibleModelIds(u, k);
+      const list = filterLikelyChatModels(raw);
+      setAdvMemModels(list);
+      setAdvMemModel((prev) => {
+        const p = prev.trim();
+        if (p && list.includes(p)) return p;
+        return list[0] || '';
+      });
+      if (!opts?.silent) {
+        alert(list.length > 0 ? `已拉取 ${list.length} 个对话模型` : '列表为空，请手填模型名');
+      }
+    } catch {
+      if (!opts?.silent) alert('拉取失败，请检查 URL / Key');
+    } finally {
+      setAdvMemModelsLoading(false);
+    }
+  };
+
   const applyApiPairFromHistory = (entry: ApiEndpointPairEntry) => {
     setBaseUrl(entry.baseUrl);
     setApiKey(entry.apiKey);
@@ -1813,6 +2393,13 @@ export default function SettingsScreen({
       return;
     }
 
+    const ttsKeyTrim = ttsApiKey.trim();
+    const ttsGroupTrim = ttsGroupId.trim();
+    if ((ttsKeyTrim && !ttsGroupTrim) || (!ttsKeyTrim && ttsGroupTrim)) {
+      alert('语音合成需同时填写 MiniMax API Key 与 Group ID，或两项都留空');
+      return;
+    }
+
     onUpdateConfig({
       ...apiConfig,
       baseUrl,
@@ -1836,6 +2423,32 @@ export default function SettingsScreen({
         : {
             enabled: false,
           },
+      minimaxTts: {
+        enabled: !!(ttsKeyTrim && ttsGroupTrim),
+        regionPreset: ttsRegion,
+        baseUrl: (ttsCustomOrigin || '').trim()
+          ? normalizeMinimaxTtsCustomBaseUrl(ttsCustomOrigin.trim())
+          : '',
+        apiKey: ttsKeyTrim,
+        groupId: ttsGroupTrim,
+        model: ttsModel.trim() || 'speech-2.8-hd',
+      },
+      backgroundChatApis: {
+        statusUpdate: {
+          enabled: advStatusEnabled,
+          baseUrl: advStatusBaseUrl.trim(),
+          apiKey: advStatusApiKey.trim(),
+          modelName: advStatusModel.trim(),
+          temperature: advStatusTemp,
+        },
+        memorySummary: {
+          enabled: advMemEnabled,
+          baseUrl: advMemBaseUrl.trim(),
+          apiKey: advMemApiKey.trim(),
+          modelName: advMemModel.trim(),
+          temperature: advMemTemp,
+        },
+      },
     });
     addApiEndpointPairSnapshot({ baseUrl, apiKey, modelName });
     setApiPairHistory(listApiEndpointPairHistory());
@@ -1954,6 +2567,12 @@ export default function SettingsScreen({
           `  • 记忆库: ${stats.memories || '?'} 条\n` +
           `  • 关系网络: ${stats.relationships || '?'} 条\n` +
           `  • 背景图片: ${stats.images || '?'} 张\n` +
+          (typeof stats.editCalibrationEntries === 'number'
+            ? `  • 编辑学习记录: ${stats.editCalibrationEntries} 条\n`
+            : '') +
+          (typeof stats.languageStyleProfileConversations === 'number'
+            ? `  • 语言风格画像: ${stats.languageStyleProfileConversations} 个角色\n`
+            : '') +
           `  • 总数据项: ${Object.keys(importedData.data).length}\n\n` +
           `💾 存储信息:\n` +
           `  • 设备类型: ${preQuota.isMobile ? '📱移动设备' : '🖥️桌面设备'}\n` +
@@ -1980,6 +2599,7 @@ export default function SettingsScreen({
           `  • 联系人和关系网络\n` +
           `  • 朋友圈内容\n` +
           `  • 文档库和知识库\n` +
+          `  • 编辑学习与语言风格画像（IndexedDB，与记忆库并列）\n` +
           `  • 头像和背景图片\n` +
           `  • API配置和其他设置\n\n` +
           `确定要继续吗？`;

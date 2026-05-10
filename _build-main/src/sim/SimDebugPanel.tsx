@@ -3,7 +3,7 @@ import type { ApiConfig, Conversation } from '../types';
 import type { AILifeSimState } from './types';
 import { smartLoad } from '../utils/storage';
 import { cleanupLifeSimStates } from './storage';
-import { forceTickAll, runLifeSimTick } from './lifeEngine';
+import { forceTickAll, getLifeSimLastCompletionsError, runLifeSimTick } from './lifeEngine';
 import { X, RefreshCw, Play, Trash2 } from 'lucide-react';
 
 type Props = {
@@ -116,7 +116,13 @@ export default function SimDebugPanel({ getConversations, getApiConfig }: Props)
                 try {
                   await forceTickAll(targets, apiConfig);
                   await refresh();
-                  setLastAction('forceTickAll() ok');
+                  const apiErr = getLifeSimLastCompletionsError();
+                  if (apiErr) {
+                    setLastError(apiErr);
+                    setLastAction('forceTickAll() 已执行，但 chat/completions 未成功');
+                  } else {
+                    setLastAction('forceTickAll() ok');
+                  }
                 } catch (e: any) {
                   setLastError(e?.message || String(e));
                   setLastAction('forceTickAll() failed');

@@ -76,6 +76,11 @@ const GroupChatSettingsModal: React.FC<GroupChatSettingsModalProps> = ({
     );
   }, [conversation.id, conversation.groupComposerQuietSeconds, conversation.messageBufferSeconds]);
 
+  useEffect(() => {
+    setContextEnabled(conversation.groupContextConfig?.enabled || false);
+    setContextMessageCount(conversation.groupContextConfig?.messageCount || 30);
+  }, [conversation.id, conversation.groupContextConfig?.enabled, conversation.groupContextConfig?.messageCount]);
+
   const handleSave = () => {
     const trimmedModel = groupChatModelOverride.trim();
     onUpdateConversation(conversation.id, {
@@ -87,7 +92,7 @@ const GroupChatSettingsModal: React.FC<GroupChatSettingsModalProps> = ({
       groupChatModelOverride: trimmedModel ? trimmedModel : undefined,
       groupContextConfig: {
         enabled: contextEnabled,
-        messageCount: contextMessageCount,
+        messageCount: Math.max(1, Math.min(100, Math.round(contextMessageCount) || 30)),
       },
     });
     onClose();
@@ -265,8 +270,8 @@ const GroupChatSettingsModal: React.FC<GroupChatSettingsModalProps> = ({
             </div>
           </details>
 
-          {/* 群聊生成 */}
-          <details className="bg-white rounded-lg shadow-sm overflow-hidden group border border-gray-100">
+          {/* 群聊生成（默认展开：延迟、温度、上下文数量等常改项） */}
+          <details className="bg-white rounded-lg shadow-sm overflow-hidden group border border-gray-100" open>
             <summary className="px-4 py-3 flex items-center justify-between bg-gray-50 border-b border-gray-100 cursor-pointer list-none select-none hover:bg-gray-100 transition-colors">
               <div className="flex items-center gap-2">
                 <div className="w-1 h-4 bg-purple-500 rounded-full"></div>

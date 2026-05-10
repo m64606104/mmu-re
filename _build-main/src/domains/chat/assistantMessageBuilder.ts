@@ -1,6 +1,7 @@
 import type { Message } from '../../types';
 import { normalizeAssistantProtocolLeaks } from '../../utils/messageFormatter';
 import { isSingleEmojiText, resolveSystemEmoji } from '../../utils/systemEmoji';
+import { stripTrailingVoiceTranscriptArtifacts } from '../../utils/voiceDurationCalculator';
 
 export type ParsedAssistantMediaItem = {
   type: 'voice' | 'image' | 'video' | 'sticker';
@@ -165,14 +166,15 @@ export function buildAssistantMediaMessages(options: BuildAssistantMediaMessages
   mediaItems.forEach((item) => {
     if (item.type === 'voice') {
       const idx = mediaTypeCounter.voice++;
-      const duration = calculateVoiceDuration(item.description || '');
+      const { text: cleanDesc, secondsHint } = stripTrailingVoiceTranscriptArtifacts(item.description || '');
+      const duration = secondsHint ?? calculateVoiceDuration(cleanDesc);
       messages.push({
         id: `${baseId}_voice_${idx}`,
         role: 'assistant',
         content: '[语音]',
         timestamp: nextTimestamp++,
         mediaType: 'voice',
-        mediaDescription: item.description,
+        mediaDescription: cleanDesc,
         voiceDuration: duration,
         isMediaDescriptionOnly: true,
       });
@@ -279,9 +281,10 @@ export async function parseAssistantMediaFromText(options: ParseAssistantMediaFr
 
   const voiceMatches = cleanContent.matchAll(/\[(?:语音|VOICE)[:：](.+?)(?:[，,]\s*(?:时长)?(\d+)秒?)?\]/gi);
   for (const match of voiceMatches) {
+    const { text } = stripTrailingVoiceTranscriptArtifacts(match[1].trim());
     mediaItems.push({
       type: 'voice',
-      description: match[1].trim(),
+      description: text,
     });
     cleanContent = cleanContent.replace(match[0], '').trim();
   }

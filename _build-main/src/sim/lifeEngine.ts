@@ -1,10 +1,19 @@
 import type { ApiConfig, Conversation } from '../types';
+import { resolveBackgroundChatApiConfig } from '../utils/chatApiConfig';
 import { buildApiUrl } from '../utils/apiHelper';
 import { isToolInteractionCharacter } from '../utils/characterInteractionMode';
 import { addAIEvent, updateDynamicProfiles, getMemoryBank } from '../utils/memorySystem';
+import { getPrivateChatOpenCountRolling24h } from './chatEngagement';
 import type { LifeSimModelOutput } from './types';
 import { applyDeltas, ensureDayTheme, loadLifeSimState, loadLifeSimStates, upsertLifeSimState } from './storage';
 import { getShanghaiParts } from './time';
+
+/** 最近一次生活模拟调用 chat/completions 的失败说明（成功时为 null） */
+let lastLifeSimCompletionsError: string | null = null;
+
+export function getLifeSimLastCompletionsError(): string | null {
+  return lastLifeSimCompletionsError;
+}
 
 function utc8Parts(ts: number) {
   return getShanghaiParts(ts);
@@ -16,21 +25,56 @@ function clampInt(n: any, min: number, max: number, fallback: number) {
   return Math.max(min, Math.min(max, Math.round(x)));
 }
 
-async function askJson(apiConfig: ApiConfig, prompt: string): Promise<any | null> {
-  if (!apiConfig.baseUrl || !apiConfig.apiKey || !apiConfig.modelName) return null;
+async function postChatCompletion(apiConfig: ApiConfig, body: object): Promise<unknown | null> {
+  if (!apiConfig.baseUrl || !apiConfig.apiKey || !apiConfig.modelName) {
+    lastLifeSimCompletionsError = '未配置 API Base URL、Key 或模型名称';
+    return null;
+  }
   try {
     const res = await fetch(buildApiUrl(apiConfig), {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiConfig.apiKey}` },
-      body: JSON.stringify({
-        model: apiConfig.modelName,
-        messages: [{ role: 'user', content: prompt }],
-        temperature: 0.9,
-        max_tokens: 900,
-      }),
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${apiConfig.apiKey}`,
+        'X-Momoyu-Source': 'lifeEngine',
+      },
+      body: JSON.stringify(body),
     });
-    if (!res.ok) return null;
-    const data = await res.json();
+    if (!res.ok) {
+      let snippet = '';
+      try {
+        snippet = (await res.clone().text()).slice(0, 280).replace(/\s+/g, ' ').trim();
+      } catch {
+        /* ignore */
+      }
+      if (res.status === 401 || res.status === 403) {
+        lastLifeSimCompletionsError =
+          `上游 ${res.status}：多为 Key 失效/无权限、模型不可用、余额或地区限制；第三方网关（如 api520）也可能直接 403。${snippet ? ` 响应片段：${snippet}` : ''}`;
+      } else {
+        lastLifeSimCompletionsError = `chat/completions HTTP ${res.status}${snippet ? ` · ${snippet}` : ''}`;
+      }
+      console.warn('[lifeEngine]', lastLifeSimCompletionsError);
+      return null;
+    }
+    lastLifeSimCompletionsError = null;
+    return await res.json();
+  } catch (e) {
+    lastLifeSimCompletionsError = e instanceof Error ? e.message : String(e);
+    console.warn('[lifeEngine] 请求异常:', lastLifeSimCompletionsError);
+    return null;
+  }
+}
+
+async function askJson(apiConfig: ApiConfig, prompt: string): Promise<any | null> {
+  const simApi = resolveBackgroundChatApiConfig(apiConfig, 'statusUpdate');
+  const data = (await postChatCompletion(simApi, {
+    model: simApi.modelName,
+    messages: [{ role: 'user', content: prompt }],
+    temperature: resolveLifeSimTemperature(apiConfig, getRandomnessMode()),
+    max_tokens: 900,
+  })) as any;
+  if (!data) return null;
+  try {
     const text = String(data?.choices?.[0]?.message?.content || '');
     const match = text.match(/\{[\s\S]*\}/);
     if (!match) return null;
@@ -56,6 +100,18 @@ function modeTemperature(mode: RandomnessMode): number {
   if (mode === 'stable') return 0.68;
   if (mode === 'divergent') return 1.0;
   return 0.88;
+}
+
+function resolveLifeSimTemperature(apiConfig: ApiConfig, mode: RandomnessMode): number {
+  const slot = apiConfig.backgroundChatApis?.statusUpdate;
+  if (
+    slot?.enabled &&
+    typeof slot.temperature === 'number' &&
+    Number.isFinite(slot.temperature)
+  ) {
+    return Math.min(2, Math.max(0, slot.temperature));
+  }
+  return modeTemperature(mode);
 }
 
 type SurpriseEventHint = {
@@ -388,12 +444,17 @@ function buildPrompt(
     (cs?.memoryEvents ? `重要记忆事件：${cs.memoryEvents}\n` : '');
 
   const timeLine = `当前现实时间（UTC+8）：${new Date(now).toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' })}，${weekday}，${hour}点。`;
+  const sleepRhythmHint =
+    hour >= 23 || hour <= 6
+      ? `- 节律：当前为深夜至拂晓前后，若无加班/聚会/失眠等强理由，应优先选择 sleep 或 rest，让「睡眠中」状态能自然出现并与私聊延迟回复联动；避免长期不睡。\n`
+      : '';
 
   return (
     `${persona}\n` +
     `${timeLine}\n\n` +
     `你正在进行“AI生活模拟”（后台逻辑，不直接展示给用户）。目标：让角色的生活真实流动、细节自然、避免刻板重复。\n` +
     `规则（重要）：\n` +
+    sleepRhythmHint +
     `- 核心原则：先作为“一个人”生活，再体现人设身份和爱好。爱好不是每天主线。\n` +
     `- 不要只因为人设是学生/社畜就永远学习/上班；生活包含琐碎、摆烂、社交、走神、偶发事件。\n` +
     `- 允许重复，但重复里要有变化（地点/同伴/被打断/进度/情绪）。\n` +
@@ -537,15 +598,118 @@ function writeLastGlobalLifeSimBatchAt(ts: number): void {
 
 const MS_HOUR = 60 * 60 * 1000;
 
+/** 上海日历日 00:00 对应的 UTC 毫秒时间戳（中国无夏令时，固定 UTC+8） */
+function shanghaiDayStartUtcMs(dayKey: string): number {
+  const parts = dayKey.split('-').map(Number);
+  const y = parts[0];
+  const m = parts[1];
+  const d = parts[2];
+  if (!y || !m || !d) return Date.now();
+  return Date.UTC(y, m - 1, d) - 8 * MS_HOUR;
+}
+
 /**
- * 滚动 24h 内用户发言条数 + 历史最后一条用户消息时间。
- * 档位只看「最近一天」体量（与用户体感一致）；24h 内 0 条但历史上说过话单独处理。
+ * 每日固定时段锚点（上海时区）：每段在窗口内随机一刻触发一次生活模拟批次。
+ * 仍按活跃度 tier 排序选人；本批次跳过「活跃度 interval」但保留单角色 API 冷却。
+ * 顺序：凌晨 → 清晨 → 早高峰 → 上午 → 下午 → 傍晚 → 夜间。
+ */
+const LIFE_SIM_DAILY_ANCHOR_SLOTS: { id: string; startH: number; endH: number }[] = [
+  { id: 'slot_01_03', startH: 1, endH: 4 },
+  { id: 'slot_04_06', startH: 4, endH: 6 },
+  { id: 'slot_07_09', startH: 7, endH: 9 },
+  { id: 'slot_10_12', startH: 10, endH: 12 },
+  { id: 'slot_13_16', startH: 13, endH: 16 },
+  { id: 'slot_17_20', startH: 17, endH: 20 },
+  { id: 'slot_21_24', startH: 21, endH: 24 },
+];
+
+function lifeSimAnchorTriggerKey(dayKey: string, slotId: string): string {
+  return `momoyu_life_sim_anchor_trig_${dayKey}_${slotId}`;
+}
+
+function lifeSimAnchorFiredKey(dayKey: string, slotId: string): string {
+  return `momoyu_life_sim_anchor_fired_${dayKey}_${slotId}`;
+}
+
+function readAnchorTriggerAt(dayKey: string, slot: (typeof LIFE_SIM_DAILY_ANCHOR_SLOTS)[0]): number {
+  try {
+    const raw = localStorage.getItem(lifeSimAnchorTriggerKey(dayKey, slot.id));
+    if (raw) {
+      const n = Number(raw);
+      if (Number.isFinite(n)) return n;
+    }
+  } catch {
+    /* ignore */
+  }
+  const dayStart = shanghaiDayStartUtcMs(dayKey);
+  const startMs = dayStart + slot.startH * MS_HOUR;
+  const endMs = dayStart + slot.endH * MS_HOUR;
+  const span = Math.max(1, endMs - startMs);
+  const trig = startMs + Math.random() * span;
+  try {
+    localStorage.setItem(lifeSimAnchorTriggerKey(dayKey, slot.id), String(trig));
+  } catch {
+    /* ignore */
+  }
+  return trig;
+}
+
+function isAnchorSlotFired(dayKey: string, slotId: string): boolean {
+  try {
+    return localStorage.getItem(lifeSimAnchorFiredKey(dayKey, slotId)) === '1';
+  } catch {
+    return false;
+  }
+}
+
+function markAnchorSlotFired(dayKey: string, slotId: string): void {
+  try {
+    localStorage.setItem(lifeSimAnchorFiredKey(dayKey, slotId), '1');
+  } catch {
+    /* ignore */
+  }
+}
+
+function unmarkAnchorSlotFired(dayKey: string, slotId: string): void {
+  try {
+    localStorage.removeItem(lifeSimAnchorFiredKey(dayKey, slotId));
+  } catch {
+    /* ignore */
+  }
+}
+
+/**
+ * 抢占当日第一个「已到随机锚点时刻且未执行」的时段；同步落盘，避免并发重复消费。
+ * 若后续发现无人可跑（全在 API 冷却），调用方应 release。
+ */
+function acquireDueAnchoredLifeSimSlot(dayKey: string, now: number): string | null {
+  for (const slot of LIFE_SIM_DAILY_ANCHOR_SLOTS) {
+    if (isAnchorSlotFired(dayKey, slot.id)) continue;
+    const trig = readAnchorTriggerAt(dayKey, slot);
+    if (now < trig) continue;
+    markAnchorSlotFired(dayKey, slot.id);
+    return slot.id;
+  }
+  return null;
+}
+
+function releaseAnchoredLifeSimSlot(dayKey: string, slotId: string): void {
+  unmarkAnchorSlotFired(dayKey, slotId);
+}
+
+/**
+ * 生活模拟活跃度：以「24h 内用户发言条数」为底，叠加
+ * - 用户最后一条消息距今（只看 user，不看 assistant）
+ * - 24h 内进入该私聊次数（ChatScreen 挂载时记录，见 chatEngagement）
+ * 再映射到原 tier / interval 档位。时段锚点逻辑不依赖此处。
  */
 function resolveChatActivity(conv: Conversation, now: number): {
   tier: number;
   intervalMs: number;
   userMsgs24h: number;
   lastUserMsgAt: number;
+  opens24h: number;
+  engagementScore: number;
 } {
   const msgs = conv.messages || [];
   const cutoff24 = now - 24 * 60 * 60 * 1000;
@@ -559,32 +723,52 @@ function resolveChatActivity(conv: Conversation, now: number): {
     if (t >= cutoff24) userMsgs24h++;
   }
 
+  const opens24h =
+    conv.type === 'private' ? getPrivateChatOpenCountRolling24h(conv.id, now) : 0;
+
   if (lastUserMsgAt <= 0) {
-    return { tier: 7, intervalMs: 12 * MS_HOUR, userMsgs24h: 0, lastUserMsgAt: 0 };
+    if (opens24h >= 10) {
+      return { tier: 5, intervalMs: 8 * MS_HOUR, userMsgs24h: 0, lastUserMsgAt: 0, opens24h, engagementScore: opens24h * 4 };
+    }
+    if (opens24h >= 5) {
+      return { tier: 6, intervalMs: 10 * MS_HOUR, userMsgs24h: 0, lastUserMsgAt: 0, opens24h, engagementScore: opens24h * 4 };
+    }
+    return { tier: 7, intervalMs: 12 * MS_HOUR, userMsgs24h: 0, lastUserMsgAt: 0, opens24h, engagementScore: opens24h * 4 };
   }
 
-  // tier 越小越优先占批次；interval 越短生活模拟越勤
-  // ≥100 超级活跃 · ≥70 很活跃 · ≥50 活跃 · ≥30 一般 · 13–29 偏低 · 1–12 冷 · 24h 内 0 条但有过发言 → 休眠向
-  if (userMsgs24h >= 100) {
-    return { tier: 0, intervalMs: Math.round(1.5 * MS_HOUR), userMsgs24h, lastUserMsgAt };
+  let engagementScore = userMsgs24h;
+  const hoursSinceUser = (now - lastUserMsgAt) / MS_HOUR;
+  if (hoursSinceUser <= 1) engagementScore += 30;
+  else if (hoursSinceUser <= 3) engagementScore += 24;
+  else if (hoursSinceUser <= 8) engagementScore += 18;
+  else if (hoursSinceUser <= 24) engagementScore += 12;
+  else if (hoursSinceUser <= 72) engagementScore += 5;
+  else if (hoursSinceUser <= 168) engagementScore += 2;
+
+  engagementScore += Math.min(32, Math.round(opens24h * 2.6));
+  engagementScore = Math.min(220, Math.max(0, Math.round(engagementScore)));
+
+  // tier 越小越优先占批次；interval 越短生活模拟越勤（阈值按 engagementScore）
+  if (engagementScore >= 100) {
+    return { tier: 0, intervalMs: Math.round(1.5 * MS_HOUR), userMsgs24h, lastUserMsgAt, opens24h, engagementScore };
   }
-  if (userMsgs24h >= 70) {
-    return { tier: 1, intervalMs: 2 * MS_HOUR, userMsgs24h, lastUserMsgAt };
+  if (engagementScore >= 70) {
+    return { tier: 1, intervalMs: 2 * MS_HOUR, userMsgs24h, lastUserMsgAt, opens24h, engagementScore };
   }
-  if (userMsgs24h >= 50) {
-    return { tier: 2, intervalMs: Math.round(2.5 * MS_HOUR), userMsgs24h, lastUserMsgAt };
+  if (engagementScore >= 50) {
+    return { tier: 2, intervalMs: Math.round(2.5 * MS_HOUR), userMsgs24h, lastUserMsgAt, opens24h, engagementScore };
   }
-  if (userMsgs24h >= 30) {
-    return { tier: 3, intervalMs: 3 * MS_HOUR, userMsgs24h, lastUserMsgAt };
+  if (engagementScore >= 30) {
+    return { tier: 3, intervalMs: 3 * MS_HOUR, userMsgs24h, lastUserMsgAt, opens24h, engagementScore };
   }
-  if (userMsgs24h >= 13) {
-    return { tier: 4, intervalMs: 4 * MS_HOUR, userMsgs24h, lastUserMsgAt };
+  if (engagementScore >= 13) {
+    return { tier: 4, intervalMs: 4 * MS_HOUR, userMsgs24h, lastUserMsgAt, opens24h, engagementScore };
   }
-  if (userMsgs24h >= 1) {
-    return { tier: 5, intervalMs: 6 * MS_HOUR, userMsgs24h, lastUserMsgAt };
+  if (engagementScore >= 1) {
+    return { tier: 5, intervalMs: 6 * MS_HOUR, userMsgs24h, lastUserMsgAt, opens24h, engagementScore };
   }
 
-  return { tier: 6, intervalMs: 10 * MS_HOUR, userMsgs24h: 0, lastUserMsgAt };
+  return { tier: 6, intervalMs: 10 * MS_HOUR, userMsgs24h, lastUserMsgAt, opens24h, engagementScore };
 }
 
 function getLifeSimBackgroundIntervalMs(conv: Conversation, now: number): number {
@@ -608,12 +792,13 @@ function shouldTick(
   lastTickAt: number,
   lastAttemptAt: number | undefined,
   conversation: Conversation,
-  force?: boolean
+  opts?: { force?: boolean; skipActivityInterval?: boolean }
 ): boolean {
-  if (force) return true;
+  if (opts?.force) return true;
   // 刚尝试过（含失败）：短时间内不要再请求，否则 429 后 lastTickAt 仍为 0 会疯狂重试
   if (lastAttemptAt && now - lastAttemptAt < LIFE_SIM_API_COOLDOWN_MS) return false;
   if (!lastTickAt) return true;
+  if (opts?.skipActivityInterval) return true;
   const dt = now - lastTickAt;
   const intervalMs = getLifeSimBackgroundIntervalMs(conversation, now);
   return dt >= intervalMs;
@@ -622,13 +807,15 @@ function shouldTick(
 export async function runLifeSimTick(
   conversation: Conversation,
   apiConfig: ApiConfig,
-  options?: { force?: boolean }
+  options?: { force?: boolean; skipActivityInterval?: boolean }
 ): Promise<void> {
   if (!conversation?.id) return;
   if (conversation.type !== 'private') return;
   if (!conversation.characterSettings) return;
   if ((conversation as any).isBlocked) return;
-  if (!apiConfig.baseUrl || !apiConfig.apiKey || !apiConfig.modelName) return;
+
+  const simApi = resolveBackgroundChatApiConfig(apiConfig, 'statusUpdate');
+  if (!simApi.baseUrl || !simApi.apiKey || !simApi.modelName) return;
 
   const now = Date.now();
   const { day, hour, weekday } = utc8Parts(now);
@@ -644,7 +831,14 @@ export async function runLifeSimTick(
       .slice(0, 10),
   } as any;
 
-  if (!shouldTick(now, state.lastTickAt, state.lastSimApiAttemptAt, conversation, options?.force)) return;
+  if (
+    !shouldTick(now, state.lastTickAt, state.lastSimApiAttemptAt, conversation, {
+      force: options?.force,
+      skipActivityInterval: options?.skipActivityInterval,
+    })
+  ) {
+    return;
+  }
 
   // 先记下尝试时间并落盘，避免并行/连续焦点导致同一角色短时多次打接口
   state = { ...state, lastSimApiAttemptAt: now };
@@ -685,20 +879,14 @@ export async function runLifeSimTick(
     mode
   );
   const parsed = (await (async () => {
-    if (!apiConfig.baseUrl || !apiConfig.apiKey || !apiConfig.modelName) return null;
+    const data = (await postChatCompletion(simApi, {
+      model: simApi.modelName,
+      messages: [{ role: 'user', content: prompt }],
+      temperature: resolveLifeSimTemperature(apiConfig, mode),
+      max_tokens: 900,
+    })) as any;
+    if (!data) return null;
     try {
-      const res = await fetch(buildApiUrl(apiConfig), {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiConfig.apiKey}` },
-        body: JSON.stringify({
-          model: apiConfig.modelName,
-          messages: [{ role: 'user', content: prompt }],
-          temperature: modeTemperature(mode),
-          max_tokens: 900,
-        }),
-      });
-      if (!res.ok) return null;
-      const data = await res.json();
       const text = String(data?.choices?.[0]?.message?.content || '');
       const match = text.match(/\{[\s\S]*\}/);
       if (!match) return null;
@@ -854,10 +1042,7 @@ export function enqueueLifeSimTick(conversation: Conversation, apiConfig: ApiCon
 
 export function enqueueLifeSimForAll(conversations: Conversation[], apiConfig: ApiConfig): void {
   const now = Date.now();
-  const lastBatch = readLastGlobalLifeSimBatchAt();
-  if (lastBatch > 0 && now - lastBatch < LIFE_SIM_GLOBAL_MIN_GAP_MS) {
-    return;
-  }
+  const { day: shanghaiDay } = utc8Parts(now);
 
   const targets = conversations.filter(
     (c) =>
@@ -868,15 +1053,25 @@ export function enqueueLifeSimForAll(conversations: Conversation[], apiConfig: A
   );
   if (targets.length === 0) return;
 
-  writeLastGlobalLifeSimBatchAt(now);
+  const anchoredSlotId = acquireDueAnchoredLifeSimSlot(shanghaiDay, now);
+  const bypassGlobalGap = anchoredSlotId !== null;
+
+  if (!bypassGlobalGap) {
+    const lastBatch = readLastGlobalLifeSimBatchAt();
+    if (lastBatch > 0 && now - lastBatch < LIFE_SIM_GLOBAL_MIN_GAP_MS) {
+      return;
+    }
+    writeLastGlobalLifeSimBatchAt(now);
+  }
 
   void (async () => {
     const statesMap = await loadLifeSimStates();
+    const tickOpts = bypassGlobalGap ? { skipActivityInterval: true as const } : {};
     const scored = targets.map((c) => {
       const st = statesMap[c.id];
       const lastTickAt = Number(st?.lastTickAt ?? 0);
       const lastAttemptAt = st?.lastSimApiAttemptAt;
-      const due = shouldTick(now, lastTickAt, lastAttemptAt, c, false);
+      const due = shouldTick(now, lastTickAt, lastAttemptAt, c, tickOpts);
       const overdue =
         lastTickAt > 0 ? now - lastTickAt : Number.MAX_SAFE_INTEGER;
       const batchPri = getChatActivityBatchPriority(c, now);
@@ -890,12 +1085,22 @@ export function enqueueLifeSimForAll(conversations: Conversation[], apiConfig: A
         return b.overdue - a.overdue;
       });
 
-    const pickCount = Math.min(targets.length, 3 + Math.floor(Math.random() * 2));
+    const pickBase = bypassGlobalGap ? 4 + Math.floor(Math.random() * 2) : 3 + Math.floor(Math.random() * 2);
+    const pickCount = Math.min(targets.length, pickBase);
     const picked = dueSorted.slice(0, pickCount).map((x) => x.c);
+
+    if (bypassGlobalGap && picked.length === 0) {
+      releaseAnchoredLifeSimSlot(shanghaiDay, anchoredSlotId!);
+      return;
+    }
+
+    if (bypassGlobalGap && picked.length > 0) {
+      writeLastGlobalLifeSimBatchAt(now);
+    }
 
     for (const c of picked) {
       try {
-        await runLifeSimTick(c, apiConfig);
+        await runLifeSimTick(c, apiConfig, tickOpts);
       } catch (e) {
         console.error('[life-sim] tick失败:', e);
       }
@@ -912,10 +1117,16 @@ export async function forceTickAll(conversations: Conversation[], apiConfig: Api
       !isToolInteractionCharacter(c.characterSettings) &&
       !(c as any).isBlocked
   );
+  const batchErrors: string[] = [];
   for (const c of targets) {
     // sequential to avoid spiking API
     // eslint-disable-next-line no-await-in-loop
     await runLifeSimTick(c, apiConfig, { force: true });
+    if (lastLifeSimCompletionsError) {
+      const name = (c.characterSettings as { nickname?: string } | undefined)?.nickname?.trim() || c.id;
+      batchErrors.push(`${name}: ${lastLifeSimCompletionsError}`);
+    }
   }
+  lastLifeSimCompletionsError = batchErrors.length ? batchErrors.join(' · ') : null;
 }
 

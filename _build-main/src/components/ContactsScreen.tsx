@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
-import { ChevronLeft, Search, UserPlus, MessageCircle, Users } from 'lucide-react';
+import { ChevronLeft, Search, UserPlus, MessageCircle, Users, Mic, X } from 'lucide-react';
 import { Conversation, Screen } from '../types';
 import { smartLoad, smartSave } from '../utils/storage';
 
@@ -25,6 +25,8 @@ export default function ContactsScreen({ conversations, onNavigate, onBack, onUp
   const [showGroups, setShowGroups] = useState(false);
   const [requests, setRequests] = useState<FriendRequest[]>([]);
   const [desktopSelectedId, setDesktopSelectedId] = useState<string | null>(null);
+  /** 移动端：点联系人进入资料卡（非直达聊天） */
+  const [mobileProfileContact, setMobileProfileContact] = useState<Conversation | null>(null);
   
   // 加载好友申请
   useEffect(() => {
@@ -329,9 +331,16 @@ export default function ContactsScreen({ conversations, onNavigate, onBack, onUp
                       <div className="mt-1 text-sm text-zinc-500">{desktopSelectedContact.characterSettings?.username || '联系人'}</div>
                     </div>
                   </div>
-                  <div className="p-6 flex gap-3">
+                  <div className="p-6 flex flex-wrap gap-3">
                     <button onClick={() => onNavigate('chat', desktopSelectedContact.id)} className="px-4 py-2 rounded-full bg-zinc-900 text-white text-sm hover:bg-zinc-800">
                       发起对话
+                    </button>
+                    <button
+                      onClick={() => onNavigate('voice-favorites', desktopSelectedContact.id)}
+                      className="inline-flex items-center gap-1.5 px-4 py-2 rounded-full border border-amber-200 bg-amber-50 text-amber-900 text-sm hover:bg-amber-100"
+                    >
+                      <Mic className="w-4 h-4" />
+                      语音收藏
                     </button>
                     <button onClick={() => onNavigate('add-friend')} className="px-4 py-2 rounded-full border border-zinc-200 bg-white text-zinc-700 text-sm hover:bg-zinc-50">
                       添加朋友
@@ -431,7 +440,8 @@ export default function ContactsScreen({ conversations, onNavigate, onBack, onUp
             {filteredContacts.map((contact, index) => (
               <button
                 key={contact.id}
-                onClick={() => onNavigate('chat', contact.id)}
+                type="button"
+                onClick={() => setMobileProfileContact(contact)}
                 className="w-full px-4 py-3 flex items-center gap-3 hover:bg-gray-50 active:bg-gray-100 transition-colors relative"
               >
                 {/* Avatar */}
@@ -484,6 +494,79 @@ export default function ContactsScreen({ conversations, onNavigate, onBack, onUp
           添加新联系人
         </button>
       </div>
+
+      {mobileProfileContact && (
+        <div className="fixed inset-0 z-[200] flex flex-col justify-end md:hidden">
+          <button
+            type="button"
+            className="absolute inset-0 bg-black/45"
+            aria-label="关闭"
+            onClick={() => setMobileProfileContact(null)}
+          />
+          <div className="relative rounded-t-3xl bg-white shadow-2xl border-t border-gray-100 max-h-[85vh] overflow-y-auto animate-in slide-in-from-bottom duration-200">
+            <div className="sticky top-0 flex justify-center pt-2 pb-1 bg-white border-b border-gray-100">
+              <div className="w-10 h-1 rounded-full bg-gray-300" />
+            </div>
+            <div className="px-5 pt-2 pb-6">
+              <div className="flex justify-end">
+                <button
+                  type="button"
+                  onClick={() => setMobileProfileContact(null)}
+                  className="p-2 rounded-full hover:bg-gray-100 text-gray-500"
+                  aria-label="关闭"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+              <div className="flex flex-col items-center -mt-2">
+                <div
+                  className={`w-20 h-20 rounded-2xl bg-gradient-to-br ${getAvatarGradient(mobileProfileContact.name)} overflow-hidden flex items-center justify-center shadow-inner`}
+                >
+                  {mobileProfileContact.characterSettings?.avatar || mobileProfileContact.avatar ? (
+                    <img
+                      src={mobileProfileContact.characterSettings?.avatar || mobileProfileContact.avatar}
+                      alt=""
+                      className="w-full h-full object-cover"
+                    />
+                  ) : (
+                    <span className="text-white font-bold text-2xl">{mobileProfileContact.name.charAt(0)}</span>
+                  )}
+                </div>
+                <h2 className="mt-3 text-xl font-semibold text-gray-900">{mobileProfileContact.name}</h2>
+                {mobileProfileContact.characterSettings?.username ? (
+                  <p className="text-sm text-gray-500 mt-0.5">{mobileProfileContact.characterSettings.username}</p>
+                ) : null}
+              </div>
+              <div className="mt-6 grid grid-cols-1 gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    const id = mobileProfileContact.id;
+                    setMobileProfileContact(null);
+                    onNavigate('chat', id);
+                  }}
+                  className="w-full py-3.5 rounded-2xl bg-zinc-900 text-white font-medium flex items-center justify-center gap-2"
+                >
+                  <MessageCircle className="w-5 h-5" />
+                  发起对话
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const id = mobileProfileContact.id;
+                    setMobileProfileContact(null);
+                    onNavigate('voice-favorites', id);
+                  }}
+                  className="w-full py-3.5 rounded-2xl border-2 border-amber-200 bg-amber-50 text-amber-950 font-medium flex items-center justify-center gap-2"
+                >
+                  <Mic className="w-5 h-5" />
+                  语音收藏
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
       </div>
     </div>
   );

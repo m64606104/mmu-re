@@ -15,6 +15,10 @@ export type FullMomoyuExportStats = {
   images: number;
   profiles: number;
   relationships: number;
+  /** 编辑学习调试台：各会话条目合计 */
+  editCalibrationEntries: number;
+  /** 已写入语言风格画像的私聊会话数 */
+  languageStyleProfileConversations: number;
 };
 
 export type FullMomoyuExportResult = {
@@ -51,6 +55,21 @@ function buildStats(allData: Record<string, unknown>): FullMomoyuExportStats {
     }
   });
 
+  const calibRaw = allData.momoyu_edit_calibration_v1;
+  let editCalibrationEntries = 0;
+  if (calibRaw && typeof calibRaw === 'object' && !Array.isArray(calibRaw)) {
+    for (const v of Object.values(calibRaw as Record<string, unknown>)) {
+      if (Array.isArray(v)) editCalibrationEntries += v.length;
+    }
+  }
+  const styleRaw = allData.momoyu_language_style_profile_v1;
+  let languageStyleProfileConversations = 0;
+  if (styleRaw && typeof styleRaw === 'object' && !Array.isArray(styleRaw)) {
+    languageStyleProfileConversations = Object.values(styleRaw as Record<string, { text?: string }>).filter(
+      (x) => x && String(x.text || '').trim().length > 0
+    ).length;
+  }
+
   return {
     conversations: conversations.length,
     messages: conversations.reduce(
@@ -67,6 +86,8 @@ function buildStats(allData: Record<string, unknown>): FullMomoyuExportStats {
     images: ['landscapeImage', 'bannerImage'].filter((k) => !!allData[k]).length,
     profiles: conversations.filter((c) => Boolean(c?.characterSettings)).length,
     relationships: relationships.length,
+    editCalibrationEntries,
+    languageStyleProfileConversations,
   };
 }
 
@@ -137,6 +158,8 @@ export function formatFullExportSuccessAlert(stats: FullMomoyuExportStats, sidec
     `• 记忆库: ${stats.memories} 条\n` +
     `• 关系网络: ${stats.relationships} 条\n` +
     `• 背景图片: ${stats.images} 张\n` +
+    `• 编辑学习记录: ${stats.editCalibrationEntries} 条（IndexedDB）\n` +
+    `• 语言风格画像: ${stats.languageStyleProfileConversations} 个角色有快照\n` +
     `• 其他设置和数据\n` +
     (sidecarSummaryLine ? `${sidecarSummaryLine}\n` : '') +
     `\n💾 文件已保存到下载文件夹\n` +

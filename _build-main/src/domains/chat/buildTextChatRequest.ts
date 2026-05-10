@@ -24,12 +24,6 @@ export interface BuildTextChatRequestOptions {
   setIsGenerating?: (v: boolean) => void;
   handleAINoReply?: (conversationId: string) => Promise<void> | void;
 
-  // Subchat context injection
-  getSubChatsFromStorage: () => any[];
-  generateSubChatSummary: (subChat: any) => Promise<unknown>;
-  detectSubChatReferences: (content: string, subChats: any[]) => any[];
-  generateContextForMainChat: (relevantSubChats: any[]) => string;
-
   // Music context injection
   generateMusicContext: () => string;
 
@@ -62,10 +56,6 @@ export async function buildTextChatRequest(
     setShowTyping,
     setIsGenerating,
     handleAINoReply,
-    getSubChatsFromStorage,
-    generateSubChatSummary,
-    detectSubChatReferences,
-    generateContextForMainChat,
     generateMusicContext,
     logDebug,
   } = options;
@@ -167,33 +157,7 @@ export async function buildTextChatRequest(
     }
   }
 
-  // Subchat context injection based on last user message
-  const lastUserMessage = conversation.messages[conversation.messages.length - 1];
-  let subChatContext = '';
-  if (lastUserMessage && lastUserMessage.role === 'user') {
-    try {
-      const subChats = getSubChatsFromStorage();
-      await Promise.all(
-        subChats.map(async (subChat: any) => {
-          if (subChat.conversationId === conversation.id) {
-            await generateSubChatSummary(subChat);
-          }
-        })
-      );
-      const relevantSubChats = detectSubChatReferences(
-        lastUserMessage.content,
-        subChats.filter((sc: any) => sc.conversationId === conversation.id)
-      );
-      if (relevantSubChats.length > 0) {
-        subChatContext = generateContextForMainChat(relevantSubChats);
-      }
-    } catch {
-      // ignore (keep legacy behavior of swallowing)
-    }
-  }
-
-  const subContextPrompt = contextPrompt + (subChatContext ? `\n\n${subChatContext}` : '');
-  let finalContextPrompt = subContextPrompt + generateMusicContext();
+  let finalContextPrompt = contextPrompt + generateMusicContext();
 
   if (conversation.isBlocked) {
     finalContextPrompt += `\n\n【系统提示】

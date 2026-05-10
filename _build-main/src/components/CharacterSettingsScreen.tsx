@@ -63,7 +63,7 @@ export default function CharacterSettingsScreen({
   const [imageCount, setImageCount] = useState(1);
   const [showMigration, setShowMigration] = useState(false);
   const [includeMessages, setIncludeMessages] = useState(false);
-  const [includeSubChats, setIncludeSubChats] = useState(false);
+  const [includePrivateSessions, setIncludePrivateSessions] = useState(false);
   const [showWorldbookMount, setShowWorldbookMount] = useState(false);
   const [worldbookNames, setWorldbookNames] = useState<{[id: string]: string}>({});
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -613,9 +613,14 @@ export default function CharacterSettingsScreen({
         
         // 消息记录（可选）
         messages: includeMessages ? conversation.messages : [],
-        
-        // 子聊天记录（可选）
-        subChats: includeSubChats ? (conversation.subChats || []) : [],
+
+        // 私聊多会话线程（可选，仅私聊）
+        ...(includePrivateSessions && conversation.type === 'private'
+          ? {
+              privateSessions: conversation.privateSessions || [],
+              activePrivateSessionId: conversation.activePrivateSessionId,
+            }
+          : {}),
         
         // 统计信息
         stats: stats,
@@ -645,7 +650,12 @@ export default function CharacterSettingsScreen({
         `• 关系网络: ${stats.relationshipsCount} 个\n` +
         `• AI状态信息: ${stats.hasAIStatus ? '有' : '无'}\n` +
         `• 财务数据: ${stats.hasFinanceData ? '有' : '无'}\n` +
-        `• 消息记录: ${includeMessages ? stats.messagesCount + ' 条' : '未包含'}\n\n` +
+        `• 消息记录: ${includeMessages ? stats.messagesCount + ' 条' : '未包含'}\n` +
+        `• 会话线程: ${
+          includePrivateSessions && conversation.type === 'private'
+            ? `${conversation.privateSessions?.length ?? 0} 个`
+            : '未包含'
+        }\n\n` +
         `📱 可以通过"扫一扫"功能导入到其他设备`;
       
       alert(message);
@@ -2198,25 +2208,30 @@ export default function CharacterSettingsScreen({
               </p>
             </div>
             
-            {/* 子聊天选项 */}
+            {/* 私聊多会话线程（与消息导出配合） */}
             <div className="mb-6">
               <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg mb-3">
-                <span className="text-sm text-gray-700">包含子聊天记录</span>
+                <span className="text-sm text-gray-700">包含会话线程（私聊）</span>
                 <button
-                  onClick={() => setIncludeSubChats(!includeSubChats)}
+                  type="button"
+                  onClick={() => setIncludePrivateSessions(!includePrivateSessions)}
                   className={`relative w-12 h-6 rounded-full transition-colors ${
-                    includeSubChats ? 'bg-purple-500' : 'bg-gray-300'
+                    includePrivateSessions ? 'bg-purple-500' : 'bg-gray-300'
                   }`}
                 >
                   <div
                     className={`absolute top-1 left-1 w-4 h-4 bg-white rounded-full transition-transform ${
-                      includeSubChats ? 'translate-x-6' : ''
+                      includePrivateSessions ? 'translate-x-6' : ''
                     }`}
                   />
                 </button>
               </div>
               <p className="text-xs text-gray-500">
-                {includeSubChats ? `✅ 将导出 ${(conversation.subChats || []).length} 个子聊天的完整记录` : '💡 不包含子聊天记录'}
+                {conversation.type !== 'private'
+                  ? '💡 仅私聊角色有此数据'
+                  : includePrivateSessions
+                    ? `✅ 将导出 ${conversation.privateSessions?.length ?? 0} 个会话桶（含各会话消息）`
+                    : '💡 不包含按话题拆开的会话列表'}
               </p>
             </div>
 

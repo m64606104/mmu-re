@@ -17,12 +17,76 @@ export interface PrivateAiImageGenerationConfig {
   size?: string;
 }
 
+/** MiniMax 文本转语音（HTTP T2A v2）；需在平台创建 API Key 与 Group ID */
+export type MinimaxTtsRegionPreset = 'international' | 'china';
+
+export interface MinimaxTtsApiConfig {
+  /** 保存时随 Key+Group 自动为 true；聊天与试听均以凭证为准，应用内不再用此项做门闩 */
+  enabled: boolean;
+  /** 留空则按 regionPreset 自动使用官方 API 根；仅反向代理或特殊网关时填写 */
+  baseUrl?: string;
+  apiKey?: string;
+  groupId?: string;
+  regionPreset?: MinimaxTtsRegionPreset;
+  /** 合成模型，如 speech-2.8-hd */
+  model?: string;
+}
+
+/** 与 MiniMax T2A 请求体 `voice_modify` 一致（调试台「声音效果器」滑块） */
+export interface CharacterTtsVoiceModify {
+  pitch?: number;
+  intensity?: number;
+  timbre?: number;
+  /** 如 spacious_echo；留空则不传 */
+  soundEffects?: string;
+}
+
+/** 角色级 TTS 偏好（依赖设置里已保存的 MiniMax Key + Group） */
+export interface CharacterTtsSettings {
+  /** 为 true 时隐藏助手语音消息上的合成播放入口 */
+  disabled?: boolean;
+  voiceId?: string;
+  speed?: number;
+  vol?: number;
+  pitch?: number;
+  /** 对应 MiniMax language_boost，如 auto、Chinese、English */
+  languageBoost?: string;
+  /** 调试台 JSON 里的 voice_modify；与 voice_setting.pitch 不同 */
+  voiceModify?: CharacterTtsVoiceModify;
+}
+
+/**
+ * 与主聊天可分离的 OpenAI 兼容 chat/completions（生活模拟、记忆引擎等）。
+ * 勾选 enabled 后：baseUrl / apiKey / modelName 每项可单独留空，留空则该项与主聊天 apiConfig 相同；仅非空项覆盖主配置。
+ * 未勾选 enabled 时整条请求仍走主 apiConfig。
+ * temperature：独立记忆总结勾选且为有效数字时用于记忆 JSON（askJson）；否则记忆侧固定 0.3。
+ * 独立生活模拟勾选且为有效数字时用于生活模拟请求；否则生活模拟仍用随机模式默认温（见 lifeEngine）。
+ */
+export interface BackgroundChatCompletionsOverride {
+  enabled?: boolean;
+  baseUrl?: string;
+  apiKey?: string;
+  modelName?: string;
+  temperature?: number;
+}
+
+export interface BackgroundChatApisConfig {
+  /** AI 生活模拟等「状态/日程」类后台 JSON */
+  statusUpdate?: BackgroundChatCompletionsOverride;
+  /** memorySystem 内记忆写入/总结；群记忆总结在去群级模型名前套此线路 */
+  memorySummary?: BackgroundChatCompletionsOverride;
+}
+
 export interface ApiConfig {
   baseUrl: string;
   apiKey: string;
   modelName: string;
   /** 私聊真实配图（OpenAI 兼容 /v1/images/generations） */
   privateAiImageGeneration?: PrivateAiImageGenerationConfig;
+  /** MiniMax 语音合成（助手语音条 TTS） */
+  minimaxTts?: MinimaxTtsApiConfig;
+  /** 可选：后台 completion 与主聊天线路/模型分离（省配额或避开网关限制） */
+  backgroundChatApis?: BackgroundChatApisConfig;
   // 语音转文字配置
   speechToText?: {
     enabled: boolean; // 是否启用语音转文字
@@ -62,6 +126,8 @@ export interface Message {
     role: 'user' | 'assistant';
   }; // 引用的消息
   edited?: boolean; // 是否已编辑
+  /** 本次保存编辑前的正文快照；发往模型时可与当前 content 对照，便于对齐文风与称谓 */
+  editBaselineContent?: string;
   // 💰 红包/转账支持
   moneyTransfer?: MoneyTransfer;
   // 📄 文档支持
@@ -272,10 +338,11 @@ export interface CharacterSettings {
   momentsMemoryConfig?: {
     enabled: boolean; // 是否记录朋友圈内容到记忆（默认true）
   };
-  // 📝 自定义上下文配置
+  // 📝 自定义上下文配置（私聊主会话：pendingReplyService 按此截取发给模型的历史）
   contextConfig?: {
-    enabled: boolean; // 是否启用自定义上下文数量（默认false）
-    messageCount: number; // 上下文消息数量（1-100）
+    /** false/缺省：完整聊天记录；true：仅最近 messageCount 条 */
+    enabled: boolean;
+    messageCount: number; // 1-100，仅 enabled 时生效
   };
   // 📚 资料库配置
   knowledgeBase?: KnowledgeBaseItem[];
@@ -318,6 +385,8 @@ export interface CharacterSettings {
   penPalSourceLetterId?: string; // 如果是从信箱笔友添加的，记录来源信件ID
   /** 单独配置对话模型（非空则替代全局「模型名称」；附图也走该模型） */
   chatModelOverride?: string;
+  /** 助手语音条 TTS 音色与参数（密钥在设置 → API） */
+  tts?: CharacterTtsSettings;
 }
 
 export interface AIIdentityUpdateDraft {
@@ -360,27 +429,13 @@ export interface AIStatusInfo {
   lastUpdateTime: number; // 最后更新时间
 }
 
-// 💬 子聊天类型定义
-export interface SubChat {
-  id: string; // 子聊天唯一ID
-  name: string; // 用户命名的子聊天名称
-  messages: Message[]; // 独立的消息列表
-  createdAt: number; // 创建时间
-  lastMessageTime: number; // 最后消息时间
-  unreadCount: number; // 未读消息数
-  isActive: boolean; // 是否激活/打开
-  initiator: 'user' | 'ai'; // 发起方（用户或AI）
-  purpose?: string; // AI发起时的目的说明（如"想私下聊聊"）
-  status: 'pending' | 'active' | 'closed'; // 待接受、进行中、已关闭
-  conversationId: string; // 所属主对话ID
-}
-
-// 子聊天请求类型（AI发起时）
-export interface SubChatRequest {
-  id: string; // 请求ID
-  purpose: string; // 发起目的
-  suggestedName: string; // AI建议的名称
-  timestamp: number; // 发起时间
+/** 私聊多会话线程（共享 conversationId / 角色 / 记忆，仅隔离消息列表） */
+export interface PrivateChatSession {
+  id: string;
+  title: string;
+  messages: Message[];
+  createdAt: number;
+  updatedAt: number;
 }
 
 // 📞 通话记录类型
@@ -406,9 +461,16 @@ export interface Conversation {
   isMuted?: boolean; // 是否开启免打扰（默认false）
   enabledFeatures?: string[];
   groupRemark?: string; // 群备注名（仅群聊）
+  /** 群聊窗口背景图（data URL 或外链）；私聊请用 characterSettings.chatBackground */
+  chatBackground?: string;
   members?: string[]; // 群成员ID数组（仅群聊）
   aiStatus?: AIStatusInfo; // AI状态信息（仅私聊AI角色）
-  subChats?: SubChat[]; // 子聊天列表
+  /**
+   * 私聊多会话线程（元宝式）：共享同一角色与记忆，仅消息历史分桶。
+   * 根级 `messages` 与 `activePrivateSessionId` 指向的会话消息保持一致（由更新入口维护）。
+   */
+  privateSessions?: PrivateChatSession[];
+  activePrivateSessionId?: string;
   callHistory?: CallLog[]; // 通话记录历史
   /** @deprecated 已废弃；群聊统一为「类人群聊」单模式，字段仅兼容旧数据 */
   groupChatMode?: 'sequential' | 'free';
@@ -645,6 +707,12 @@ export interface MemoryBank {
   lastDailySummaryDay?: string; // 上次日总结日期（UTC+8）
   lastGroupSummaryCount?: number; // 上次群聊总结时的消息数量
   totalGroupMessagesSinceLastSummary?: number; // 距离上次群聊总结的消息数量
+  /** 阶段总结（50/100 条）连续解析失败后，在此时间戳之前不再请求 API，避免刷屏重试 */
+  memoryEngineStageRetryNotBefore?: number;
+  memoryEngineStageFailStreak?: number;
+  /** 100 条复盘连续失败后的退避（与阶段总结独立） */
+  memoryEngineHundredRetryNotBefore?: number;
+  memoryEngineHundredFailStreak?: number;
   settings: {
     autoSummaryInterval: number; // 自动总结间隔（消息数量）
     maxMemories: number; // 最大记忆条目数
@@ -653,7 +721,32 @@ export interface MemoryBank {
   };
 }
 
-export type Screen = 'home' | 'settings' | 'social' | 'chat' | 'character-settings' | 'new-conversation' | 'profile' | 'moments' | 'contacts' | 'add-friend' | 'create-group' | 'theme' | 'guide' | 'relationships' | 'announcement' | 'wallet' | 'shopping' | 'user-system' | 'order-history' | 'database' | 'letterbox' | 'letter-writing' | 'pen-pals' | 'archived-letters' | 'achievements' | 'favorite-letters' | 'stamp-collection' | 'letter-notifications' | 'letter-home' | 'letter-timeline' | 'letter-cards' | 'bottle-fishing' | 'recycle-bin' | 'favorite-replies' | 'unreplied' | 'kindergarten' | 'worldbook' | 'easy-chat' | 'sticker-management' | 'huaduoduo' | 'huaduoduo-gogo' | 'focus-habit';
+/**
+ * 编辑学习 / 语言风格画像：IndexedDB 内按 **conversationId（角色/私聊根会话）** 分桶，
+ * 与角色设置、记忆库等同理——跟随角色；角色迁移包带出；仅删除整个私聊角色时清理；
+ * 删多话题子会话、清空聊天记录等不改变 conversationId，不清理此处。
+ */
+/** 聊天消息手动编辑 → 独立「编辑学习 / 调试台」记录（不进通用记忆库） */
+export interface EditCalibrationEntry {
+  id: string;
+  messageId: string;
+  role: 'user' | 'assistant';
+  revisedContent: string;
+  baselineContent: string;
+  createdAt: number;
+  aiReflection?: string;
+  aiReflectionStatus: 'pending' | 'ok' | 'error';
+  aiReflectionError?: string;
+}
+
+/** 私聊：由编辑校对反思合并而成的增长型「用户语言风格画像」（仅存 IndexedDB，不进记忆库条目） */
+export interface LanguageStyleProfileDoc {
+  text: string;
+  version: number;
+  updatedAt: number;
+}
+
+export type Screen = 'home' | 'settings' | 'social' | 'chat' | 'character-settings' | 'edit-calibration-studio' | 'new-conversation' | 'profile' | 'moments' | 'contacts' | 'voice-favorites' | 'add-friend' | 'create-group' | 'theme' | 'guide' | 'relationships' | 'announcement' | 'wallet' | 'shopping' | 'user-system' | 'order-history' | 'database' | 'letterbox' | 'letter-writing' | 'pen-pals' | 'archived-letters' | 'achievements' | 'favorite-letters' | 'stamp-collection' | 'letter-notifications' | 'letter-home' | 'letter-timeline' | 'letter-cards' | 'bottle-fishing' | 'recycle-bin' | 'favorite-replies' | 'unreplied' | 'kindergarten' | 'worldbook' | 'easy-chat' | 'sticker-management' | 'huaduoduo' | 'huaduoduo-gogo' | 'focus-habit';
 
 // 购物类型
 export type ShopType = 'food' | 'movie' | 'shopping';

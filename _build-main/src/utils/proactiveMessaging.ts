@@ -10,6 +10,7 @@ import { materializeAssistantOutboundMessages } from '../domains/chat/materializ
 import { MEDIA_DECISION_GUIDANCE } from './mediaDecisionPrompt';
 import { getCachedData, load, save, setCachedData, smartLoad } from './storage';
 import { buildApiUrl } from './apiHelper';
+import { loadPrivateLanguageStyleProfilePromptBlock } from './languageStyleProfileStorage';
 
 const STORAGE_KEY = 'proactive_messaging_state';
 const USER_RECENT_ACTIVE_MS = 15 * 60 * 1000; // 用户15分钟内活跃则跳过
@@ -528,8 +529,15 @@ export const sendProactiveMessage = async (
     const lifeState = await loadLifeState(conversation.id);
     const relationStage = inferRelationStage(conversation);
     (conversation as any).__proactiveLifeState = lifeState;
-    
-    const decisionPrompt = buildProactiveDecisionPrompt(conversation);
+
+    let languageStyleBlock = '';
+    try {
+      languageStyleBlock = await loadPrivateLanguageStyleProfilePromptBlock(conversation);
+    } catch {
+      /* ignore */
+    }
+
+    const decisionPrompt = buildProactiveDecisionPrompt(conversation) + languageStyleBlock;
     
     // 第1段：是否发送判定（短输出，避免被截断）
     const apiUrl = buildApiUrl(apiConfig);
@@ -566,7 +574,7 @@ export const sendProactiveMessage = async (
 
     // 第2段：生成完整正文（对齐正常回复token量级）
     const starter = [decision.starter, decision.toneHint ? `语气:${decision.toneHint}` : ''].filter(Boolean).join('；');
-    const prompt = buildProactiveMessagePrompt(conversation, starter);
+    const prompt = buildProactiveMessagePrompt(conversation, starter) + languageStyleBlock;
     const baseMessages = [{ role: 'user', content: prompt }];
     const response = await fetch(apiUrl, {
       method: 'POST',

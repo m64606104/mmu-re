@@ -17,8 +17,10 @@ import ChatScreen from '../components/ChatScreen';
 import ProfileScreen from '../components/ProfileScreen';
 import MomentsPlaceholderScreen from '../components/MomentsPlaceholderScreen';
 import CharacterSettingsScreenV2 from '../components/CharacterSettingsScreenV2';
+import EditCalibrationStudioScreen from '../components/EditCalibrationStudioScreen';
 import NewConversationScreen from '../components/NewConversationScreen';
 import ContactsScreen from '../components/ContactsScreen';
+import VoiceFavoritesScreen from '../components/VoiceFavoritesScreen';
 import AddFriendScreen from '../components/AddFriendScreen';
 import CreateGroupScreen from '../components/CreateGroupScreen';
 import ThemeScreen from '../components/ThemeScreen';
@@ -234,7 +236,26 @@ export function renderScreen(params: RenderScreenParams) {
           onDeleteConversation={deleteConversation}
           onImportCharacter={onImportCharacter}
           onBack={goBack}
+          onOpenPrivateChatSessions={() => {
+            try {
+              sessionStorage.setItem('momoyu:openPrivateSessions', '1');
+            } catch {
+              /* ignore */
+            }
+            navigateTo('chat');
+          }}
+          onOpenEditCalibrationStudio={
+            currentConversation.type === 'private'
+              ? () => navigateTo('edit-calibration-studio')
+              : undefined
+          }
         />
+      ) : (
+        renderSocialFallback()
+      );
+    case 'edit-calibration-studio':
+      return currentConversation?.type === 'private' ? (
+        <EditCalibrationStudioScreen conversation={currentConversation} onBack={goBack} />
       ) : (
         renderSocialFallback()
       );
@@ -271,6 +292,26 @@ export function renderScreen(params: RenderScreenParams) {
           onNavigate={navigateTo}
           onBack={goBack}
           onUpdateConversation={updateConversation}
+        />
+      );
+    case 'voice-favorites':
+      if (!currentConversationId) {
+        return (
+          <ContactsScreen
+            conversations={conversations}
+            onNavigate={navigateTo}
+            onBack={goBack}
+            onUpdateConversation={updateConversation}
+          />
+        );
+      }
+      return (
+        <VoiceFavoritesScreen
+          conversationId={currentConversationId}
+          conversations={conversations}
+          apiConfig={apiConfig}
+          onBack={goBack}
+          onOpenChat={() => navigateTo('chat', currentConversationId)}
         />
       );
     case 'theme':

@@ -1,7 +1,7 @@
 // IndexedDB 工具类 - 用于大容量数据存储
 
 const DB_NAME = 'WeChatSimulator';
-const DB_VERSION = 2; // 升级版本以支持用户专属表情包
+const DB_VERSION = 3; // 语音收藏（IndexedDB）
 
 // 存储对象名称
 export const STORES = {
@@ -9,6 +9,7 @@ export const STORES = {
   COMMON_STICKERS: 'commonStickers', // 通用表情包
   CHARACTER_STICKERS: 'characterStickers', // 角色专属表情包
   USER_STICKERS: 'userStickers', // 用户专属表情包
+  VOICE_FAVORITES: 'voiceFavorites',
 };
 
 /**
@@ -62,6 +63,13 @@ export const initDB = (): Promise<IDBDatabase> => {
         userStore.createIndex('description', 'description', { unique: false });
         userStore.createIndex('createdAt', 'createdAt', { unique: false });
         console.log('✅ 创建用户表情包存储');
+      }
+
+      if (!db.objectStoreNames.contains(STORES.VOICE_FAVORITES)) {
+        const vf = db.createObjectStore(STORES.VOICE_FAVORITES, { keyPath: 'id' });
+        vf.createIndex('conversationId', 'conversationId', { unique: false });
+        vf.createIndex('favoritedAt', 'favoritedAt', { unique: false });
+        console.log('✅ 创建语音收藏存储');
       }
     };
   });

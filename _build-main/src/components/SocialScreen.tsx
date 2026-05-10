@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { ChevronLeft, ChevronRight, Users, Search, MessageCircle, Camera, User, BellOff, Plus, UserPlus, Scan, X } from 'lucide-react';
 import { ApiConfig, Conversation, Screen, UserProfile } from '../types';
 import { normalizeMessagePreviewText } from '../utils/messageFormatter';
+import { wipePrivateConversationChatHistory } from '../utils/privateChatSessions';
 import StatusSelector from './StatusSelector';
 import ChatScreen from './ChatScreen';
 import { useMobileBottomDock } from '../hooks/useMobileBottomDock';
@@ -135,7 +136,12 @@ export default function SocialScreen({
       }
     } else if (action === 'delete') {
       if (confirm(`确定要删除与 ${conversation.name} 的对话吗？聊天记录将被清空。`)) {
-        onUpdateConversation(conversation.id, { messages: [], isHidden: true });
+        onUpdateConversation(
+          conversation.id,
+          conversation.type === 'private'
+            ? wipePrivateConversationChatHistory(conversation)
+            : { messages: [], isHidden: true },
+        );
       }
     }
     setSwipedId(null);

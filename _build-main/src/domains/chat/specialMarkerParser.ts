@@ -124,19 +124,5 @@ export function parseSpecialMarkers(options: ParseSpecialMarkersOptions): ParseS
     });
   }
 
-  const subChatMatch = content.match(/\[发起子聊天:([^:]+):([^\]]+)\]/);
-  if (subChatMatch) {
-    const purpose = subChatMatch[1].trim();
-    const suggestedName = subChatMatch[2].trim();
-    content = content.replace(subChatMatch[0], '').trim();
-    logs.push(`💬 AI发起子聊天: ${suggestedName}, 目的: ${purpose}`);
-    extraMessages.push({
-      id: `${baseId}_subchat_request`,
-      role: 'system',
-      content: `__SUBCHAT_REQUEST__${purpose}__${suggestedName}`,
-      timestamp: Date.now() + 100 + (currentExtraCount + extraMessages.length) * 10,
-    });
-  }
-
   return { content, replyToInfo, extraMessages, logs, blockedByCooldown };
 }

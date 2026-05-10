@@ -46,7 +46,6 @@ import { initializeProactiveMessagingStorage } from './utils/proactiveMessaging'
 import { initializeStampStorage } from './utils/stampSystem';
 import { initializeLetterMemoryStorage } from './utils/letterMemorySystem';
 import { initializeOfficialAccountsStorage } from './utils/officialAccounts';
-import { analyzeAvatarWithVisionModel, shouldReanalyzeAvatar } from './utils/avatarVision';
 import {
   trimConversationMessagesForCache,
 } from './services/conversationCache';
@@ -54,8 +53,20 @@ import { Letter } from './types/letter';
 import { generateInitialOnlineHandle } from './utils/bootstrapOnlineHandle';
 import { stashSettingsOpenIntent } from './utils/settingsNavigationIntent';
 import { buildPresetConversation, maybeApplyConversationPresetUiMigration } from './utils/conversationPresetNormalize';
+import {
+  expandPrivateConversationMessageUpdate,
+  migratePrivateChatSessionsModel,
+  ensurePrivateSessions,
+  getPrivateMessagesMergedChronological,
+  countPrivateMessagesAcrossSessions,
+} from './utils/privateChatSessions';
 import { GlobalQuickBackupFab } from './components/GlobalQuickBackupFab';
 import { importCharacterStickerBundle } from './utils/characterMigrationStickers';
+import {
+  clearEditCalibrationForConversation,
+  importEditCalibrationBucketForCharacterMigration,
+} from './utils/editCalibrationStorage';
+import { importLanguageStyleProfileForCharacterMigration } from './utils/languageStyleProfileStorage';
 import { Toaster } from 'sonner';
 import {
   formatChatMessagePreviewForNotification,
@@ -128,12 +139,13 @@ function isScreenValue(value: string): value is Screen {
 
 const SCREEN_VALUES = new Set<Screen>([
   'home', 'settings', 'social', 'chat', 'character-settings', 'new-conversation',
-  'profile', 'moments', 'contacts', 'add-friend', 'create-group', 'theme', 'guide',
+  'profile', 'moments', 'contacts', 'voice-favorites', 'add-friend', 'create-group', 'theme', 'guide',
   'relationships', 'announcement', 'wallet', 'shopping', 'user-system', 'order-history',
   'database', 'letterbox', 'letter-writing', 'pen-pals', 'archived-letters', 'achievements',
   'favorite-letters', 'stamp-collection', 'letter-notifications', 'letter-home', 'letter-timeline',
   'letter-cards', 'bottle-fishing', 'recycle-bin', 'favorite-replies', 'unreplied', 'huaduoduo', 'huaduoduo-gogo',
   'kindergarten', 'worldbook', 'easy-chat', 'sticker-management', 'focus-habit',
+  'edit-calibration-studio',
 ]);
 
 function parseRouteHash(hash: string): { app?: AppPage; screen?: Screen; conversationId?: string } | null {
@@ -156,7 +168,10 @@ function parseRouteHash(hash: string): { app?: AppPage; screen?: Screen; convers
 
 function buildMessageCountSnapshot(conversations: Conversation[]): Record<string, number> {
   return conversations.reduce<Record<string, number>>((acc, conv) => {
-    acc[conv.id] = conv.messages?.length ?? 0;
+    acc[conv.id] =
+      conv.type === 'private'
+        ? countPrivateMessagesAcrossSessions(conv)
+        : conv.messages?.length ?? 0;
     return acc;
   }, {});
 }
@@ -179,10 +194,6 @@ function App() {
   const routeSyncRef = useRef(false);
   const navigationStackRef = useRef<Array<{ screen: Screen; conversationId: string | null }>>([]);
   const cloudSyncMessageCountRef = useRef<Record<string, number>>({});
-  const avatarVisionInFlightRef = useRef<Set<string>>(new Set());
-  /** 解析失败后的退避截止时间（按会话）；成功或 API 指纹变化时清除 */
-  const avatarVisionFailUntilRef = useRef<Map<string, number>>(new Map());
-  const avatarVisionApiFingerprintRef = useRef<string>('');
   /** 必须为 true 后才允许防抖写入 conversations：否则首屏占位会话会在 hydrate 完成前覆盖 IndexedDB 真数据 */
   const conversationsHydrationCompleteRef = useRef(false);
   const [currentScreen, setCurrentScreen] = useState<Screen>('home');
@@ -296,7 +307,6 @@ function App() {
           if (s.includes('groupchatservice')) return 'groupChatService';
           if (s.includes('rungroupmemorysummaryifdue') || s.includes('groupmemorysummary'))
             return 'groupMemorySummary';
-          if (s.includes('avatarvision')) return 'avatarVision';
           if (s.includes('avatchangedecision') || s.includes('avatarchangedecision')) return 'avatarChangeDecision';
           if (s.includes('lifeengine')) return 'lifeEngine';
           if (s.includes('memorysystem')) return 'memorySystem';
@@ -423,7 +433,9 @@ function App() {
                 messages: await supabaseLoadMessages(conv.id, 300),
               }))
             );
-            const normalizedHydrated = maybeApplyConversationPresetUiMigration(hydrated);
+            const normalizedHydrated = migratePrivateChatSessionsModel(
+              maybeApplyConversationPresetUiMigration(hydrated)
+            );
             loadedConversations = normalizedHydrated;
             setConversations(normalizedHydrated);
             cloudSyncMessageCountRef.current = buildMessageCountSnapshot(normalizedHydrated);
@@ -438,23 +450,29 @@ function App() {
       if (loadedConversations.length === 0) {
         const saved = await load('conversations');
         if (saved) {
-          loadedConversations = maybeApplyConversationPresetUiMigration(saved);
+          loadedConversations = migratePrivateChatSessionsModel(
+            maybeApplyConversationPresetUiMigration(saved)
+          );
           setConversations(loadedConversations);
           if (cloudEnabled) {
             // 首次迁移：将本地历史同步到云端（幂等）
             for (const conv of loadedConversations) {
               try {
                 await supabaseUpsertConversation(conv);
-                await supabaseAppendMessages(conv.id, conv.messages || []);
+                const merged =
+                  conv.type === 'private'
+                    ? getPrivateMessagesMergedChronological(conv)
+                    : conv.messages || [];
+                await supabaseAppendMessages(conv.id, merged);
                 await supabaseSyncDerivedMemory(
                   conv.id,
                   conv.name,
                   conv.characterSettings as CharacterSettings | undefined,
-                  conv.messages || [],
-                  conv.messages || [],
+                  merged,
+                  merged,
                   apiConfig
                 );
-                cloudSyncMessageCountRef.current[conv.id] = conv.messages?.length ?? 0;
+                cloudSyncMessageCountRef.current[conv.id] = merged.length;
                 markCloudSyncSuccess();
               } catch (e) {
                 console.warn(`⚠️ 会话 ${conv.id} 迁移到Supabase失败:`, e);
@@ -468,7 +486,9 @@ function App() {
             buildPresetConversation('worker'),
             buildPresetConversation('oo1'),
           ];
-          const normalizedPresetContacts = maybeApplyConversationPresetUiMigration(presetContacts);
+          const normalizedPresetContacts = migratePrivateChatSessionsModel(
+            maybeApplyConversationPresetUiMigration(presetContacts)
+          );
           loadedConversations = normalizedPresetContacts;
           setConversations(normalizedPresetContacts);
           cloudSyncMessageCountRef.current = buildMessageCountSnapshot(normalizedPresetContacts);
@@ -596,16 +616,20 @@ function App() {
           for (const conv of conversations) {
             try {
               await supabaseUpsertConversation(conv);
-              const currentCount = conv.messages?.length ?? 0;
+              const mergedStream =
+                conv.type === 'private'
+                  ? getPrivateMessagesMergedChronological(conv)
+                  : conv.messages || [];
+              const currentCount = mergedStream.length;
               const lastSyncedCount = cloudSyncMessageCountRef.current[conv.id] ?? 0;
               if (currentCount > lastSyncedCount) {
-                const deltaMessages = (conv.messages || []).slice(lastSyncedCount);
+                const deltaMessages = mergedStream.slice(lastSyncedCount);
                 await supabaseAppendMessages(conv.id, deltaMessages);
                 await supabaseSyncDerivedMemory(
                   conv.id,
                   conv.name,
                   conv.characterSettings as CharacterSettings | undefined,
-                  conv.messages || [],
+                  mergedStream,
                   deltaMessages,
                   apiConfig
                 );
@@ -613,13 +637,13 @@ function App() {
                 markCloudSyncSuccess();
               } else if (currentCount < lastSyncedCount) {
                 // 消息被删/重置时，退回全量幂等 upsert，避免云端游标失真
-                await supabaseAppendMessages(conv.id, conv.messages || []);
+                await supabaseAppendMessages(conv.id, mergedStream);
                 await supabaseSyncDerivedMemory(
                   conv.id,
                   conv.name,
                   conv.characterSettings as CharacterSettings | undefined,
-                  conv.messages || [],
-                  conv.messages || [],
+                  mergedStream,
+                  mergedStream,
                   apiConfig
                 );
                 cloudSyncMessageCountRef.current[conv.id] = currentCount;
@@ -681,60 +705,6 @@ function App() {
     
     return () => clearTimeout(timeoutId);
   }, [moments]);
-
-  // 🤖 头像视觉：仅在「缺解析或与当前头像 URL 不一致」时补跑；与主模型 + 主接口一致；失败退避 + 全局限流
-  useEffect(() => {
-    if (!apiConfig.baseUrl || !apiConfig.apiKey || !apiConfig.modelName) return;
-
-    const fp = [apiConfig.baseUrl, apiConfig.apiKey, apiConfig.modelName].join('\u0001');
-    if (fp !== avatarVisionApiFingerprintRef.current) {
-      avatarVisionApiFingerprintRef.current = fp;
-      avatarVisionFailUntilRef.current.clear();
-    }
-
-    const now = Date.now();
-
-    const candidates = conversations.filter((conv) => {
-      if (conv.type !== 'private') return false;
-      const avatarUrl = conv.characterSettings?.avatar || conv.avatar;
-      if (!avatarUrl) return false;
-      if (!shouldReanalyzeAvatar(avatarUrl, conv.characterSettings)) return false;
-      if (avatarVisionInFlightRef.current.has(conv.id)) return false;
-      const failUntil = avatarVisionFailUntilRef.current.get(conv.id) || 0;
-      if (failUntil > now) return false;
-      return true;
-    });
-    if (candidates.length === 0) return;
-
-    const conv = candidates[0];
-    avatarVisionInFlightRef.current.add(conv.id);
-    void (async () => {
-      try {
-        const avatarUrl = conv.characterSettings?.avatar || conv.avatar;
-        if (!avatarUrl) return;
-        const profile = await analyzeAvatarWithVisionModel(avatarUrl, apiConfig);
-        if (!profile) {
-          avatarVisionFailUntilRef.current.set(conv.id, Date.now() + 10 * 60 * 1000);
-          return;
-        }
-        avatarVisionFailUntilRef.current.delete(conv.id);
-        setConversations((prev) =>
-          prev.map((item) => {
-            if (item.id !== conv.id || !item.characterSettings) return item;
-            return {
-              ...item,
-              characterSettings: {
-                ...item.characterSettings,
-                avatarVisionProfile: profile,
-              },
-            };
-          })
-        );
-      } finally {
-        avatarVisionInFlightRef.current.delete(conv.id);
-      }
-    })();
-  }, [conversations, apiConfig]);
 
   // 处理页面切换
   const navigateTo = useCallback((screen: Screen, conversationId?: string, options?: { replace?: boolean }) => {
@@ -874,12 +844,20 @@ function App() {
             return conv;
           }
 
-          if (updates.messages === undefined) {
-            return { ...conv, ...updates };
+          const effectiveUpdates =
+            conv.type === 'private' &&
+            updates.messages !== undefined &&
+            updates.privateSessions === undefined
+              ? expandPrivateConversationMessageUpdate(conv, updates)
+              : updates;
+
+          if (effectiveUpdates.messages === undefined) {
+            const merged = { ...conv, ...effectiveUpdates };
+            return merged.type === 'private' ? ensurePrivateSessions(merged) : merged;
           }
 
           const prevMsgs = conv.messages || [];
-          const nextMsgs = updates.messages;
+          const nextMsgs = effectiveUpdates.messages;
           const prevIds = new Set(prevMsgs.map((m) => m.id));
           const added = nextMsgs.filter((m) => !prevIds.has(m.id));
 
@@ -928,13 +906,16 @@ function App() {
             });
           }
 
-          return {
+          const mergedConv = {
             ...conv,
-            ...updates,
+            ...effectiveUpdates,
             messages: nextMsgs,
             unreadCount: nextUnread,
-            lastMessageTime: updates.lastMessageTime ?? Date.now(),
+            lastMessageTime: effectiveUpdates.lastMessageTime ?? Date.now(),
           };
+          return mergedConv.type === 'private'
+            ? ensurePrivateSessions(mergedConv)
+            : mergedConv;
         });
       });
     },
@@ -957,8 +938,14 @@ function App() {
     getUserProfile: () => userProfileRef.current,
   });
 
-  // 删除对话
+  // 删除对话（从列表移除角色/群；非「仅清空聊天记录」——后者走 onUpdateConversation + wipePrivateConversationChatHistory）
   const deleteConversation = useCallback((id: string) => {
+    const conv = conversationsRef.current.find((c) => c.id === id);
+    if (conv?.type === 'private') {
+      void clearEditCalibrationForConversation(id).catch((err) => {
+        console.warn('[momoyu] 删除私聊角色后清理编辑学习/语言画像失败:', err);
+      });
+    }
     setConversations(prev => prev.filter(conv => conv.id !== id));
     if (isCloudSyncEnabled()) {
       void supabaseDeleteConversation(id).catch((error) => {
@@ -1116,7 +1103,26 @@ function App() {
           `✅ 表情包导入：主聊天库 ${stickerStats.wechatCount}、EasyChat ${stickerStats.easyChatCount}`
         );
       }
-      
+
+      let importedEditCalibrationCount = 0;
+      let importedLanguageStyleProfile = false;
+      if (newConversation.type === 'private' && data.editCalibrationStudio) {
+        const studio = data.editCalibrationStudio;
+        importedEditCalibrationCount = await importEditCalibrationBucketForCharacterMigration(
+          newConversationId,
+          studio.entries
+        );
+        importedLanguageStyleProfile = await importLanguageStyleProfileForCharacterMigration(
+          newConversationId,
+          studio.languageStyleProfile
+        );
+        if (importedEditCalibrationCount > 0 || importedLanguageStyleProfile) {
+          console.log(
+            `✅ 编辑学习 / 语言画像：条目 ${importedEditCalibrationCount}，画像 ${importedLanguageStyleProfile ? '已恢复' : '无'}`
+          );
+        }
+      }
+
       // 添加对话到列表
       setConversations(prev => [...prev, newConversation]);
       console.log('✅ 对话添加成功');
@@ -1139,6 +1145,8 @@ function App() {
         stickersWechatImported: stickerStats.wechatCount,
         stickersEasyImported: stickerStats.easyChatCount,
         stickersInFile: stickerWechat + stickerEasy,
+        editCalibrationEntries: importedEditCalibrationCount,
+        languageStyleProfileRestored: importedLanguageStyleProfile,
       };
       
       // 显示详细导入结果
@@ -1156,10 +1164,15 @@ function App() {
         (importStats.stickersInFile > 0
           ? `（包内共 ${stickerWechat + stickerEasy} 条）\n`
           : '\n') +
+        (newConversation.type === 'private'
+          ? `• 编辑学习 / 语言画像：${importStats.editCalibrationEntries} 条${
+              importStats.languageStyleProfileRestored ? '，语言画像已恢复' : ''
+            }\n`
+          : '') +
         `• AI状态：${importStats.hasAIStatus ? '已恢复' : '无'}\n` +
         `• 财务数据：${importStats.hasFinance ? '已恢复' : '无'}\n` +
         `• 消息记录：${importStats.messages} 条\n\n` +
-        `说明：v2.0 及更早包无独立表情段；全量站点备份请用设置中的「导出全部数据」。\n` +
+        `说明：v2.2+ 私聊包含编辑学习与语言画像；v2.0 及更早包无独立表情段；全量备份见设置「导出全部数据」。\n` +
         `🎉 数据已按当前包内容导入。`;
       
       alert(successMessage);

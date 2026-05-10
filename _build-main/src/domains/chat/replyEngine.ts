@@ -58,11 +58,21 @@ interface CommitUserMessageOptions {
   onSchedulePendingReply: (conversationId: string, delaySec: number) => void;
 }
 
+export type EditCommittedPayload = {
+  conversationId: string;
+  messageId: string;
+  role: 'user' | 'assistant';
+  baselineContent: string;
+  revisedContent: string;
+};
+
 interface CommitEditedMessageOptions {
   conversation: Conversation;
   messageBeingEdited: Message;
   currentInput: string;
   onUpdateConversation: (id: string, updates: Partial<Conversation>) => void;
+  /** 正文相对修订前有变化时调用（用于「编辑学习 / 调试台」，不进记忆库） */
+  onEditCommitted?: (payload: EditCommittedPayload) => void;
 }
 
 interface CreateCommitUserMessageHandlersOptions {
@@ -114,15 +124,39 @@ export function createCommitUserMessageHandlers(
 }
 
 export function commitEditedMessage(options: CommitEditedMessageOptions): void {
-  const { conversation, messageBeingEdited, currentInput, onUpdateConversation } = options;
+  const { conversation, messageBeingEdited, currentInput, onUpdateConversation, onEditCommitted } =
+    options;
   const editedContent = currentInput.trim();
+  const baselineRaw = messageBeingEdited.content ?? '';
+  const baselineTrim = baselineRaw.trim();
+  const baselineDiffers = baselineTrim.length > 0 && baselineTrim !== editedContent;
+  const calibrationDiffers = baselineTrim !== editedContent;
+
   const updatedMessages = conversation.messages.map(msg =>
     msg.id === messageBeingEdited.id
-      ? { ...msg, content: editedContent, edited: true }
+      ? {
+          ...msg,
+          content: editedContent,
+          edited: true,
+          ...(baselineDiffers ? { editBaselineContent: baselineRaw } : {}),
+        }
       : msg
   );
 
   onUpdateConversation(conversation.id, { messages: updatedMessages });
+
+  if (onEditCommitted && calibrationDiffers) {
+    const role = messageBeingEdited.role;
+    if (role === 'user' || role === 'assistant') {
+      onEditCommitted({
+        conversationId: conversation.id,
+        messageId: messageBeingEdited.id,
+        role,
+        baselineContent: baselineRaw,
+        revisedContent: editedContent,
+      });
+    }
+  }
 }
 
 // Commit user message and trigger all follow-up side effects.

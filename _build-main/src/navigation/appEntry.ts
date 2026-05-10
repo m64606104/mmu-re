@@ -32,8 +32,10 @@ const MAIL_SCREENS = new Set<Screen>([
 const CHAT_SCREENS = new Set<Screen>([
   'chat',
   'character-settings',
+  'edit-calibration-studio',
   'new-conversation',
   'contacts',
+  'voice-favorites',
   'add-friend',
   'create-group',
   'moments',

@@ -1,10 +1,9 @@
 import type { AIIdentityUpdateDraft, CharacterSettings } from '../types';
-import type { AvatarVisionProfile } from './avatarVision';
 
 export interface AIIdentityPlannerInput {
   currentNickname: string;
   currentAvatar?: string;
-  visionProfile?: AvatarVisionProfile;
+  visionProfile?: CharacterSettings['avatarVisionProfile'];
   characterSettings?: CharacterSettings;
 }
 

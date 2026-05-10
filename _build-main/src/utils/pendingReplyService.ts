@@ -29,6 +29,7 @@ import {
   resolveOpenAiCompatibleCompletionRouting,
   userMessageHasImagePayload,
 } from '../domains/vision';
+import { wrapModelPayloadForEditedMessage } from '../domains/chat/editedMessageModelHint';
 import { resolvePrivateChatApiConfig } from './chatApiConfig';
 import { resolveEffectivePersonalInfo } from './userIdentityCards';
 import {
@@ -47,6 +48,7 @@ import { buildLifeChatContextSnippet } from '../sim/chatContext';
 import { applyUserChatImpact } from '../sim/storage';
 import { retrieveKnowledgeChunks, retrieveTextChunks } from './knowledgeRetrieval';
 import { smartLoad } from './storage';
+import { loadPrivateLanguageStyleProfilePromptBlock } from './languageStyleProfileStorage';
 import { getErrorFromResponse } from './apiErrorHandler';
 
 function isTransientClientNetworkError(err: unknown): boolean {
@@ -469,6 +471,9 @@ function toModelMessageContent(m: Message): string {
   if (m.replyTo?.id) {
     content = `〈引用目标:${m.replyTo.id}〉\n${content}`;
   }
+  if (m.edited && (content || '').trim()) {
+    content = wrapModelPayloadForEditedMessage(m, content);
+  }
   return `〈消息ID:${m.id}〉\n${content}`;
 }
 
@@ -476,6 +481,17 @@ function toModelMessageContent(m: Message): string {
  * 将“短时间内连续发送的多条用户消息”打包成一条，减少 token 并更像真人连发。
  * 只影响发给 AI 的内容，不改变聊天记录的显示。
  */
+/** 私聊发给模型的消息窗口：与角色设置「自定义上下文数量」一致；关闭=整段历史，开启=最近 N 条（1～100） */
+function slicePrivateMessagesForModelContext(conversation: Conversation): Message[] {
+  const msgs = conversation.messages;
+  const cfg = conversation.characterSettings?.contextConfig;
+  if (cfg?.enabled) {
+    const n = Math.max(1, Math.min(100, Math.round(Number(cfg.messageCount) || 20)));
+    return msgs.slice(-n);
+  }
+  return msgs;
+}
+
 function packRecentUserMessagesForModel(contextMessages: Message[], bufferMs: number): Message[] {
   if (contextMessages.length <= 1) return contextMessages;
 
@@ -783,6 +799,25 @@ async function triggerReply(conversationId: string) {
       systemPrompt += buildMemoryAndIdentityContext(conversationId);
     }
 
+    // ✏️ 用户编辑历史气泡：显式要求模型以编辑后正文为准（避免仍叫旧简称、与已改记录「各说各话」）
+    if (conversation.messages.some((m) => m.edited)) {
+      systemPrompt += `\n\n【对话校对 / 用户编辑与文风】
+对话记录中有消息经用户手动编辑；部分条目含「修订前 / 修订后」对照（用户文风校准）。
+- 称呼、人名、关系与事实以**修订后**正文为准；若与记忆摘要、旧习惯简称冲突，**以修订后正文优先**。
+- 对照中的「修订前」仅供理解用户**不想要的语气或说法**，「修订后」体现其**偏好的文风与称谓**；后续回复应自然贴近修订后的习惯，勿机械复述说明。
+- 你本人发过且被用户改过的气泡，以改后文字为准。
+- 不得编造用户未写进正文的内容。`;
+    }
+
+    // 🪶 编辑校对合并的语言风格画像（IndexedDB，与记忆库独立；私聊始终尝试注入）
+    if (conversation.type === 'private') {
+      try {
+        systemPrompt += await loadPrivateLanguageStyleProfilePromptBlock(conversation);
+      } catch {
+        /* ignore */
+      }
+    }
+
     // 🌱 AI后台生活轨迹（工具型角色不使用）
     if (!toolPrivate) {
       try {
@@ -845,7 +880,10 @@ async function triggerReply(conversationId: string) {
     }
 
     const bufferMs = (conversation.messageBufferSeconds ?? 15) * 1000;
-    const contextMessages = packRecentUserMessagesForModel(conversation.messages.slice(-40), bufferMs);
+    const contextMessages = packRecentUserMessagesForModel(
+      slicePrivateMessagesForModelContext(conversation),
+      bufferMs,
+    );
     const maxTokens = requireDocumentJson ? 8000 : 2000;
     const messages = [
       { role: 'system', content: systemPrompt },

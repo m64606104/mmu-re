@@ -1,7 +1,14 @@
 import type { Message } from '../../types';
 
-/** 与 ChatScreen / SubChat 等宿主中的操作实现一一对应 */
-export type MessageActionId = 'quote' | 'forward' | 'edit' | 'multiSelect' | 'delete';
+/** 与 ChatScreen 等宿主中的操作实现一一对应 */
+export type MessageActionId =
+  | 'quote'
+  | 'favoriteVoiceCache'
+  | 'favoriteVoiceBookmark'
+  | 'forward'
+  | 'edit'
+  | 'multiSelect'
+  | 'delete';
 
 export type MessageActionItem = {
   id: MessageActionId;
@@ -25,6 +32,13 @@ export function buildMessageActionItems(
   if (!message || message.role === 'system') return [];
 
   const items: MessageActionItem[] = [{ id: 'quote', label: '引用' }];
+
+  if (message.mediaType === 'voice') {
+    items.push(
+      { id: 'favoriteVoiceCache', label: '缓存并收藏' },
+      { id: 'favoriteVoiceBookmark', label: '仅收藏（每次重合成）' },
+    );
+  }
 
   if (ctx.showForward) {
     items.push({ id: 'forward', label: '转发' });

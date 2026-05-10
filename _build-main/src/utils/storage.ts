@@ -38,6 +38,15 @@ const LOCAL_STORAGE_KEYS = [
   'api_endpoint_pair_history', // 主接口「URL+Key+模型」成套最近记录（一键切换）
 ];
 
+/**
+ * 仅允许存 IndexedDB 的键：迁移逻辑中**禁止**将其从 IDB 回迁到 localStorage，
+ * 以免编辑学习 / 语言画像等大块 JSON 被误当成「小配置」覆盖或截断。
+ */
+const INDEXEDDB_NEVER_PROMOTE_TO_LOCAL = new Set<string>([
+  'momoyu_edit_calibration_v1',
+  'momoyu_language_style_profile_v1',
+]);
+
 // 🔵 IndexedDB 专用键（所有大数据）
 const INDEXED_DB_KEYS = [
   'conversations',      // 对话列表
@@ -96,6 +105,8 @@ const INDEXED_DB_KEYS = [
   'easychat_conversations', // EasyChat 会话（含图片）
   'easychat_user',          // EasyChat 用户数据（含头像）
   'ai_life_sim_states',     // AI生活模拟状态（后台引擎）
+  'momoyu_edit_calibration_v1', // 消息编辑学习 / 调试台（按会话 id 分桶）
+  'momoyu_language_style_profile_v1', // 编辑校对合并的语言风格画像（按会话 id 分桶，IndexedDB）
 ];
 
 const GROWING_DATA_PREFIXES = [
@@ -117,10 +128,12 @@ const GROWING_DATA_PREFIXES = [
  * 判断数据应该存储在哪里
  */
 const shouldUseLocalStorage = (key: string): boolean => {
+  if (INDEXEDDB_NEVER_PROMOTE_TO_LOCAL.has(key)) return false;
   return LOCAL_STORAGE_KEYS.includes(key);
 };
 
 const shouldUseIndexedDB = (key: string): boolean => {
+  if (INDEXEDDB_NEVER_PROMOTE_TO_LOCAL.has(key)) return true;
   return INDEXED_DB_KEYS.includes(key) || 
          INDEXED_DB_KEYS.some(k => key.startsWith(k + '_')) ||
          GROWING_DATA_PREFIXES.some(prefix => key.startsWith(prefix));
@@ -593,7 +606,9 @@ export const migrateData = async (): Promise<{
   // 2) IndexedDB -> localStorage（防止小配置误入大存储）
   try {
     const indexedAll = await dumpIndexedDBData();
-    const indexedToLocal = Object.keys(indexedAll).filter((key) => shouldUseLocalStorage(key));
+    const indexedToLocal = Object.keys(indexedAll).filter(
+      (key) => shouldUseLocalStorage(key) && !INDEXEDDB_NEVER_PROMOTE_TO_LOCAL.has(key)
+    );
     console.log(`📋 发现 ${indexedToLocal.length} 项需要从 IndexedDB 回迁到 localStorage`);
 
     for (const key of indexedToLocal) {

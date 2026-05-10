@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type SVGProps } from 'react';
 import {
   BarChart3,
   Bell,
@@ -52,6 +52,35 @@ const wallpapers = {
   'gradient-5': 'bg-gradient-to-br from-slate-50 via-slate-100 to-zinc-100',
   dark: 'bg-gradient-to-br from-zinc-900 via-zinc-950 to-black',
 };
+
+/** 底栏「通讯录」：笔记本轮廓 + 联系人标记 */
+function HomeTabIconContacts(props: SVGProps<SVGSVGElement>) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden {...props}>
+      <path
+        d="M6 3h11a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z"
+        stroke="currentColor"
+        strokeWidth="1.85"
+        strokeLinejoin="round"
+      />
+      <path d="M8 8h8M8 12h5M8 16h6" stroke="currentColor" strokeWidth="1.85" strokeLinecap="round" />
+      <circle cx="17.25" cy="6.85" r="2.4" fill="currentColor" fillOpacity="0.2" />
+      <circle cx="17.25" cy="6.85" r="1.25" fill="currentColor" />
+    </svg>
+  );
+}
+
+/** 底栏「全部应用」：圆角四宫格 */
+function HomeTabIconApps(props: SVGProps<SVGSVGElement>) {
+  return (
+    <svg viewBox="0 0 24 24" fill="currentColor" xmlns="http://www.w3.org/2000/svg" aria-hidden {...props}>
+      <rect x="3.2" y="3.2" width="7.6" height="7.6" rx="2.35" opacity="0.9" />
+      <rect x="13.2" y="3.2" width="7.6" height="7.6" rx="2.35" opacity="0.9" />
+      <rect x="3.2" y="13.2" width="7.6" height="7.6" rx="2.35" opacity="0.9" />
+      <rect x="13.2" y="13.2" width="7.6" height="7.6" rx="2.35" opacity="0.9" />
+    </svg>
+  );
+}
 
 export default function HomeScreenV2({ onNavigate, onOpenOopChat, onSendOopMessage, onSendOopDraft, theme, userProfile }: HomeScreenV2Props) {
   const [isMobile, setIsMobile] = useState(() => window.innerWidth < 768);
@@ -596,18 +625,18 @@ export default function HomeScreenV2({ onNavigate, onOpenOopChat, onSendOopMessa
                 <Home className="w-5 h-5" />
               </button>
               <button
+                onClick={() => onNavigate('contacts')}
+                className="w-12 h-12 rounded-full text-white/90 flex items-center justify-center"
+                title="通讯录"
+              >
+                <HomeTabIconContacts className="w-[22px] h-[22px]" />
+              </button>
+              <button
                 onClick={() => setShowApps(true)}
                 className="w-12 h-12 rounded-full text-white/90 flex items-center justify-center"
                 title="全部应用"
               >
-                <LayoutGrid className="w-5 h-5" />
-              </button>
-              <button
-                onClick={() => {}}
-                className="w-12 h-12 rounded-full text-white/90 flex items-center justify-center"
-                title="预留功能"
-              >
-                <BarChart3 className="w-5 h-5" />
+                <HomeTabIconApps className="w-[22px] h-[22px]" />
               </button>
               <button
                 onClick={() => onNavigate('profile')}

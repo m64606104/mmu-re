@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { groupToPrivateMemoryService } from '../utils/groupToPrivateMemoryService';
-import { ChevronLeft, Send, Mic, Smile, BellOff, Bell, Pause, Play, Image as ImageIcon, Video, Phone, MapPin, FileText, Plus, Search, MessageCircle, MessageSquare, Eye, Music, Gift, MoreHorizontal, Wallet, Repeat } from 'lucide-react';
+import { ChevronLeft, Send, Mic, Smile, BellOff, Bell, Pause, Play, Image as ImageIcon, Video, Phone, MapPin, FileText, Plus, Search, MessageCircle, MessageSquare, MessagesSquare, Eye, Music, Gift, MoreHorizontal, Wallet, Repeat, Loader2, Languages } from 'lucide-react';
 import { Conversation, Message, ApiConfig, UserProfile, DocumentMessage } from '../types';
 import MoneyTransferModal from './MoneyTransferModal';
 import GroupRedPacketModal from './GroupRedPacketModal';
@@ -10,7 +10,6 @@ import DocumentLibraryModal from './DocumentLibraryModal';
 import WordStyleDocumentCard from './WordStyleDocumentCard';
 import WordStyleDocumentModal from './WordStyleDocumentModal';
 import SelectContactModal from './SelectContactModal';
-import { subChatMemoryManager } from '../utils/subChatMemoryManager';
 import { saveDocument as saveToLibrary } from '../utils/documentLibrary';
 import WeChatLinkPreview, { LinkPreviewData } from './WeChatLinkPreview';
 import XiaohongshuLinkModal from './XiaohongshuLinkModal';
@@ -26,8 +25,20 @@ import { MusicMessage } from '../types';
 import { musicContextService } from '../utils/musicContextService';
 import ZhihuFeed from './ZhihuFeed';
 import NeteaseMusicCard from './NeteaseMusicCard';
-import { calculateVoiceDuration } from '../utils/voiceDurationCalculator';
+import { calculateVoiceDuration, stripTrailingVoiceTranscriptArtifacts } from '../utils/voiceDurationCalculator';
+import {
+  isCharacterTtsVoiceConfigured,
+  isMinimaxTtsReady,
+  plainTextForMinimaxTts,
+  synthesizeMinimaxTtsToBlob,
+} from '../utils/minimaxTts';
+import { recordPrivateChatOpened } from '../sim/chatEngagement';
 import { isSingleEmojiText } from '../utils/systemEmoji';
+import { isToolInteractionCharacter } from '../utils/characterInteractionMode';
+import {
+  assistantChatMarkdownBodyClassName,
+  assistantMarkdownToSafeHtml,
+} from '../utils/renderChatMarkdown';
 import { smartLoad } from '../utils/storage';
 import { parseDocument } from '../utils/enhancedDocumentParser';
 import WeiboFeed from './WeiboFeed';
@@ -63,11 +74,7 @@ import { buildApiUrl } from '../utils/apiHelper';
 import { handleAIGroupRedPacketClaiming } from '../utils/aiGroupRedPacketDecision';
 import { processExpiredRedPacketRefund } from '../utils/groupRedPacket';
 import { calculateDeliveryStatus, formatEstimatedTime, getActiveStageIndex, getRiderInfo } from '../utils/orderDeliverySimulator';
-import SubChatWindow from './SubChatWindow';
-import SubChatManager from './SubChatManager';
-import SubChatSuggestionModal from './SubChatSuggestionModal';
-import { createSubChat, addSubChatToConversation, updateSubChatInConversation } from '../utils/subChatManager';
-import { SubChatSuggestion } from '../utils/aiSubChatInitiator';
+import PrivateChatSessionDrawer from './PrivateChatSessionDrawer';
 // AI理解力经验系统集成
 import { ChatSessionManager, handleChatExperienceUpdate } from '../utils/chatExperienceIntegration';
 import { bootstrapComprehensionSystem } from '../utils/comprehensionSystemBootstrap';
@@ -86,16 +93,12 @@ import {
   commitEditedMessage,
   normalizeLooseAssistantMediaBrackets,
   materializeAssistantOutboundMessages,
+  type EditCommittedPayload,
 } from '../domains/chat';
+import { appendEditCalibrationEntry } from '../utils/editCalibrationStorage';
+import { runEditCalibrationReflection } from '../utils/editCalibrationReflection';
 import { buildUserMessageFromInput, commitUserMessage } from '../domains/chat';
-// 子聊天相关导入
 import ChatExtractPreview from './ChatExtractPreview';
-import {
-  addMessageToSubChat,
-  // removeSubChatFromConversation, // 未使用，暂时注释
-  getTotalUnreadCount,
-  getPendingSubChatsCount,
-} from '../utils/subChatManager';
 import { 
   getConversationMemories, 
   applyMemoriesToContext,
@@ -131,9 +134,9 @@ import {
   buildMessageActionItems,
   type MessageActionId,
 } from '../domains/chat/messageActionsRegistry';
+import { saveVoiceFavorite } from '../utils/voiceFavoriteStorage';
 import { useToast } from './Toast';
 import { useMessageNotification } from '../hooks/useMessageNotification';
-import { buildAvatarIdentityPrompt } from '../utils/avatarVision';
 import {
   getCharacterOnlineHandle,
   getCharacterRealName,
@@ -217,6 +220,87 @@ function resolveComposerQuotedAuthorLabel(
   }
   return conversation.type === 'group' ? '群友' : conversation.name;
 }
+
+/**
+ * 气泡内 / 输入栏「引用」预览的正文：对已定位的原消息做缩略图展示。
+ * 避免「引用里只有一行 [表情包] 文案，下面又一块蓝底 Smile 卡」被误读成同一条表情。
+ */
+function renderQuotedPreviewBody(orig: Message | undefined, replyToContent: string) {
+  const text = (replyToContent || '').trim() || '[消息]';
+  const fallback = (
+    <div className="text-sm text-gray-600 leading-relaxed line-clamp-4 break-words">{text}</div>
+  );
+  if (!orig) return fallback;
+
+  if (orig.mediaType === 'image' && orig.mediaUrl) {
+    return (
+      <div className="flex gap-2.5 items-start">
+        <img
+          src={orig.mediaUrl}
+          alt=""
+          className="h-14 w-14 shrink-0 rounded-lg border border-gray-100 bg-gray-50 object-cover"
+        />
+        <div className="min-w-0 flex-1 text-sm leading-relaxed text-gray-600 line-clamp-3 break-words">{text}</div>
+      </div>
+    );
+  }
+
+  if (orig.mediaType === 'sticker' && orig.mediaUrl) {
+    const cap =
+      (orig.mediaDescription || '').trim() || text.replace(/^\[表情包\]\s*/i, '').trim() || '表情包';
+    return (
+      <div className="flex gap-2.5 items-center">
+        <div className="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-gray-200 bg-gray-50">
+          <img src={orig.mediaUrl} alt="" className="max-h-full max-w-full object-contain" />
+        </div>
+        <p className="min-w-0 flex-1 text-sm leading-snug text-gray-800 line-clamp-3 break-words">「{cap}」</p>
+      </div>
+    );
+  }
+
+  if (
+    orig.mediaType === 'sticker' &&
+    (orig.stickerKind === 'systemEmoji' || isSingleEmojiText((orig.mediaDescription || '').trim()))
+  ) {
+    return (
+      <div className="flex items-center gap-2">
+        <span className="shrink-0 text-[28px] leading-none">{orig.mediaDescription || '🙂'}</span>
+        <span className="text-xs text-gray-400">系统表情</span>
+      </div>
+    );
+  }
+
+  if (orig.mediaType === 'sticker') {
+    const desc = (orig.mediaDescription || '').trim() || text.replace(/^\[表情包\]\s*/i, '').trim();
+    return (
+      <div className="rounded-lg border border-gray-100 bg-gray-50/95 px-3 py-2">
+        <div className="mb-0.5 text-[11px] font-medium text-gray-400">表情包</div>
+        <p className="text-sm leading-snug text-gray-800 line-clamp-3 break-words">{desc}</p>
+      </div>
+    );
+  }
+
+  if (orig.mediaType === 'video' && orig.mediaUrl) {
+    return (
+      <div className="flex gap-2.5 items-start">
+        <div className="relative h-14 w-14 shrink-0 overflow-hidden rounded-lg border border-gray-200 bg-black/5">
+          <video src={orig.mediaUrl} className="h-full w-full object-cover" muted playsInline preload="metadata" />
+          <span className="absolute bottom-0.5 right-0.5 rounded bg-black/55 px-1 text-[9px] text-white">视频</span>
+        </div>
+        <div className="min-w-0 flex-1 text-sm leading-relaxed text-gray-600 line-clamp-3 break-words">{text}</div>
+      </div>
+    );
+  }
+
+  return fallback;
+}
+
+/** 工具型私聊无消息时：点击即发送首条用户消息 */
+const TOOL_PRIVATE_STARTER_PROMPTS: readonly string[] = [
+  '我想了解某个概念，请用通俗语言分点说明。',
+  '帮我拟一份今天可执行的待办清单（条数适中）。',
+  '请示范如何把一段长文本压缩成几句话的结构化摘要。',
+];
 
 interface ChatScreenProps {
   conversation: Conversation;
@@ -312,6 +396,85 @@ export default function ChatScreen({
   const [showSendingHint, setShowSendingHint] = useState(false);
   const [isGroupProcessing, setIsGroupProcessing] = useState(false); // 🚀 新增：群聊处理中状态
   const [showTyping, setShowTyping] = useState(() => isConvGenerating(conversation.id));
+
+  const [ttsBusyMessageId, setTtsBusyMessageId] = useState<string | null>(null);
+  const [ttsPlayingMessageId, setTtsPlayingMessageId] = useState<string | null>(null);
+  const ttsBusyRef = useRef(false);
+  const ttsAudioRef = useRef<HTMLAudioElement | null>(null);
+  const ttsObjectUrlRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    return () => {
+      ttsAudioRef.current?.pause();
+      if (ttsObjectUrlRef.current) {
+        URL.revokeObjectURL(ttsObjectUrlRef.current);
+      }
+    };
+  }, []);
+
+  useEffect(() => {
+    ttsAudioRef.current?.pause();
+    setTtsPlayingMessageId(null);
+    setTtsBusyMessageId(null);
+    ttsBusyRef.current = false;
+  }, [conversation.id]);
+
+  useEffect(() => {
+    if (conversation.type === 'private') {
+      recordPrivateChatOpened(conversation.id);
+    }
+  }, [conversation.id, conversation.type]);
+
+  const resolveCharacterTtsForAssistantMessage = useCallback(
+    (m: Message) => {
+      const sid = (m as { senderId?: string }).senderId;
+      if (conversation.type === 'group' && sid) {
+        return conversations.find((c) => c.id === sid)?.characterSettings?.tts;
+      }
+      return conversation.characterSettings?.tts;
+    },
+    [conversation.type, conversation.characterSettings?.tts, conversations],
+  );
+
+  const playAssistantTts = useCallback(
+    async (m: Message, plainText: string) => {
+      const api = apiConfig.minimaxTts;
+      if (!api || !(api.apiKey || '').trim() || !(api.groupId || '').trim()) return;
+      if (ttsBusyRef.current) return;
+      ttsBusyRef.current = true;
+      setTtsBusyMessageId(m.id);
+      try {
+        ttsAudioRef.current?.pause();
+        setTtsPlayingMessageId(null);
+        if (ttsObjectUrlRef.current) {
+          URL.revokeObjectURL(ttsObjectUrlRef.current);
+          ttsObjectUrlRef.current = null;
+        }
+        const blob = await synthesizeMinimaxTtsToBlob({
+          api,
+          character: resolveCharacterTtsForAssistantMessage(m),
+          text: plainText,
+        });
+        const url = URL.createObjectURL(blob);
+        ttsObjectUrlRef.current = url;
+        const audio = new Audio(url);
+        ttsAudioRef.current = audio;
+        audio.onended = () => setTtsPlayingMessageId(null);
+        audio.onerror = () => {
+          setTtsPlayingMessageId(null);
+          alert('音频播放失败');
+        };
+        await audio.play();
+        setTtsPlayingMessageId(m.id);
+      } catch (e) {
+        alert(e instanceof Error ? e.message : '语音合成失败');
+      } finally {
+        ttsBusyRef.current = false;
+        setTtsBusyMessageId(null);
+      }
+    },
+    [apiConfig.minimaxTts, resolveCharacterTtsForAssistantMessage],
+  );
 
   useEffect(() => {
     if (!showToolbar && showAdvancedToolbarActions) {
@@ -487,22 +650,11 @@ export default function ChatScreen({
   const [forwardingMessages, setForwardingMessages] = useState<Message[]>([]);
   const [viewingMergedForward, setViewingMergedForward] = useState<Message['forwarded'] | null>(null);
   
-  // 💬 子聊天相关状态
-  const [showSubChatManager, setShowSubChatManager] = useState(false);
-  const [activeSubChatId, setActiveSubChatId] = useState<string | null>(null);
-  const [minimizedSubChats, setMinimizedSubChats] = useState<Set<string>>(new Set());
-  
-  // 🤖 AI主动发起子聊天相关状态
-  const [subChatSuggestion, setSubChatSuggestion] = useState<SubChatSuggestion | null>(null);
-  const [showSubChatSuggestionModal, setShowSubChatSuggestionModal] = useState(false);
-  
+  const [showPrivateSessionDrawer, setShowPrivateSessionDrawer] = useState(false);
+
   // 聊天记录提取预览相关状态
   const [showExtractPreview, setShowExtractPreview] = useState(false);
   const [extractingMessages, setExtractingMessages] = useState<Message[]>([]);
-  
-  // 计算子聊天统计
-  const subChatUnreadCount = getTotalUnreadCount(conversation);
-  const pendingSubChatsCount = getPendingSubChatsCount(conversation);
   
   // 🔥 确保用户查看聊天时，未读消息始终为 0
   useEffect(() => {
@@ -510,6 +662,18 @@ export default function ChatScreen({
       onUpdateConversation(conversation.id, { unreadCount: 0 });
     }
   }, [conversation.id, conversation.unreadCount, onUpdateConversation]);
+
+  useEffect(() => {
+    if (conversation.type !== 'private') return;
+    try {
+      if (sessionStorage.getItem('momoyu:openPrivateSessions') === '1') {
+        sessionStorage.removeItem('momoyu:openPrivateSessions');
+        setShowPrivateSessionDrawer(true);
+      }
+    } catch {
+      /* ignore */
+    }
+  }, [conversation.id, conversation.type]);
 
   // 🚀 初始化延后回复服务
   useEffect(() => {
@@ -1442,6 +1606,36 @@ ${recentMessages}
       case 'quote':
         handleQuoteMessage();
         break;
+      case 'favoriteVoiceCache':
+      case 'favoriteVoiceBookmark':
+        if (!selectedMessageId) break;
+        {
+          const canonicalId = canonicalMessageIdFromRenderRowId(selectedMessageId);
+          const vm = conversation.messages.find((m) => m.id === canonicalId);
+          setSelectedMessageId(null);
+          if (!vm || vm.mediaType !== 'voice') break;
+          const mode = id === 'favoriteVoiceBookmark' ? 'favorite_only' : 'cache_audio';
+          void saveVoiceFavorite(conversation.id, vm, mode)
+            .then((rec) => {
+              if (mode === 'favorite_only') {
+                showToast(
+                  vm.role === 'assistant'
+                    ? '已仅收藏（未缓存文件；在收藏列表中每次播放将重新合成）'
+                    : '已仅收藏（未缓存文件；将尽量使用原链接播放）',
+                  'success',
+                );
+              } else {
+                showToast(
+                  rec.cachedAudio
+                    ? '已缓存并收藏（每次播放为同一段音频）'
+                    : '已收藏但未写入本地缓存；助手语音可在列表中按转写重新合成，或依赖原链接',
+                  'success',
+                );
+              }
+            })
+            .catch(() => showToast('收藏失败', 'error'));
+        }
+        break;
       case 'forward':
         handleForwardSingleMessage();
         break;
@@ -1524,334 +1718,6 @@ ${recentMessages}
 
     return () => clearInterval(interval);
   }, [currentMusic]);
-
-  // ============ 💬 子聊天功能处理函数 ============
-  
-  /**
-   * 创建用户发起的子聊天
-   */
-  const handleCreateUserSubChat = (name: string) => {
-    const newSubChat = createSubChat(name, conversation.id, 'user');
-    const updatedConversation = addSubChatToConversation(conversation, newSubChat);
-    onUpdateConversation(conversation.id, {
-      subChats: updatedConversation.subChats,
-    });
-    
-    // 自动打开新创建的子聊天
-    setActiveSubChatId(newSubChat.id);
-    setShowSubChatManager(false);
-  };
-
-  /**
-   * 选择/打开子聊天
-   */
-  const handleSelectSubChat = (subChatId: string) => {
-    // 标记为已读并激活
-    const updatedConversation = updateSubChatInConversation(
-      conversation,
-      subChatId,
-      { unreadCount: 0, status: 'active', isActive: true }
-    );
-    
-    onUpdateConversation(conversation.id, {
-      subChats: updatedConversation.subChats,
-    });
-    
-    setActiveSubChatId(subChatId);
-    setShowSubChatManager(false);
-    
-    // 从最小化列表中移除
-    setMinimizedSubChats(prev => {
-      const newSet = new Set(prev);
-      newSet.delete(subChatId);
-      return newSet;
-    });
-  };
-
-  /**
-   * 重命名子聊天
-   */
-  const handleRenameSubChat = (subChatId: string, newName: string) => {
-    const updatedConversation = updateSubChatInConversation(
-      conversation,
-      subChatId,
-      { name: newName }
-    );
-    
-    onUpdateConversation(conversation.id, {
-      subChats: updatedConversation.subChats,
-    });
-  };
-
-  /**
-   * 删除子聊天
-   */
-  const handleDeleteSubChat = (subChatId: string) => {
-    // 如果当前正在查看这个子聊天，先关闭它
-    if (activeSubChatId === subChatId) {
-      setActiveSubChatId(null);
-    }
-    
-    // 从最小化列表中移除
-    setMinimizedSubChats(prev => {
-      const newSet = new Set(prev);
-      newSet.delete(subChatId);
-      return newSet;
-    });
-    
-    // 从对话中删除子聊天
-    const updatedSubChats = (conversation.subChats || []).filter(sc => sc.id !== subChatId);
-    onUpdateConversation(conversation.id, { subChats: updatedSubChats });
-  };
-
-  /**
-   * 导入子聊天
-   */
-  const handleImportSubChat = (importData: any) => {
-    try {
-      // 生成新的ID避免冲突
-      const newSubChatId = `imported_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-      
-      // 创建新的子聊天对象
-      const importedSubChat = {
-        ...importData.subChat,
-        id: newSubChatId,
-        conversationId: conversation.id, // 更新为当前对话ID
-        createdAt: Date.now(),
-        lastMessageTime: Date.now(),
-        unreadCount: 0,
-        isActive: false,
-        status: 'active' as const,
-      };
-      
-      // 更新消息ID避免冲突
-      const importedMessages = importData.messages.map((msg: any) => ({
-        ...msg,
-        id: `imported_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-      }));
-      
-      importedSubChat.messages = importedMessages;
-      
-      // 添加到当前对话的子聊天列表
-      const updatedSubChats = [...(conversation.subChats || []), importedSubChat];
-      onUpdateConversation(conversation.id, { subChats: updatedSubChats });
-      
-      // 自动打开导入的子聊天
-      setActiveSubChatId(newSubChatId);
-      setShowSubChatManager(false);
-      
-    } catch (error) {
-      console.error('导入子聊天处理失败:', error);
-      alert('❌ 导入处理失败，请重试');
-    }
-  };
-
-  /**
-   * 关闭子聊天窗口
-   */
-  const handleCloseSubChat = (subChatId: string) => {
-    const updatedConversation = updateSubChatInConversation(
-      conversation,
-      subChatId,
-      { isActive: false }
-    );
-    
-    onUpdateConversation(conversation.id, {
-      subChats: updatedConversation.subChats,
-    });
-    
-    if (activeSubChatId === subChatId) {
-      setActiveSubChatId(null);
-    }
-    
-    setMinimizedSubChats(prev => {
-      const newSet = new Set(prev);
-      newSet.delete(subChatId);
-      return newSet;
-    });
-  };
-
-  /**
-   * 最小化/恢复子聊天窗口
-   */
-  const handleToggleMinimizeSubChat = (subChatId: string) => {
-    setMinimizedSubChats(prev => {
-      const newSet = new Set(prev);
-      if (newSet.has(subChatId)) {
-        newSet.delete(subChatId);
-      } else {
-        newSet.add(subChatId);
-      }
-      return newSet;
-    });
-  };
-
-  /**
-   * 在子聊天中发送消息
-   */
-  const handleSendSubChatMessage = async (subChatId: string, content: string) => {
-    const subChat = (conversation.subChats || []).find(sc => sc.id === subChatId);
-    if (!subChat) return;
-    
-    let updatedSubChat = subChat;
-    
-    // 如果有用户输入内容，先添加用户消息
-    if (content.trim()) {
-      const userMessage: Message = {
-        id: `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-        role: 'user',
-        content: content.trim(),
-        timestamp: Date.now(),
-      };
-      
-      // 添加到子聊天
-      updatedSubChat = addMessageToSubChat(subChat, userMessage);
-      
-      // 更新对话
-      onUpdateConversation(conversation.id, {
-        subChats: (conversation.subChats || []).map(sc =>
-          sc.id === subChatId ? updatedSubChat : sc
-        ),
-      });
-    }
-    
-    // 4. 调用AI生成回复
-    setIsGenerating(true);
-    
-    try {
-      const characterName = conversation.characterSettings?.nickname || conversation.name;
-      const characterPersonality = conversation.characterSettings?.personality || '';
-      
-      // 增强的system prompt - 包含角色的完整设定
-      const characterInfo = conversation.characterSettings;
-      const systemPrompt = `你是${characterName}。
-      
-${characterPersonality ? `性格：${characterPersonality}` : ''}
-${characterInfo?.memoryEvents ? `重要记忆：${characterInfo.memoryEvents}` : ''}
-${characterInfo?.languageStyle ? `语言风格：${characterInfo.languageStyle}` : ''}
-${buildAvatarIdentityPrompt(characterInfo)}
-
-这是一个子聊天窗口，你可以看到主聊天的完整历史和当前子聊天的内容。
-子聊天名称：${updatedSubChat.name}
-请保持角色一致性，自然回复当前对话。`;
-
-      // 构建完整的消息历史：主聊天 + 子聊天标记 + 子聊天消息
-      const messages = [
-        { role: 'system', content: systemPrompt },
-        // 1. 包含主聊天的所有消息
-        ...conversation.messages.map(msg => ({
-          role: msg.role,
-          content: formatMessageForAI(msg),
-        })),
-        // 2. 标记子聊天开始
-        { 
-          role: 'system', 
-          content: `[开始子聊天窗口: ${updatedSubChat.name}]` 
-        },
-        // 3. 子聊天的消息
-        ...updatedSubChat.messages.map(msg => ({
-          role: msg.role,
-          content: formatMessageForAI(msg),
-        })),
-      ];
-      
-      const response = await fetch(buildApiUrl(effectivePrivateApiConfig), {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${effectivePrivateApiConfig.apiKey}`,
-        },
-        body: JSON.stringify({
-          model: effectivePrivateApiConfig.modelName,
-          messages,
-          temperature: 0.8,
-        }),
-      });
-      
-      if (!response.ok) {
-        const errorInfo = await getErrorFromResponse(response);
-        throw new Error(`${errorInfo.title}：${errorInfo.message}`);
-      }
-      
-      const data = await response.json();
-      const aiContent = data.choices?.[0]?.message?.content || '抱歉，我现在无法回复。';
-      
-      // 5. 创建AI消息
-      const aiMessage: Message = {
-        id: `msg_${Date.now() + 1}_${Math.random().toString(36).substr(2, 9)}`,
-        role: 'assistant',
-        content: aiContent,
-        timestamp: Date.now(),
-      };
-      
-      // 6. 添加AI回复到子聊天
-      updatedSubChat = addMessageToSubChat(updatedSubChat, aiMessage);
-      
-      // 7. 更新对话
-      onUpdateConversation(conversation.id, {
-        subChats: (conversation.subChats || []).map(sc =>
-          sc.id === subChatId ? updatedSubChat : sc
-        ),
-      });
-      
-    } catch (error) {
-      console.error('子聊天AI回复失败:', error);
-      const message = error instanceof Error ? error.message : 'AI回复失败，请重试';
-      showToast(message, 'error');
-    } finally {
-      setIsGenerating(false);
-    }
-  };
-
-  /**
-   * AI发起子聊天建议（显示弹窗让用户选择）
-   */
-  const handleAIInitiateSubChat = (purpose: string, suggestedName: string) => {
-    // 创建子聊天建议
-    const suggestion: SubChatSuggestion = {
-      id: `ai_suggestion_${Date.now()}`,
-      purpose,
-      suggestedName,
-      reason: '基于当前对话内容，AI认为开启子聊天会更好',
-      priority: 'medium',
-      timestamp: Date.now()
-    };
-    
-    // 显示建议弹窗
-    setSubChatSuggestion(suggestion);
-    setShowSubChatSuggestionModal(true);
-  };
-
-  /**
-   * 处理用户接受AI的子聊天建议
-   */
-  const handleAcceptSubChatSuggestion = (name: string, purpose: string) => {
-    if (!subChatSuggestion) return;
-    
-    const newSubChat = createSubChat(name, conversation.id, 'ai', purpose);
-    const updatedConversation = addSubChatToConversation(conversation, newSubChat);
-    
-    onUpdateConversation(conversation.id, {
-      subChats: updatedConversation.subChats,
-    });
-    
-    // 自动打开新创建的子聊天
-    setActiveSubChatId(newSubChat.id);
-    
-    // 关闭建议弹窗
-    setShowSubChatSuggestionModal(false);
-    setSubChatSuggestion(null);
-    
-    showToast(`已创建子聊天：${name}`, 'success');
-  };
-
-  /**
-   * 处理用户拒绝AI的子聊天建议
-   */
-  const handleRejectSubChatSuggestion = () => {
-    setShowSubChatSuggestionModal(false);
-    setSubChatSuggestion(null);
-  };
 
   const resetInputHeight = () => {
     if (inputRef.current) {
@@ -1938,6 +1804,11 @@ ${buildAvatarIdentityPrompt(characterInfo)}
         if (durationMatch) {
           mediaDescription = durationMatch[1].trim();
           voiceDuration = Number(durationMatch[2]) || 3;
+        }
+        const stripped = stripTrailingVoiceTranscriptArtifacts(mediaDescription.trim());
+        mediaDescription = stripped.text;
+        if (stripped.secondsHint !== undefined) {
+          voiceDuration = stripped.secondsHint;
         }
       }
 
@@ -2208,6 +2079,34 @@ ${buildAvatarIdentityPrompt(characterInfo)}
     });
   }, [conversation.id, onUpdateConversation]);
 
+  const onEditCommittedForCalibrationStudio = useCallback(
+    (payload: EditCommittedPayload) => {
+      if (conversation.type !== 'private') return;
+      void (async () => {
+        try {
+          const entry = await appendEditCalibrationEntry(conversation.id, {
+            messageId: payload.messageId,
+            role: payload.role,
+            baselineContent: payload.baselineContent,
+            revisedContent: payload.revisedContent,
+          });
+          void runEditCalibrationReflection({
+            conversationId: conversation.id,
+            entryId: entry.id,
+            conversation,
+            apiConfig,
+            role: payload.role,
+            baselineContent: payload.baselineContent,
+            revisedContent: payload.revisedContent,
+          });
+        } catch (err) {
+          console.error('编辑学习区写入失败:', err);
+        }
+      })();
+    },
+    [apiConfig, conversation]
+  );
+
   const handleSendMessage = async () => {
     const trimmed = currentInput.trim();
     const isGroup = conversation.type === 'group';
@@ -2240,6 +2139,7 @@ ${buildAvatarIdentityPrompt(characterInfo)}
         messageBeingEdited,
         currentInput,
         onUpdateConversation,
+        onEditCommitted: onEditCommittedForCalibrationStudio,
       });
       bumpPendingReplyScheduleEpoch(conversation.id);
       setMessageBeingEdited(null);
@@ -3370,7 +3270,7 @@ ${buildAvatarIdentityPrompt(characterInfo)}
           [
             {
               role: 'system',
-              content: `你是${getCharacterRealName(privateConversation.characterSettings) || privateConversation.name}。${privateConversation.characterSettings?.systemPrompt || ''}${buildAvatarIdentityPrompt(privateConversation.characterSettings)}`
+              content: `你是${getCharacterRealName(privateConversation.characterSettings) || privateConversation.name}。${privateConversation.characterSettings?.systemPrompt || ''}`
             },
             {
               role: 'user',
@@ -3916,13 +3816,21 @@ ${buildAvatarIdentityPrompt(characterInfo)}
   // 提取气泡装饰配置
   const decorationConfig = conversation.characterSettings?.bubbleDecoration;
 
+  const resolvedChatBackground =
+    conversation.type === 'group'
+      ? (conversation.chatBackground || conversation.characterSettings?.chatBackground || '').trim()
+      : (conversation.characterSettings?.chatBackground || '').trim();
+
+  const toolPrivateUi =
+    conversation.type === 'private' && isToolInteractionCharacter(conversation.characterSettings);
+
   return (
     <>
     <div 
       data-ui="chat-root"
       className="flex flex-col h-[100dvh] md:h-full overflow-hidden overflow-x-hidden bg-gray-50 relative md:bg-gradient-to-br md:from-slate-50 md:via-slate-50 md:to-zinc-100"
-      style={conversation.characterSettings?.chatBackground ? {
-        backgroundImage: `url(${conversation.characterSettings.chatBackground})`,
+      style={resolvedChatBackground ? {
+        backgroundImage: `url(${resolvedChatBackground})`,
         backgroundSize: 'cover',
         backgroundPosition: 'center',
       } : undefined}
@@ -4004,7 +3912,7 @@ ${buildAvatarIdentityPrompt(characterInfo)}
               )}
             </div>
           )}
-          <div className="flex flex-col min-w-0">
+          <div className="flex flex-col min-w-0 flex-1">
             {conversation.type === 'group' ? (
               <>
                 {/* 群名称：与私聊同一位置的主标题，即当前群在列表里显示的名字 */}
@@ -4030,9 +3938,27 @@ ${buildAvatarIdentityPrompt(characterInfo)}
               </>
             ) : (
               <>
-                <h1 className="text-base md:text-[15px] font-semibold text-gray-900 truncate">
-                  {conversation.name}
-                </h1>
+                <div className="relative w-full min-w-0">
+                  <h1
+                    className={`text-base md:text-[15px] font-semibold text-gray-900 truncate ${
+                      !toolPrivateUi ? 'pr-8' : ''
+                    }`}
+                    title={conversation.name}
+                  >
+                    {conversation.name}
+                  </h1>
+                  {!toolPrivateUi ? (
+                    <button
+                      type="button"
+                      onClick={() => setShowPrivateSessionDrawer(true)}
+                      className="absolute right-0 top-1/2 -translate-y-1/2 -translate-x-[3px] p-1 rounded-md text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors"
+                      title="会话列表 · 新建或切换"
+                      aria-label="会话列表"
+                    >
+                      <MessagesSquare className="w-[15px] h-[15px] md:w-4 md:h-4" strokeWidth={2} />
+                    </button>
+                  ) : null}
+                </div>
                 {conversation.characterSettings ? (
                   <div className="flex items-center gap-1 px-2 py-0.5 -ml-2">
                     <div className={`w-2 h-2 rounded-full flex-shrink-0 ${
@@ -4066,22 +3992,34 @@ ${buildAvatarIdentityPrompt(characterInfo)}
             <Search className="w-5 h-5 text-gray-700" />
           </button>
           
-          {/* 免打扰按钮 */}
-          <button
-            onClick={() => {
-              onUpdateConversation(conversation.id, {
-                isMuted: !conversation.isMuted
-              });
-            }}
-            className="p-2 md:p-1.5 hover:bg-gray-100 rounded-lg transition-colors"
-            title={conversation.isMuted ? '关闭免打扰' : '开启免打扰'}
-          >
-            {conversation.isMuted ? (
-              <BellOff className="w-5 h-5 text-gray-700" />
-            ) : (
-              <Bell className="w-5 h-5 text-gray-700" />
-            )}
-          </button>
+          {conversation.type === 'private' && toolPrivateUi ? (
+            <button
+              type="button"
+              onClick={() => setShowPrivateSessionDrawer(true)}
+              className="p-2 md:p-1.5 hover:bg-gray-100 rounded-lg transition-colors"
+              title="会话列表 · 新建或切换"
+            >
+              <MessagesSquare className="w-5 h-5 text-gray-700" strokeWidth={2} />
+            </button>
+          ) : null}
+          {!toolPrivateUi || conversation.type !== 'private' ? (
+            <button
+              type="button"
+              onClick={() => {
+                onUpdateConversation(conversation.id, {
+                  isMuted: !conversation.isMuted
+                });
+              }}
+              className="p-2 md:p-1.5 hover:bg-gray-100 rounded-lg transition-colors"
+              title={conversation.isMuted ? '关闭免打扰' : '开启免打扰'}
+            >
+              {conversation.isMuted ? (
+                <BellOff className="w-5 h-5 text-gray-700" />
+              ) : (
+                <Bell className="w-5 h-5 text-gray-700" />
+              )}
+            </button>
+          ) : null}
           
           {/* 设置按钮 */}
           {conversation.type === 'private' && (
@@ -4120,7 +4058,11 @@ ${buildAvatarIdentityPrompt(characterInfo)}
       <div 
         ref={messagesContainerRef}
         data-ui="chat-messages"
-        className="relative flex-1 min-h-0 overflow-y-auto overflow-x-hidden touch-pan-y p-4 md:px-6 md:py-4 space-y-3"
+        className={`relative flex-1 min-h-0 overflow-y-auto overflow-x-hidden touch-pan-y md:py-4 ${
+          toolPrivateUi
+            ? 'space-y-5 px-3 pt-2 pb-4 md:px-10 md:space-y-6'
+            : 'space-y-3 p-4 md:px-6'
+        }`}
         style={{ paddingBottom: '24px' }}
       >
         {/* 🚀 滚动加载：顶部加载指示器 */}
@@ -4144,6 +4086,11 @@ ${buildAvatarIdentityPrompt(characterInfo)}
         
         {/* 根据消息窗口显示消息 */}
         {(() => {
+          const showToolPrivateEmptyHome =
+            toolPrivateUi &&
+            !isLoadingMore &&
+            !conversation.messages.some((m) => m.role === 'user' || m.role === 'assistant');
+
           const visibleMessages = conversation.messages.slice(
             messageWindow.startIndex,
             messageWindow.startIndex + messageWindow.size
@@ -4152,11 +4099,42 @@ ${buildAvatarIdentityPrompt(characterInfo)}
             (m) => !(conversation.type === 'group' && m.role === 'user' && m.groupAiOnlyTrigger)
           );
 
-          return renderableMessages.map((message, index) => {
+          return (
+            <>
+              {showToolPrivateEmptyHome && (
+                <div className="mx-auto w-full max-w-lg px-1 py-6 md:py-10">
+                  <h2 className="text-center text-[20px] font-semibold tracking-tight text-gray-900">
+                    今天想先做点什么？
+                  </h2>
+                  <p className="mt-2 text-center text-sm leading-relaxed text-gray-500">
+                    向「{conversation.name}」描述问题，或选一条示例直接开始。
+                  </p>
+                  <div className="mt-8 flex flex-col gap-2.5">
+                    {TOOL_PRIVATE_STARTER_PROMPTS.map((text) => (
+                      <button
+                        key={text}
+                        type="button"
+                        className="w-full rounded-full border border-gray-200/90 bg-white px-4 py-3.5 text-left text-[15px] leading-snug text-gray-800 shadow-sm transition hover:border-gray-300 hover:bg-gray-50/90 active:scale-[0.99]"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          const newMessage = buildUserMessageFromInput(text, null);
+                          commitOutgoingUserMessage(newMessage);
+                        }}
+                      >
+                        {text}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {renderableMessages.map((message, index) => {
           // 🚫 如果是拉黑期间的消息且当前仍在拉黑状态，则不显示
           if (message.isBlockedMessage && conversation.isBlocked) {
             return null;
           }
+
+          const isToolPrivateAssistant = toolPrivateUi && message.role === 'assistant';
+          const isToolPrivateUser = toolPrivateUi && message.role === 'user';
 
           // 微信风格：超过5分钟才显示时间
           const prevMessage = index > 0 ? renderableMessages[index - 1] : null;
@@ -4218,7 +4196,11 @@ ${buildAvatarIdentityPrompt(characterInfo)}
               <div
                 id={`message-${message.id}`}
                 data-chat-message-row
-                className={`chat-message-row flex gap-2 items-end transition-colors touch-manipulation ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}
+                className={`chat-message-row flex gap-2 items-end transition-colors touch-manipulation ${
+                  message.role === 'user' ? 'justify-end' : 'justify-start'
+                } ${isToolPrivateAssistant ? 'w-full' : ''} ${
+                  isMultiSelectMode && isToolPrivateAssistant ? 'pl-8' : ''
+                }`}
                 onClick={(e) => {
                   if (isMultiSelectMode) {
                     toggleMessageSelection(message.id);
@@ -4227,7 +4209,7 @@ ${buildAvatarIdentityPrompt(characterInfo)}
                   handleMessageRowClick(message.id, e);
                 }}
               >
-                {message.role === 'assistant' && (
+                {message.role === 'assistant' && !toolPrivateUi && (
                   <div className={`flex flex-col flex-shrink-0 ${conversation.type === 'group' ? 'items-center w-[52px] md:w-11' : ''}`}>
                     {conversation.type === 'group' && (message as any).senderId && (
                       <div
@@ -4294,7 +4276,11 @@ ${buildAvatarIdentityPrompt(characterInfo)}
                     </div>
                   </div>
                 )}
-                <div className="relative max-w-[70%] min-w-0">
+                <div
+                  className={`relative min-w-0 ${
+                    isToolPrivateAssistant ? 'w-full max-w-full flex-1' : 'max-w-[70%]'
+                  }`}
+                >
                   {/* 🚫 拉黑期间消息标记（解除拉黑后显示） */}
                   {message.isBlockedMessage && !conversation.isBlocked && (
                     <div className="absolute -right-6 top-1/2 -translate-y-1/2 text-red-500 font-bold text-lg select-none cursor-help" title="对方在被拉黑期间发送的消息">
@@ -4327,23 +4313,47 @@ ${buildAvatarIdentityPrompt(characterInfo)}
                               <span className="text-[10px] font-normal text-gray-400">{quotedSendTimeStr}</span>
                             ) : null}
                           </div>
-                          <div className="line-clamp-3 text-gray-600 break-words mt-0.5">{message.replyTo.content}</div>
+                          <div className="mt-0.5">
+                            {renderQuotedPreviewBody(quotedOriginalMsg, message.replyTo.content)}
+                          </div>
                         </div>
                       </div>
                     </div>
                   )}
                   
-                  <div
-                    data-chat-message-bubble
-                    className={`message-bubble ${message.role === 'user' ? 'user' : 'ai'} rounded-2xl shadow-sm cursor-pointer ${
-                      isHTMLContent 
-                        ? 'bg-transparent border-0 shadow-none p-0 overflow-visible' 
-                        : message.moneyTransfer 
+                  {(() => {
+                    const bubbleChrome =
+                      isToolPrivateAssistant && !message.moneyTransfer && !message.document && !message.order
+                        ? 'rounded-none shadow-none'
+                        : 'rounded-2xl shadow-sm';
+                    const bubbleFill =
+                      isHTMLContent
+                        ? 'bg-transparent border-0 shadow-none p-0 overflow-visible'
+                        : message.moneyTransfer
                           ? 'p-0 overflow-hidden'
                           : message.role === 'user'
-                          ? 'bg-white text-gray-900 border border-gray-200'
-                          : 'bg-white text-gray-900 border border-gray-200'
-                    } ${message.mediaType || message.moneyTransfer || isHTMLContent ? 'p-0' : message.replyTo ? 'pb-2.5' : 'px-4 py-2.5'} ${
+                            ? isToolPrivateUser
+                              ? 'bg-zinc-100/95 text-gray-900 border border-zinc-200/90'
+                              : 'bg-white text-gray-900 border border-gray-200'
+                            : isToolPrivateAssistant
+                              ? message.mediaType
+                                ? 'bg-transparent border-0 p-0 overflow-visible'
+                                : 'bg-transparent border-0 text-gray-900 overflow-visible'
+                              : 'bg-white text-gray-900 border border-gray-200';
+                    const bubblePad =
+                      isHTMLContent || message.moneyTransfer || message.mediaType
+                        ? 'p-0'
+                        : isToolPrivateAssistant
+                          ? message.replyTo && !message.moneyTransfer && !message.document && !message.order
+                            ? 'pb-2.5 pt-2 px-0'
+                            : 'py-3 px-0'
+                          : message.replyTo
+                            ? 'pb-2.5'
+                            : 'px-4 py-2.5';
+                    return (
+                  <div
+                    data-chat-message-bubble
+                    className={`message-bubble ${message.role === 'user' ? 'user' : 'ai'} cursor-pointer ${bubbleChrome} ${bubbleFill} ${bubblePad} ${
                       isMultiSelectMode &&
                       selectedMessages.includes(canonicalMessageIdFromRenderRowId(message.id))
                         ? 'ring-2 ring-purple-500'
@@ -4360,8 +4370,8 @@ ${buildAvatarIdentityPrompt(characterInfo)}
                               <span className="text-[10px] text-gray-400">{quotedSendTimeStr}</span>
                             ) : null}
                           </div>
-                          <div className="text-sm text-gray-600 leading-relaxed line-clamp-4 break-words">
-                            {message.replyTo.content}
+                          <div className="text-sm leading-relaxed">
+                            {renderQuotedPreviewBody(quotedOriginalMsg, message.replyTo.content)}
                           </div>
                         </div>
                         <div className="border-b border-gray-200 mb-2.5"></div>
@@ -4838,6 +4848,22 @@ ${buildAvatarIdentityPrompt(characterInfo)}
                         {(() => {
                           const textContent = getDisplayText(message.content);
                           if (!textContent || isMediaPlaceholderText(textContent)) return null;
+                          const docAssist = toolPrivateUi && message.role === 'assistant';
+                          const mdCls =
+                            (docAssist
+                              ? 'text-[16px] leading-7 break-words px-0 py-3 '
+                              : 'text-[15px] leading-relaxed break-words px-4 py-2.5 ') +
+                            assistantChatMarkdownBodyClassName;
+                          if (message.role === 'assistant') {
+                            return (
+                              <div
+                                className={mdCls}
+                                dangerouslySetInnerHTML={{
+                                  __html: assistantMarkdownToSafeHtml(textContent),
+                                }}
+                              />
+                            );
+                          }
                           return (
                             <p className="text-[15px] leading-relaxed whitespace-pre-wrap break-words px-4 py-2.5">
                               {textContent}
@@ -4939,7 +4965,9 @@ ${buildAvatarIdentityPrompt(characterInfo)}
                         {/* 语音内容文字（点击气泡显示） */}
                         {viewingVoice.includes(message.id) && message.mediaDescription && (
                           <div className="mt-2 px-4 py-2 bg-gray-50 rounded-xl border border-gray-200 max-w-[200px]">
-                            <p className="text-[13px] text-gray-700 break-words whitespace-pre-wrap">{message.mediaDescription}</p>
+                            <p className="text-[13px] text-gray-700 break-words whitespace-pre-wrap">
+                              {stripTrailingVoiceTranscriptArtifacts((message.mediaDescription || '').trim()).text}
+                            </p>
                           </div>
                         )}
                       </div>
@@ -4959,8 +4987,12 @@ ${buildAvatarIdentityPrompt(characterInfo)}
                         <div className="px-3 py-2 rounded-2xl bg-yellow-50 border border-yellow-200 inline-flex items-center justify-center min-w-[56px]">
                           <span className="text-3xl leading-none">{message.mediaDescription || '😊'}</span>
                         </div>
+                      ) : message.replyTo ? (
+                        <div className="border-t border-gray-100 px-4 py-2.5 text-[15px] leading-relaxed text-gray-800">
+                          <span className="mb-1 block text-[11px] font-medium text-gray-400">表情</span>
+                          <span className="whitespace-pre-wrap break-words">{message.mediaDescription}</span>
+                        </div>
                       ) : (
-                        // 纯文字描述表情包
                         <div className="relative w-[120px] h-[120px] rounded-2xl overflow-hidden bg-blue-100/40 backdrop-blur-sm border border-blue-200">
                           <div className="absolute inset-0 bg-gradient-to-br from-blue-50/30 to-blue-100/30" />
                           <div className="absolute inset-0 flex flex-col items-center justify-center p-3 text-center">
@@ -5046,30 +5078,102 @@ ${buildAvatarIdentityPrompt(characterInfo)}
                         </div>
                       </div>
                     )}
-                    {!message.mediaItems && message.role === 'assistant' && message.mediaType === 'voice' && message.isMediaDescriptionOnly && (
-                      <div 
-                        onClick={() => setViewingVoice(prev => 
-                          prev.includes(message.id) 
-                            ? prev.filter(id => id !== message.id)
-                            : [...prev, message.id]
-                        )}
-                        className="cursor-pointer flex items-center gap-2 px-3 py-2 bg-gray-50 rounded-xl min-w-[120px] max-w-[200px]"
-                      >
-                        <Mic className="w-4 h-4 text-gray-600 flex-shrink-0" />
-                        <div className="flex-1 flex items-center gap-0.5">
-                          <div className="flex gap-0.5">
-                            {voiceWaveHeights.map((height, i) => (
-                              <div 
-                                key={i} 
-                                className="w-0.5 bg-gray-400 rounded-full"
-                                style={{ height: `${height}px` }}
-                              />
-                            ))}
+                    {!message.mediaItems && message.role === 'assistant' && message.mediaType === 'voice' && message.isMediaDescriptionOnly && (() => {
+                      const voiceStrip = stripTrailingVoiceTranscriptArtifacts((message.mediaDescription || '').trim());
+                      const voiceDisplayText = voiceStrip.text;
+                      const durationShown = voiceStrip.secondsHint ?? message.voiceDuration ?? 3;
+                      const charTts = resolveCharacterTtsForAssistantMessage(message);
+                      const ttsPlain =
+                        plainTextForMinimaxTts(voiceDisplayText) ||
+                        plainTextForMinimaxTts(getDisplayText(message.content || ''));
+                      const showPlay =
+                        !!ttsPlain &&
+                        !charTts?.disabled &&
+                        isMinimaxTtsReady(apiConfig) &&
+                        isCharacterTtsVoiceConfigured(charTts);
+                      const busy = ttsBusyMessageId === message.id;
+                      const playing = ttsPlayingMessageId === message.id;
+                      const expanded = viewingVoice.includes(message.id) && !!voiceDisplayText;
+
+                      return (
+                        <div className="max-w-[min(100%,268px)] overflow-hidden rounded-2xl border border-gray-200 bg-white">
+                          <div className="flex items-center gap-2 px-3 py-2">
+                            {showPlay ? (
+                              <button
+                                type="button"
+                                title="合成并播放（MiniMax 计费）；正文可含停顿标记如 <#0.5#>；点右侧波形可展开转文字"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  if (playing) {
+                                    ttsAudioRef.current?.pause();
+                                    setTtsPlayingMessageId(null);
+                                    return;
+                                  }
+                                  void playAssistantTts(message, ttsPlain);
+                                }}
+                                disabled={busy}
+                                className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-sky-800 transition-colors disabled:opacity-60 ${
+                                  playing ? 'bg-sky-300' : 'bg-sky-200 hover:bg-sky-300'
+                                }`}
+                              >
+                                {busy ? (
+                                  <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+                                ) : playing ? (
+                                  <Pause className="h-4 w-4" aria-hidden />
+                                ) : (
+                                  <Play className="ml-0.5 h-4 w-4" aria-hidden />
+                                )}
+                              </button>
+                            ) : null}
+                            <div
+                              role="button"
+                              tabIndex={0}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setViewingVoice((prev) =>
+                                  prev.includes(message.id) ? prev.filter((id) => id !== message.id) : [...prev, message.id],
+                                );
+                              }}
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter' || e.key === ' ') {
+                                  e.preventDefault();
+                                  e.stopPropagation();
+                                  setViewingVoice((prev) =>
+                                    prev.includes(message.id) ? prev.filter((id) => id !== message.id) : [...prev, message.id],
+                                  );
+                                }
+                              }}
+                              className="flex min-w-0 flex-1 cursor-pointer items-center gap-2 rounded-lg px-1 py-0.5 hover:bg-gray-50"
+                              title="点击查看转文字"
+                            >
+                              {!showPlay ? <Mic className="h-4 w-4 shrink-0 text-gray-500" aria-hidden /> : null}
+                              <div className="flex min-w-0 flex-1 items-center gap-0.5">
+                                <div className="flex gap-0.5">
+                                  {voiceWaveHeights.map((height, i) => (
+                                    <div
+                                      key={i}
+                                      className={`w-0.5 rounded-full ${showPlay ? 'bg-sky-400' : 'bg-gray-400'}`}
+                                      style={{ height: `${height}px` }}
+                                    />
+                                  ))}
+                                </div>
+                              </div>
+                              {!busy && !playing ? (
+                                <span className="shrink-0 text-xs tabular-nums text-gray-600">{durationShown}″</span>
+                              ) : null}
+                            </div>
                           </div>
+                          {expanded ? (
+                            <div className="flex gap-2 border-t border-gray-100 bg-gray-50 px-3 py-2.5">
+                                <Languages className="mt-0.5 h-4 w-4 shrink-0 text-sky-600/70" aria-hidden />
+                                <p className="whitespace-pre-wrap break-words text-[13px] leading-relaxed text-gray-800">
+                                  {voiceDisplayText}
+                                </p>
+                            </div>
+                          ) : null}
                         </div>
-                        <span className="text-xs text-gray-600 flex-shrink-0">{message.voiceDuration || 3}"</span>
-                      </div>
-                    )}
+                      );
+                    })()}
                     {/* AI表情包 */}
                     {!message.mediaItems && message.role === 'assistant' && message.mediaType === 'sticker' && (
                       message.mediaUrl ? (
@@ -5086,7 +5190,12 @@ ${buildAvatarIdentityPrompt(characterInfo)}
                           <span className="text-3xl leading-none">{message.mediaDescription || '😊'}</span>
                         </div>
                       ) : message.isMediaDescriptionOnly ? (
-                        // 纯文字描述表情包（仅当标记为纯描述时）
+                        message.replyTo ? (
+                          <div className="border-t border-gray-100 px-4 py-2.5 text-[15px] leading-relaxed text-gray-800">
+                            <span className="mb-1 block text-[11px] font-medium text-gray-400">回复表情</span>
+                            <span className="whitespace-pre-wrap break-words">{message.mediaDescription}</span>
+                          </div>
+                        ) : (
                         <div className="relative w-[120px] h-[120px] rounded-2xl overflow-hidden bg-blue-100/40 backdrop-blur-sm border border-blue-200">
                           <div className="absolute inset-0 bg-gradient-to-br from-blue-50/30 to-blue-100/30" />
                           <div className="absolute inset-0 flex flex-col items-center justify-center p-3 text-center">
@@ -5094,6 +5203,7 @@ ${buildAvatarIdentityPrompt(characterInfo)}
                             <p className="text-xs text-gray-700 leading-tight">{message.mediaDescription}</p>
                           </div>
                         </div>
+                        )
                       ) : null
                     )}
                     
@@ -5110,16 +5220,33 @@ ${buildAvatarIdentityPrompt(characterInfo)}
                       
                       if (isHTMLContent) {
                         // HTML内容：使用dangerouslySetInnerHTML渲染
+                        const htmlPad =
+                          isToolPrivateAssistant ? 'px-0' : message.replyTo ? 'px-4' : '';
+                        const htmlText = isToolPrivateAssistant ? 'text-[16px]' : 'text-[15px]';
                         return (
                           <div 
-                            className={`message-content content text-[15px] leading-relaxed ${message.replyTo ? 'px-4' : ''}`}
+                            className={`message-content content ${htmlText} leading-relaxed ${htmlPad}`}
                             dangerouslySetInnerHTML={{ __html: displayContent }}
                           />
                         );
                       } else {
-                        // 普通文本内容
+                        const docPad =
+                          isToolPrivateAssistant ? 'px-0' : message.replyTo ? 'px-4' : '';
+                        const textBase = `message-content content break-words ${
+                          isToolPrivateAssistant ? 'text-[16px] leading-7' : 'text-[15px] leading-relaxed'
+                        } ${docPad}`;
+                        if (message.role === 'assistant') {
+                          return (
+                            <div
+                              className={`${textBase} ${assistantChatMarkdownBodyClassName}`}
+                              dangerouslySetInnerHTML={{
+                                __html: assistantMarkdownToSafeHtml(displayContent),
+                              }}
+                            />
+                          );
+                        }
                         return (
-                          <p className={`message-content content text-[15px] leading-relaxed whitespace-pre-wrap break-words ${message.replyTo ? 'px-4' : ''}`}>
+                          <p className={`${textBase} whitespace-pre-wrap`}>
                             {displayContent}
                           </p>
                         );
@@ -5140,23 +5267,33 @@ ${buildAvatarIdentityPrompt(characterInfo)}
                       </div>
                     )}
 
-                    {/* 语音转文字内容显示（放在气泡容器内部，紧贴语音气泡下方） */}
-                    {message.mediaType === 'voice' && message.isMediaDescriptionOnly && viewingVoice.includes(message.id) && message.mediaDescription && (
-                      <div className="mt-2">
-                        <div className="px-4 py-2.5 bg-gray-50 rounded-xl border border-gray-200 shadow-sm">
-                          <p className="text-[13px] text-gray-700 whitespace-pre-wrap break-words leading-relaxed">{message.mediaDescription}</p>
+                    {/* 语音转文字（用户侧等；助手虚拟语音的转写已收入同一气泡内） */}
+                    {message.mediaType === 'voice' &&
+                      message.isMediaDescriptionOnly &&
+                      message.role !== 'assistant' &&
+                      viewingVoice.includes(message.id) &&
+                      message.mediaDescription && (
+                        <div className="mt-2">
+                          <div className="rounded-xl border border-gray-200 bg-gray-50 px-4 py-2.5 shadow-sm">
+                            <p className="text-[13px] leading-relaxed text-gray-700 whitespace-pre-wrap break-words">
+                              {stripTrailingVoiceTranscriptArtifacts((message.mediaDescription || '').trim()).text}
+                            </p>
+                          </div>
                         </div>
-                      </div>
-                    )}
+                      )}
                   </div>
-                  {/* Message tail */}
+                    );
+                  })()}
+                  {/* Message tail（工具型助手：无气泡尾巴） */}
+                  {!isToolPrivateAssistant && (
                   <div className={`message-tail absolute bottom-3 ${
                     message.role === 'user' ? 'right-0 translate-x-[40%]' : 'left-0 -translate-x-[40%]'
                   }`}>
-                    <div className={`w-2.5 h-2.5 bg-white border-gray-200 transform rotate-45 shadow-sm ${
-                      message.role === 'user' ? 'border-r border-b' : 'border-l border-t'
+                    <div className={`w-2.5 h-2.5 transform rotate-45 shadow-sm border-gray-200 ${
+                      message.role === 'user' && isToolPrivateUser ? 'bg-zinc-100 border-r border-b' : message.role === 'user' ? 'bg-white border-r border-b' : 'bg-white border-l border-t'
                     }`}></div>
                   </div>
+                  )}
                 </div>
                 
                 {/* 语音转文字内容已移动到气泡容器内部渲染，避免位置偏移问题 */}
@@ -5183,7 +5320,9 @@ ${buildAvatarIdentityPrompt(characterInfo)}
               {/* 操作菜单见 MessageActionsSurface（Floating UI 锚点浮层） */}
             </div>
           );
-        });
+        })}
+            </>
+          );
         })()}
 
         {conversation.type === 'group' && groupRoundReceivingHint && !isMultiSelectMode && (
@@ -5201,6 +5340,16 @@ ${buildAvatarIdentityPrompt(characterInfo)}
 
         {/* 私聊打字动画 */}
         {showTyping && conversation.type === 'private' && (
+          toolPrivateUi ? (
+            <div className="mx-auto flex w-full max-w-3xl items-center gap-2.5 px-0 py-2 md:max-w-[820px]">
+              <div className="flex gap-1">
+                <div className="h-1.5 w-1.5 rounded-full bg-gray-400 animate-bounce" style={{ animationDelay: '0ms' }} />
+                <div className="h-1.5 w-1.5 rounded-full bg-gray-400 animate-bounce" style={{ animationDelay: '150ms' }} />
+                <div className="h-1.5 w-1.5 rounded-full bg-gray-400 animate-bounce" style={{ animationDelay: '300ms' }} />
+              </div>
+              <span className="text-xs text-gray-500">正在回复…</span>
+            </div>
+          ) : (
           <div className="flex gap-2 items-end justify-start">
             <div className="relative flex-shrink-0">
               {conversation.characterSettings?.avatar ? (
@@ -5229,6 +5378,7 @@ ${buildAvatarIdentityPrompt(characterInfo)}
               </div>
             </div>
           </div>
+          )
         )}
 
         {/* 群聊打字动画（与「消息收取中」互斥先后显示，不同时出现） */}
@@ -5368,8 +5518,8 @@ ${buildAvatarIdentityPrompt(characterInfo)}
                     </span>
                   ) : null}
                 </div>
-                <div className="text-sm text-gray-700 line-clamp-3 break-words">
-                  {quotedMessage.content}
+                <div className="text-sm text-gray-700">
+                  {renderQuotedPreviewBody(quotedMessage, (quotedMessage.content || '').trim() || '[消息]')}
                 </div>
               </div>
               <button
@@ -6429,28 +6579,14 @@ ${buildAvatarIdentityPrompt(characterInfo)}
       />
     )}
 
-    {/* 💬 子聊天管理器 */}
-    {showSubChatManager && (
-      <SubChatManager
-        subChats={conversation.subChats || []}
-        onClose={() => setShowSubChatManager(false)}
-        onSelectSubChat={handleSelectSubChat}
-        onCreateSubChat={handleCreateUserSubChat}
-        onRenameSubChat={handleRenameSubChat}
-        onDeleteSubChat={handleDeleteSubChat}
-        onImportSubChat={handleImportSubChat}
+    {conversation.type === 'private' ? (
+      <PrivateChatSessionDrawer
+        open={showPrivateSessionDrawer}
+        onClose={() => setShowPrivateSessionDrawer(false)}
+        conversation={conversation}
+        onUpdateConversation={onUpdateConversation}
       />
-    )}
-
-    {/* 🤖 AI子聊天建议弹窗 */}
-    {showSubChatSuggestionModal && subChatSuggestion && (
-      <SubChatSuggestionModal
-        suggestion={subChatSuggestion}
-        onAccept={handleAcceptSubChatSuggestion}
-        onReject={handleRejectSubChatSuggestion}
-        characterName={conversation.characterSettings?.nickname || conversation.name}
-      />
-    )}
+    ) : null}
 
     <PrivateAiImageConsentModal
       open={Boolean(privateImageConsentPayload)}
@@ -6468,74 +6604,6 @@ ${buildAvatarIdentityPrompt(characterInfo)}
         r?.(false);
       }}
     />
-
-    {/* 💬 子聊天窗口 */}
-    {activeSubChatId && (
-      (() => {
-        const subChat = (conversation.subChats || []).find(
-          sc => sc.id === activeSubChatId
-        );
-        
-        if (!subChat) return null;
-        
-        return (
-          <SubChatWindow
-            subChat={subChat}
-            conversation={conversation}
-            apiConfig={effectivePrivateApiConfig}
-            onClose={() => handleCloseSubChat(activeSubChatId)}
-            onMinimize={() => handleToggleMinimizeSubChat(activeSubChatId)}
-            onSendMessage={handleSendSubChatMessage}
-            onUpdateSubChat={(subChatId, updates) => {
-              const updatedConversation = updateSubChatInConversation(
-                conversation,
-                subChatId,
-                updates
-              );
-              onUpdateConversation(conversation.id, {
-                subChats: updatedConversation.subChats,
-              });
-            }}
-            isMinimized={minimizedSubChats.has(activeSubChatId)}
-            conversations={conversations}
-            onUpdateConversation={onUpdateConversation}
-            currentUserProfile={currentUserProfile}
-          />
-        );
-      })()
-    )}
-
-    {/* 💬 最小化的子聊天列表 */}
-    {conversation.subChats?.map((subChat) => {
-      if (
-        !minimizedSubChats.has(subChat.id) ||
-        activeSubChatId !== subChat.id
-      )
-        return null;
-      
-      return (
-        <SubChatWindow
-          key={subChat.id}
-          subChat={subChat}
-          conversation={conversation}
-          apiConfig={effectivePrivateApiConfig}
-          onClose={() => handleCloseSubChat(subChat.id)}
-          onMinimize={() => handleToggleMinimizeSubChat(subChat.id)}
-          onSendMessage={handleSendSubChatMessage}
-          onUpdateSubChat={(subChatId, updates) => {
-            const updatedConversation = updateSubChatInConversation(
-              conversation,
-              subChatId,
-              updates
-            );
-            onUpdateConversation(conversation.id, {
-              subChats: updatedConversation.subChats,
-            });
-          }}
-          isMinimized={true}
-        />
-      );
-    })}
 
     {/* 📤 消息多选工具栏 */}
     {isMultiSelectMode && (

@@ -40,6 +40,63 @@ export function calculateVoiceDuration(text: string): number {
 }
 
 /**
+ * 去掉模型误贴在「语音转文字」文案末尾的时长标记，例如：
+ * - 「…晚安。:5」「…加油：12」（句读后的英文/中文冒号 + 秒数）
+ * - 「…文案，10秒」「…文案，时长8秒」
+ * 仅用于展示与 TTS 文案；若识别出秒数可作为 voiceDuration 提示。
+ */
+export function stripTrailingVoiceTranscriptArtifacts(raw: string): { text: string; secondsHint?: number } {
+  let s = (raw || '')
+    .trim()
+    .replace(/[\u200B-\u200D\uFEFF\u2060]+/g, '')
+    .trim();
+  if (!s) return { text: s };
+
+  const commaSec = s.match(/^(.+?)[，,]\s*(?:时长)?(\d{1,3})秒?\s*$/i);
+  if (commaSec) {
+    const n = Number(commaSec[2]);
+    if (n >= 1 && n <= 300) {
+      return { text: commaSec[1].trim(), secondsHint: n };
+    }
+  }
+
+  const punctThenColon = s.match(/^(.+[。！？…」』.!?])\s*[:：]\s*(\d{1,3})\s*$/);
+  if (punctThenColon) {
+    const n = Number(punctThenColon[2]);
+    if (n >= 1 && n <= 180) {
+      return { text: punctThenColon[1].trim(), secondsHint: n };
+    }
+  }
+
+  const bareColon = s.match(/^(.+?)[:：]\s*(\d{1,3})\s*$/);
+  if (bareColon) {
+    const body = bareColon[1];
+    const n = Number(bareColon[2]);
+    if (n >= 1 && n <= 180 && /[。！？…」』.!?\s，,、；\]}】]$/.test(body)) {
+      return { text: body.trim(), secondsHint: n };
+    }
+  }
+
+  // [语音:台词:5] 等拆条后 inner 为「台词:5」、句末无标点时仍应去掉时长尾巴
+  const cjkTailColonSec = s.match(/^(.{2,})[:：](\d{1,3})$/);
+  if (cjkTailColonSec) {
+    const n = Number(cjkTailColonSec[2]);
+    const body = cjkTailColonSec[1].trim();
+    if (
+      n >= 1 &&
+      n <= 180 &&
+      body.length >= 1 &&
+      /[\u3040-\u30ff\u4e00-\u9fff\uac00-\ud7af]$/u.test(body) &&
+      !/\d[:：]\d/.test(body)
+    ) {
+      return { text: body, secondsHint: n };
+    }
+  }
+
+  return { text: s };
+}
+
+/**
  * 格式化时长显示
  * @param seconds 秒数
  * @returns 格式化的时长字符串（如 "1:23" 或 "45"）

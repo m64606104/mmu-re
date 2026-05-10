@@ -2,6 +2,11 @@ import { MediaItem, Message } from '../../types';
 import { formatChatRecord } from '../../utils/chatRecordFormatter';
 import { splitMessages } from '../../utils/messageFormatter';
 import SmartHTMLGenerator from '../../utils/smartHTMLGenerator';
+import { wrapModelPayloadForEditedMessage } from './editedMessageModelHint';
+
+function appendEditedTranscriptNotice(msg: Message, text: string): string {
+  return wrapModelPayloadForEditedMessage(msg, text);
+}
 
 function hasNativeDocumentProtocol(raw: string): boolean {
   const trimmed = raw.trim();
@@ -56,46 +61,55 @@ export function formatMessageForAI(msg: Message): string {
       : '';
     const typeLabel = msg.document.type === 'text' ? '文本' : msg.document.type === 'markdown' ? 'Markdown' : '代码';
     if (msg.role === 'user') {
-      return `[用户发送了${typeLabel}文档]\n标题：${msg.document.title}${originalFileInfo}\n内容：\n${msg.document.content}`;
+      return appendEditedTranscriptNotice(
+        msg,
+        `[用户发送了${typeLabel}文档]\n标题：${msg.document.title}${originalFileInfo}\n内容：\n${msg.document.content}`,
+      );
     }
-    return `[AI发送了${typeLabel}文档]\n标题：${msg.document.title}${originalFileInfo}\n内容：\n${msg.document.content}`;
+    return appendEditedTranscriptNotice(
+      msg,
+      `[AI发送了${typeLabel}文档]\n标题：${msg.document.title}${originalFileInfo}\n内容：\n${msg.document.content}`,
+    );
   }
 
   // Money transfer/red packet
   if (msg.moneyTransfer) {
     const type = msg.moneyTransfer.type === 'redPacket' ? '红包' : '转账';
     if (msg.role === 'assistant') {
-      return msg.moneyTransfer.type === 'redPacket'
-        ? `[发红包:${msg.moneyTransfer.amount}:${msg.moneyTransfer.message}]`
-        : `[转账:${msg.moneyTransfer.amount}:${msg.moneyTransfer.message}]`;
+      return appendEditedTranscriptNotice(
+        msg,
+        msg.moneyTransfer.type === 'redPacket'
+          ? `[发红包:${msg.moneyTransfer.amount}:${msg.moneyTransfer.message}]`
+          : `[转账:${msg.moneyTransfer.amount}:${msg.moneyTransfer.message}]`,
+      );
     }
     if (msg.moneyTransfer.status === 'received') {
-      return `[接收${type}:${msg.moneyTransfer.message}]`;
+      return appendEditedTranscriptNotice(msg, `[接收${type}:${msg.moneyTransfer.message}]`);
     } else if (msg.moneyTransfer.status === 'returned') {
-      return `[退回${type}:${msg.moneyTransfer.message}]`;
+      return appendEditedTranscriptNotice(msg, `[退回${type}:${msg.moneyTransfer.message}]`);
     }
   }
 
   // Voice messages
   if (msg.mediaType === 'voice') {
     if (msg.mediaDescription && msg.mediaDescription.trim()) {
-      return `[语音消息] ${msg.mediaDescription}`;
+      return appendEditedTranscriptNotice(msg, `[语音消息] ${msg.mediaDescription}`);
     }
-    return `[语音消息 ${msg.voiceDuration || 3}秒]`;
+    return appendEditedTranscriptNotice(msg, `[语音消息 ${msg.voiceDuration || 3}秒]`);
   }
 
   // Sticker and visual media messages (ensure description is visible to AI)
   if (msg.mediaType === 'sticker') {
     const desc = (msg.mediaDescription || msg.content || '').trim();
-    return desc ? `[表情包] ${desc}` : '[表情包]';
+    return appendEditedTranscriptNotice(msg, desc ? `[表情包] ${desc}` : '[表情包]');
   }
   if (msg.mediaType === 'image') {
     const desc = (msg.mediaDescription || '').trim();
-    return desc ? `[图片] ${desc}` : '[图片]';
+    return appendEditedTranscriptNotice(msg, desc ? `[图片] ${desc}` : '[图片]');
   }
   if (msg.mediaType === 'video') {
     const desc = (msg.mediaDescription || '').trim();
-    return desc ? `[视频] ${desc}` : '[视频]';
+    return appendEditedTranscriptNotice(msg, desc ? `[视频] ${desc}` : '[视频]');
   }
 
   // Mixed media payload
@@ -104,7 +118,7 @@ export function formatMessageForAI(msg: Message): string {
     content = `${content} ${mediaDesc}`;
   }
 
-  return content;
+  return appendEditedTranscriptNotice(msg, content);
 }
 
 interface PrepareAssistantSegmentsOptions {

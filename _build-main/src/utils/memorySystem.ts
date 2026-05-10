@@ -7,6 +7,8 @@ import { AIEvent, ApiConfig, Conversation, MemoryBank, MemoryDiaryEntry, MemoryE
 import { save, load } from './storage';
 import { getCharacterOnlineHandle, getCharacterRealName } from './characterIdentity';
 import { buildApiUrl } from './apiHelper';
+import { resolveBackgroundChatApiConfig, resolveMemorySummaryAskJsonTemperature } from './chatApiConfig';
+import { countPrivateMessagesAcrossSessions, getPrivateMessagesMergedChronological } from './privateChatSessions';
 
 // 重新导出类型以便其他组件使用
 export type { MemoryEntry, MemoryDiaryEntry };
@@ -268,6 +270,10 @@ export const clearMemoryBank = (conversationId: string): void => {
   bank.aiEvents = [];
   bank.lastSummaryMessageCount = 0;
   bank.totalMessagesSinceLastSummary = 0;
+  bank.memoryEngineStageFailStreak = 0;
+  bank.memoryEngineStageRetryNotBefore = undefined;
+  bank.memoryEngineHundredFailStreak = 0;
+  bank.memoryEngineHundredRetryNotBefore = undefined;
   saveMemoryBank(bank);
 };
 
@@ -424,6 +430,39 @@ export const updateSummaryCounter = (conversationId: string, currentMessageCount
   saveMemoryBank(bank);
 };
 
+/** 阶段总结 / 100 条复盘解析失败后的退避：避免每条新消息都触发 3 次 askJson 打爆接口 */
+const MEMORY_ENGINE_BACKOFF_BASE_MS = 25_000;
+const MEMORY_ENGINE_BACKOFF_CAP_MS = 30 * 60 * 1000;
+
+function memoryEngineBackoffDelayMs(streak: number): number {
+  const s = Math.max(1, streak);
+  return Math.min(MEMORY_ENGINE_BACKOFF_CAP_MS, MEMORY_ENGINE_BACKOFF_BASE_MS * Math.pow(2, Math.min(s - 1, 10)));
+}
+
+function recordMemoryEngineStageFailure(bank: MemoryBank): void {
+  const streak = (bank.memoryEngineStageFailStreak || 0) + 1;
+  bank.memoryEngineStageFailStreak = streak;
+  bank.memoryEngineStageRetryNotBefore = Date.now() + memoryEngineBackoffDelayMs(streak);
+  saveMemoryBank(bank);
+}
+
+function resetMemoryEngineStageBackoff(bank: MemoryBank): void {
+  bank.memoryEngineStageFailStreak = 0;
+  bank.memoryEngineStageRetryNotBefore = undefined;
+}
+
+function recordMemoryEngineHundredFailure(bank: MemoryBank): void {
+  const streak = (bank.memoryEngineHundredFailStreak || 0) + 1;
+  bank.memoryEngineHundredFailStreak = streak;
+  bank.memoryEngineHundredRetryNotBefore = Date.now() + memoryEngineBackoffDelayMs(streak);
+  saveMemoryBank(bank);
+}
+
+function resetMemoryEngineHundredBackoff(bank: MemoryBank): void {
+  bank.memoryEngineHundredFailStreak = 0;
+  bank.memoryEngineHundredRetryNotBefore = undefined;
+}
+
 function utc8DayKey(ts: number): string {
   const d = new Date(ts + 8 * 60 * 60 * 1000);
   return d.toISOString().slice(0, 10);
@@ -519,50 +558,159 @@ function parseJsonFromModelText(text: string): any | null {
 const MEMORY_JSON_SYSTEM =
   '你只输出一个合法 JSON 对象：从第一个 { 到最后一个匹配的 }，中间不要有 Markdown、不要有 ``` 代码块、不要输出思考过程或中英文草稿。字符串里的换行必须写成 \\n。';
 
-async function askJson(apiConfig: ApiConfig, prompt: string): Promise<any | null> {
-  if (!apiConfig.baseUrl || !apiConfig.apiKey || !apiConfig.modelName) {
-    console.warn('[memory-engine] 缺少 API 配置（baseUrl / apiKey / modelName），跳过本次调用');
-    return null;
+const MEMORY_JSON_SYSTEM_STRICT =
+  MEMORY_JSON_SYSTEM +
+  ' 本次必须输出**完整**可解析的 JSON：所有键值对写全、字符串必须闭合、数组与对象必须正确收尾；宁可内容简短也不要截断。';
+
+/** 短「修复」轮：只喂模型上次输出，不传长对话，省 token；与主任务 schema 无关，靠解析器吃任意合法对象 */
+const MEMORY_JSON_REPAIR_SYSTEM =
+  '你是 JSON 整理器。只输出一个可被 JSON.parse 解析的根对象文本：从第一个 { 到最后一个匹配的 }，不要 markdown、不要代码块、不要解释。';
+
+function sleepMs(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function looksLikeUnsupportedJsonModeError(errPreview: string): boolean {
+  return /response_format|json_object|Invalid parameter|unknown.*parameter|not support|不支持|未识别/i.test(
+    errPreview || ''
+  );
+}
+
+type MemoryJsonFetchOk = { ok: true; status: number; text: string };
+type MemoryJsonFetchErr = { ok: false; status: number; errPreview: string };
+type MemoryJsonFetchResult = MemoryJsonFetchOk | MemoryJsonFetchErr;
+
+async function fetchMemoryJsonCompletion(
+  cfg: ApiConfig,
+  apiConfig: ApiConfig,
+  messages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }>,
+  opts?: { responseJsonObject?: boolean; maxTokens?: number; temperatureOverride?: number }
+): Promise<MemoryJsonFetchResult> {
+  const body: Record<string, unknown> = {
+    model: cfg.modelName,
+    messages,
+    temperature:
+      typeof opts?.temperatureOverride === 'number'
+        ? opts.temperatureOverride
+        : resolveMemorySummaryAskJsonTemperature(apiConfig),
+    max_tokens: opts?.maxTokens ?? 4096,
+  };
+  if (opts?.responseJsonObject) {
+    (body as { response_format?: { type: string } }).response_format = { type: 'json_object' };
   }
   try {
-    const res = await fetch(buildApiUrl(apiConfig), {
+    const res = await fetch(buildApiUrl(cfg), {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        Authorization: `Bearer ${apiConfig.apiKey}`,
+        Authorization: `Bearer ${cfg.apiKey || ''}`,
         'X-Momoyu-Source': 'memorySystem:askJson',
       },
-      body: JSON.stringify({
-        model: apiConfig.modelName,
-        messages: [
-          { role: 'system', content: MEMORY_JSON_SYSTEM },
-          { role: 'user', content: prompt },
-        ],
-        temperature: 0.3,
-        max_tokens: 4096,
-      }),
+      body: JSON.stringify(body),
     });
+    const status = res.status;
     if (!res.ok) {
-      const errBody = await res.text().catch(() => '');
-      console.warn('[memory-engine] API 非成功状态', res.status, errBody.slice(0, 200));
-      return null;
+      const errPreview = await res.text().catch(() => '');
+      return { ok: false, status, errPreview: errPreview.slice(0, 500) };
     }
     const data = await res.json();
     const text = String(data?.choices?.[0]?.message?.content || '');
-    const parsed = parseJsonFromModelText(text);
-    if (!parsed) {
-      const previewLen = 280;
-      console.warn(
-        `[memory-engine] 模型返回中未找到有效 JSON（全文 ${text.length} 字，日志仅预览前 ${previewLen} 字）`,
-        text.slice(0, previewLen)
-      );
-      return null;
-    }
-    return parsed;
+    return { ok: true, status, text };
   } catch (e) {
-    console.warn('[memory-engine] askJson 异常', e);
+    return { ok: false, status: 0, errPreview: String(e).slice(0, 200) };
+  }
+}
+
+async function askJson(apiConfig: ApiConfig, prompt: string): Promise<any | null> {
+  const cfg = resolveBackgroundChatApiConfig(apiConfig, 'memorySummary');
+  if (!cfg.baseUrl || !cfg.apiKey || !cfg.modelName) {
+    console.warn('[memory-engine] 缺少 API 配置（baseUrl / apiKey / modelName），跳过本次调用');
     return null;
   }
+
+  const mainMessages: Array<{ role: 'system' | 'user'; content: string }> = [
+    { role: 'system', content: MEMORY_JSON_SYSTEM },
+    { role: 'user', content: prompt },
+  ];
+
+  let lastRaw = '';
+  let lastStatus: number | null = null;
+  const baseTemp = resolveMemorySummaryAskJsonTemperature(apiConfig);
+  const repairTemp = Math.min(0.22, baseTemp);
+
+  // ① 主请求：优先 OpenAI 式 json_object，网关不支持则立刻同内容降级（不计为多次「长对话」）
+  let r = await fetchMemoryJsonCompletion(cfg, apiConfig, mainMessages, { responseJsonObject: true });
+  lastStatus = r.status;
+  if (!r.ok && r.status === 400 && looksLikeUnsupportedJsonModeError(r.errPreview)) {
+    r = await fetchMemoryJsonCompletion(cfg, apiConfig, mainMessages, { responseJsonObject: false });
+    lastStatus = r.status;
+  }
+  if (r.ok) {
+    lastRaw = r.text;
+    const parsed = parseJsonFromModelText(r.text);
+    if (parsed) return parsed;
+  } else {
+    console.warn('[memory-engine] askJson 主请求失败', r.status, r.errPreview.slice(0, 220));
+  }
+
+  // ② 修复轮：只带上次模型输出（短上下文），避免再打三遍完整 prompt
+  const salvageable = lastRaw.trim();
+  if (salvageable.length > 0) {
+    await sleepMs(320);
+    const slice =
+      salvageable.length > 14000 ? `${salvageable.slice(0, 14000)}\n…[已截断]` : salvageable;
+    const repairUser =
+      '下面是一段本应返回 JSON 的模型输出（可能含 markdown、截断或非法转义）。请只输出**一段**可被 JSON.parse 的根对象文本，尽量保留其中的字段与可读字符串；不要任何说明或代码围栏。\n' +
+      '若绝对无法整理成合法 JSON，则只输出：{"_momoyuJsonRepairFailed":true}\n\n----\n' +
+      slice;
+    const repairMessages: Array<{ role: 'system' | 'user'; content: string }> = [
+      { role: 'system', content: MEMORY_JSON_REPAIR_SYSTEM },
+      { role: 'user', content: repairUser },
+    ];
+    let rr = await fetchMemoryJsonCompletion(cfg, apiConfig, repairMessages, {
+      responseJsonObject: true,
+      maxTokens: 8192,
+      temperatureOverride: repairTemp,
+    });
+    if (!rr.ok && rr.status === 400 && looksLikeUnsupportedJsonModeError(rr.errPreview)) {
+      rr = await fetchMemoryJsonCompletion(cfg, apiConfig, repairMessages, {
+        responseJsonObject: false,
+        maxTokens: 8192,
+        temperatureOverride: repairTemp,
+      });
+    }
+    if (rr.ok) {
+      const pr = parseJsonFromModelText(rr.text);
+      if (pr && !(typeof pr === 'object' && pr !== null && (pr as { _momoyuJsonRepairFailed?: boolean })._momoyuJsonRepairFailed)) {
+        return pr;
+      }
+    } else {
+      console.warn('[memory-engine] askJson 修复轮失败', rr.status, rr.errPreview.slice(0, 180));
+    }
+  }
+
+  // ③ 最后兜底：完整 prompt + 更严 system，不用 json_object（部分模型在长任务下 json 模式易截断）
+  await sleepMs(400);
+  const strictMessages: Array<{ role: 'system' | 'user'; content: string }> = [
+    { role: 'system', content: MEMORY_JSON_SYSTEM_STRICT },
+    { role: 'user', content: prompt },
+  ];
+  const r2 = await fetchMemoryJsonCompletion(cfg, apiConfig, strictMessages, { responseJsonObject: false });
+  lastStatus = r2.ok ? r2.status : r2.status;
+  if (r2.ok) {
+    const p2 = parseJsonFromModelText(r2.text);
+    if (p2) return p2;
+    lastRaw = r2.text || lastRaw;
+  } else {
+    console.warn('[memory-engine] askJson 兜底请求失败', r2.status, r2.errPreview.slice(0, 220));
+  }
+
+  const previewLen = 280;
+  console.warn(
+    `[memory-engine] 主请求+修复+兜底后仍未得到可解析 JSON（最后 HTTP ${lastStatus ?? '—'}，预览前 ${previewLen} 字）`,
+    lastRaw.slice(0, previewLen)
+  );
+  return null;
 }
 
 function toDialogue(messages: Message[]): string {
@@ -609,7 +757,18 @@ export async function runMemoryEngineCycle(
   if (!conversation?.id || !conversation.enabledFeatures?.includes('memory-system')) return;
   const bank = getMemoryBank(conversation.id);
   if (!bank.settings.enableAutoSummary) return;
-  const allMessages = conversation.messages || [];
+  let allMessages = conversation.messages || [];
+  if (conversation.type === 'private') {
+    allMessages = getPrivateMessagesMergedChronological(conversation);
+    if (bank.lastSummaryMessageCount > allMessages.length) {
+      bank.lastSummaryMessageCount = allMessages.length;
+    }
+    const reviewCap = bank.lastHundredReviewCount || 0;
+    if (reviewCap > allMessages.length) {
+      bank.lastHundredReviewCount = allMessages.length;
+    }
+    saveMemoryBank(bank);
+  }
   if (allMessages.length < 10) return;
 
   /** 用户设置的「日常」阶段总结步长（至少 50） */
@@ -617,6 +776,15 @@ export async function runMemoryEngineCycle(
   /** 积压未总结条数 ≥ 此值时，每批按 100 条调用一次模型，减少补跑费用与等待 */
   const LARGE_BACKLOG_STEP = 100;
   while (allMessages.length - bank.lastSummaryMessageCount >= interval) {
+    const stageWaitUntil = bank.memoryEngineStageRetryNotBefore || 0;
+    if (stageWaitUntil > Date.now()) {
+      console.warn('[memory-engine] 阶段总结处于退避期，跳过本轮请求（避免解析失败后反复消耗 API）', {
+        conversationId: conversation.id,
+        retryInSec: Math.ceil((stageWaitUntil - Date.now()) / 1000),
+        failStreak: bank.memoryEngineStageFailStreak || 0,
+      });
+      break;
+    }
     const backlog = allMessages.length - bank.lastSummaryMessageCount;
     const step = backlog >= LARGE_BACKLOG_STEP ? Math.min(LARGE_BACKLOG_STEP, backlog) : interval;
     const start = bank.lastSummaryMessageCount;
@@ -638,11 +806,14 @@ export async function runMemoryEngineCycle(
       `对话：\n${toDialogue(chunk)}`;
     const parsed = await askJson(apiConfig, prompt);
     if (!parsed) {
-      console.warn('[memory-engine] 阶段总结未得到有效 JSON（仍会推进水位避免死循环，本段内容丢失）', {
+      recordMemoryEngineStageFailure(bank);
+      console.warn('[memory-engine] 阶段总结未得到有效 JSON，**不推进水位**；已进入退避，稍后自动重试本段', {
         conversationId: conversation.id,
         range: `${start}-${end}`,
         step,
+        nextRetryInSec: Math.ceil(((bank.memoryEngineStageRetryNotBefore || 0) - Date.now()) / 1000),
       });
+      break;
     }
     let diaryText = String(parsed?.diary || '').trim();
     let chatSummaryText = String(parsed?.chatSummary || '').trim();
@@ -676,12 +847,20 @@ export async function runMemoryEngineCycle(
         e?.status === 'confirmed' || e?.status === 'failed' ? e.status : 'pending';
       addAIEvent(conversation.id, { title, description, status, tags: e?.tags });
     });
+    resetMemoryEngineStageBackoff(bank);
     bank.lastSummaryMessageCount = end;
     saveMemoryBank(bank);
   }
 
   const reviewStart = bank.lastHundredReviewCount || 0;
   if (allMessages.length - reviewStart >= 100) {
+    const hundredWaitUntil = bank.memoryEngineHundredRetryNotBefore || 0;
+    if (hundredWaitUntil > Date.now()) {
+      console.warn('[memory-engine] 100 条复盘处于退避期，跳过本轮请求', {
+        conversationId: conversation.id,
+        retryInSec: Math.ceil((hundredWaitUntil - Date.now()) / 1000),
+      });
+    } else {
     const reviewEnd = reviewStart + 100;
     const windowMsgs = allMessages.slice(Math.max(0, reviewEnd - 100), reviewEnd);
     const prevMem = bank.memories.slice(0, 30).map(m => `- [${m.category || '其他'}|${m.importance}] ${m.content}`).join('\n');
@@ -703,31 +882,42 @@ export async function runMemoryEngineCycle(
       `旧事件:\n${existingEvents || '（无）'}\n` +
       `新对话:\n${toDialogue(windowMsgs)}`;
     const parsed = await askJson(apiConfig, prompt);
-    const newMemories = Array.isArray(parsed?.newMemories) ? parsed.newMemories : [];
-    newMemories.forEach((m: any) => {
-      const content = String(m?.content || '').trim();
-      if (!content) return;
-      const importance = m?.importance === 'high' || m?.importance === 'low' ? m.importance : 'medium';
-      const category = String(m?.category || '其他');
-      addMemory(conversation.id, `【100条复盘】${content}`, importance, category, true);
-    });
-    const aiSelf = String(parsed?.aiSelfProfile || '').trim();
-    const userP = String(parsed?.userProfile || '').trim();
-    if (aiSelf || userP) {
-      updateDynamicProfiles(conversation.id, aiSelf || bank.aiSelfProfile?.text || '', userP || bank.userProfile?.text || '', utc8DayKey(Date.now()));
-    }
+    if (!parsed) {
+      recordMemoryEngineHundredFailure(bank);
+      console.warn('[memory-engine] 100 条复盘未得到有效 JSON，**不推进 lastHundredReviewCount**；已进入退避', {
+        conversationId: conversation.id,
+        range: `${reviewStart}-${reviewEnd}`,
+        nextRetryInSec: Math.ceil(((bank.memoryEngineHundredRetryNotBefore || 0) - Date.now()) / 1000),
+      });
+    } else {
+      const newMemories = Array.isArray(parsed?.newMemories) ? parsed.newMemories : [];
+      newMemories.forEach((m: any) => {
+        const content = String(m?.content || '').trim();
+        if (!content) return;
+        const importance = m?.importance === 'high' || m?.importance === 'low' ? m.importance : 'medium';
+        const category = String(m?.category || '其他');
+        addMemory(conversation.id, `【100条复盘】${content}`, importance, category, true);
+      });
+      const aiSelf = String(parsed?.aiSelfProfile || '').trim();
+      const userP = String(parsed?.userProfile || '').trim();
+      if (aiSelf || userP) {
+        updateDynamicProfiles(conversation.id, aiSelf || bank.aiSelfProfile?.text || '', userP || bank.userProfile?.text || '', utc8DayKey(Date.now()));
+      }
 
-    const events = Array.isArray(parsed?.aiEvents) ? parsed.aiEvents : [];
-    events.forEach((e: any) => {
-      const title = String(e?.title || '').trim();
-      const description = String(e?.description || '').trim();
-      if (!title || !description) return;
-      const status: AIEvent['status'] =
-        e?.status === 'confirmed' || e?.status === 'failed' ? e.status : 'pending';
-      addAIEvent(conversation.id, { title, description, status, tags: e?.tags });
-    });
-    bank.lastHundredReviewCount = reviewEnd;
-    saveMemoryBank(bank);
+      const events = Array.isArray(parsed?.aiEvents) ? parsed.aiEvents : [];
+      events.forEach((e: any) => {
+        const title = String(e?.title || '').trim();
+        const description = String(e?.description || '').trim();
+        if (!title || !description) return;
+        const status: AIEvent['status'] =
+          e?.status === 'confirmed' || e?.status === 'failed' ? e.status : 'pending';
+        addAIEvent(conversation.id, { title, description, status, tags: e?.tags });
+      });
+      resetMemoryEngineHundredBackoff(bank);
+      bank.lastHundredReviewCount = reviewEnd;
+      saveMemoryBank(bank);
+    }
+    }
   }
 
   if (!bank.dayPartSummaryMarks) bank.dayPartSummaryMarks = {};
@@ -769,28 +959,35 @@ export async function runMemoryEngineCycle(
         `输出JSON: {"dailySummary":"...","moodTags":["..."],"aiSelfProfile":"...","userProfile":"...","aiEvents":[{"title":"...","description":"...","status":"pending|confirmed|failed","tags":["..."]}]}\n` +
         `${toDialogue(todayMsgs)}`
       );
-      const dailySummary = String(parsed?.dailySummary || '').trim();
-      const moodTags = Array.isArray(parsed?.moodTags) ? parsed.moodTags.map((x: any) => String(x)).filter(Boolean).slice(0, 8) : [];
-      if (dailySummary) {
-        addDiaryEntry(conversation.id, day, `【今日·角色日记】${dailySummary}`, moodTags, 'auto', 'diary');
-      }
-      const aiSelf = String(parsed?.aiSelfProfile || '').trim();
-      const userP = String(parsed?.userProfile || '').trim();
-      if (aiSelf || userP) {
-        updateDynamicProfiles(conversation.id, aiSelf || bank.aiSelfProfile?.text || '', userP || bank.userProfile?.text || '', day);
-      }
+      if (!parsed) {
+        console.warn('[memory-engine] 今日总结 JSON 无效，**不标记 lastDailySummaryDay**，下次重试', {
+          conversationId: conversation.id,
+          day,
+        });
+      } else {
+        const dailySummary = String(parsed?.dailySummary || '').trim();
+        const moodTags = Array.isArray(parsed?.moodTags) ? parsed.moodTags.map((x: any) => String(x)).filter(Boolean).slice(0, 8) : [];
+        if (dailySummary) {
+          addDiaryEntry(conversation.id, day, `【今日·角色日记】${dailySummary}`, moodTags, 'auto', 'diary');
+        }
+        const aiSelf = String(parsed?.aiSelfProfile || '').trim();
+        const userP = String(parsed?.userProfile || '').trim();
+        if (aiSelf || userP) {
+          updateDynamicProfiles(conversation.id, aiSelf || bank.aiSelfProfile?.text || '', userP || bank.userProfile?.text || '', day);
+        }
 
-      const events = Array.isArray(parsed?.aiEvents) ? parsed.aiEvents : [];
-      events.forEach((e: any) => {
-        const title = String(e?.title || '').trim();
-        const description = String(e?.description || '').trim();
-        if (!title || !description) return;
-        const status: AIEvent['status'] =
-          e?.status === 'confirmed' || e?.status === 'failed' ? e.status : 'pending';
-        addAIEvent(conversation.id, { title, description, status, tags: e?.tags });
-      });
-      bank.lastDailySummaryDay = day;
-      saveMemoryBank(bank);
+        const events = Array.isArray(parsed?.aiEvents) ? parsed.aiEvents : [];
+        events.forEach((e: any) => {
+          const title = String(e?.title || '').trim();
+          const description = String(e?.description || '').trim();
+          if (!title || !description) return;
+          const status: AIEvent['status'] =
+            e?.status === 'confirmed' || e?.status === 'failed' ? e.status : 'pending';
+          addAIEvent(conversation.id, { title, description, status, tags: e?.tags });
+        });
+        bank.lastDailySummaryDay = day;
+        saveMemoryBank(bank);
+      }
     }
   }
 }
@@ -879,7 +1076,10 @@ export function enqueueMemoryEngineIfBacklogAfterSave(
   if (!updates.enabledFeatures.includes('memory-system')) return;
   const bank = getMemoryBank(base.id);
   if (!bank.settings.enableAutoSummary) return;
-  const msgCount = base.messages?.length || 0;
+  const msgCount =
+    base.type === 'private'
+      ? countPrivateMessagesAcrossSessions(base)
+      : base.messages?.length || 0;
   if (!shouldTriggerAutoSummary(base.id, msgCount)) return;
 
   const merged: Conversation = {

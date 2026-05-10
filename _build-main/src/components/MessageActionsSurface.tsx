@@ -12,7 +12,7 @@ import {
   shift,
   useFloating,
 } from '@floating-ui/react-dom';
-import { Reply, Edit2, Trash2, CheckSquare, Share2 } from 'lucide-react';
+import { Reply, Edit2, Trash2, CheckSquare, Share2, Bookmark, HardDrive } from 'lucide-react';
 import type { MessageActionId, MessageActionItem } from '../domains/chat/messageActionsRegistry';
 
 const REACTION_EMOJIS = ['👍', '❤️', '😂', '😮', '😢', '👏'] as const;
@@ -22,6 +22,8 @@ const VIEWPORT_EDGE_PADDING = 16;
 
 const ACTION_ICON: Partial<Record<MessageActionId, React.ReactNode>> = {
   quote: <Reply size={15} className="text-blue-500 shrink-0" aria-hidden />,
+  favoriteVoiceCache: <HardDrive size={15} className="text-sky-600 shrink-0" aria-hidden />,
+  favoriteVoiceBookmark: <Bookmark size={15} className="text-amber-600 shrink-0" aria-hidden />,
   forward: <Share2 size={15} className="text-indigo-500 shrink-0" aria-hidden />,
   edit: <Edit2 size={15} className="text-emerald-600 shrink-0" aria-hidden />,
   multiSelect: <CheckSquare size={15} className="text-violet-600 shrink-0" aria-hidden />,

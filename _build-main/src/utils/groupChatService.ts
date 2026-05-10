@@ -925,6 +925,11 @@ async function generateAIReply(
 下文时间线中的多条消息（含发送者前缀与时刻标注）均为你开口之前的群聊记录，按时间从早到晚排列；请把整段当作**同一语境**通读后，再自然决定如何接话或 **[不回复]**。`;
     }
 
+    if (recentMessages.some((m) => m.edited)) {
+      systemPrompt += `\n\n【对话校对 / 用户编辑与文风】
+时间线中经编辑的消息可能含「修订前 / 修订后」对照。以修订后为准；修订前帮助理解用户想避免的称呼或语气，修订后体现其偏好——后续接话自然贴近修订后的风格。`;
+    }
+
     // 🕐 时间感知：以窗口内最后一条消息为锚（人类 / AI 一视同仁）
     if (lastTimeline && lastTimeline.role !== 'system') {
       const tailContent =
