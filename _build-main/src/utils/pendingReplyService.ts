@@ -110,9 +110,160 @@ function pickSleepHoldHint(): string {
   return SLEEP_HOLD_HINTS[Math.floor(Math.random() * SLEEP_HOLD_HINTS.length)];
 }
 
+/** 控制台：localStorage `momoyu_trace_private_ai_raw=1` 时打印 completions 元数据与正文（排查半句截断） */
+function readPrivateAiCompletionTraceEnabled(): boolean {
+  try {
+    return localStorage.getItem('momoyu_trace_private_ai_raw') === '1';
+  } catch {
+    return false;
+  }
+}
+
+/** 不含图片 base64 的粗略「文本型」字符量，便于对比近期上下文是否变长（输入变胖 → 同样 max_tokens 更容易顶满） */
+function approximateChatMessagesTextChars(messages: Array<{ role: string; content?: unknown }>): number {
+  let n = 0;
+  for (const m of messages) {
+    const c = m.content;
+    if (typeof c === 'string') {
+      n += c.length;
+    } else if (Array.isArray(c)) {
+      for (const part of c) {
+        if (!part || typeof part !== 'object') continue;
+        const p = part as { type?: string; text?: string; image_url?: { url?: string } | string };
+        if (p.type === 'text' && typeof p.text === 'string') n += p.text.length;
+        else if (p.type === 'image_url' || p.image_url != null) n += 24;
+        else n += 16;
+      }
+    } else if (c != null) {
+      n += String(c).length;
+    }
+    n += 8;
+  }
+  return n;
+}
+
+function logPrivateAiCompletionTrace(args: {
+  conversationId: string;
+  phase: string;
+  data: unknown;
+  content: string | undefined;
+  approxRequestTextChars?: number;
+}): void {
+  if (!readPrivateAiCompletionTraceEnabled()) return;
+  const { conversationId, phase, data, content, approxRequestTextChars } = args;
+  const d = data as {
+    id?: string;
+    model?: string;
+    usage?: unknown;
+    choices?: Array<{ finish_reason?: string }>;
+  };
+  const choice = d?.choices?.[0];
+  const finish = String(choice?.finish_reason ?? '');
+  const raw = content ?? '';
+  console.groupCollapsed(
+    `[momoyu][private-ai-completion] ${conversationId} · ${phase} · len=${raw.length} · finish=${finish || '?'}`,
+  );
+  console.log('meta', { id: d?.id, model: d?.model, usage: d?.usage, finish_reason: finish });
+  if (approxRequestTextChars != null) {
+    console.log('approx_request_text_chars', approxRequestTextChars, '（每条里的纯文本粗算，不含图 data URL）');
+  }
+  if (raw.length <= 12000) {
+    console.log('content_full', raw);
+  } else {
+    const n = 600;
+    console.log('content_head', raw.slice(0, n));
+    console.log('content_tail', raw.slice(-n));
+  }
+  console.groupEnd();
+}
+
+/**
+ * 上游因 max_tokens 返回 finish_reason=length 时续写 1～2 轮（与 proactiveMessaging 同类）。
+ */
+async function appendWhenFinishReasonLength(options: {
+  conversationId: string;
+  apiUrl: string;
+  bearerToken: string;
+  model: string;
+  messages: Array<{ role: string; content?: unknown }>;
+  initialText: string;
+  replyTemperature: number;
+  maxTokens: number;
+  isReplyStale: () => boolean;
+}): Promise<string> {
+  let text = options.initialText.trim();
+  const maxRounds = 2;
+  for (let round = 0; round < maxRounds; round++) {
+    if (options.isReplyStale()) return text;
+    console.warn(`[pendingReply] finish_reason=length，续写第 ${round + 1} 轮`, {
+      conversationId: options.conversationId,
+      len: text.length,
+    });
+    const continueRes = await fetch(options.apiUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${options.bearerToken}`,
+        'X-Momoyu-Source': 'pendingReplyService:continue-length',
+      },
+      body: JSON.stringify({
+        model: options.model,
+        messages: [
+          ...options.messages,
+          { role: 'assistant', content: text },
+          {
+            role: 'user',
+            content:
+              '你上一条回复在长度上限处被截断。请从中断处继续写完：保持同一角色与语气，不要重复已输出的句子，不要加任何说明或前言。',
+          },
+        ],
+        temperature: Math.min(0.55, options.replyTemperature + 0.05),
+        max_tokens: Math.min(2500, options.maxTokens),
+      }),
+    });
+    if (!continueRes.ok) break;
+    const continueData = await continueRes.json();
+    const tail = String(continueData?.choices?.[0]?.message?.content ?? '').trim();
+    const fr = String(continueData?.choices?.[0]?.finish_reason ?? '');
+    logPrivateAiCompletionTrace({
+      conversationId: options.conversationId,
+      phase: `continue-length-${round + 1}`,
+      data: continueData,
+      content: tail,
+    });
+    if (!tail) break;
+    text = `${text}\n${tail}`.trim();
+    if (fr !== 'length') break;
+  }
+  return text;
+}
+
 /** 同一会话又发了新消息时 +1，上一轮等待作废，只保留「最新这一轮」的回复时机 */
 const pendingReplyGeneration = new Map<string, number>();
 const generatingSet = new Set<string>();
+
+/** 私聊：真实配图（文生图）接口调用中，与「正在输入」分离 */
+const privateAiImageGenSet = new Set<string>();
+type PrivateAiImageGenListener = (convId: string, active: boolean) => void;
+const privateAiImageGenListeners: PrivateAiImageGenListener[] = [];
+
+function notifyPrivateAiImageGen(convId: string, active: boolean) {
+  if (active) privateAiImageGenSet.add(convId);
+  else privateAiImageGenSet.delete(convId);
+  privateAiImageGenListeners.forEach((fn) => fn(convId, active));
+}
+
+export function onPrivateAiImageGenChange(fn: PrivateAiImageGenListener): () => void {
+  privateAiImageGenListeners.push(fn);
+  return () => {
+    const idx = privateAiImageGenListeners.indexOf(fn);
+    if (idx >= 0) privateAiImageGenListeners.splice(idx, 1);
+  };
+}
+
+export function isPrivateAiImageGenerating(convId: string): boolean {
+  return privateAiImageGenSet.has(convId);
+}
 
 /** 输入框占用：草稿非空或 IME 正在组字时暂停触发 AI，避免与用户抢节奏 */
 let _composerBlocksReply: ((conversationId: string) => boolean) | undefined;
@@ -194,6 +345,10 @@ async function runGroupReplySchedule(conversationId: string, isStillCurrent: () 
 }
 
 async function runPrivateReplySchedule(conversationId: string, isStillCurrent: () => boolean): Promise<void> {
+  const conv0 = _getConversation(conversationId);
+  if (conv0?.type === 'private' && conv0.faceToFaceSession?.active) {
+    return;
+  }
   const gate = _composerBlocksReply;
   if (!gate) {
     await sleep(resolvePrivateComposerQuietDelayMs(conversationId));
@@ -348,6 +503,7 @@ export function bumpPendingReplyScheduleEpoch(conversationId: string): void {
   const next = (pendingReplyGeneration.get(conversationId) || 0) + 1;
   pendingReplyGeneration.set(conversationId, next);
   notifyTyping(conversationId, false);
+  notifyPrivateAiImageGen(conversationId, false);
 }
 
 export function isGenerating(convId: string): boolean {
@@ -477,21 +633,41 @@ function toModelMessageContent(m: Message): string {
   return `〈消息ID:${m.id}〉\n${content}`;
 }
 
+/** 私聊：发给模型的历史气泡切片（与角色 contextConfig 对齐；未开「自定义条数」时仍可有软上限） */
+const PRIVATE_CHAT_DEFAULT_MAX_MESSAGES_WHEN_UNLIMITED = 120;
+
+function slicePrivateMessagesForModelContext(conversation: Conversation): {
+  messages: Message[];
+  omittedEarlierCount: number;
+} {
+  const msgs = conversation.messages.filter((m) => (m as Message & { channel?: string }).channel !== 'face_to_face');
+  const cfg = conversation.characterSettings?.contextConfig;
+  if (cfg?.enabled) {
+    const n = Math.max(1, Math.min(100, Math.round(Number(cfg.messageCount) || 20)));
+    const take = Math.min(n, msgs.length);
+    return {
+      messages: msgs.slice(-take),
+      omittedEarlierCount: Math.max(0, msgs.length - take),
+    };
+  }
+  const rawCap = cfg?.maxMessagesWhenUnlimited;
+  const cap =
+    rawCap === undefined || rawCap === null
+      ? PRIVATE_CHAT_DEFAULT_MAX_MESSAGES_WHEN_UNLIMITED
+      : Math.max(0, Math.min(500, Math.round(Number(rawCap))));
+  if (cap === 0 || msgs.length <= cap) {
+    return { messages: msgs, omittedEarlierCount: 0 };
+  }
+  return {
+    messages: msgs.slice(-cap),
+    omittedEarlierCount: msgs.length - cap,
+  };
+}
+
 /**
  * 将“短时间内连续发送的多条用户消息”打包成一条，减少 token 并更像真人连发。
  * 只影响发给 AI 的内容，不改变聊天记录的显示。
  */
-/** 私聊发给模型的消息窗口：与角色设置「自定义上下文数量」一致；关闭=整段历史，开启=最近 N 条（1～100） */
-function slicePrivateMessagesForModelContext(conversation: Conversation): Message[] {
-  const msgs = conversation.messages;
-  const cfg = conversation.characterSettings?.contextConfig;
-  if (cfg?.enabled) {
-    const n = Math.max(1, Math.min(100, Math.round(Number(cfg.messageCount) || 20)));
-    return msgs.slice(-n);
-  }
-  return msgs;
-}
-
 function packRecentUserMessagesForModel(contextMessages: Message[], bufferMs: number): Message[] {
   if (contextMessages.length <= 1) return contextMessages;
 
@@ -571,6 +747,9 @@ function privateUserMessageEmbedVisionRaw(conv: Conversation, m: Message): boole
 async function triggerReply(conversationId: string) {
   const conversation = _getConversation(conversationId);
   if (!conversation) return;
+  if (conversation.type === 'private' && conversation.faceToFaceSession?.active) {
+    return;
+  }
 
   const apiConfig = _getApiConfig();
   const userProfile = _getUserProfile();
@@ -880,11 +1059,12 @@ async function triggerReply(conversationId: string) {
     }
 
     const bufferMs = (conversation.messageBufferSeconds ?? 15) * 1000;
-    const contextMessages = packRecentUserMessagesForModel(
-      slicePrivateMessagesForModelContext(conversation),
-      bufferMs,
-    );
-    const maxTokens = requireDocumentJson ? 8000 : 2000;
+    const { messages: historyForModel, omittedEarlierCount } = slicePrivateMessagesForModelContext(conversation);
+    if (omittedEarlierCount > 0) {
+      systemPrompt += `\n\n【上下文窗口】本次请求仅包含最近 ${historyForModel.length} 条聊天消息，更早的 ${omittedEarlierCount} 条未传入模型（为节省体积、降低网关截断与「说到一半没了」的概率）。需要引用很久以前的内容时，请结合上方记忆/资料库摘要，或请用户复述要点。`;
+    }
+    const contextMessages = packRecentUserMessagesForModel(historyForModel, bufferMs);
+    const maxTokens = requireDocumentJson ? 8000 : 3072;
     const messages = [
       { role: 'system', content: systemPrompt },
       ...contextMessages.map((m) => {
@@ -912,6 +1092,7 @@ async function triggerReply(conversationId: string) {
     const routing = resolveOpenAiCompatibleCompletionRouting(apiConfig, {
       requestContainsImageUrl,
       textChatModel: effectiveApiConfig.modelName,
+      conversationResolvedConfig: effectiveApiConfig,
     });
 
     const replyTemperature = toolPrivate ? 0.4 : 0.7;
@@ -949,7 +1130,30 @@ async function triggerReply(conversationId: string) {
       return;
     }
     let aiContent = data.choices?.[0]?.message?.content?.trim();
+    let finishReason = String(data?.choices?.[0]?.finish_reason ?? '');
+    logPrivateAiCompletionTrace({
+      conversationId,
+      phase: 'primary',
+      data,
+      content: aiContent,
+      approxRequestTextChars: approximateChatMessagesTextChars(messages),
+    });
 
+    if (!requireDocumentJson && finishReason === 'length' && (aiContent || '').trim()) {
+      aiContent = await appendWhenFinishReasonLength({
+        conversationId,
+        apiUrl,
+        bearerToken: routing.bearerToken,
+        model: routing.model,
+        messages,
+        initialText: aiContent!,
+        replyTemperature,
+        maxTokens,
+        isReplyStale,
+      });
+    }
+
+    const protocolRetrySystem = { role: 'system' as const, content: buildProtocolRetryInstruction() };
     const outputValidation = validateAssistantOutput(aiContent || '');
     if (!outputValidation.valid) {
       console.warn('⚠️ [延迟回复] 检测到不合规输出，触发一次协议重试:', outputValidation.reason);
@@ -962,14 +1166,35 @@ async function triggerReply(conversationId: string) {
         },
         body: JSON.stringify({
           model: routing.model,
-          messages: [...messages, { role: 'system', content: buildProtocolRetryInstruction() }],
+          messages: [...messages, protocolRetrySystem],
           temperature: replyTemperature,
           max_tokens: maxTokens,
         }),
       });
       if (retryRes.ok) {
         const retryData = await retryRes.json();
-        aiContent = retryData?.choices?.[0]?.message?.content?.trim() || aiContent;
+        let retryContent = retryData?.choices?.[0]?.message?.content?.trim();
+        logPrivateAiCompletionTrace({
+          conversationId,
+          phase: 'protocol-retry',
+          data: retryData,
+          content: retryContent,
+        });
+        const frRetry = String(retryData?.choices?.[0]?.finish_reason ?? '');
+        if (!requireDocumentJson && frRetry === 'length' && (retryContent || '').trim()) {
+          retryContent = await appendWhenFinishReasonLength({
+            conversationId,
+            apiUrl,
+            bearerToken: routing.bearerToken,
+            model: routing.model,
+            messages: [...messages, protocolRetrySystem],
+            initialText: retryContent!,
+            replyTemperature,
+            maxTokens,
+            isReplyStale,
+          });
+        }
+        aiContent = retryContent || aiContent;
       }
     }
 
@@ -992,7 +1217,14 @@ async function triggerReply(conversationId: string) {
       });
       if (docRetryRes.ok) {
         const docRetryData = await docRetryRes.json();
-        aiContent = docRetryData?.choices?.[0]?.message?.content?.trim() || aiContent;
+        const docRetryContent = docRetryData?.choices?.[0]?.message?.content?.trim();
+        logPrivateAiCompletionTrace({
+          conversationId,
+          phase: 'doc-retry',
+          data: docRetryData,
+          content: docRetryContent,
+        });
+        aiContent = docRetryContent || aiContent;
       }
       if (!isValidDocumentJsonOutput(aiContent || '')) {
         aiContent = JSON.stringify({
@@ -1054,6 +1286,8 @@ async function triggerReply(conversationId: string) {
 
     const parsedDocument = parseDocumentJsonPayload(aiContent);
     if (parsedDocument) {
+      // 模型 JSON 已就绪；关闭「正在输入」，后续仅本地打包附件与写气泡
+      notifyTyping(conversationId, false);
       let originalFile;
       try {
         originalFile = await generateDocxOriginalFile(parsedDocument.title, parsedDocument.content);
@@ -1096,6 +1330,10 @@ async function triggerReply(conversationId: string) {
       notifyTyping(conversationId, false);
       return;
     }
+
+    // 注意：此处不要提前 notifyTyping(false)。若在 [NEXT] 逐条写入前的间隔里关掉「正在输入」，
+    // 用户容易误以为已回复完而发送新消息 → schedulePendingReply 抬高 epoch → isReplyStale 在循环内为真，
+    // 后续气泡被丢弃，表现为「说到一半没了」。typing 仍在整条拆条 + 可选生图完成后统一关闭。
 
     // 🚀 智能分割：先完整产出，再按语境决定是否拆分
     const lastUserMessage = [...conversation.messages]
@@ -1151,6 +1389,11 @@ async function triggerReply(conversationId: string) {
 
     for (let i = 0; i < parts.length; i++) {
       if (isReplyStale()) {
+        if (i > 0) {
+          console.warn(
+            `[pendingReply] 多段气泡被新调度中断（已发出 ${i}/${parts.length} 条）；若在 AI 连发间隙发送了消息，属预期作废上一轮`,
+          );
+        }
         notifyTyping(conversationId, false);
         return;
       }
@@ -1238,59 +1481,62 @@ async function triggerReply(conversationId: string) {
             imageCount: toAsk.length,
           });
           if (consent === true && !isReplyStale()) {
-            notifyTyping(conversationId, true);
+            notifyPrivateAiImageGen(conversationId, true);
             let successCount = 0;
-            for (let gi = 0; gi < toAsk.length; gi++) {
-              if (isReplyStale()) break;
-              try {
-                const mediaUrl = await generatePrivateAiImageMediaUrl({
-                  baseUrl: imgCreds.baseUrl,
-                  apiKey: imgCreds.apiKey,
-                  model: imgCreds.model,
-                  prompt: toAsk[gi],
-                  size: imgCreds.size,
-                });
+            try {
+              for (let gi = 0; gi < toAsk.length; gi++) {
                 if (isReplyStale()) break;
-                const genFresh = _getConversation(conversationId);
-                if (!genFresh) break;
-                const imgMsg: Message = {
-                  id: `ai_genimg_${Date.now()}_${gi}_${Math.random().toString(36).slice(2, 8)}`,
-                  role: 'assistant',
-                  content: '[图片]',
-                  timestamp: Date.now(),
-                  mediaType: 'image',
-                  mediaDescription: toAsk[gi],
-                  mediaUrl,
-                  isMediaDescriptionOnly: false,
-                };
-                _updateConversation(conversationId, {
-                  messages: [...genFresh.messages, imgMsg],
-                  lastMessageTime: Date.now(),
-                });
-                successCount += 1;
-              } catch (e) {
-                console.warn('[pendingReply] 私聊生图失败:', e);
-                const errFresh = _getConversation(conversationId);
-                if (errFresh) {
+                try {
+                  const mediaUrl = await generatePrivateAiImageMediaUrl({
+                    baseUrl: imgCreds.baseUrl,
+                    apiKey: imgCreds.apiKey,
+                    model: imgCreds.model,
+                    prompt: toAsk[gi],
+                    size: imgCreds.size,
+                  });
+                  if (isReplyStale()) break;
+                  const genFresh = _getConversation(conversationId);
+                  if (!genFresh) break;
+                  const imgMsg: Message = {
+                    id: `ai_genimg_${Date.now()}_${gi}_${Math.random().toString(36).slice(2, 8)}`,
+                    role: 'assistant',
+                    content: '[图片]',
+                    timestamp: Date.now(),
+                    mediaType: 'image',
+                    mediaDescription: toAsk[gi],
+                    mediaUrl,
+                    isMediaDescriptionOnly: false,
+                  };
                   _updateConversation(conversationId, {
-                    messages: [
-                      ...errFresh.messages,
-                      {
-                        id: `sys_img_err_${Date.now()}_${gi}`,
-                        role: 'system',
-                        content: `配图生成失败：${e instanceof Error ? e.message : '未知错误'}`,
-                        timestamp: Date.now(),
-                      },
-                    ],
+                    messages: [...genFresh.messages, imgMsg],
                     lastMessageTime: Date.now(),
                   });
+                  successCount += 1;
+                } catch (e) {
+                  console.warn('[pendingReply] 私聊生图失败:', e);
+                  const errFresh = _getConversation(conversationId);
+                  if (errFresh) {
+                    _updateConversation(conversationId, {
+                      messages: [
+                        ...errFresh.messages,
+                        {
+                          id: `sys_img_err_${Date.now()}_${gi}`,
+                          role: 'system',
+                          content: `图片加载失败：${e instanceof Error ? e.message : '未知错误'}`,
+                          timestamp: Date.now(),
+                        },
+                      ],
+                      lastMessageTime: Date.now(),
+                    });
+                  }
                 }
               }
+            } finally {
+              notifyPrivateAiImageGen(conversationId, false);
             }
             if (successCount > 0) {
               incrementPrivateAiImageDayCount(conversationId, successCount);
             }
-            notifyTyping(conversationId, false);
           } else if (consent === false && !isReplyStale()) {
             // 拒绝生图：不调用接口，回退为与 [IMG:] 一致的「仅描述」图片气泡，聊天不断档
             for (let fi = 0; fi < toAsk.length; fi++) {
@@ -1317,7 +1563,7 @@ async function triggerReply(conversationId: string) {
       }
     }
 
-    // 先结束“正在输入”、让文字气泡提交到屏幕；头像更新放到下一帧，避免和大段消息渲染挤在同一帧变慢
+    // 结束「正在输入」；头像等副作用放到下一帧，避免与大段消息同帧卡顿
     notifyTyping(conversationId, false);
 
     // 🧠 记忆与画像引擎（后台队列，不阻塞用户）
@@ -1413,6 +1659,7 @@ async function triggerReply(conversationId: string) {
     }
     notifyTyping(conversationId, false);
   } finally {
+    notifyPrivateAiImageGen(conversationId, false);
     triggerReplyLocks.delete(conversationId);
   }
 }

@@ -44,7 +44,7 @@ import {
   supabaseSyncDerivedMemory,
   supabaseUpsertConversation,
 } from '../services/supabaseData';
-import { fetchOpenAiCompatibleModelIds } from '../utils/openaiCompatibleModels';
+import { fetchOpenAiCompatibleModelIdsWithDiagnostics } from '../utils/openaiCompatibleModels';
 import { filterLikelyChatModels } from '../utils/modelVisionClassifier';
 import { consumeSettingsOpenIntent } from '../utils/settingsNavigationIntent';
 import { exportFullMomoyuBackup, formatFullExportSuccessAlert } from '../utils/fullMomoyuExport';
@@ -204,6 +204,21 @@ export default function SettingsScreen({
   const [advMemModels, setAdvMemModels] = useState<string[]>([]);
   const [advMemModelsLoading, setAdvMemModelsLoading] = useState(false);
 
+  const [advVisionEnabled, setAdvVisionEnabled] = useState(
+    !!apiConfig.backgroundChatApis?.visionImageRecognition?.enabled,
+  );
+  const [advVisionBaseUrl, setAdvVisionBaseUrl] = useState(
+    apiConfig.backgroundChatApis?.visionImageRecognition?.baseUrl || '',
+  );
+  const [advVisionApiKey, setAdvVisionApiKey] = useState(
+    apiConfig.backgroundChatApis?.visionImageRecognition?.apiKey || '',
+  );
+  const [advVisionModel, setAdvVisionModel] = useState(
+    apiConfig.backgroundChatApis?.visionImageRecognition?.modelName || '',
+  );
+  const [advVisionModels, setAdvVisionModels] = useState<string[]>([]);
+  const [advVisionModelsLoading, setAdvVisionModelsLoading] = useState(false);
+
   // 预载 API 预设（IndexedDB）与成套最近接口（localStorage）
   useEffect(() => {
     void (async () => {
@@ -243,6 +258,12 @@ export default function SettingsScreen({
     setAdvMemApiKey(ms?.apiKey || '');
     setAdvMemModel(ms?.modelName || '');
     setAdvMemTemp(typeof ms?.temperature === 'number' ? ms.temperature : 0.3);
+
+    const vir = apiConfig.backgroundChatApis?.visionImageRecognition;
+    setAdvVisionEnabled(!!vir?.enabled);
+    setAdvVisionBaseUrl(vir?.baseUrl || '');
+    setAdvVisionApiKey(vir?.apiKey || '');
+    setAdvVisionModel(vir?.modelName || '');
   }, [apiConfig]);
 
   // 从「未配置 API 却进入聊天」跳转来时：定位到对应分区并展示说明
@@ -717,9 +738,9 @@ export default function SettingsScreen({
                   <div>
                     <h3 className="text-sm font-semibold text-slate-900">高级 API 设置</h3>
                     <p className="mt-1 text-xs text-slate-600 leading-relaxed">
-                      为<strong> AI 生活模拟</strong>与<strong>记忆引擎 / 群记忆总结</strong>单独配置 OpenAI 兼容
+                      为<strong> AI 生活模拟</strong>、<strong>记忆引擎 / 群记忆总结</strong>，以及<strong>私聊/群聊中带图请求（多模态 image_url）</strong>时的识图接口，单独配置 OpenAI 兼容
                       <span className="font-mono"> chat/completions</span>
-                      。勾选启用后，Base URL / API Key / 模型可<strong>逐项留空</strong>，留空项与上方主聊天相同；仅填写的项会覆盖。不勾选则整条链路仍走主聊天接口。点「拉取」时若独立区 URL 或 Key 留空，会用主聊天的 Base URL 与 Key 去拉模型列表。
+                      。勾选启用后，Base URL / API Key / 模型可<strong>逐项留空</strong>，留空项与<strong>当前对话已解析配置</strong>（主聊天 + 角色/群单独模型等）该项相同；仅填写的项会覆盖。不勾选则附图与纯文字仍走同一套接口。点「拉取」时若独立区 URL 或 Key 留空，会用主聊天的 Base URL 与 Key 去拉模型列表。
                     </p>
                   </div>
 
@@ -914,6 +935,89 @@ export default function SettingsScreen({
                             onChange={(e) => setAdvMemTemp(Number(e.target.value))}
                             className="w-full accent-sky-600"
                           />
+                        </div>
+                      </div>
+                    ) : null}
+                  </div>
+
+                  <div className="rounded-lg border border-sky-100 bg-white/90 p-3 space-y-3">
+                    <label className="flex items-start gap-2 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        className="mt-0.5 h-4 w-4 rounded border-slate-300"
+                        checked={advVisionEnabled}
+                        onChange={(e) => setAdvVisionEnabled(e.target.checked)}
+                      />
+                      <span>
+                        <span className="text-sm font-medium text-slate-800">启用独立的图片识别 API</span>
+                        <span className="block text-[11px] text-slate-500 mt-0.5">
+                          仅当本轮请求含多模态图片时使用；纯文字仍走原对话线路。未填的 URL/Key/模型与当前对话（含角色/群成员单独模型）该项一致。
+                        </span>
+                      </span>
+                    </label>
+                    {advVisionEnabled ? (
+                      <div className="space-y-2 pl-1 border-l-2 border-sky-200 ml-1.5">
+                        <div>
+                          <label className="block text-xs font-medium text-slate-600 mb-1">API 地址（Base URL）</label>
+                          <input
+                            type="text"
+                            value={advVisionBaseUrl}
+                            onChange={(e) => setAdvVisionBaseUrl(e.target.value)}
+                            placeholder="留空同当前对话；仅覆盖时填写"
+                            className="w-full px-3 py-2 border border-slate-200 rounded-lg bg-white text-sm"
+                            autoComplete="off"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-xs font-medium text-slate-600 mb-1">API Key</label>
+                          <input
+                            type="password"
+                            value={advVisionApiKey}
+                            onChange={(e) => setAdvVisionApiKey(e.target.value)}
+                            placeholder="留空同当前对话"
+                            className="w-full px-3 py-2 border border-slate-200 rounded-lg bg-white text-sm"
+                            autoComplete="new-password"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-xs font-medium text-slate-600 mb-1">模型</label>
+                          <div className="flex gap-2">
+                            {advVisionModels.length > 0 ? (
+                              <select
+                                value={advVisionModel}
+                                onChange={(e) => setAdvVisionModel(e.target.value)}
+                                className="flex-1 min-w-0 px-3 py-2 border border-slate-200 rounded-lg bg-white text-sm font-mono"
+                              >
+                                {advVisionModel.trim() && !advVisionModels.includes(advVisionModel) ? (
+                                  <option value={advVisionModel}>{advVisionModel}（手填）</option>
+                                ) : null}
+                                {advVisionModels.map((m) => (
+                                  <option key={m} value={m}>
+                                    {m}
+                                  </option>
+                                ))}
+                              </select>
+                            ) : (
+                              <input
+                                value={advVisionModel}
+                                onChange={(e) => setAdvVisionModel(e.target.value)}
+                                placeholder="留空同当前对话模型"
+                                className="flex-1 min-w-0 px-3 py-2 border border-slate-200 rounded-lg bg-white text-sm font-mono"
+                              />
+                            )}
+                            <button
+                              type="button"
+                              onClick={() => void pullAdvVisionModels()}
+                              disabled={advVisionModelsLoading}
+                              className="shrink-0 px-3 py-2 rounded-lg border border-sky-300 bg-sky-100 text-sm font-medium text-sky-900 hover:bg-sky-200/80 disabled:opacity-50"
+                            >
+                              {advVisionModelsLoading ? (
+                                <Loader2 className="w-4 h-4 animate-spin inline" aria-hidden />
+                              ) : (
+                                '拉取'
+                              )}
+                            </button>
+                          </div>
                         </div>
                       </div>
                     ) : null}
@@ -1670,7 +1774,7 @@ export default function SettingsScreen({
             <div className="px-4 py-3 border-b border-slate-100 bg-sky-50/50 space-y-3">
               <div className="text-xs font-semibold text-slate-900">高级 API</div>
               <p className="text-[10px] text-slate-600 leading-relaxed">
-                勾选后 URL/Key/模型可逐项留空，留空同主聊天；拉取模型时独立区空则用主接口。
+                勾选后 URL/Key/模型可逐项留空；识图留空项同<strong>当前对话</strong>（主接口 + 角色/群模型），其余留空同主聊天；拉取时独立区空则用主接口。
               </p>
               <label className="flex items-start gap-2">
                 <input
@@ -1776,6 +1880,49 @@ export default function SettingsScreen({
                     className="w-full accent-sky-600"
                   />
                   <div className="text-[10px] text-slate-500 text-right font-mono">温度 {advMemTemp.toFixed(2)}</div>
+                </div>
+              ) : null}
+              <label className="flex items-start gap-2 pt-1">
+                <input
+                  type="checkbox"
+                  className="mt-0.5 h-4 w-4 rounded border-slate-300"
+                  checked={advVisionEnabled}
+                  onChange={(e) => setAdvVisionEnabled(e.target.checked)}
+                />
+                <span className="text-xs text-slate-800">独立图片识别（带图请求）</span>
+              </label>
+              {advVisionEnabled ? (
+                <div className="space-y-2">
+                  <input
+                    value={advVisionBaseUrl}
+                    onChange={(e) => setAdvVisionBaseUrl(e.target.value)}
+                    className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm bg-white"
+                    placeholder="Base URL（留空同当前对话）"
+                  />
+                  <input
+                    type="password"
+                    value={advVisionApiKey}
+                    onChange={(e) => setAdvVisionApiKey(e.target.value)}
+                    className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm bg-white"
+                    placeholder="API Key（留空同当前对话）"
+                    autoComplete="new-password"
+                  />
+                  <div className="flex gap-2">
+                    <input
+                      value={advVisionModel}
+                      onChange={(e) => setAdvVisionModel(e.target.value)}
+                      className="flex-1 min-w-0 rounded-xl border border-slate-200 px-3 py-2 text-sm font-mono bg-white"
+                      placeholder="模型（留空同当前对话）"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => void pullAdvVisionModels()}
+                      disabled={advVisionModelsLoading}
+                      className="shrink-0 rounded-xl border border-sky-300 bg-sky-100 px-3 py-2 text-xs font-medium text-sky-900 disabled:opacity-50"
+                    >
+                      {advVisionModelsLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : '拉取'}
+                    </button>
+                  </div>
                 </div>
               ) : null}
             </div>
@@ -2210,11 +2357,27 @@ export default function SettingsScreen({
     setTextTestMessage('');
 
     try {
-      const models = await fetchOpenAiCompatibleModelIds(baseUrl.trim(), apiKey.trim());
-      setAvailableModels(filterLikelyChatModels(models));
+      const diag = await fetchOpenAiCompatibleModelIdsWithDiagnostics(baseUrl.trim(), apiKey.trim(), {
+        modelForChatProbe: modelName.trim() || undefined,
+      });
+      if (diag.error) {
+        setTestResult('error');
+        setTextTestMessage(diag.error);
+        alert(diag.error);
+        return;
+      }
+      if (diag.warning) {
+        setTestResult('success');
+        setAvailableModels([]);
+        setTextTestMessage(diag.warning);
+        alert(diag.warning);
+        return;
+      }
+      const models = filterLikelyChatModels(diag.models);
+      setAvailableModels(models);
       setTestResult('success');
       setTextTestMessage(`文本连接正常，已拉取 ${models.length} 个模型。`);
-      
+
       if (models.length > 0 && !modelName) {
         setModelName(models[0]);
       }
@@ -2238,7 +2401,23 @@ export default function SettingsScreen({
     setTestResult(null);
     setTextTestMessage('');
     try {
-      const textModelsRaw = await fetchOpenAiCompatibleModelIds(baseUrl.trim(), apiKey.trim());
+      const diag = await fetchOpenAiCompatibleModelIdsWithDiagnostics(baseUrl.trim(), apiKey.trim(), {
+        modelForChatProbe: modelName.trim() || undefined,
+      });
+      if (diag.error) {
+        setTestResult('error');
+        setTextTestMessage(diag.error);
+        if (!opts?.silent) alert(diag.error);
+        return;
+      }
+      if (diag.warning) {
+        setAvailableModels([]);
+        setTestResult('success');
+        setTextTestMessage(diag.warning);
+        if (!opts?.silent) alert(diag.warning);
+        return;
+      }
+      const textModelsRaw = diag.models;
       const textModels = filterLikelyChatModels(textModelsRaw);
       setAvailableModels(textModels);
       if (textModels.length > 0 && !modelName) {
@@ -2282,7 +2461,21 @@ export default function SettingsScreen({
     setPigModelsLoading(true);
     setPigModelsHint('');
     try {
-      const raw = await fetchOpenAiCompatibleModelIds(resolvedUrl, resolvedKey);
+      const diag = await fetchOpenAiCompatibleModelIdsWithDiagnostics(resolvedUrl, resolvedKey, {
+        modelForChatProbe: pigModel.trim() || undefined,
+      });
+      if (diag.error) {
+        setPigModelsHint(`拉取失败：${diag.error}`);
+        if (!opts?.silent) alert(`生图模型拉取失败：${diag.error}`);
+        return;
+      }
+      if (diag.warning) {
+        setPigAvailableModels([]);
+        setPigModelsHint(diag.warning);
+        if (!opts?.silent) alert(diag.warning);
+        return;
+      }
+      const raw = diag.models;
       setPigAvailableModels(raw);
       setPigModel((prev) => {
         if (prev && raw.includes(prev)) return prev;
@@ -2318,7 +2511,19 @@ export default function SettingsScreen({
     }
     setAdvStatusModelsLoading(true);
     try {
-      const raw = await fetchOpenAiCompatibleModelIds(u, k);
+      const diag = await fetchOpenAiCompatibleModelIdsWithDiagnostics(u, k, {
+        modelForChatProbe: advStatusModel.trim() || undefined,
+      });
+      if (diag.error) {
+        if (!opts?.silent) alert(diag.error);
+        return;
+      }
+      if (diag.warning) {
+        setAdvStatusModels([]);
+        if (!opts?.silent) alert(diag.warning);
+        return;
+      }
+      const raw = diag.models;
       const list = filterLikelyChatModels(raw);
       setAdvStatusModels(list);
       setAdvStatusModel((prev) => {
@@ -2345,7 +2550,19 @@ export default function SettingsScreen({
     }
     setAdvMemModelsLoading(true);
     try {
-      const raw = await fetchOpenAiCompatibleModelIds(u, k);
+      const diag = await fetchOpenAiCompatibleModelIdsWithDiagnostics(u, k, {
+        modelForChatProbe: advMemModel.trim() || undefined,
+      });
+      if (diag.error) {
+        if (!opts?.silent) alert(diag.error);
+        return;
+      }
+      if (diag.warning) {
+        setAdvMemModels([]);
+        if (!opts?.silent) alert(diag.warning);
+        return;
+      }
+      const raw = diag.models;
       const list = filterLikelyChatModels(raw);
       setAdvMemModels(list);
       setAdvMemModel((prev) => {
@@ -2360,6 +2577,45 @@ export default function SettingsScreen({
       if (!opts?.silent) alert('拉取失败，请检查 URL / Key');
     } finally {
       setAdvMemModelsLoading(false);
+    }
+  };
+
+  const pullAdvVisionModels = async (opts?: { silent?: boolean }) => {
+    const u = advVisionBaseUrl.trim() || baseUrl.trim();
+    const k = advVisionApiKey.trim() || apiKey.trim();
+    if (!u || !k) {
+      if (!opts?.silent) alert('请先完成上方主聊天的 Base URL 与 API Key，或在本区填写其中至少一项');
+      return;
+    }
+    setAdvVisionModelsLoading(true);
+    try {
+      const diag = await fetchOpenAiCompatibleModelIdsWithDiagnostics(u, k, {
+        modelForChatProbe: advVisionModel.trim() || undefined,
+      });
+      if (diag.error) {
+        if (!opts?.silent) alert(diag.error);
+        return;
+      }
+      if (diag.warning) {
+        setAdvVisionModels([]);
+        if (!opts?.silent) alert(diag.warning);
+        return;
+      }
+      const raw = diag.models;
+      const list = filterLikelyChatModels(raw);
+      setAdvVisionModels(list);
+      setAdvVisionModel((prev) => {
+        const p = prev.trim();
+        if (p && list.includes(p)) return p;
+        return list[0] || '';
+      });
+      if (!opts?.silent) {
+        alert(list.length > 0 ? `已拉取 ${list.length} 个对话模型` : '列表为空，请手填模型名');
+      }
+    } catch {
+      if (!opts?.silent) alert('拉取失败，请检查 URL / Key');
+    } finally {
+      setAdvVisionModelsLoading(false);
     }
   };
 
@@ -2448,6 +2704,12 @@ export default function SettingsScreen({
           modelName: advMemModel.trim(),
           temperature: advMemTemp,
         },
+        visionImageRecognition: {
+          enabled: advVisionEnabled,
+          baseUrl: advVisionBaseUrl.trim(),
+          apiKey: advVisionApiKey.trim(),
+          modelName: advVisionModel.trim(),
+        },
       },
     });
     addApiEndpointPairSnapshot({ baseUrl, apiKey, modelName });
@@ -2482,8 +2744,8 @@ export default function SettingsScreen({
   const handleExportAllData = async () => {
     try {
       console.log('🔄 开始导出全部数据...');
-      const { stats, sidecarSummaryLine } = await exportFullMomoyuBackup();
-      alert(formatFullExportSuccessAlert(stats, sidecarSummaryLine));
+      const { stats, sidecarSummaryLine, degraded } = await exportFullMomoyuBackup();
+      alert(formatFullExportSuccessAlert(stats, sidecarSummaryLine, degraded));
       console.log('✅ 数据导出完成');
     } catch (error) {
       console.error('❌ 导出失败:', error);

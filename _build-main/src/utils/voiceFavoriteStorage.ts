@@ -12,7 +12,8 @@ import {
   isMinimaxTtsReady,
   plainTextForMinimaxTts,
 } from './minimaxTts';
-import { stripTrailingVoiceTranscriptArtifacts } from './voiceDurationCalculator';
+import { normalizeLooseAssistantMediaBrackets } from '../domains/chat/assistantMessageBuilder';
+import { calculateVoiceDuration, stripTrailingVoiceTranscriptArtifacts } from './voiceDurationCalculator';
 
 const STORE = STORES.VOICE_FAVORITES;
 
@@ -45,6 +46,103 @@ export type VoiceFavoriteRecord = {
 
 export function voiceFavoriteId(conversationId: string, messageId: string): string {
   return `vf_${conversationId}_${messageId}`;
+}
+
+const ASSISTANT_INLINE_MEDIA_REGEX =
+  /\[(图片|IMG|IMAGE|视频|VIDEO|语音|VOICE|表情包|STICKER)[:：]([^\]]+)\]/gi;
+
+/** 与 ChatScreen expandAssistantInlineMediaForRender 一致：第 n 个媒体占位是否为语音 */
+export function contentNthMediaIsVoice(content: string | undefined, zeroBasedIndex: number): boolean {
+  if (content == null || content === '') return false;
+  const source = normalizeLooseAssistantMediaBrackets(content);
+  let idx = 0;
+  ASSISTANT_INLINE_MEDIA_REGEX.lastIndex = 0;
+  for (const match of source.matchAll(ASSISTANT_INLINE_MEDIA_REGEX)) {
+    if (idx === zeroBasedIndex) {
+      const rawType = (match[1] || '').trim().toLowerCase();
+      return rawType === '语音' || rawType === 'voice';
+    }
+    idx++;
+  }
+  return false;
+}
+
+/**
+ * 当前打开的菜单是否应对「语音」行展示收藏/转文字（避免拆条后的纯文字行也出现语音菜单）。
+ */
+export function messageRowShowsVoiceMenu(
+  message: Message | undefined,
+  menuAnchorRowId: string | null | undefined,
+): boolean {
+  if (!message || message.role === 'system') return false;
+  if (message.mediaType === 'voice') return true;
+  if (message.mediaItems?.some((it) => it.type === 'voice')) return true;
+  const m = menuAnchorRowId?.match(/_media_(\d+)$/);
+  if (message.role === 'assistant' && m) {
+    return contentNthMediaIsVoice(message.content, Number(m[1]));
+  }
+  return false;
+}
+
+function sliceNthBracketVoiceFromAssistantContent(message: Message, zeroBasedMediaIndex: number): Message | null {
+  const source = normalizeLooseAssistantMediaBrackets(message.content || '');
+  let idx = 0;
+  ASSISTANT_INLINE_MEDIA_REGEX.lastIndex = 0;
+  for (const match of source.matchAll(ASSISTANT_INLINE_MEDIA_REGEX)) {
+    if (idx !== zeroBasedMediaIndex) {
+      idx++;
+      continue;
+    }
+    const rawType = (match[1] || '').trim().toLowerCase();
+    if (rawType !== '语音' && rawType !== 'voice') return null;
+    const rawPayload = (match[2] || '').trim();
+    let mediaDescription = rawPayload;
+    let voiceDuration = 3;
+    const durationMatch = rawPayload.match(/(.+?)(?:[，,]\s*(?:时长)?(\d+)秒?)$/i);
+    if (durationMatch) {
+      mediaDescription = durationMatch[1].trim();
+      voiceDuration = Number(durationMatch[2]) || 3;
+    }
+    const stripped = stripTrailingVoiceTranscriptArtifacts(mediaDescription.trim());
+    mediaDescription = stripped.text;
+    if (stripped.secondsHint !== undefined) voiceDuration = stripped.secondsHint;
+    return {
+      ...message,
+      content: '[语音]',
+      mediaType: 'voice',
+      mediaDescription,
+      voiceDuration,
+      isMediaDescriptionOnly: true,
+    };
+  }
+  return null;
+}
+
+/**
+ * 供收藏写入：单条 voice 直接返回；mediaItems 取首段语音；正文内联按 expand 的 `_media_n` 下标取对应语音段。
+ * @param bracketMediaIndex 与拆条行 id `…_media_n` 中的 n 一致；缺省为 0。
+ */
+export function resolveMessageForVoiceFavorite(message: Message, bracketMediaIndex = 0): Message | null {
+  if (message.mediaType === 'voice') return message;
+  const voiceItems = message.mediaItems?.filter((it) => it.type === 'voice') || [];
+  if (voiceItems.length > 0) {
+    const item = voiceItems[0];
+    const stripped = stripTrailingVoiceTranscriptArtifacts((item.description || '').trim());
+    const duration =
+      typeof item.duration === 'number' && item.duration > 0
+        ? item.duration
+        : stripped.secondsHint ?? Math.max(3, calculateVoiceDuration(stripped.text));
+    return {
+      ...message,
+      content: '[语音]',
+      mediaType: 'voice',
+      mediaDescription: stripped.text,
+      voiceDuration: duration,
+      isMediaDescriptionOnly: true,
+      mediaUrl: item.url,
+    };
+  }
+  return sliceNthBracketVoiceFromAssistantContent(message, bracketMediaIndex);
 }
 
 async function fetchAudioBytes(url: string): Promise<{ bytes: ArrayBuffer; mime: string } | null> {

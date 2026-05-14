@@ -12,8 +12,8 @@ alwaysApply: true
 
 ## API（聊天）
 
-- **一套 URL + Key + 模型**：文字和带图聊天都用它；角色/群单独模型时，附图也走那个模型。
-- **不要**再加单独的「视觉模型 / 识图接口」字段或 UI。
+- **默认**：一套 URL + Key + 模型；文字与带图（多模态）共用；角色/群单独模型时，附图也走该对话解析出的模型。
+- **可选**：设置里 **`backgroundChatApis.visionImageRecognition`** 可勾选「独立图片识别」；启用且请求含 `image_url` 时，Base URL / Key / 模型可逐项覆盖，留空项仍与**当前对话已解析配置**（主接口 + 角色/群模型）该项相同。未勾选则与默认一致。
 - 私聊「真实配图」文生图仍是 **`privateAiImageGeneration`**，和聊天 completions 分开。
 
 ## 助手职责

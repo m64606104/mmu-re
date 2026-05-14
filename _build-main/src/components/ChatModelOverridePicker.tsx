@@ -1,7 +1,7 @@
 import { useMemo, useRef, useState } from 'react';
 import { Loader2, RefreshCw } from 'lucide-react';
 import type { ApiConfig } from '../types';
-import { fetchOpenAiCompatibleModelIds } from '../utils/openaiCompatibleModels';
+import { fetchOpenAiCompatibleModelIdsWithDiagnostics } from '../utils/openaiCompatibleModels';
 
 type Props = {
   apiConfig: ApiConfig;
@@ -35,7 +35,19 @@ export default function ChatModelOverridePicker({
     }
     setPulling(true);
     try {
-      const ids = await fetchOpenAiCompatibleModelIds(url, key);
+      const diag = await fetchOpenAiCompatibleModelIdsWithDiagnostics(url, key, {
+        modelForChatProbe: apiConfig.modelName?.trim() || undefined,
+      });
+      if (diag.error) {
+        if (!opts?.silent) alert(diag.error);
+        return;
+      }
+      if (diag.warning) {
+        setAvailableModels([]);
+        if (!opts?.silent) alert(diag.warning);
+        return;
+      }
+      const ids = diag.models;
       setAvailableModels(ids);
       if (ids.length === 0 && !opts?.silent) {
         alert('未获取到模型列表，请检查接口是否返回 OpenAI 格式的 /v1/models');

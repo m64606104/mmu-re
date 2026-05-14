@@ -1,4 +1,5 @@
 import type { Message } from '../../types';
+import { messageRowShowsVoiceMenu } from '../../utils/voiceFavoriteStorage';
 
 /** 与 ChatScreen 等宿主中的操作实现一一对应 */
 export type MessageActionId =
@@ -20,6 +21,8 @@ export type MessageActionItem = {
 export type BuildMessageActionItemsContext = {
   /** 无转发能力时可隐藏（例如无其它会话） */
   showForward: boolean;
+  /** 当前菜单锚点行 id（如拆条后的 `…_media_0`），用于判断是否为语音行 */
+  menuAnchorRowId?: string | null;
 };
 
 /**
@@ -33,7 +36,7 @@ export function buildMessageActionItems(
 
   const items: MessageActionItem[] = [{ id: 'quote', label: '引用' }];
 
-  if (message.mediaType === 'voice') {
+  if (messageRowShowsVoiceMenu(message, ctx.menuAnchorRowId)) {
     items.push(
       { id: 'favoriteVoiceCache', label: '缓存并收藏' },
       { id: 'favoriteVoiceBookmark', label: '仅收藏（每次重合成）' },

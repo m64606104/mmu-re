@@ -73,6 +73,11 @@ export interface LifeNarrativeThread {
 export interface AILifeSimState {
   conversationId: string;
   lastTickAt: number;
+  /**
+   * 上一次「成功」生活 tick 时的聊天记录条数（私聊合并各会话桶后，仅 user+assistant）。
+   * 用于每积累 N 条消息触发一次生活模拟，而不只依赖时间间隔。
+   */
+  lifeSimMessageBaseline?: number;
   /** 上一次调用生活模拟 LLM 的时间（含失败）；用于冷却，避免 429 后每次聚焦又并发打满接口 */
   lastSimApiAttemptAt?: number;
   lastDay: string; // UTC+8 day key

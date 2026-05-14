@@ -1132,6 +1132,7 @@ async function generateAIReply(
     const routing = resolveOpenAiCompatibleCompletionRouting(apiConfig, {
       requestContainsImageUrl,
       textChatModel: chatCfg.modelName,
+      conversationResolvedConfig: chatCfg,
     });
     const completionsUrl = routing.apiUrl;
     const completionAuthKey = routing.bearerToken;

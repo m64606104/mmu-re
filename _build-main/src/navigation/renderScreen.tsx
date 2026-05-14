@@ -255,7 +255,11 @@ export function renderScreen(params: RenderScreenParams) {
       );
     case 'edit-calibration-studio':
       return currentConversation?.type === 'private' ? (
-        <EditCalibrationStudioScreen conversation={currentConversation} onBack={goBack} />
+        <EditCalibrationStudioScreen
+          conversation={currentConversation}
+          apiConfig={apiConfig}
+          onBack={goBack}
+        />
       ) : (
         renderSocialFallback()
       );

@@ -39,6 +39,8 @@ import { getCharacterOnlineHandle } from '../utils/characterIdentity';
 import { exportCharacterStickerBundle } from '../utils/characterMigrationStickers';
 import { loadEditCalibrationEntries } from '../utils/editCalibrationStorage';
 import { loadLanguageStyleProfileDoc } from '../utils/languageStyleProfileStorage';
+import type { FaceToFaceNarrativeDoc } from '../utils/faceToFaceNarrativeStorage';
+import { FACE_TO_FACE_DEFAULT_WINDOW_ID, loadFaceToFaceNarrativeDoc } from '../utils/faceToFaceNarrativeStorage';
 
 /** 新建角色 / 切换角色时试听框的默认例句；可自行改成与调试台同一句以便对比 */
 const DEFAULT_TTS_PREVIEW_SENTENCE = '这是一段试听，用于确认当前角色的音色。';
@@ -79,6 +81,17 @@ function clampPrivateQuietSec(n: number) {
 function clampContextMessageCount(n: number) {
   if (!Number.isFinite(n)) return 20;
   return Math.max(1, Math.min(100, Math.round(n)));
+}
+
+/** 未开「自定义条数」时传给模型的最多消息条数；0=不限制；缺省存盘外按 120 */
+function clampContextMaxWhenUnlimited(n: number) {
+  if (!Number.isFinite(n)) return 120;
+  return Math.max(0, Math.min(500, Math.round(n)));
+}
+
+function readContextMaxWhenUnlimited(raw: unknown): number {
+  if (raw === undefined || raw === null) return 120;
+  return clampContextMaxWhenUnlimited(Number(raw));
 }
 
 function ListRow(props: {
@@ -203,6 +216,9 @@ export default function CharacterSettingsScreenV2(props: Props) {
   const [contextMessageCount, setContextMessageCount] = useState(
     clampContextMessageCount(cs.contextConfig?.messageCount ?? 20),
   );
+  const [contextMaxWhenUnlimited, setContextMaxWhenUnlimited] = useState(
+    readContextMaxWhenUnlimited(cs.contextConfig?.maxMessagesWhenUnlimited),
+  );
 
   const [showMemoryManager, setShowMemoryManager] = useState(false);
   const [knowledgeBase, setKnowledgeBase] = useState<KnowledgeBaseItem[]>(cs.knowledgeBase || []);
@@ -276,6 +292,7 @@ export default function CharacterSettingsScreenV2(props: Props) {
     );
     setContextConfigEnabled(cs.contextConfig?.enabled ?? false);
     setContextMessageCount(clampContextMessageCount(cs.contextConfig?.messageCount ?? 20));
+    setContextMaxWhenUnlimited(readContextMaxWhenUnlimited(cs.contextConfig?.maxMessagesWhenUnlimited));
     setKnowledgeBase(cs.knowledgeBase || []);
     setEditStep('basic');
   }, [cs, conversation.id, conversation.type, conversation.chatBackground]);
@@ -418,6 +435,7 @@ export default function CharacterSettingsScreenV2(props: Props) {
       contextConfig: {
         enabled: contextConfigEnabled,
         messageCount: clampContextMessageCount(contextMessageCount),
+        maxMessagesWhenUnlimited: clampContextMaxWhenUnlimited(contextMaxWhenUnlimited),
       },
       proactiveMessaging: {
         ...(conversation.characterSettings?.proactiveMessaging || ({} as any)),
@@ -615,6 +633,26 @@ export default function CharacterSettingsScreenV2(props: Props) {
         }
       }
 
+      let faceToFaceNarratives: Record<string, FaceToFaceNarrativeDoc> | undefined;
+      let lifeSimStateForConversation: unknown;
+      if (conversation.type === 'private') {
+        const wids = new Set<string>();
+        wids.add(FACE_TO_FACE_DEFAULT_WINDOW_ID);
+        for (const w of conversation.faceToFaceSession?.windows || []) {
+          if (w?.id) wids.add(w.id);
+        }
+        const buckets: Record<string, FaceToFaceNarrativeDoc> = {};
+        for (const wid of wids) {
+          buckets[wid] = await loadFaceToFaceNarrativeDoc(conversation.id, wid);
+        }
+        faceToFaceNarratives = buckets;
+
+        const allLife = (await smartLoad('ai_life_sim_states')) as Record<string, unknown> | null;
+        if (allLife && Object.prototype.hasOwnProperty.call(allLife, conversation.id)) {
+          lifeSimStateForConversation = allLife[conversation.id];
+        }
+      }
+
       const stats = {
         messagesCount: conversation.messages.length,
         memoriesCount: memoryBank?.memories?.length || 0,
@@ -632,10 +670,19 @@ export default function CharacterSettingsScreenV2(props: Props) {
             : 0,
         editCalibrationEntries: editCalibrationStudio?.entries.length ?? 0,
         hasLanguageStyleProfile: !!(editCalibrationStudio?.languageStyleProfile?.text || '').trim(),
+        offlineNarrativeBuckets:
+          conversation.type === 'private' && faceToFaceNarratives
+            ? Object.keys(faceToFaceNarratives).length
+            : 0,
+        offlineNarrativeSegments:
+          conversation.type === 'private' && faceToFaceNarratives
+            ? Object.values(faceToFaceNarratives).reduce((n, d) => n + (d.segments?.length || 0), 0)
+            : 0,
+        hasLifeSimState: conversation.type === 'private' && lifeSimStateForConversation !== undefined,
       };
 
       const exportData = {
-        version: '2.2',
+        version: '2.3',
         exportTime: new Date().toISOString(),
         character: {
           id: conversation.id,
@@ -668,6 +715,15 @@ export default function CharacterSettingsScreenV2(props: Props) {
         stickersMigration: stickerBundle,
         /** 私聊：编辑学习调试台条目 + 语言风格画像（IndexedDB 键的会话切片） */
         ...(editCalibrationStudio ? { editCalibrationStudio } : {}),
+        /** 私聊：线下模式元数据、状态卡、各窗口正文桶、生活模拟该会话切片（v2.3+） */
+        ...(conversation.type === 'private'
+          ? {
+              faceToFaceSession: conversation.faceToFaceSession,
+              characterLiveStatus: conversation.characterLiveStatus,
+              faceToFaceNarratives,
+              ...(lifeSimStateForConversation !== undefined ? { lifeSimStateForConversation } : {}),
+            }
+          : {}),
         stats,
       };
 
@@ -683,7 +739,7 @@ export default function CharacterSettingsScreenV2(props: Props) {
       URL.revokeObjectURL(url);
 
       alert(
-        `✅ 已导出（v2.2）\n\n` +
+        `✅ 已导出（v2.3）\n\n` +
           `• 记忆库：${stats.memoriesCount} 条\n` +
           `• 资料/知识库：在角色设置内（characterSettings）\n` +
           `• 文档库：${stats.documentsCount} 份\n` +
@@ -694,7 +750,9 @@ export default function CharacterSettingsScreenV2(props: Props) {
           (conversation.type === 'private'
             ? `• 编辑学习 / 语言画像：${stats.editCalibrationEntries} 条记录${
                 stats.hasLanguageStyleProfile ? '，含增长型语言画像' : ''
-              }\n`
+              }\n` +
+              `• 线下模式：${stats.offlineNarrativeBuckets} 个正文桶 / ${stats.offlineNarrativeSegments} 段\n` +
+              `• 生活模拟存档：${stats.hasLifeSimState ? '已含本会话切片' : '无'}\n`
             : '') +
           `• 聊天记录：${includeMessages ? `${stats.messagesCount} 条` : '未包含'}\n` +
           `• 会话线程：${
@@ -1305,7 +1363,7 @@ export default function CharacterSettingsScreenV2(props: Props) {
           <div className={`bg-white rounded-3xl p-4 shadow-sm border border-gray-100 ${editStep === 'advanced' ? '' : 'hidden'}`}>
             <div className="text-sm font-semibold text-gray-900 mb-1">自定义上下文数量</div>
             <p className="text-[11px] text-gray-500 mb-3 leading-relaxed">
-              控制「发给 AI 的历史气泡」范围（仅私聊主会话生效）。关闭时按时间顺序带上<strong>完整聊天记录</strong>；开启则只带最近 N 条。发送前仍会合并短时间内连续的多条用户消息以节省 token；极长会话可能接近网关上限。
+              控制「发给 AI 的历史气泡」范围（仅私聊主会话生效）。关闭「自定义条数」时仍可对<strong>完整历史</strong>设软上限（默认最近约 120 条，可调）；开启则只带最近 N 条。发送前仍会合并短时间内连续的多条用户消息以节省 token。
             </p>
             <div className="py-3 flex items-center justify-between gap-3 border-b border-gray-100">
               <div>
@@ -1353,9 +1411,30 @@ export default function CharacterSettingsScreenV2(props: Props) {
                 </p>
               </div>
             ) : (
-              <p className="text-[11px] text-gray-600 leading-relaxed bg-gray-50 rounded-xl px-3 py-2 border border-gray-100 mt-2">
-                当前：<strong className="text-gray-900">完整上下文</strong>（不限条数）。
-              </p>
+              <div className="mt-2 space-y-3">
+                <div className="flex flex-wrap items-center gap-3">
+                  <span className="text-xs text-gray-600 shrink-0">完整历史 · 最多条数</span>
+                  <input
+                    type="number"
+                    min={0}
+                    max={500}
+                    inputMode="numeric"
+                    value={contextMaxWhenUnlimited}
+                    onChange={(e) =>
+                      setContextMaxWhenUnlimited(clampContextMaxWhenUnlimited(Number(e.target.value)))
+                    }
+                    className="w-20 rounded-xl border border-gray-200 px-2 py-2 text-sm text-center outline-none focus:ring-2 focus:ring-gray-900/10"
+                  />
+                  <span className="text-[11px] text-gray-500">0～500；0 表示不限制（旧行为，极长会话更吃 token）</span>
+                </div>
+                <p className="text-[11px] text-gray-600 leading-relaxed bg-gray-50 rounded-xl px-3 py-2 border border-gray-100">
+                  当前：未开「自定义条数」时，最多取最近{' '}
+                  <span className="font-semibold text-gray-900">
+                    {contextMaxWhenUnlimited === 0 ? '全部' : contextMaxWhenUnlimited}
+                  </span>{' '}
+                  条消息发给模型；更早内容依赖记忆/资料库等摘要。
+                </p>
+              </div>
             )}
           </div>
 
@@ -1665,7 +1744,8 @@ export default function CharacterSettingsScreenV2(props: Props) {
             />
 
             <div className="mt-3 text-[11px] text-gray-500">
-              导入后会在应用内创建/恢复该角色数据。勾选包含聊天记录时，会一并导出私聊「会话线程」列表与各桶消息。
+              导入后会在应用内创建/恢复该角色数据。勾选包含聊天记录时，会一并导出私聊「会话线程」列表与各桶消息。v2.3
+              起私聊包另含线下模式各桶正文、会话元数据、状态卡缓存，以及本会话的生活模拟存档切片（若存在）；编辑学习 / 语言画像仍随包导出。
             </div>
           </div>
         </div>

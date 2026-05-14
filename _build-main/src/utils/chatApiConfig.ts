@@ -76,3 +76,26 @@ export function resolveGroupSummaryApiConfig(apiConfig: ApiConfig, groupConversa
   const modelName = resolveTextChatModelAvoidingVisionOnlyModelClash(apiConfig, base);
   return { ...memBase, modelName };
 }
+
+/**
+ * 多模态识图（请求含 image_url）时：在 fallthrough 上合并「独立识图」线路（与 statusUpdate / memorySummary 规则一致）。
+ * fallthrough 应为已套用角色单独模型 / 群成员模型等的 ApiConfig 快照。
+ */
+export function resolveVisionImageRecognitionApiConfig(
+  mainApiConfig: ApiConfig,
+  fallthroughConversationConfig: ApiConfig,
+): ApiConfig {
+  const slot = mainApiConfig.backgroundChatApis?.visionImageRecognition;
+  if (!slot?.enabled) return fallthroughConversationConfig;
+
+  const baseUrl = (slot.baseUrl || '').trim() || (fallthroughConversationConfig.baseUrl || '').trim();
+  const apiKey = (slot.apiKey || '').trim() || (fallthroughConversationConfig.apiKey || '').trim();
+  const modelName =
+    (slot.modelName || '').trim() || (fallthroughConversationConfig.modelName || '').trim();
+  return {
+    ...fallthroughConversationConfig,
+    baseUrl,
+    apiKey,
+    modelName,
+  };
+}

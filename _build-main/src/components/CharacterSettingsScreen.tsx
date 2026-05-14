@@ -345,6 +345,7 @@ export default function CharacterSettingsScreen({
         bubbleDecoration: decorationConfig,
         callSettings: callSettings,
         contextConfig: {
+          ...(settings.contextConfig || {}),
           enabled: contextConfigEnabled,
           messageCount: contextMessageCount,
         },

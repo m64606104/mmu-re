@@ -89,13 +89,19 @@ function classifyServer500Error(errorMessageRaw?: string): ApiErrorInfo | null {
  */
 export const getApiErrorInfo = (statusCode: number, errorMessage?: string): ApiErrorInfo => {
   switch (statusCode) {
-    case 400:
+    case 400: {
+      const upstream = (errorMessage || '').trim();
       return {
-        title: '请求格式错误',
-        message: '发送给API的请求格式不正确',
-        suggestion: '这通常是程序问题。如果持续出现，请联系开发者。',
-        icon: '⚠️'
+        title: '请求被拒绝（400）',
+        message: upstream
+          ? upstream
+          : '发送给API的请求格式不正确或参数不被当前渠道接受',
+        suggestion: upstream
+          ? '请根据上方服务端返回的说明调整：常见为模型名与渠道不匹配、不支持当前多模态/工具字段、或 max_tokens 等超出限制。仍无法解决时可联系渠道客服。'
+          : '请打开开发者工具 → Network → 选中失败的 completions → Response 查看具体 JSON。常见原因：模型名错误、带图请求走了不支持 vision 的模型。',
+        icon: '⚠️',
       };
+    }
     
     case 401:
       return {

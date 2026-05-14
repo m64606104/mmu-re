@@ -1,8 +1,10 @@
-import type { ApiConfig, Conversation } from '../types';
+import type { ApiConfig, Conversation, UserProfile } from '../types';
 import { resolveBackgroundChatApiConfig } from '../utils/chatApiConfig';
 import { buildApiUrl } from '../utils/apiHelper';
 import { isToolInteractionCharacter } from '../utils/characterInteractionMode';
+import { resolveEffectivePersonalInfo } from '../utils/userIdentityCards';
 import { addAIEvent, updateDynamicProfiles, getMemoryBank } from '../utils/memorySystem';
+import { getPrivateMessagesMergedChronological } from '../utils/privateChatSessions';
 import { getPrivateChatOpenCountRolling24h } from './chatEngagement';
 import type { LifeSimModelOutput } from './types';
 import { applyDeltas, ensureDayTheme, loadLifeSimState, loadLifeSimStates, upsertLifeSimState } from './storage';
@@ -17,6 +19,57 @@ export function getLifeSimLastCompletionsError(): string | null {
 
 function utc8Parts(ts: number) {
   return getShanghaiParts(ts);
+}
+
+function tryLoadLocalUserProfile(): UserProfile | null {
+  if (typeof localStorage === 'undefined') return null;
+  try {
+    const raw = localStorage.getItem('userProfile');
+    if (!raw) return null;
+    return JSON.parse(raw) as UserProfile;
+  } catch {
+    return null;
+  }
+}
+
+/** 生活模拟 prompt：私聊对象称呼、性别第三人称 */
+function buildPrivateChatUserRefBlock(conversation: Conversation): string {
+  const up = tryLoadLocalUserProfile();
+  const eff = resolveEffectivePersonalInfo(up, conversation);
+  const genderRaw = (eff?.gender || up?.personalInfo?.gender || '').trim();
+  const nameHint = (eff?.name || eff?.onlineName || up?.username || '').trim().slice(0, 24);
+  const isFemale = /女|姑娘|女生|女孩|女子|姐妹|小姐|小姐姐|美眉|妹子/i.test(genderRaw);
+  const isMale = /男|小伙|男生|男孩|男子|兄弟|小哥哥|汉子/i.test(genderRaw);
+
+  let relationHint = '';
+  try {
+    const bank = getMemoryBank(conversation.id);
+    const t = String(bank?.userProfile?.text || '')
+      .replace(/\s+/g, ' ')
+      .trim()
+      .slice(0, 180);
+    if (t) {
+      relationHint = `你对对方的印象/叫法参考（可内化为你习惯的昵称或指代，勿整段照抄）：${t}`;
+    }
+  } catch {
+    /* noop */
+  }
+
+  const lines = ['【私聊对象（用户资料 + 你与对方的相处视角，仅供叙述指代，勿写成元叙事）】'];
+  if (nameHint) lines.push(`称呼线索（网名、本名、备注等）：${nameHint}`);
+  if (genderRaw) lines.push(`资料性别：${genderRaw}`);
+  if (relationHint) lines.push(relationHint);
+  lines.push(
+    '日记（diary）、lifeUpdate.detail、userProfileDelta 里提到这位用户时：优先用你作为角色**自然会用的称呼或指代**（昵称、简称、关系里顺口的叫法、带性格的戏称等），不必机械重复「用户」或单一「他」「她」。',
+  );
+  if (isFemale) {
+    lines.push('若必须用中文第三人称作整句旁观描写，指这位用户时用「她」，禁止无依据写「他」。');
+  } else if (isMale) {
+    lines.push('若必须用中文第三人称作整句旁观描写，指这位用户时用「他」。');
+  } else {
+    lines.push('若必须用中文第三人称作整句旁观描写：未标明性别时不要默认「他」；用「对方」或直呼其名。');
+  }
+  return `${lines.join('\n')}\n`;
 }
 
 function clampInt(n: any, min: number, max: number, fallback: number) {
@@ -449,8 +502,11 @@ function buildPrompt(
       ? `- 节律：当前为深夜至拂晓前后，若无加班/聚会/失眠等强理由，应优先选择 sleep 或 rest，让「睡眠中」状态能自然出现并与私聊延迟回复联动；避免长期不睡。\n`
       : '';
 
+  const counterpartBlock = buildPrivateChatUserRefBlock(conversation);
+
   return (
     `${persona}\n` +
+    `${counterpartBlock}\n` +
     `${timeLine}\n\n` +
     `你正在进行“AI生活模拟”（后台逻辑，不直接展示给用户）。目标：让角色的生活真实流动、细节自然、避免刻板重复。\n` +
     `规则（重要）：\n` +
@@ -576,132 +632,32 @@ function recentEventsToText(conversationId: string) {
 const LIFE_SIM_API_COOLDOWN_MS = 3 * 60 * 1000; // 同一角色两次 LLM 尝试至少间隔（与全局批次间隔配合）
 const LIFE_SIM_BATCH_GAP_MS = 600; // 同一批次内角色之间的间隔
 
-/** 全局：两次「生活模拟批次」至少间隔（焦点/定时器共用，避免一直写） */
-const LIFE_SIM_GLOBAL_MIN_GAP_MS = 20 * 60 * 1000;
-const LIFE_SIM_GLOBAL_LAST_BATCH_KEY = 'momoyu_life_sim_last_global_batch_at';
-
-function readLastGlobalLifeSimBatchAt(): number {
-  try {
-    return Math.max(0, Number(localStorage.getItem(LIFE_SIM_GLOBAL_LAST_BATCH_KEY) || '0'));
-  } catch {
-    return 0;
-  }
-}
-
-function writeLastGlobalLifeSimBatchAt(ts: number): void {
-  try {
-    localStorage.setItem(LIFE_SIM_GLOBAL_LAST_BATCH_KEY, String(ts));
-  } catch {
-    /* ignore */
-  }
-}
-
 const MS_HOUR = 60 * 60 * 1000;
 
-/** 上海日历日 00:00 对应的 UTC 毫秒时间戳（中国无夏令时，固定 UTC+8） */
-function shanghaiDayStartUtcMs(dayKey: string): number {
-  const parts = dayKey.split('-').map(Number);
-  const y = parts[0];
-  const m = parts[1];
-  const d = parts[2];
-  if (!y || !m || !d) return Date.now();
-  return Date.UTC(y, m - 1, d) - 8 * MS_HOUR;
-}
+/** 私聊合并各会话桶后，user+assistant 每增加多少条可触发一次生活模拟（与定时/上线批次并行） */
+export const LIFE_SIM_MESSAGE_MILESTONE = 30;
 
-/**
- * 每日固定时段锚点（上海时区）：每段在窗口内随机一刻触发一次生活模拟批次。
- * 仍按活跃度 tier 排序选人；本批次跳过「活跃度 interval」但保留单角色 API 冷却。
- * 顺序：凌晨 → 清晨 → 早高峰 → 上午 → 下午 → 傍晚 → 夜间。
- */
-const LIFE_SIM_DAILY_ANCHOR_SLOTS: { id: string; startH: number; endH: number }[] = [
-  { id: 'slot_01_03', startH: 1, endH: 4 },
-  { id: 'slot_04_06', startH: 4, endH: 6 },
-  { id: 'slot_07_09', startH: 7, endH: 9 },
-  { id: 'slot_10_12', startH: 10, endH: 12 },
-  { id: 'slot_13_16', startH: 13, endH: 16 },
-  { id: 'slot_17_20', startH: 17, endH: 20 },
-  { id: 'slot_21_24', startH: 21, endH: 24 },
-];
-
-function lifeSimAnchorTriggerKey(dayKey: string, slotId: string): string {
-  return `momoyu_life_sim_anchor_trig_${dayKey}_${slotId}`;
-}
-
-function lifeSimAnchorFiredKey(dayKey: string, slotId: string): string {
-  return `momoyu_life_sim_anchor_fired_${dayKey}_${slotId}`;
-}
-
-function readAnchorTriggerAt(dayKey: string, slot: (typeof LIFE_SIM_DAILY_ANCHOR_SLOTS)[0]): number {
-  try {
-    const raw = localStorage.getItem(lifeSimAnchorTriggerKey(dayKey, slot.id));
-    if (raw) {
-      const n = Number(raw);
-      if (Number.isFinite(n)) return n;
-    }
-  } catch {
-    /* ignore */
+export function countChatMessagesForLifeSim(conv: Conversation): number {
+  const stream =
+    conv.type === 'private' ? getPrivateMessagesMergedChronological(conv) : conv.messages || [];
+  let n = 0;
+  for (let i = 0; i < stream.length; i++) {
+    const r = stream[i]?.role;
+    if (r === 'user' || r === 'assistant') n++;
   }
-  const dayStart = shanghaiDayStartUtcMs(dayKey);
-  const startMs = dayStart + slot.startH * MS_HOUR;
-  const endMs = dayStart + slot.endH * MS_HOUR;
-  const span = Math.max(1, endMs - startMs);
-  const trig = startMs + Math.random() * span;
-  try {
-    localStorage.setItem(lifeSimAnchorTriggerKey(dayKey, slot.id), String(trig));
-  } catch {
-    /* ignore */
-  }
-  return trig;
+  return n;
 }
 
-function isAnchorSlotFired(dayKey: string, slotId: string): boolean {
-  try {
-    return localStorage.getItem(lifeSimAnchorFiredKey(dayKey, slotId)) === '1';
-  } catch {
-    return false;
-  }
-}
-
-function markAnchorSlotFired(dayKey: string, slotId: string): void {
-  try {
-    localStorage.setItem(lifeSimAnchorFiredKey(dayKey, slotId), '1');
-  } catch {
-    /* ignore */
-  }
-}
-
-function unmarkAnchorSlotFired(dayKey: string, slotId: string): void {
-  try {
-    localStorage.removeItem(lifeSimAnchorFiredKey(dayKey, slotId));
-  } catch {
-    /* ignore */
-  }
-}
-
-/**
- * 抢占当日第一个「已到随机锚点时刻且未执行」的时段；同步落盘，避免并发重复消费。
- * 若后续发现无人可跑（全在 API 冷却），调用方应 release。
- */
-function acquireDueAnchoredLifeSimSlot(dayKey: string, now: number): string | null {
-  for (const slot of LIFE_SIM_DAILY_ANCHOR_SLOTS) {
-    if (isAnchorSlotFired(dayKey, slot.id)) continue;
-    const trig = readAnchorTriggerAt(dayKey, slot);
-    if (now < trig) continue;
-    markAnchorSlotFired(dayKey, slot.id);
-    return slot.id;
-  }
-  return null;
-}
-
-function releaseAnchoredLifeSimSlot(dayKey: string, slotId: string): void {
-  unmarkAnchorSlotFired(dayKey, slotId);
+function hasPrivateUserMessageEver(conv: Conversation): boolean {
+  if (conv.type !== 'private') return false;
+  return getPrivateMessagesMergedChronological(conv).some((m) => m.role === 'user');
 }
 
 /**
  * 生活模拟活跃度：以「24h 内用户发言条数」为底，叠加
  * - 用户最后一条消息距今（只看 user，不看 assistant）
  * - 24h 内进入该私聊次数（ChatScreen 挂载时记录，见 chatEngagement）
- * 再映射到原 tier / interval 档位。时段锚点逻辑不依赖此处。
+ * 再映射到 tier / interval 档位与批次内排序。
  */
 function resolveChatActivity(conv: Conversation, now: number): {
   tier: number;
@@ -780,10 +736,10 @@ function getChatActivityBatchPriority(conv: Conversation, now: number): number {
   return resolveChatActivity(conv, now).tier;
 }
 
-/** 定时器用：下一次后台批次延迟，毫秒（20～60 分钟） */
+/** 定时器用：下一次后台批次延迟，毫秒（约 45～95 分钟，与上线/消息触发互补） */
 export function nextLifeSimPeriodicDelayMs(): number {
-  const min = 20 * 60 * 1000;
-  const max = 60 * 60 * 1000;
+  const min = 45 * 60 * 1000;
+  const max = 95 * 60 * 1000;
   return min + Math.floor(Math.random() * (max - min + 1));
 }
 
@@ -963,6 +919,7 @@ export async function runLifeSimTick(
       ? ((parsed as any).narrativeThreadUpdates as any[])
       : [],
   });
+  const chatCount = countChatMessagesForLifeSim(conversation);
   await upsertLifeSimState({
     ...(nextState as any),
     lastDay: day,
@@ -971,6 +928,7 @@ export async function runLifeSimTick(
     aftereffects: (state as any).aftereffects || [],
     narrativeThreads: nextNarrativeThreads,
     lastSimApiAttemptAt: now,
+    lifeSimMessageBaseline: chatCount,
   });
 
   events.forEach((e: any) => {
@@ -1006,7 +964,11 @@ function scheduleIdle(fn: () => void) {
   setTimeout(fn, 0);
 }
 
-export function enqueueLifeSimTick(conversation: Conversation, apiConfig: ApiConfig): void {
+export function enqueueLifeSimTick(
+  conversation: Conversation,
+  apiConfig: ApiConfig,
+  tickOpts?: { skipActivityInterval?: boolean }
+): void {
   const id = conversation?.id;
   if (!id) return;
 
@@ -1019,6 +981,7 @@ export function enqueueLifeSimTick(conversation: Conversation, apiConfig: ApiCon
   state.scheduled = true;
   queue.set(id, state);
 
+  const opts = tickOpts;
   scheduleIdle(() => {
     const st = queue.get(id) || state;
     st.scheduled = false;
@@ -1026,7 +989,7 @@ export function enqueueLifeSimTick(conversation: Conversation, apiConfig: ApiCon
     st.pending = false;
     queue.set(id, st);
 
-    runLifeSimTick(conversation, apiConfig)
+    runLifeSimTick(conversation, apiConfig, opts)
       .catch((e) => console.error('[life-sim] tick失败:', e))
       .finally(() => {
         const st2 = queue.get(id);
@@ -1035,14 +998,46 @@ export function enqueueLifeSimTick(conversation: Conversation, apiConfig: ApiCon
         const again = st2.pending;
         st2.pending = false;
         queue.set(id, st2);
-        if (again) enqueueLifeSimTick(conversation, apiConfig);
+        if (again) enqueueLifeSimTick(conversation, apiConfig, opts);
       });
   });
 }
 
+const messageMilestoneTimers = new Map<string, number>();
+
+/**
+ * 私聊消息有变时调用（由 App 在合并消息后 debounce 触发）。
+ * 当相对上次成功 tick 的聊天记录又积累满 {@link LIFE_SIM_MESSAGE_MILESTONE} 条时，单独为该角色排队一次生活模拟。
+ */
+export function onPrivateConversationMessagesMutated(
+  conversationId: string,
+  getConversations: () => Conversation[],
+  getApiConfig: () => ApiConfig
+): void {
+  const prev = messageMilestoneTimers.get(conversationId);
+  if (prev) window.clearTimeout(prev);
+  const t = window.setTimeout(() => {
+    messageMilestoneTimers.delete(conversationId);
+    void (async () => {
+      const conv = getConversations().find((c) => c.id === conversationId);
+      if (!conv || conv.type !== 'private' || !conv.characterSettings) return;
+      if ((conv as any).isBlocked) return;
+      if (isToolInteractionCharacter(conv.characterSettings)) return;
+
+      const st = await loadLifeSimState(conversationId);
+      const msgCount = countChatMessagesForLifeSim(conv);
+      const rawBaseline = st.lifeSimMessageBaseline;
+      const baseline = rawBaseline !== undefined ? rawBaseline : Number(st.lastTickAt) > 0 ? msgCount : 0;
+      if (msgCount < baseline + LIFE_SIM_MESSAGE_MILESTONE) return;
+
+      enqueueLifeSimTick(conv, getApiConfig(), { skipActivityInterval: true });
+    })();
+  }, 150);
+  messageMilestoneTimers.set(conversationId, t);
+}
+
 export function enqueueLifeSimForAll(conversations: Conversation[], apiConfig: ApiConfig): void {
   const now = Date.now();
-  const { day: shanghaiDay } = utc8Parts(now);
 
   const targets = conversations.filter(
     (c) =>
@@ -1053,54 +1048,46 @@ export function enqueueLifeSimForAll(conversations: Conversation[], apiConfig: A
   );
   if (targets.length === 0) return;
 
-  const anchoredSlotId = acquireDueAnchoredLifeSimSlot(shanghaiDay, now);
-  const bypassGlobalGap = anchoredSlotId !== null;
-
-  if (!bypassGlobalGap) {
-    const lastBatch = readLastGlobalLifeSimBatchAt();
-    if (lastBatch > 0 && now - lastBatch < LIFE_SIM_GLOBAL_MIN_GAP_MS) {
-      return;
-    }
-    writeLastGlobalLifeSimBatchAt(now);
-  }
-
   void (async () => {
     const statesMap = await loadLifeSimStates();
-    const tickOpts = bypassGlobalGap ? { skipActivityInterval: true as const } : {};
     const scored = targets.map((c) => {
       const st = statesMap[c.id];
       const lastTickAt = Number(st?.lastTickAt ?? 0);
       const lastAttemptAt = st?.lastSimApiAttemptAt;
-      const due = shouldTick(now, lastTickAt, lastAttemptAt, c, tickOpts);
-      const overdue =
-        lastTickAt > 0 ? now - lastTickAt : Number.MAX_SAFE_INTEGER;
+      const msgCount = countChatMessagesForLifeSim(c);
+      const rawBaseline = st?.lifeSimMessageBaseline;
+      const msgBaseline = rawBaseline !== undefined ? rawBaseline : lastTickAt > 0 ? msgCount : 0;
+      const dueByMessages = msgCount >= msgBaseline + LIFE_SIM_MESSAGE_MILESTONE && msgCount > 0;
+      const dueByTime = shouldTick(now, lastTickAt, lastAttemptAt, c, {});
+      const due = dueByMessages || dueByTime;
+      const overdue = lastTickAt > 0 ? now - lastTickAt : Number.MAX_SAFE_INTEGER;
       const batchPri = getChatActivityBatchPriority(c, now);
-      return { c, due, overdue, batchPri };
+      const engagementScore = resolveChatActivity(c, now).engagementScore;
+      const userChatEver = hasPrivateUserMessageEver(c);
+      const skipInterval = Boolean(dueByMessages && !dueByTime);
+      return { c, due, overdue, batchPri, engagementScore, userChatEver, skipInterval };
     });
 
     const dueSorted = scored
       .filter((x) => x.due)
       .sort((a, b) => {
+        if (a.userChatEver !== b.userChatEver) {
+          return (b.userChatEver ? 1 : 0) - (a.userChatEver ? 1 : 0);
+        }
         if (a.batchPri !== b.batchPri) return a.batchPri - b.batchPri;
+        if (a.engagementScore !== b.engagementScore) return b.engagementScore - a.engagementScore;
         return b.overdue - a.overdue;
       });
 
-    const pickBase = bypassGlobalGap ? 4 + Math.floor(Math.random() * 2) : 3 + Math.floor(Math.random() * 2);
+    const pickBase = 3 + Math.floor(Math.random() * 2);
     const pickCount = Math.min(targets.length, pickBase);
-    const picked = dueSorted.slice(0, pickCount).map((x) => x.c);
+    const picked = dueSorted.slice(0, pickCount);
 
-    if (bypassGlobalGap && picked.length === 0) {
-      releaseAnchoredLifeSimSlot(shanghaiDay, anchoredSlotId!);
-      return;
-    }
-
-    if (bypassGlobalGap && picked.length > 0) {
-      writeLastGlobalLifeSimBatchAt(now);
-    }
-
-    for (const c of picked) {
+    for (const row of picked) {
       try {
-        await runLifeSimTick(c, apiConfig, tickOpts);
+        await runLifeSimTick(row.c, apiConfig, {
+          skipActivityInterval: row.skipInterval || undefined,
+        });
       } catch (e) {
         console.error('[life-sim] tick失败:', e);
       }

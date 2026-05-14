@@ -1,3 +1,4 @@
+import { getLiveConversations } from '../domains/generation/liveConversations';
 import { dumpIndexedDBData } from './storage';
 import {
   dumpSidecarIndexedDatabases,
@@ -21,10 +22,19 @@ export type FullMomoyuExportStats = {
   languageStyleProfileConversations: number;
 };
 
+/** 主库 IndexedDB 快照失败时的降级导出（例如 Connection to Indexed Database server lost） */
+export type FullMomoyuExportDegraded = {
+  indexedDBSnapshotFailed: true;
+  reason: string;
+  /** 是否把当前内存中的会话列表写入了导出包（至少能救聊天记录） */
+  conversationsFromMemory: boolean;
+};
+
 export type FullMomoyuExportResult = {
   stats: FullMomoyuExportStats;
   filename: string;
   sidecarSummaryLine: string;
+  degraded?: FullMomoyuExportDegraded;
 };
 
 function buildStats(allData: Record<string, unknown>): FullMomoyuExportStats {
@@ -109,7 +119,24 @@ export async function exportFullMomoyuBackup(): Promise<FullMomoyuExportResult> 
     }
   }
 
-  const indexedDBData = await dumpIndexedDBData();
+  let indexedDBData: Record<string, unknown> = {};
+  let degraded: FullMomoyuExportDegraded | undefined;
+  try {
+    indexedDBData = await dumpIndexedDBData();
+  } catch (e) {
+    const reason = e instanceof Error ? e.message : String(e);
+    console.warn('[fullMomoyuExport] 主库 IndexedDB 快照失败，降级为 localStorage + 内存会话:', e);
+    const live = getLiveConversations();
+    const conversationsFromMemory = live.length > 0;
+    if (conversationsFromMemory) {
+      indexedDBData = { conversations: live as unknown[] };
+    }
+    degraded = {
+      indexedDBSnapshotFailed: true,
+      reason,
+      conversationsFromMemory,
+    };
+  }
   const indexedDBKeys = Object.keys(indexedDBData);
   Object.assign(allData, indexedDBData);
 
@@ -129,6 +156,7 @@ export async function exportFullMomoyuBackup(): Promise<FullMomoyuExportResult> 
     stats,
     [SIDECAR_INDEXED_FIELD]: sidecarIndexedD,
     data: allData,
+    ...(degraded ? { degradedBackup: degraded } : {}),
   };
 
   const dataStr = JSON.stringify(exportData, null, 2);
@@ -143,10 +171,21 @@ export async function exportFullMomoyuBackup(): Promise<FullMomoyuExportResult> 
   document.body.removeChild(link);
   URL.revokeObjectURL(url);
 
-  return { stats, filename, sidecarSummaryLine };
+  return { stats, filename, sidecarSummaryLine, degraded };
 }
 
-export function formatFullExportSuccessAlert(stats: FullMomoyuExportStats, sidecarSummaryLine: string): string {
+export function formatFullExportSuccessAlert(
+  stats: FullMomoyuExportStats,
+  sidecarSummaryLine: string,
+  degraded?: FullMomoyuExportDegraded
+): string {
+  const degradedBlock =
+    degraded?.indexedDBSnapshotFailed === true
+      ? `\n⚠️ 降级导出说明：\n主库 IndexedDB 当时无法读取（${degraded.reason}）。\n` +
+        (degraded.conversationsFromMemory
+          ? '已把「当前内存里的会话列表」写入备份包，聊天记录可先救回；朋友圈、记忆库、文档库等主库内容可能缺失，请刷新页面后再次导出做完整备份。\n'
+          : '未能注入内存会话（可能未绑定或列表为空），备份可能严重不完整；请先刷新页面再导出。\n')
+      : '';
   return (
     `✅ 全部数据已导出！\n\n` +
     `📊 包含内容：\n` +
@@ -160,8 +199,10 @@ export function formatFullExportSuccessAlert(stats: FullMomoyuExportStats, sidec
     `• 背景图片: ${stats.images} 张\n` +
     `• 编辑学习记录: ${stats.editCalibrationEntries} 条（IndexedDB）\n` +
     `• 语言风格画像: ${stats.languageStyleProfileConversations} 个角色有快照\n` +
+    `• 线下模式叙事、其它主库键：随 IndexedDB 全量扫描一并导出\n` +
     `• 其他设置和数据\n` +
     (sidecarSummaryLine ? `${sidecarSummaryLine}\n` : '') +
+    degradedBlock +
     `\n💾 文件已保存到下载文件夹\n` +
     `换浏览器：把该 JSON 拷到新浏览器，在同一页面点「导入全部数据」即可整包恢复。\n` +
     `（含主库存与表情包等独立库，尽量不丢本地数据。）`

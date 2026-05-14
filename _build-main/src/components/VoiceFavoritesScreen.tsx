@@ -165,7 +165,7 @@ export default function VoiceFavoritesScreen({
             <Mic className="w-12 h-12 mx-auto mb-3 text-zinc-300" strokeWidth={1.25} />
             <p>暂无收藏的语音。</p>
             <p className="mt-2">
-              在聊天里长按语音，可选「缓存并收藏」或「仅收藏」：前者播放固定同一段；后者不存文件，助手语音在列表里每次点播放会重新合成。
+              点击语音气泡打开菜单，可选「缓存并收藏」或「仅收藏」：前者播放固定同一段；后者不存文件，助手语音在列表里每次点播放会重新合成。转写可在气泡上点击查看。
             </p>
           </div>
         ) : (

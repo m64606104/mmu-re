@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { X, Loader, Settings } from 'lucide-react';
 import { apiPresetsManager, APIPreset } from '../utils/apiPresetsManager';
+import { fetchOpenAiCompatibleModelIdsWithDiagnostics } from '../utils/openaiCompatibleModels';
 import APIPresetsModal from './APIPresetsModal';
 
 interface ImageGenConfigModalProps {
@@ -69,57 +70,35 @@ export default function ImageGenConfigModal({
     setError('');
 
     try {
-      // 🔥 正确处理API地址：移除末尾斜杠，然后添加 /v1/models
-      let baseUrl = apiUrl.trim();
-      // 移除可能的尾部斜杠
-      if (baseUrl.endsWith('/')) {
-        baseUrl = baseUrl.slice(0, -1);
-      }
-      // 移除可能的API路径后缀
-      baseUrl = baseUrl.replace(/\/(v1\/)?chat\/completions$/, '');
-      baseUrl = baseUrl.replace(/\/(v1\/)?images\/generations$/, '');
-      
-      // 确保有 /v1 前缀
-      const modelsUrl = baseUrl.includes('/v1') 
-        ? `${baseUrl}/models` 
-        : `${baseUrl}/v1/models`;
-      
-      console.log('🔍 获取模型列表:', modelsUrl);
-      
-      // 尝试获取模型列表
-      const response = await fetch(modelsUrl, {
-        headers: {
-          'Authorization': `Bearer ${apiKey}`
-        }
+      const diag = await fetchOpenAiCompatibleModelIdsWithDiagnostics(apiUrl.trim(), apiKey.trim(), {
+        modelForChatProbe: selectedModel || undefined,
       });
-
-      if (!response.ok) {
-        throw new Error(`获取模型失败: ${response.status} ${response.statusText}`);
+      if (diag.error) {
+        setModels(['dall-e-3', 'dall-e-2', 'stable-diffusion-xl']);
+        setError(diag.error);
+        if (!selectedModel) setSelectedModel('dall-e-3');
+        return;
       }
-
-      const data = await response.json();
-      
-      // 🔥 参考SettingsScreen的实现，获取所有模型
-      const allModels = data.data?.map((m: any) => m.id) || [];
-      
+      if (diag.warning) {
+        setModels(['dall-e-3', 'dall-e-2', 'stable-diffusion-xl']);
+        setError(diag.warning);
+        if (!selectedModel) setSelectedModel('dall-e-3');
+        return;
+      }
+      const allModels = diag.models;
       if (allModels.length === 0) {
-        // 如果没有找到，使用常见的默认模型
         setModels(['dall-e-3', 'dall-e-2', 'stable-diffusion-xl']);
         if (!selectedModel) {
           setSelectedModel('dall-e-3');
         }
       } else {
-        // 🔥 显示所有模型，而不是过滤（参考SettingsScreen的做法）
         setModels(allModels);
-        
-        // 如果没有选择模型，默认选择第一个
         if (!selectedModel) {
           setSelectedModel(allModels[0]);
         }
       }
     } catch (err) {
       console.error('获取模型失败:', err);
-      // 使用默认模型列表
       setModels(['dall-e-3', 'dall-e-2', 'stable-diffusion-xl']);
       setError('无法获取模型列表，已加载默认选项');
       if (!selectedModel) {

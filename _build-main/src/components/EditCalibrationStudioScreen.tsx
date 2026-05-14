@@ -1,13 +1,18 @@
-import { useCallback, useEffect, useState } from 'react';
-import { ChevronLeft, Loader2, Trash2 } from 'lucide-react';
-import type { Conversation, EditCalibrationEntry, LanguageStyleProfileDoc } from '../types';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { ChevronLeft, Loader2, RefreshCw, Trash2 } from 'lucide-react';
+import type { ApiConfig, Conversation, EditCalibrationEntry, LanguageStyleProfileDoc } from '../types';
 import { useMobileBottomDock } from '../hooks/useMobileBottomDock';
 import { EDIT_CALIBRATION_STUDIO_UPDATED_EVENT } from '../utils/editCalibrationStudioEvents';
 import { clearEditCalibrationForConversation, loadEditCalibrationEntries } from '../utils/editCalibrationStorage';
+import {
+  formatEditCalibrationReflectionErrorForUi,
+  retryEditCalibrationReflectionFromEntry,
+} from '../utils/editCalibrationReflection';
 import { loadLanguageStyleProfileDoc } from '../utils/languageStyleProfileStorage';
 
 type Props = {
   conversation: Conversation;
+  apiConfig: ApiConfig;
   onBack: () => void;
 };
 
@@ -25,11 +30,13 @@ function formatWhen(ts: number): string {
 }
 
 export default function EditCalibrationStudioScreen(props: Props) {
-  const { conversation, onBack } = props;
+  const { conversation, apiConfig, onBack } = props;
   const mobileBottomDock = useMobileBottomDock();
   const [entries, setEntries] = useState<EditCalibrationEntry[]>([]);
   const [styleProfile, setStyleProfile] = useState<LanguageStyleProfileDoc | null>(null);
   const [showBaselineIds, setShowBaselineIds] = useState<Record<string, boolean>>({});
+  const [retryingEntryId, setRetryingEntryId] = useState<string | null>(null);
+  const retryInFlightRef = useRef(false);
 
   const reload = useCallback(async () => {
     const [list, profile] = await Promise.all([
@@ -53,6 +60,34 @@ export default function EditCalibrationStudioScreen(props: Props) {
   const toggleBaseline = (id: string) => {
     setShowBaselineIds((prev) => ({ ...prev, [id]: !prev[id] }));
   };
+
+  const handleRetryReflection = useCallback(
+    async (entry: EditCalibrationEntry) => {
+      if (retryInFlightRef.current) return;
+      retryInFlightRef.current = true;
+      setRetryingEntryId(entry.id);
+      try {
+        await retryEditCalibrationReflectionFromEntry({
+          conversationId: conversation.id,
+          entry: {
+            id: entry.id,
+            role: entry.role,
+            baselineContent: entry.baselineContent,
+            revisedContent: entry.revisedContent,
+          },
+          conversation,
+          apiConfig,
+        });
+        await reload();
+      } catch (err) {
+        console.error('重新生成编辑归纳失败:', err);
+      } finally {
+        retryInFlightRef.current = false;
+        setRetryingEntryId(null);
+      }
+    },
+    [apiConfig, conversation, reload],
+  );
 
   const handleClear = async () => {
     const ok = window.confirm(
@@ -99,6 +134,7 @@ export default function EditCalibrationStudioScreen(props: Props) {
         <p className="text-[11px] text-gray-500 leading-relaxed bg-white rounded-2xl px-3 py-2 border border-gray-100">
           这里汇总你在私聊里<strong className="text-gray-700">手动改过</strong>的气泡（用户或 AI）。默认展示<strong className="text-gray-700">改后正文</strong>与
           AI 的简短归纳；原文默认折叠，可按条展开对照。数据仅存 <strong className="text-gray-700">IndexedDB</strong>，<strong className="text-gray-700">不会</strong>写入通用记忆库。
+          归纳请求失败时会<strong className="text-gray-700">自动再试一次</strong>；仍失败可点该条下的「重新生成」。
         </p>
 
         <div className="bg-white rounded-3xl border border-emerald-100 shadow-sm overflow-hidden">
@@ -137,7 +173,7 @@ export default function EditCalibrationStudioScreen(props: Props) {
             return (
               <div
                 key={e.id}
-                className="bg-white rounded-3xl border border-gray-100 shadow-sm overflow-hidden"
+                className="shrink-0 bg-white rounded-3xl border border-gray-100 shadow-sm overflow-x-hidden"
               >
                 <div className="px-4 pt-3 pb-2 flex items-center justify-between gap-2 border-b border-gray-50">
                   <div className="flex items-center gap-2 min-w-0">
@@ -180,7 +216,7 @@ export default function EditCalibrationStudioScreen(props: Props) {
                     </div>
                   </div>
 
-                  <div className="rounded-xl border border-indigo-100 bg-indigo-50/60 px-3 py-2">
+                  <div className="rounded-xl border border-indigo-100 bg-indigo-50/60 px-3 py-2 min-w-0">
                     <div className="text-[10px] font-medium text-indigo-900/80 mb-1">AI 归纳</div>
                     {e.aiReflectionStatus === 'pending' ? (
                       <div className="flex items-center gap-2 text-sm text-indigo-800/90">
@@ -188,11 +224,26 @@ export default function EditCalibrationStudioScreen(props: Props) {
                         <span>正在生成简要反思…</span>
                       </div>
                     ) : e.aiReflectionStatus === 'error' ? (
-                      <div className="text-sm text-red-700 whitespace-pre-wrap">
-                        {e.aiReflectionError || '生成失败'}
+                      <div className="space-y-2">
+                        <div className="text-sm text-red-700 whitespace-pre-wrap break-words [overflow-wrap:anywhere]">
+                          {formatEditCalibrationReflectionErrorForUi(e.aiReflectionError)}
+                        </div>
+                        <button
+                          type="button"
+                          disabled={retryingEntryId !== null}
+                          onClick={() => void handleRetryReflection(e)}
+                          className="inline-flex items-center gap-1.5 rounded-lg border border-red-200 bg-white px-2.5 py-1.5 text-[12px] font-medium text-red-800 hover:bg-red-50 disabled:opacity-50 disabled:pointer-events-none"
+                        >
+                          {retryingEntryId === e.id ? (
+                            <Loader2 className="w-3.5 h-3.5 animate-spin shrink-0" aria-hidden />
+                          ) : (
+                            <RefreshCw className="w-3.5 h-3.5 shrink-0" aria-hidden />
+                          )}
+                          重新生成
+                        </button>
                       </div>
                     ) : (
-                      <div className="text-sm text-indigo-950/90 whitespace-pre-wrap leading-relaxed">
+                      <div className="text-sm text-indigo-950/90 whitespace-pre-wrap leading-relaxed break-words [overflow-wrap:anywhere] min-w-0">
                         {e.aiReflection || '—'}
                       </div>
                     )}

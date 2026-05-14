@@ -67,6 +67,8 @@ import {
   importEditCalibrationBucketForCharacterMigration,
 } from './utils/editCalibrationStorage';
 import { importLanguageStyleProfileForCharacterMigration } from './utils/languageStyleProfileStorage';
+import { saveFaceToFaceNarrativeDoc } from './utils/faceToFaceNarrativeStorage';
+import type { FaceToFaceNarrativeDoc } from './utils/faceToFaceNarrativeStorage';
 import { Toaster } from 'sonner';
 import {
   formatChatMessagePreviewForNotification,
@@ -913,9 +915,19 @@ function App() {
             unreadCount: nextUnread,
             lastMessageTime: effectiveUpdates.lastMessageTime ?? Date.now(),
           };
-          return mergedConv.type === 'private'
-            ? ensurePrivateSessions(mergedConv)
-            : mergedConv;
+          const finalized =
+            mergedConv.type === 'private' ? ensurePrivateSessions(mergedConv) : mergedConv;
+          if (finalized.type === 'private' && effectiveUpdates.messages !== undefined) {
+            const cid = id;
+            window.setTimeout(() => {
+              import('./sim/lifeEngine')
+                .then(({ onPrivateConversationMessagesMutated }) => {
+                  onPrivateConversationMessagesMutated(cid, () => conversationsRef.current, () => apiConfigRef.current);
+                })
+                .catch(() => {});
+            }, 0);
+          }
+          return finalized;
         });
       });
     },
@@ -989,6 +1001,17 @@ function App() {
       }
       return conv;
     }));
+    window.setTimeout(() => {
+      import('./sim/lifeEngine')
+        .then(({ onPrivateConversationMessagesMutated }) => {
+          onPrivateConversationMessagesMutated(
+            conversationId,
+            () => conversationsRef.current,
+            () => apiConfigRef.current
+          );
+        })
+        .catch(() => {});
+    }, 0);
   }, [currentScreen, currentConversationId]);
 
   // 导入角色数据
@@ -1022,6 +1045,14 @@ function App() {
         ...(typeof data.character?.privateComposerQuietSeconds === 'number'
           ? { privateComposerQuietSeconds: data.character.privateComposerQuietSeconds }
           : {}),
+        ...(data.character?.type === 'private' && Array.isArray(data.privateSessions)
+          ? {
+              privateSessions: data.privateSessions,
+              activePrivateSessionId: data.activePrivateSessionId,
+            }
+          : {}),
+        ...(data.faceToFaceSession != null ? { faceToFaceSession: data.faceToFaceSession } : {}),
+        ...(data.characterLiveStatus != null ? { characterLiveStatus: data.characterLiveStatus } : {}),
       };
       
       console.log('✅ 创建新对话:', newConversation);
@@ -1123,6 +1154,40 @@ function App() {
         }
       }
 
+      if (newConversation.type === 'private' && data.faceToFaceNarratives && typeof data.faceToFaceNarratives === 'object') {
+        for (const [wid, raw] of Object.entries(data.faceToFaceNarratives)) {
+          const doc = raw as Partial<FaceToFaceNarrativeDoc>;
+          if (!doc || typeof doc !== 'object' || !Array.isArray(doc.segments)) continue;
+          const segs = doc.segments.filter(
+            (s: any) =>
+              s &&
+              typeof s === 'object' &&
+              typeof s.id === 'string' &&
+              (s.role === 'user' || s.role === 'assistant') &&
+              typeof s.text === 'string' &&
+              typeof s.timestamp === 'number',
+          );
+          await saveFaceToFaceNarrativeDoc(
+            newConversationId,
+            {
+              version: Math.max(1, Number(doc.version) || 1),
+              segments: segs,
+            },
+            wid,
+          );
+        }
+        console.log('✅ 线下模式各桶正文已导入');
+      }
+
+      if (newConversation.type === 'private' && data.lifeSimStateForConversation != null) {
+        const allLife = ((await smartLoad('ai_life_sim_states')) as Record<string, unknown> | null) || {};
+        await smartSave('ai_life_sim_states', {
+          ...allLife,
+          [newConversationId]: data.lifeSimStateForConversation,
+        });
+        console.log('✅ 生活模拟状态（本会话）已合并导入');
+      }
+
       // 添加对话到列表
       setConversations(prev => [...prev, newConversation]);
       console.log('✅ 对话添加成功');
@@ -1167,12 +1232,18 @@ function App() {
         (newConversation.type === 'private'
           ? `• 编辑学习 / 语言画像：${importStats.editCalibrationEntries} 条${
               importStats.languageStyleProfileRestored ? '，语言画像已恢复' : ''
-            }\n`
+            }\n` +
+            (data.faceToFaceNarratives && typeof data.faceToFaceNarratives === 'object'
+              ? `• 线下模式正文桶：${Object.keys(data.faceToFaceNarratives).length} 个\n`
+              : '') +
+            (data.faceToFaceSession ? `• 线下模式会话元数据：已恢复\n` : '') +
+            (data.characterLiveStatus ? `• 状态卡缓存：已恢复\n` : '') +
+            (data.lifeSimStateForConversation != null ? `• 生活模拟（本会话）：已合并\n` : '')
           : '') +
         `• AI状态：${importStats.hasAIStatus ? '已恢复' : '无'}\n` +
         `• 财务数据：${importStats.hasFinance ? '已恢复' : '无'}\n` +
         `• 消息记录：${importStats.messages} 条\n\n` +
-        `说明：v2.2+ 私聊包含编辑学习与语言画像；v2.0 及更早包无独立表情段；全量备份见设置「导出全部数据」。\n` +
+        `说明：v2.3+ 私聊另含线下模式正文桶、状态卡与生活模拟切片；v2.2 含编辑学习与语言画像；v2.0 及更早包无独立表情段；全量备份见设置「导出全部数据」。\n` +
         `🎉 数据已按当前包内容导入。`;
       
       alert(successMessage);

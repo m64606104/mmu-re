@@ -11,6 +11,8 @@ export {
   schedulePendingReply,
   onTypingChange,
   isGenerating,
+  onPrivateAiImageGenChange,
+  isPrivateAiImageGenerating,
   initPendingReplyService,
   setPendingReplyComposerGate,
   bumpPendingReplyScheduleEpoch,

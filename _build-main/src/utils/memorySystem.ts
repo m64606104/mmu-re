@@ -1483,7 +1483,9 @@ export const getGroupMemories = (conversationId: string, groupId?: string): Memo
  */
 export const getPrivateMemories = (conversationId: string): MemoryEntry[] => {
   const bank = getMemoryBank(conversationId);
-  return bank.memories.filter(m => m.source === 'private' || !m.source);
+  return bank.memories.filter(
+    (m) => m.source === 'private' || m.source === 'face_to_face' || !m.source,
+  );
 };
 
 /**

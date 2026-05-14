@@ -101,12 +101,24 @@ export function GlobalQuickBackupFab() {
     setBusy(true);
     const t = toast.loading('正在打包全量备份…', { duration: 120_000 });
     try {
-      const { stats } = await exportFullMomoyuBackup();
+      const { stats, degraded } = await exportFullMomoyuBackup();
       toast.dismiss(t);
-      toast.success('已导出全量备份', {
-        description: `${stats.conversations} 个会话 · ${stats.messages} 条消息（已触发浏览器下载）`,
-        duration: 6000,
-      });
+      const baseDesc = `${stats.conversations} 个会话 · ${stats.messages} 条消息（已触发浏览器下载）`;
+      if (degraded?.indexedDBSnapshotFailed) {
+        toast.success('已导出（降级）', {
+          description:
+            baseDesc +
+            (degraded.conversationsFromMemory
+              ? '\n\n主库 IndexedDB 暂不可用，已写入当前内存中的会话；朋友圈/记忆等可能缺。请尽快刷新后再导一次完整备份。'
+              : '\n\n主库 IndexedDB 暂不可用且未能注入内存会话，包可能不完整；请先刷新页面。'),
+          duration: 12_000,
+        });
+      } else {
+        toast.success('已导出全量备份', {
+          description: baseDesc,
+          duration: 6000,
+        });
+      }
     } catch (e) {
       toast.dismiss(t);
       const msg = e instanceof Error ? e.message : String(e);

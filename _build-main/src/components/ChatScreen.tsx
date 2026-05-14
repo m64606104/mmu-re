@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { groupToPrivateMemoryService } from '../utils/groupToPrivateMemoryService';
-import { ChevronLeft, Send, Mic, Smile, BellOff, Bell, Pause, Play, Image as ImageIcon, Video, Phone, MapPin, FileText, Plus, Search, MessageCircle, MessageSquare, MessagesSquare, Eye, Music, Gift, MoreHorizontal, Wallet, Repeat, Loader2, Languages } from 'lucide-react';
+import { ChevronLeft, Send, Mic, Smile, BellOff, Bell, Pause, Play, Image as ImageIcon, Video, Phone, MapPin, FileText, Plus, Search, MessageCircle, MessageSquare, MessagesSquare, Eye, Music, Gift, MoreHorizontal, Wallet, Repeat, Loader2, Languages, BookOpen } from 'lucide-react';
 import { Conversation, Message, ApiConfig, UserProfile, DocumentMessage } from '../types';
 import MoneyTransferModal from './MoneyTransferModal';
 import GroupRedPacketModal from './GroupRedPacketModal';
@@ -60,6 +60,8 @@ import {
   schedulePendingReply,
   onTypingChange,
   isGenerating as isConvGenerating,
+  onPrivateAiImageGenChange,
+  isPrivateAiImageGenerating,
   initPendingReplyService,
   setPendingReplyComposerGate,
   bumpPendingReplyScheduleEpoch,
@@ -75,6 +77,14 @@ import { handleAIGroupRedPacketClaiming } from '../utils/aiGroupRedPacketDecisio
 import { processExpiredRedPacketRefund } from '../utils/groupRedPacket';
 import { calculateDeliveryStatus, formatEstimatedTime, getActiveStageIndex, getRiderInfo } from '../utils/orderDeliverySimulator';
 import PrivateChatSessionDrawer from './PrivateChatSessionDrawer';
+import FaceToFaceNarrativePanel from './FaceToFaceNarrativePanel';
+import PrivateCharacterActionSheet, { type PrivateCharacterSheetView } from './PrivateCharacterActionSheet';
+import {
+  evaluateFaceToFaceMeetInviteFromImContext,
+  generateFaceToFaceOpeningFromImChat,
+} from '../utils/faceToFaceNarrativeService';
+import { FACE_TO_FACE_DEFAULT_WINDOW_ID, defaultFaceToFaceSceneHeaderLine } from '../utils/faceToFaceNarrativeStorage';
+import { generateCharacterLiveStatus } from '../utils/characterLiveStatusService';
 // AI理解力经验系统集成
 import { ChatSessionManager, handleChatExperienceUpdate } from '../utils/chatExperienceIntegration';
 import { bootstrapComprehensionSystem } from '../utils/comprehensionSystemBootstrap';
@@ -134,7 +144,7 @@ import {
   buildMessageActionItems,
   type MessageActionId,
 } from '../domains/chat/messageActionsRegistry';
-import { saveVoiceFavorite } from '../utils/voiceFavoriteStorage';
+import { resolveMessageForVoiceFavorite, saveVoiceFavorite } from '../utils/voiceFavoriteStorage';
 import { useToast } from './Toast';
 import { useMessageNotification } from '../hooks/useMessageNotification';
 import {
@@ -335,6 +345,22 @@ export default function ChatScreen({
     [apiConfig, conversation]
   );
 
+  const toolPrivateUi =
+    conversation.type === 'private' && isToolInteractionCharacter(conversation.characterSettings);
+
+  const [faceToFacePhoneOpen, setFaceToFacePhoneOpen] = useState(false);
+  const [faceToFaceMeetInviteOpen, setFaceToFaceMeetInviteOpen] = useState(false);
+  const [faceToFaceMeetInviteBusy, setFaceToFaceMeetInviteBusy] = useState(false);
+  const [faceToFaceMeetBridgeText, setFaceToFaceMeetBridgeText] = useState('');
+  const [faceToFaceMeetBridgeAssistantText, setFaceToFaceMeetBridgeAssistantText] = useState('');
+  const faceToFaceMeetEvaluatedKeysRef = useRef<Set<string>>(new Set());
+  const faceToFaceMeetInvitePairKeyRef = useRef<string | null>(null);
+
+  const [privateCharacterSheetOpen, setPrivateCharacterSheetOpen] = useState(false);
+  const [privateCharacterSheetView, setPrivateCharacterSheetView] =
+    useState<PrivateCharacterSheetView>('menu');
+  const [privateCharacterStatusLoading, setPrivateCharacterStatusLoading] = useState(false);
+
   // 启用消息通知
   useMessageNotification({
     conversation,
@@ -396,6 +422,9 @@ export default function ChatScreen({
   const [showSendingHint, setShowSendingHint] = useState(false);
   const [isGroupProcessing, setIsGroupProcessing] = useState(false); // 🚀 新增：群聊处理中状态
   const [showTyping, setShowTyping] = useState(() => isConvGenerating(conversation.id));
+  const [showPrivateImageGenHint, setShowPrivateImageGenHint] = useState(() =>
+    isPrivateAiImageGenerating(conversation.id),
+  );
 
   const [ttsBusyMessageId, setTtsBusyMessageId] = useState<string | null>(null);
   const [ttsPlayingMessageId, setTtsPlayingMessageId] = useState<string | null>(null);
@@ -487,6 +516,68 @@ export default function ChatScreen({
       setShowPrivateExtraActions(false);
     }
   }, [conversation.type, showPrivateExtraActions]);
+
+  useEffect(() => {
+    faceToFaceMeetEvaluatedKeysRef.current = new Set();
+    faceToFaceMeetInvitePairKeyRef.current = null;
+    setFaceToFaceMeetInviteOpen(false);
+    setFaceToFaceMeetInviteBusy(false);
+    setFaceToFaceMeetBridgeText('');
+    setFaceToFaceMeetBridgeAssistantText('');
+    // 切换会话时：若新私聊处于线下模式，默认先显示手机线上，避免铺满线下屏
+    if (conversation.type === 'private' && conversation.faceToFaceSession?.active) {
+      setFaceToFacePhoneOpen(true);
+    } else {
+      setFaceToFacePhoneOpen(false);
+    }
+    setPrivateCharacterSheetOpen(false);
+    setPrivateCharacterSheetView('menu');
+    setPrivateCharacterStatusLoading(false);
+  }, [conversation.id]);
+
+  useEffect(() => {
+    if (!conversation.faceToFaceSession?.active) {
+      setFaceToFacePhoneOpen(false);
+    }
+  }, [conversation.faceToFaceSession?.active]);
+
+  useEffect(() => {
+    if (conversation.type !== 'private' || toolPrivateUi || conversation.faceToFaceSession?.active) return;
+    const msgs = conversation.messages;
+    if (msgs.length < 2) return;
+    const last = msgs[msgs.length - 1];
+    const prev = msgs[msgs.length - 2];
+    if (last.role !== 'assistant' || prev.role !== 'user') return;
+    if ((prev as { channel?: string }).channel === 'face_to_face') return;
+    const key = `${prev.id}:${last.id}`;
+    if (faceToFaceMeetEvaluatedKeysRef.current.has(key)) return;
+    faceToFaceMeetEvaluatedKeysRef.current.add(key);
+    void (async () => {
+      try {
+        const { offer } = await evaluateFaceToFaceMeetInviteFromImContext({
+          conversation,
+          apiConfig: effectivePrivateApiConfig,
+          userProfile: currentUserProfile,
+          pairUserMessage: prev,
+          pairAssistantMessage: last,
+        });
+        if (!offer) return;
+        faceToFaceMeetInvitePairKeyRef.current = key;
+        setFaceToFaceMeetBridgeText(String(prev.content || '').trim().slice(0, 500));
+        setFaceToFaceMeetBridgeAssistantText(String(last.content || '').trim().slice(0, 500));
+        setFaceToFaceMeetInviteOpen(true);
+      } catch {
+        faceToFaceMeetEvaluatedKeysRef.current.delete(key);
+      }
+    })();
+  }, [
+    conversation.messages,
+    conversation.type,
+    conversation.faceToFaceSession?.active,
+    toolPrivateUi,
+    effectivePrivateApiConfig,
+    currentUserProfile,
+  ]);
 
   useEffect(() => {
     if (conversation.type !== 'group' && showGroupExtraActions) {
@@ -714,6 +805,15 @@ export default function ChatScreen({
     return unsub;
   }, [conversation.id]);
 
+  // 私聊真实配图：文生图接口进行中（与「正在输入」分离）
+  useEffect(() => {
+    const unsub = onPrivateAiImageGenChange((convId, active) => {
+      if (convId === conversation.id) setShowPrivateImageGenHint(active);
+    });
+    setShowPrivateImageGenHint(isPrivateAiImageGenerating(conversation.id));
+    return unsub;
+  }, [conversation.id]);
+
   // 🚀 订阅后台生成服务的状态更新（保留用于群聊等其他功能）
   useEffect(() => {
     // 订阅当前对话的生成任务状态
@@ -850,6 +950,7 @@ ${recentMessages}
       // 无论如何都要清理 loading / 打字状态
       setShowSendingHint(false);
       setShowTyping(false);
+      setShowPrivateImageGenHint(false);
       setIsGenerating(false);
     }
   };
@@ -1590,8 +1691,9 @@ ${recentMessages}
     () =>
       buildMessageActionItems(selectedMessageForMenu, {
         showForward: Boolean(conversations && conversations.length > 0),
+        menuAnchorRowId: selectedMessageId,
       }),
-    [selectedMessageForMenu, conversations]
+    [selectedMessageForMenu, conversations, selectedMessageId],
   );
 
   useEffect(() => {
@@ -1610,10 +1712,16 @@ ${recentMessages}
       case 'favoriteVoiceBookmark':
         if (!selectedMessageId) break;
         {
-          const canonicalId = canonicalMessageIdFromRenderRowId(selectedMessageId);
-          const vm = conversation.messages.find((m) => m.id === canonicalId);
+          const rowId = selectedMessageId;
+          const canonicalId = canonicalMessageIdFromRenderRowId(rowId);
+          const vmRaw = conversation.messages.find((m) => m.id === canonicalId);
           setSelectedMessageId(null);
-          if (!vm || vm.mediaType !== 'voice') break;
+          const mediaMat = rowId.match(/_media_(\d+)$/);
+          const bracketIdx = mediaMat ? Number(mediaMat[1]) : 0;
+          const resolved = vmRaw ? resolveMessageForVoiceFavorite(vmRaw, bracketIdx) : null;
+          if (!resolved) break;
+          const vm =
+            rowId !== canonicalId && /_media_\d+$/.test(rowId) ? { ...resolved, id: rowId } : resolved;
           const mode = id === 'favoriteVoiceBookmark' ? 'favorite_only' : 'cache_audio';
           void saveVoiceFavorite(conversation.id, vm, mode)
             .then((rec) => {
@@ -2269,6 +2377,54 @@ ${recentMessages}
     // 关闭菜单
     setAvatarMenuOpen(null);
   };
+
+  const openPrivateCharacterSheet = useCallback(() => {
+    if (conversation.type !== 'private') return;
+    if (isToolInteractionCharacter(conversation.characterSettings)) return;
+    setPrivateCharacterSheetView('menu');
+    setPrivateCharacterSheetOpen(true);
+  }, [conversation.type, conversation.characterSettings]);
+
+  const handlePrivateCharacterRefreshStatus = useCallback(async () => {
+    if (conversation.type !== 'private') return;
+    setPrivateCharacterStatusLoading(true);
+    try {
+      const next = await generateCharacterLiveStatus({
+        conversation,
+        apiConfig: effectivePrivateApiConfig,
+        userProfile: currentUserProfile,
+      });
+      onUpdateConversation(conversation.id, { characterLiveStatus: next });
+    } catch (e) {
+      showToast(e instanceof Error ? e.message : String(e), 'error');
+    } finally {
+      setPrivateCharacterStatusLoading(false);
+    }
+  }, [conversation, currentUserProfile, effectivePrivateApiConfig, onUpdateConversation, showToast]);
+
+  const handlePrivateCharacterSheetOpenStatus = useCallback(() => {
+    setPrivateCharacterSheetView('status');
+    if (conversation.type === 'private' && !conversation.characterLiveStatus) {
+      void handlePrivateCharacterRefreshStatus();
+    }
+  }, [conversation.characterLiveStatus, conversation.type, handlePrivateCharacterRefreshStatus]);
+
+  const handlePrivateCharacterPat = useCallback(() => {
+    if (conversation.type !== 'private') return;
+    const displayName = getCharacterRealName(conversation.characterSettings) || conversation.name;
+    const patMessage: Message = {
+      id: `pat_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+      role: 'system',
+      content: `你拍了拍「${displayName}」`,
+      timestamp: Date.now(),
+    };
+    bumpPendingReplyScheduleEpoch(conversation.id);
+    onUpdateConversation(conversation.id, {
+      messages: [...(conversation.messages || []), patMessage],
+      lastMessageTime: Date.now(),
+    });
+    setPrivateCharacterSheetOpen(false);
+  }, [conversation, onUpdateConversation]);
 
   // @对方（从菜单触发）：插入对外网名，与群内 @ 解析一致
   const handleAtAction = () => {
@@ -3821,9 +3977,6 @@ ${recentMessages}
       ? (conversation.chatBackground || conversation.characterSettings?.chatBackground || '').trim()
       : (conversation.characterSettings?.chatBackground || '').trim();
 
-  const toolPrivateUi =
-    conversation.type === 'private' && isToolInteractionCharacter(conversation.characterSettings);
-
   return (
     <>
     <div 
@@ -3898,19 +4051,24 @@ ${recentMessages}
               )}
             </div>
           ) : (
-            <div className="w-9 h-9 md:w-8 md:h-8 rounded-full overflow-hidden flex-shrink-0 border border-white shadow-sm bg-gradient-to-br from-gray-700 to-gray-900">
+            <button
+              type="button"
+              onClick={openPrivateCharacterSheet}
+              className="h-9 w-9 shrink-0 overflow-hidden rounded-full border border-white shadow-sm bg-gradient-to-br from-gray-700 to-gray-900 md:h-8 md:w-8 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/40"
+              aria-label="角色状态与拍一拍"
+            >
               {conversation.characterSettings?.avatar || conversation.avatar ? (
                 <img
                   src={conversation.characterSettings?.avatar || conversation.avatar}
                   alt=""
-                  className="w-full h-full object-cover"
+                  className="h-full w-full object-cover"
                 />
               ) : (
-                <div className="w-full h-full flex items-center justify-center">
-                  <span className="text-white font-semibold text-sm">{conversation.name.charAt(0)}</span>
+                <div className="flex h-full w-full items-center justify-center">
+                  <span className="text-sm font-semibold text-white">{conversation.name.charAt(0)}</span>
                 </div>
               )}
-            </div>
+            </button>
           )}
           <div className="flex flex-col min-w-0 flex-1">
             {conversation.type === 'group' ? (
@@ -3939,14 +4097,22 @@ ${recentMessages}
             ) : (
               <>
                 <div className="relative w-full min-w-0">
-                  <h1
-                    className={`text-base md:text-[15px] font-semibold text-gray-900 truncate ${
+                  <button
+                    type="button"
+                    onClick={openPrivateCharacterSheet}
+                    disabled={toolPrivateUi}
+                    className={`block w-full min-w-0 rounded-lg text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/40 disabled:opacity-60 ${
                       !toolPrivateUi ? 'pr-8' : ''
                     }`}
-                    title={conversation.name}
+                    aria-label="角色状态与拍一拍"
                   >
-                    {conversation.name}
-                  </h1>
+                    <span
+                      className="block truncate text-base font-semibold text-gray-900 md:text-[15px]"
+                      title={conversation.name}
+                    >
+                      {conversation.name}
+                    </span>
+                  </button>
                   {!toolPrivateUi ? (
                     <button
                       type="button"
@@ -3991,7 +4157,7 @@ ${recentMessages}
           >
             <Search className="w-5 h-5 text-gray-700" />
           </button>
-          
+
           {conversation.type === 'private' && toolPrivateUi ? (
             <button
               type="button"
@@ -4053,6 +4219,33 @@ ${recentMessages}
 
         </div>
       </div>
+
+      <div className="relative flex flex-1 min-h-0 min-w-0 flex-col overflow-hidden">
+        {conversation.type === 'private' &&
+        conversation.faceToFaceSession?.active &&
+        !faceToFacePhoneOpen ? (
+          <FaceToFaceNarrativePanel
+            conversation={conversation}
+            apiConfig={effectivePrivateApiConfig}
+            userProfile={currentUserProfile}
+            onUpdateConversation={onUpdateConversation}
+            showToast={showToast}
+            onOpenPhoneShell={() => setFaceToFacePhoneOpen(true)}
+          />
+        ) : (
+          <>
+            {conversation.type === 'private' && conversation.faceToFaceSession?.active && faceToFacePhoneOpen && (
+              <div className="flex shrink-0 items-center justify-between gap-2 border-b border-emerald-100 bg-emerald-50/95 px-3 py-2.5 backdrop-blur-sm">
+                <span className="text-xs font-medium text-emerald-900">手机线上模式</span>
+                <button
+                  type="button"
+                  onClick={() => setFaceToFacePhoneOpen(false)}
+                  className="rounded-full bg-emerald-700 px-3 py-1 text-xs font-medium text-white hover:bg-emerald-800"
+                >
+                  返回线下模式
+                </button>
+              </div>
+            )}
 
       {/* Messages - 固定布局，添加顶部和底部padding */}
       <div 
@@ -5338,6 +5531,28 @@ ${recentMessages}
           </div>
         )}
 
+        {/* 私聊：真实配图接口返回前（用户已确认 [生图:] 后），拟真为「图片加载」 */}
+        {showPrivateImageGenHint && conversation.type === 'private' && (
+          toolPrivateUi ? (
+            <div className="mx-auto flex w-full max-w-3xl items-center gap-2 px-0 py-2 md:max-w-[820px]">
+              <span className="inline-block h-3.5 w-3.5 animate-pulse rounded border border-violet-300 bg-violet-50" aria-hidden />
+              <span className="text-xs text-violet-700">图片加载中…</span>
+            </div>
+          ) : (
+            <div className="flex justify-center w-full py-2">
+              <div className="inline-flex items-center gap-2 rounded-full border border-violet-200/90 bg-violet-50/95 px-3 py-1.5 text-[11px] text-violet-800 shadow-sm">
+                <span className="inline-block h-3.5 w-3.5 shrink-0 animate-pulse rounded border border-violet-300 bg-white" aria-hidden />
+                <span>图片加载中</span>
+                <span className="flex gap-0.5">
+                  <span className="w-1.5 h-1.5 rounded-full bg-violet-400 animate-bounce" style={{ animationDelay: '0ms' }} />
+                  <span className="w-1.5 h-1.5 rounded-full bg-violet-400 animate-bounce" style={{ animationDelay: '150ms' }} />
+                  <span className="w-1.5 h-1.5 rounded-full bg-violet-400 animate-bounce" style={{ animationDelay: '300ms' }} />
+                </span>
+              </div>
+            </div>
+          )
+        )}
+
         {/* 私聊打字动画 */}
         {showTyping && conversation.type === 'private' && (
           toolPrivateUi ? (
@@ -5444,6 +5659,7 @@ ${recentMessages}
             </button>
           </div>
         )}
+
       </div>
 
       {/* 群聊「自动衔接」：夹在消息区与输入栏之间，不在顶栏、不在输入框内 */}
@@ -5683,6 +5899,38 @@ ${recentMessages}
               >
                 <Music className="w-5 h-5" />
               </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowPrivateExtraActions(false);
+                  setFaceToFacePhoneOpen(false);
+                  bumpPendingReplyScheduleEpoch(conversation.id);
+                  const prev = conversation.faceToFaceSession;
+                  const now = Date.now();
+                  const defaultWindow = {
+                    id: FACE_TO_FACE_DEFAULT_WINDOW_ID,
+                    title: '默认',
+                    createdAt: now,
+                    updatedAt: now,
+                  } as const;
+                  onUpdateConversation(conversation.id, {
+                    faceToFaceSession: {
+                      ...(prev || {}),
+                      active: true,
+                      startedAt: prev?.startedAt ?? now,
+                      sceneHeaderLine:
+                        prev?.sceneHeaderLine?.trim() || defaultFaceToFaceSceneHeaderLine(),
+                      windows: prev?.windows?.length ? prev.windows : [defaultWindow],
+                      activeFaceToFaceWindowId:
+                        prev?.activeFaceToFaceWindowId || FACE_TO_FACE_DEFAULT_WINDOW_ID,
+                    },
+                  });
+                }}
+                className="flex-1 h-9 flex items-center justify-center hover:text-gray-900 transition-colors"
+                title="线下模式"
+              >
+                <BookOpen className="w-5 h-5 text-emerald-700" strokeWidth={2} />
+              </button>
             </div>
           )}
           {conversation.type === 'group' && showGroupExtraActions && (
@@ -5898,6 +6146,9 @@ ${recentMessages}
           </div>
         </div>
       </div>
+      </>
+      )}
+      </div>
     </div>
 
     {/* 视频通话弹窗 */}
@@ -5910,6 +6161,121 @@ ${recentMessages}
       onSaveCallLog={handleSaveCallLog}
       callType={callType}
     />
+
+    {conversation.type === 'private' && (
+      <PrivateCharacterActionSheet
+        open={privateCharacterSheetOpen}
+        view={privateCharacterSheetView}
+        onClose={() => setPrivateCharacterSheetOpen(false)}
+        onChangeView={setPrivateCharacterSheetView}
+        characterName={getCharacterRealName(conversation.characterSettings) || conversation.name}
+        status={conversation.characterLiveStatus}
+        statusLoading={privateCharacterStatusLoading}
+        onOpenStatus={handlePrivateCharacterSheetOpenStatus}
+        onPat={handlePrivateCharacterPat}
+        onRefreshStatus={handlePrivateCharacterRefreshStatus}
+      />
+    )}
+
+    {faceToFaceMeetInviteOpen && (
+      <div
+        className="fixed inset-0 z-[200] flex items-center justify-center bg-black/45 p-4"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="face-to-face-invite-title"
+      >
+        <div className="w-full max-w-sm rounded-2xl bg-white p-5 shadow-xl">
+          <h3 id="face-to-face-invite-title" className="text-base font-semibold text-gray-900">
+            进入线下模式？
+          </h3>
+          <p className="mt-2 text-sm leading-relaxed text-gray-600">
+            是否切到全屏「线下模式」？
+          </p>
+          {(faceToFaceMeetBridgeText || faceToFaceMeetBridgeAssistantText) && (
+            <div className="mt-2 space-y-1.5 rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-700">
+              {faceToFaceMeetBridgeText ? (
+                <p className="line-clamp-3">
+                  <span className="font-medium text-slate-500">你：</span>
+                  {faceToFaceMeetBridgeText}
+                </p>
+              ) : null}
+              {faceToFaceMeetBridgeAssistantText ? (
+                <p className="line-clamp-3">
+                  <span className="font-medium text-slate-500">对方：</span>
+                  {faceToFaceMeetBridgeAssistantText}
+                </p>
+              ) : null}
+            </div>
+          )}
+          <div className="mt-5 flex gap-2">
+            <button
+              type="button"
+              disabled={faceToFaceMeetInviteBusy}
+              onClick={() => setFaceToFaceMeetInviteOpen(false)}
+              className="flex-1 rounded-xl border border-gray-200 py-2.5 text-sm font-medium text-gray-800 hover:bg-gray-50 disabled:opacity-50"
+            >
+              否
+            </button>
+            <button
+              type="button"
+              disabled={faceToFaceMeetInviteBusy}
+              onClick={() => {
+                void (async () => {
+                  if (conversation.type !== 'private') return;
+                  setFaceToFaceMeetInviteBusy(true);
+                  try {
+                    const { sceneLineParsed } = await generateFaceToFaceOpeningFromImChat({
+                      conversation,
+                      apiConfig: effectivePrivateApiConfig,
+                      userProfile: currentUserProfile,
+                      bridgeUserText: faceToFaceMeetBridgeText,
+                      bridgeAssistantText: faceToFaceMeetBridgeAssistantText,
+                    });
+                    const prev = conversation.faceToFaceSession;
+                    const now = Date.now();
+                    const sceneLine =
+                      (sceneLineParsed || '').trim() ||
+                      prev?.sceneHeaderLine?.trim() ||
+                      defaultFaceToFaceSceneHeaderLine();
+                    const defaultWindow = {
+                      id: FACE_TO_FACE_DEFAULT_WINDOW_ID,
+                      title: '默认',
+                      createdAt: now,
+                      updatedAt: now,
+                    } as const;
+                    bumpPendingReplyScheduleEpoch(conversation.id);
+                    onUpdateConversation(conversation.id, {
+                      faceToFaceSession: {
+                        ...(prev || {}),
+                        active: true,
+                        startedAt: prev?.startedAt ?? now,
+                        sceneHeaderLine: sceneLine,
+                        windows: prev?.windows?.length ? prev.windows : [defaultWindow],
+                        activeFaceToFaceWindowId:
+                          prev?.activeFaceToFaceWindowId || FACE_TO_FACE_DEFAULT_WINDOW_ID,
+                      },
+                    });
+                    setFaceToFacePhoneOpen(false);
+                    setFaceToFaceMeetInviteOpen(false);
+                    showToast('已进入线下模式', 'success');
+                  } catch (e) {
+                    const k = faceToFaceMeetInvitePairKeyRef.current;
+                    if (k) faceToFaceMeetEvaluatedKeysRef.current.delete(k);
+                    faceToFaceMeetInvitePairKeyRef.current = null;
+                    showToast(e instanceof Error ? e.message : String(e), 'error');
+                  } finally {
+                    setFaceToFaceMeetInviteBusy(false);
+                  }
+                })();
+              }}
+              className="flex-1 rounded-xl bg-emerald-700 py-2.5 text-sm font-medium text-white hover:bg-emerald-800 disabled:opacity-50"
+            >
+              {faceToFaceMeetInviteBusy ? '生成中…' : '是'}
+            </button>
+          </div>
+        </div>
+      </div>
+    )}
 
     {/* 通话类型选择器 */}
     {showCallTypeSelector && (

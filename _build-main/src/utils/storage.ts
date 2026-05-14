@@ -4,6 +4,7 @@
  * - **仅小数据 / 配置**走 `localStorage`：`LOCAL_STORAGE_KEYS` 与白名单匹配的前缀（见 `shouldUseLocalStorage`）。
  * - **所有会增长的数据**走 **IndexedDB**：`INDEXED_DB_KEYS`、前缀表、以及 `shouldUseIndexedDB` 为 true 的键。
  * - `load(key)` / `save(key)` 对大数据**只读写 IndexedDB + 内存缓存**，不会从 `localStorage` 读 `conversations` 等键。
+ * - **面对面叙事**等增量长文：须使用 `momoyu_face_to_face_*` 前缀键或 `momoyu_face_to_face_v1` 桶（见 `GROWING_DATA_PREFIXES` / `INDEXED_DB_KEYS`），禁止写入 localStorage。
  * - 若仅有 `saveBatch` 写出的分片（`*_meta` + `*_batch_*`）而无主键，`load(key)` 会拼回再缓存。
  *
  * 事故复盘（为何「小配置像还在、聊天记录没了」）：
@@ -45,6 +46,8 @@ const LOCAL_STORAGE_KEYS = [
 const INDEXEDDB_NEVER_PROMOTE_TO_LOCAL = new Set<string>([
   'momoyu_edit_calibration_v1',
   'momoyu_language_style_profile_v1',
+  /** 面对面叙事：整包状态或大段旁白聚合（若使用单键存储） */
+  'momoyu_face_to_face_v1',
 ]);
 
 // 🔵 IndexedDB 专用键（所有大数据）
@@ -107,6 +110,8 @@ const INDEXED_DB_KEYS = [
   'ai_life_sim_states',     // AI生活模拟状态（后台引擎）
   'momoyu_edit_calibration_v1', // 消息编辑学习 / 调试台（按会话 id 分桶）
   'momoyu_language_style_profile_v1', // 编辑校对合并的语言风格画像（按会话 id 分桶，IndexedDB）
+  /** 面对面叙事模式：可选单键聚合（大 JSON）；更推荐按会话 `momoyu_face_to_face_<conversationId>` 分键 */
+  'momoyu_face_to_face_v1',
 ];
 
 const GROWING_DATA_PREFIXES = [
@@ -122,6 +127,8 @@ const GROWING_DATA_PREFIXES = [
   'content_variation_',
   'shopping_cart_',
   'image_gen_moments_daily_',
+  /** 面对面叙事：按会话分键 `momoyu_face_to_face_<conversationId>`，增量长文本只走 IndexedDB */
+  'momoyu_face_to_face_',
 ];
 
 /**
@@ -246,6 +253,30 @@ const loadFromLocal = (key: string): any => {
     return null;
   }
 };
+
+/**
+ * Safari / 长时间后台 Tab / 内存压力等场景下，IndexedDB 偶发 `UnknownError: Connection … lost`。
+ * 此类错误多为瞬时：短延迟重试可提高落盘成功率；仍失败则需用户刷新（浏览器已断开 IDB 服务）。
+ */
+function isIndexedDbTransientConnectionError(err: unknown): boolean {
+  if (!err) return false;
+  const name =
+    err instanceof DOMException
+      ? err.name
+      : typeof (err as { name?: string }).name === 'string'
+        ? (err as { name: string }).name
+        : '';
+  const msg = err instanceof Error ? err.message : String(err);
+  return (
+    name === 'UnknownError' ||
+    /indexed database server lost/i.test(msg) ||
+    /connection to indexed database/i.test(msg)
+  );
+}
+
+async function delayMs(ms: number): Promise<void> {
+  await new Promise((r) => setTimeout(r, ms));
+}
 
 /**
  * 🔵 IndexedDB 操作（大数据专用）
@@ -486,7 +517,21 @@ export const save = async (key: string, data: any): Promise<void> => {
         throw err;
       }
     }
-    await saveToIndexedDB(key, data);
+    const maxAttempts = 4;
+    let lastErr: unknown;
+    for (let attempt = 0; attempt < maxAttempts; attempt++) {
+      try {
+        await saveToIndexedDB(key, data);
+        return;
+      } catch (e) {
+        lastErr = e;
+        const canRetry = isIndexedDbTransientConnectionError(e) && attempt < maxAttempts - 1;
+        if (!canRetry) throw e;
+        console.warn(`[storage] IndexedDB 连接异常，${attempt + 2}/${maxAttempts} 次重试前等待…`, e);
+        await delayMs(200 * (attempt + 1));
+      }
+    }
+    throw lastErr;
   }
 };
 
